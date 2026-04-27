@@ -5,6 +5,9 @@
 프론트엔드는 React + TypeScript 기반 모듈 구조를 사용하며, 서버 상태는 TanStack Query, 테이블 UI는 TanStack Table로 관리한다.  
 핵심 UX 원칙은 테스트 관리 도구의 작업 흐름을 따르되, `Case List` 중심의 `Expandable Case Detail` 구조를 유지하는 것이다.
 
+문서의 디렉터리 구조 예시는 **target structure(목표 구조)**이며, 현재 코드 구조와 차이가 있을 수 있다.  
+구현 시에는 실제 코드 트리를 우선하고, 구조 전환은 별도 migration task로 관리한다.
+
 ## Tech Stack
 
 - React + TypeScript
@@ -29,6 +32,8 @@
 1. Page는 route 단위 조립 역할만 담당한다.
 2. Feature component는 작은 화면 조각으로 분리한다.
 3. API 호출은 component가 아닌 `feature api/hook`에 둔다.
+   - 점진적으로 `packages/api-client`를 표준 진입점으로 전환한다.
+   - 전환 완료 전에는 `apps/web/src/shared/api/http.ts`를 compatibility layer로 유지한다.
 4. 도메인 판단 로직은 backend service layer에서 처리한다.
 5. Case detail 표시 방식은 교체 가능하게 설계한다.
    - 초기: `ExpandableCaseDetail`
@@ -180,110 +185,9 @@ flowchart TD
 
 ## Screen-to-Component Architecture
 
-### Project Screens
-- `/projects`
-  - `ProjectListPage`
-  - `ProjectCard`
-  - `ProjectCreateDialog`
-  - `ProjectEmptyState`
-  - `ProjectSwitcher`
-- `/projects/:projectId`
-  - `ProjectOverviewPage`
-  - `ProjectSummaryCards`
-  - `RecentRunList`
-  - `RecentFailureTable`
-  - `RecentResultList`
-  - `AutomationCoverageCard`
+컴포넌트 소유권과 구현 상태는 `COMPONENT_MAP.md`를 canonical로 본다.
 
-### Test Case Workspace
-- `/projects/:projectId/cases`
-  - `TestCaseWorkspace`
-  - `CaseListPane`
-  - `CaseListToolbar`
-  - `CaseListTable`
-  - `CaseRow`
-  - `ExpandableCaseDetail`
-  - `CaseMetaSummary`
-  - `CaseStepViewer`
-  - `CaseStepEditor`
-  - `CaseFormDrawer`
-  - `SectionTreePane`
-  - `SectionTree`
-  - `AddSectionDialog`
-  - `DeleteCaseConfirmDialog`
-
-### Test Runs
-- `/projects/:projectId/runs`
-  - `RunListPage`
-  - `RunListToolbar`
-  - `RunListTable`
-  - `RunFilterBar`
-  - `RunStatusBadge`
-  - `RunProgressBar`
-- `/projects/:projectId/runs/new`
-  - `RunCreatePage`
-  - `RunCreateForm`
-  - `RunCaseSelector`
-  - `RunCaseSelectionTable`
-  - `RunSectionFilter`
-  - `EnvironmentEditor`
-
-### Run Detail
-- `/projects/:projectId/runs/:runId`
-  - `RunDetailPage`
-  - `RunHeader`
-  - `RunSummaryBar`
-  - `TestInstanceTable`
-  - `TestInstanceRow`
-  - `TestInstanceFilterBar`
-  - `ResultEntryPanel`
-  - `ResultHistoryList`
-  - `StepResultEditor`
-  - `CloseRunDialog`
-
-### Automation Screens
-- `/projects/:projectId/automation`
-  - `AutomationDashboard`
-  - `AutomationSummaryCards`
-  - `AutomationMappingTable`
-  - `AutomationUploadHistory`
-- `/projects/:projectId/automation/uploads/:uploadId`
-  - `BulkUploadResultDetail`
-  - `BulkUploadSummary`
-  - `BulkUploadFailedItemTable`
-  - `CIMetadataCard`
-- `/projects/:projectId/settings/tokens`
-  - `ApiTokenList`
-  - `ApiTokenCreateDialog`
-  - `ApiTokenRevokeDialog`
-
-### Reports Screens
-- `/projects/:projectId/reports`
-  - `ReportsPage`
-  - `StatusDistributionChart`
-  - `FailureTrendChart`
-  - `AutomationCoverageCard`
-  - `RecentFailuresTable`
-  - `RecentResultsList`
-  - `RunSummaryTable`
-
-### Settings Screens
-- `/projects/:projectId/settings`
-  - `ProjectSettingsPage`
-  - `ProjectGeneralSettingsForm`
-  - `DangerZone`
-- `/projects/:projectId/settings/tokens`
-  - `ApiTokenList`
-  - `ApiTokenCreateDialog`
-  - `ApiTokenRevokeDialog`
-- `/projects/:projectId/settings/members`
-  - `MemberManagement`
-- `/projects/:projectId/settings/custom-fields`
-  - `CustomFieldSettings`
-- `/projects/:projectId/settings/webhooks`
-  - `WebhookSettings`
-- `/projects/:projectId/settings/audit-logs`
-  - `AuditLogTable`
+이 문서는 화면별 컴포넌트 목록을 반복하지 않고, 프론트엔드 구조 원칙과 데이터 흐름만 다룬다. Route tree는 `ROUTE_MAP.md`, 화면 요구사항은 `SCREEN_INVENTORY.md`, API 계약은 `API_SPEC.md`를 참조한다.
 
 ## Responsibilities by Layer
 

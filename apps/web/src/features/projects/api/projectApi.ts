@@ -52,14 +52,23 @@ export async function createProject(name: string): Promise<ProjectSummary> {
 }
 
 export async function fetchProjectOverview(projectId: string): Promise<ProjectOverviewDto> {
-  const [casesRes, runsRes] = await Promise.all([
+  const [overviewRes, casesRes, runsRes, failuresRes, resultsRes] = await Promise.all([
+    apiFetch<{ data: { totalCases: number; activeRuns: number; recentFailures: number; automationCoveragePct: number } }>(
+      `/api/projects/${projectId}/overview`
+    ),
     apiFetch<Paged<CaseRow>>(`/api/projects/${projectId}/cases?page=1&pageSize=1`),
-    apiFetch<Paged<RunRow>>(`/api/projects/${projectId}/runs?page=1&pageSize=20`)
+    apiFetch<Paged<RunRow>>(`/api/projects/${projectId}/runs?page=1&pageSize=20`),
+    apiFetch<{ data: { items: Array<{ runId: string; caseId: string; title: string; status: string; source?: string; createdAt?: string }> } }>(
+      `/api/projects/${projectId}/reports/recent-failures`
+    ),
+    apiFetch<{ data: { items: Array<{ runId: string; caseId: string; title: string; status: string; source?: string; createdAt?: string }> } }>(
+      `/api/projects/${projectId}/reports/recent-results`
+    )
   ]);
 
-  const totalCases = casesRes.total;
+  const totalCases = overviewRes.data.totalCases || casesRes.total;
   const runs = runsRes.data;
-  const activeRuns = runs.filter((r) => r.status === "open").length;
+  const activeRuns = overviewRes.data.activeRuns;
 
   const recentRuns = runs.slice(0, 5).map((r) => ({
     id: String(r.id),
@@ -73,11 +82,21 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
     stats: {
       totalCases,
       activeRuns,
-      recentFailures: 0,
-      automationCoveragePct: 0
+      recentFailures: overviewRes.data.recentFailures,
+      automationCoveragePct: overviewRes.data.automationCoveragePct
     },
     recentRuns,
-    recentFailures: [],
-    recentResults: []
+    recentFailures: failuresRes.data.items.map((item) => ({
+      caseCode: `C${item.caseId}`,
+      runName: `Run ${item.runId}`,
+      title: item.title,
+      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"
+    })),
+    recentResults: resultsRes.data.items.map((item) => ({
+      caseCode: `C${item.caseId}`,
+      status: item.status,
+      source: item.source ?? "manual",
+      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"
+    }))
   };
 }

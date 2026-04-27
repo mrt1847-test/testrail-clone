@@ -4,9 +4,12 @@ export type TestRun = {
   id: bigint;
   projectId: bigint;
   suiteId: bigint;
+  milestoneId: bigint | null;
   name: string;
   includeAll: boolean;
   status: "open" | "closed";
+  assignedTo: bigint | null;
+  environment: string | null;
 };
 
 export type TestCase = {
@@ -37,7 +40,9 @@ export type TestInstance = {
 export type CreateRunWithInstancesInput = {
   projectId: bigint;
   suiteId: bigint;
+  milestoneId?: bigint | null;
   name: string;
   includeAll: boolean;
   caseIds?: bigint[];
+  environment?: string | null;
 };

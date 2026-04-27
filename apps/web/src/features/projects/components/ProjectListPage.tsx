@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useAuth } from "../../auth/context/AuthContext";
 import { AppShell } from "../../../shared/ui/AppShell";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -11,6 +12,7 @@ import { useCreateProjectMutation, useProjectsQuery } from "../hooks/useProjects
 
 export function ProjectListPage() {
   const navigate = useNavigate();
+  const { user, memberships, logout } = useAuth();
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const createMutation = useCreateProjectMutation();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -18,14 +20,28 @@ export function ProjectListPage() {
   const top = (
     <div className="border-b border-slate-200 bg-white px-4 py-4">
       <div className="mx-auto flex max-w-7xl items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">QA Rail</h1>
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          New project
-        </button>
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">QA Rail</h1>
+          <p className="text-xs text-slate-500">
+            {user?.email ?? "unknown"} · memberships {memberships.length}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            New project
+          </button>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+          >
+            Logout
+          </button>
+        </div>
       </div>
     </div>
   );

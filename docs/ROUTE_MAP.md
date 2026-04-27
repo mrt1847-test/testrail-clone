@@ -4,6 +4,8 @@
 
 ```text
 /
+├─ /login
+│  └─ LoginPage
 ├─ /projects
 │  ├─ ProjectListPage
 │  └─ ProjectCreateDialog (modal)
@@ -21,6 +23,8 @@
    │     └─ SectionTreePane
    ├─ /projects/:projectId/runs
    │  └─ RunList
+   ├─ /projects/:projectId/my-tests
+   │  └─ MyTestsPage
    ├─ /projects/:projectId/runs/new
    │  └─ RunCreate
    ├─ /projects/:projectId/runs/:runId
@@ -53,6 +57,14 @@
    │  └─ WebhookSettings
    ├─ /projects/:projectId/settings/audit-logs
    │  └─ AuditLogTable
+   ├─ /projects/:projectId/settings/statuses
+   │  └─ CustomStatusSettings
+   ├─ /projects/:projectId/settings/templates
+   │  └─ CaseTemplateSettings
+   ├─ /projects/:projectId/settings/integrations
+   │  └─ IntegrationSettings
+   ├─ /projects/:projectId/settings/notifications
+   │  └─ NotificationSettings
    └─ /projects/:projectId/reports
       └─ ReportsDashboard
 ```
@@ -75,25 +87,35 @@
 - 케이스 상세는 별도 페이지로 라우팅하지 않고 `CaseRow` 확장 상태로 처리한다.
 - `caseId` 없는 `/cases` 진입 시 기본 목록 모드로 렌더링한다.
 - 쿼리의 `caseId`가 현재 필터/섹션 결과에 없으면 확장 상태를 초기화한다.
+- 인증되지 않은 사용자는 `/login`으로 리다이렉트한다.
 
-## Route-to-API Dependency
+## Route-to-Screen Mapping
 
-- `/projects` -> `GET /projects`, `POST /projects`
-- `/projects/:projectId` -> `GET /projects/:projectId/overview`
-- `/projects/:projectId/cases` -> cases/sections CRUD + case detail API
-- `/projects/:projectId/milestones` -> milestone list/create/update API
-- `/projects/:projectId/milestones/:milestoneId` -> milestone detail/run summary API
-- `/projects/:projectId/plans` -> plan list/create API
-- `/projects/:projectId/plans/:planId` -> plan detail/entries API
-- `/projects/:projectId/runs` -> run list API
-- `/projects/:projectId/runs/new` -> suites/cases/milestones + create run API
-- `/projects/:projectId/runs/:runId` -> run detail, instance list, result write API
-- `/projects/:projectId/runs/:runId/results` -> run scoped results API
-- `/projects/:projectId/results` -> project scoped result explorer API
-- `/projects/:projectId/automation` -> mapping/upload history API
-- `/projects/:projectId/automation/uploads/:uploadId` -> upload detail API
-- `/projects/:projectId/settings*` -> settings/tokens/members API
-- `/projects/:projectId/reports` -> report aggregate APIs
+이 문서는 route tree와 navigation/query rule만 canonical로 다룬다.
+
+- 화면별 required API는 `SCREEN_INVENTORY.md`를 참조한다.
+- endpoint 계약은 `API_SPEC.md`를 참조한다.
+- 컴포넌트 책임은 `COMPONENT_MAP.md`를 참조한다.
+
+### Primary Mapping
+- `/login` -> `LoginPage`
+- `/projects` -> `Project Selection`
+- `/projects/:projectId` -> `Project Overview`
+- `/projects/:projectId/cases` -> `Test Case Workspace`
+- `/projects/:projectId/runs` -> `Test Run List`
+- `/projects/:projectId/runs/new` -> `Test Run Create`
+- `/projects/:projectId/my-tests` -> `My Tests`
+- `/projects/:projectId/runs/:runId` -> `Run Detail`
+- `/projects/:projectId/runs/:runId/results` -> `Run Result History`
+- `/projects/:projectId/results` -> `Project-wide Result Explorer`
+- `/projects/:projectId/milestones` -> `Milestone List`
+- `/projects/:projectId/milestones/:milestoneId` -> `Milestone Detail`
+- `/projects/:projectId/plans` -> `Test Plan List`
+- `/projects/:projectId/plans/:planId` -> `Test Plan Detail`
+- `/projects/:projectId/automation` -> `Automation Dashboard`
+- `/projects/:projectId/automation/uploads/:uploadId` -> `Bulk Upload Result Detail`
+- `/projects/:projectId/settings/*` -> `Project Settings` category screens
+- `/projects/:projectId/reports` -> `Reports`
 
 ## MVP Route Set
 

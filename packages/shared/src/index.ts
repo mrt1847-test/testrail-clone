@@ -15,3 +15,24 @@ export const errorCodes = [
   "NO_CASES_FOUND"
 ] as const;
 export type ErrorCode = (typeof errorCodes)[number];
+
+export type Ok<T> = {
+  data: T;
+};
+
+export type Paged<T> = {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type ApiError = {
+  error: {
+    code: string;
+    message: string;
+    details?: Array<{ field?: string; reason: string }>;
+    requestId?: string;
+  };
+};

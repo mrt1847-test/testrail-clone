@@ -2,17 +2,25 @@
 
 ## Document Intent
 
-- 이 문서는 최종 UI 배치 고정안이 아니라 컴포넌트 책임/경계 정의 문서다.
-- Page는 route 단위 조립 역할만 담당한다.
-- 데이터 호출은 `feature api/hook`을 통해 수행한다.
-- 도메인 로직은 backend service layer에 둔다.
+- 이 문서는 화면 요구사항 목록이 아니라 **컴포넌트 책임/경계/교체 가능성**을 정의한다.
+- Page 컴포넌트는 route 단위 조립 역할만 담당한다.
+- 데이터 호출은 feature 단위 `api/` + `hooks/` 또는 `packages/api-client`를 통해 수행한다.
+- 도메인 판단 로직은 backend service layer에 둔다.
+- 화면별 required API와 loading/empty/error 요구사항은 `SCREEN_INVENTORY.md`를 참조한다.
+- API 계약과 endpoint canonical 목록은 `API_SPEC.md`를 참조한다.
+
+## Implementation Status Legend
+
+- `implemented`: 현재 코드베이스에 실제 구현되어 사용 중
+- `planned`: 문서 기준 목표이며 아직 구현 전
+- `deferred`: 후순위로 계획만 존재
 
 ## Naming Conventions
 
 - `*Page`: 라우트 단위 페이지 조립 컴포넌트 (`ProjectListPage`, `RunDetailPage`, `ReportsPage`).
 - `*Workspace`: 다중 패널 작업 영역 조립 컴포넌트 (`TestCaseWorkspace` 등).
 - `*Pane` / `*Panel`: 레이아웃 구역 단위.
-- `*Dialog` / `*Drawer`: 모달·오버레이 UI.
+- `*Dialog` / `*Drawer`: 모달/오버레이 UI.
 - 빈 프로젝트 목록 전용 UI는 `ProjectEmptyState`로 통일한다 (`EmptyProjectState` 사용 안 함).
 
 ## Replaceability Contracts
@@ -20,7 +28,7 @@
 ### Case Detail Contract
 - 초기 구현: `ExpandableCaseDetail`
 - 대안 구현: `CaseDetailDrawer`, `CaseDetailPage`, `CaseDetailPanel`
-- 교체 원칙: `useCaseDetail`과 `CaseDetailModel` 인터페이스는 유지하고, 렌더링 컨테이너만 교체한다.
+- 교체 원칙: `useCaseDetail`과 `CaseDetailModel` 인터페이스는 유지하고 렌더링 컨테이너만 교체한다.
 
 ### Run Result Entry Contract
 - 초기 구현: `ResultEntryPanel`
@@ -29,326 +37,208 @@
 
 ## App Shell / Shared
 
-- Route scope: global
-- Purpose: 공통 레이아웃, 공통 상태 UI, 재사용 UI primitive 제공
-- Main components:
-  - `AppShell`
-  - `ProjectHeader`
-  - `ProjectTabs`
-  - `ProjectSwitcher`
-  - `Breadcrumb`
-  - `Button`
-  - `StatusBadge`
-  - `DataTable`
-  - `EmptyState`
-  - `LoadingState`
-  - `ErrorState`
-  - `ConfirmDialog`
-- Required API: project context API (`GET /projects`, `GET /projects/:projectId`) 및 각 페이지 API 위임
-- Loading state: shell placeholder + page-level suspense fallback
-- Empty state: 라우트별 empty 컴포넌트 위임
-- Error state: 글로벌 boundary + 페이지 boundary
-- MVP: Yes
-- Later: 접근성 단축키, 테마 토큰 확장
+- Responsibility:
+  - 프로젝트 공통 레이아웃 제공
+  - 프로젝트 전환/탭/브레드크럼 제공
+  - 공통 loading/empty/error/confirm UI 제공
+- Components:
+  - `AppShell`: global layout frame
+  - `ProjectHeader`: project title/context summary
+  - `ProjectTabs`: project-scoped navigation tabs
+  - `ProjectSwitcher`: accessible project switching entry
+  - `Breadcrumb`: route context display
+  - `LoadingState`, `EmptyState`, `ErrorState`, `ConfirmDialog`: shared state primitives
+  - `Button`, `StatusBadge`, `DataTable`: shared primitive targets
+- Status:
+  - `implemented`: `AppShell`, `ProjectHeader`, `ProjectTabs`, `ProjectSwitcher`, `Breadcrumb`, `EmptyState`, `LoadingState`, `ErrorState`, `ConfirmDialog`
+  - `planned`: `Button`, `StatusBadge`, `DataTable`
 
 ## Entry / Projects
 
-- Route scope: `/login`, `/projects`
-- Purpose: 인증 및 프로젝트 진입 플로우
-- Main components:
-  - `LoginPage`
-  - `LoginForm`
-  - `ProjectListPage`
-  - `ProjectCard`
-  - `ProjectCreateDialog`
-  - `ProjectEmptyState`
-- Required API:
-  - `POST /auth/login`
-  - `GET /auth/me`
-  - `GET /projects`
-  - `POST /projects`
-- Loading state: form submit loading, project list skeleton
-- Empty state: 프로젝트 없음 + 생성 CTA
-- Error state: 인증 실패/프로젝트 조회 실패 메시지
-- MVP: Yes
-- Later: 소셜 로그인, 프로젝트 템플릿
+- Responsibility:
+  - 인증 진입과 프로젝트 선택 화면 조립
+  - 프로젝트 생성 dialog 표시와 mutation trigger 연결
+  - 프로젝트 없음 상태를 `ProjectEmptyState`로 위임
+- Components:
+  - `LoginPage`: login route composition
+  - `LoginForm`: credential input and submit interaction
+  - `ProjectListPage`: project list route composition
+  - `ProjectCard`: project summary/selectable item
+  - `ProjectCreateDialog`: project creation overlay
+  - `ProjectEmptyState`: no-project CTA
+- Status:
+  - `implemented`: `ProjectListPage`, `ProjectCard`, `ProjectCreateDialog`, `ProjectEmptyState`
+  - `planned`: `LoginPage`, `LoginForm`
 
 ## Project Overview
 
-- Route scope: `/projects/:projectId`
-- Purpose: 프로젝트 지표 요약과 최근 이슈 시각화
-- Main components:
-  - `ProjectOverviewPage`
-  - `ProjectSummaryCards`
-  - `RecentRunList`
-  - `RecentFailureTable`
-  - `RecentResultList`
-  - `AutomationCoverageCard`
-- Required API:
-  - `GET /projects/:projectId/overview`
-  - `GET /projects/:projectId/runs/recent`
-  - `GET /projects/:projectId/reports/recent-failures`
-  - `GET /projects/:projectId/reports/recent-results`
-  - `GET /projects/:projectId/reports/automation-coverage`
-- Loading state: 위젯 skeleton
-- Empty state: 활동/실패/커버리지 없음 안내
-- Error state: 위젯 단위 에러 fallback
-- MVP: Yes
-- Later: 기간 비교, drill-down navigation
+- Responsibility:
+  - 프로젝트 첫 진입 dashboard 조립
+  - summary cards, recent runs, recent failures/results를 위젯 단위로 배치
+  - 상세 drill-down route로 이동하는 CTA 제공
+- Components:
+  - `ProjectOverviewPage`: overview route composition
+  - `ProjectSummaryCards`: high-level metric cards
+  - `RecentRunList`: recent run navigation list
+  - `RecentFailureTable`: recent failure snapshot
+  - `RecentResultList`: recent result snapshot
+  - `AutomationCoverageCard`: automation coverage summary
+- Status:
+  - `implemented`: `ProjectOverviewPage`, `ProjectSummaryCards`, `RecentRunList`, `RecentFailureTable`, `RecentResultList`, `AutomationCoverageCard`
 
-## Test Cases (Expandable Detail 중심)
+## Test Cases
 
-- Route scope: `/projects/:projectId/cases`
-- Purpose: 케이스 목록 중심 작성/편집/정리
-- Main components:
-  - `TestCaseWorkspace`
-  - `CaseListPane`
-  - `CaseListToolbar`
-  - `CaseListTable`
-  - `CaseRow`
-  - `ExpandableCaseDetail`
-  - `CaseMetaSummary`
-  - `CaseStepViewer`
-  - `CaseStepEditor`
-  - `CaseFormDrawer`
-  - `DeleteCaseConfirmDialog`
-  - `SectionTreePane`
-  - `SectionTree`
-  - `AddSectionDialog`
-- Required API:
-  - `GET /projects/:projectId/cases`
-  - `GET /cases/:caseId`
-  - `POST /projects/:projectId/cases`
-  - `PATCH /cases/:caseId`
-  - `DELETE /cases/:caseId`
-  - `GET /projects/:projectId/sections`
-  - `POST /projects/:projectId/sections`
-- Loading state:
-  - 목록 loading (`CaseListTable`)
-  - 상세 lazy loading (`ExpandableCaseDetail`)
-  - 트리 loading (`SectionTreePane`)
-- Empty state:
-  - 섹션 내 케이스 없음
-  - 검색/필터 결과 없음
-- Error state:
-  - 목록/상세/트리 개별 오류 + `Retry`
-- MVP: Yes
-- Later:
-  - multi-expand
-  - bulk actions
-  - column personalization
-
-### Expandable Detail Contract
-- 초기에는 별도 라우트 `CaseDetailPage` 없이 `CaseRow` 하단 확장 영역으로 렌더링한다.
-- 수정은 `ExpandableCaseDetail` 내부 `edit mode`에서 처리한다.
-- URL query 상태 연동:
-  - `sectionId`, `caseId`, `mode`
-  - 예: `/projects/1/cases?sectionId=10&caseId=101&mode=edit`
-- 이후 필요 시 `CaseDetailDrawer`/`CaseDetailPage`로 교체 가능하게 설계한다.
+- Responsibility:
+  - 케이스 워크스페이스의 list/detail/tree 영역 조립
+  - section 선택과 case list 필터 상태 연결
+  - case row expansion과 query 상태 동기화
+  - case 생성/수정/삭제 상호작용을 feature hook에 위임
+- Components:
+  - `TestCaseWorkspace`: workspace-level orchestration
+  - `CaseListPane`: list area container
+  - `CaseListToolbar`: search/filter/create controls
+  - `CaseListTable`: case table rendering
+  - `CaseRow`: row display and expand trigger
+  - `ExpandableCaseDetail`: in-row case detail/edit area
+  - `CaseMetaSummary`: compact case metadata display
+  - `CaseStepViewer`: read-only step display
+  - `CaseStepEditor`: editable step list
+  - `CaseFormDrawer`: create/edit container alternative
+  - `SectionTreePane`: section tree container
+  - `SectionTree`: nested section selection
+  - `AddSectionDialog`, `EditSectionDialog`, `DeleteSectionDialog`: section mutations
+  - `DeleteCaseConfirmDialog`: destructive case confirmation
+- Status:
+  - `implemented`: `TestCaseWorkspace`, `CaseListPane`, `CaseListToolbar`, `CaseRow`, `ExpandableCaseDetail`, `SectionTreePane`
+  - `planned`: `CaseListTable`, `CaseMetaSummary`, `CaseStepViewer`, `CaseStepEditor`, `CaseFormDrawer`, `SectionTree`, `AddSectionDialog`, `EditSectionDialog`, `DeleteSectionDialog`, `DeleteCaseConfirmDialog`
 
 ## Test Runs
 
-- Route scope: `/projects/:projectId/runs`, `/projects/:projectId/runs/new`
-- Purpose: 런 목록 조회 및 런 생성
-- Main components:
-  - `RunListPage`
-  - `RunListToolbar`
-  - `RunListTable`
-  - `RunFilterBar`
-  - `RunStatusBadge`
-  - `RunProgressBar`
-  - `RunCreatePage`
-  - `RunCreateForm`
-  - `RunCaseSelector`
-  - `RunCaseSelectionTable`
-  - `RunSectionFilter`
-  - `EnvironmentEditor`
-- Required API:
-  - `GET /projects/:projectId/runs`
-  - `GET /projects/:projectId/suites`
-  - `GET /projects/:projectId/cases`
-  - `POST /projects/:projectId/runs`
-  - `GET /projects/:projectId/milestones` (옵션)
-- Loading state: table/form init loading
-- Empty state: 런 없음 또는 선택 가능한 케이스 없음
-- Error state: 조회/생성 실패
-- MVP: Yes
-- Later: 런 템플릿, 저장된 프리셋
+- Responsibility:
+  - run list와 run creation route 조립
+  - run filters/progress/status display 연결
+  - run 생성 폼에서 suite/case/milestone/environment 선택 UI 제공
+- Components:
+  - `RunListPage`: run list route composition
+  - `RunListToolbar`: create/search/filter controls
+  - `RunListTable`: run table rendering
+  - `RunFilterBar`: status/assignee filters
+  - `RunStatusBadge`: run status display
+  - `RunProgressBar`: run completion visual
+  - `RunCreatePage`: run creation route composition
+  - `RunCreateForm`: run metadata input
+  - `RunCaseSelector`, `RunCaseSelectionTable`, `RunSectionFilter`: case selection controls
+  - `EnvironmentEditor`: environment/config input
+  - `RunAssigneePicker`, `MyTestsShortcut`: assignment workflow targets
+- Status:
+  - `implemented`: `RunListPage`, `RunCreatePage`
+  - `planned`: `RunListToolbar`, `RunListTable`, `RunFilterBar`, `RunStatusBadge`, `RunProgressBar`, `RunCreateForm`, `RunCaseSelector`, `RunCaseSelectionTable`, `RunSectionFilter`, `EnvironmentEditor`, `RunAssigneePicker`, `MyTestsShortcut`
 
 ## Run Detail
 
-- Route scope: `/projects/:projectId/runs/:runId`
-- Purpose: 인스턴스 상태 확인 및 결과 입력/이력 조회
-- Main components:
-  - `RunDetailPage`
-  - `RunHeader`
-  - `RunSummaryBar`
-  - `TestInstanceTable`
-  - `TestInstanceRow`
-  - `TestInstanceFilterBar`
-  - `ResultEntryPanel`
-  - `ResultHistoryList`
-  - `StepResultEditor`
-  - `CloseRunDialog`
-- Required API:
-  - `GET /projects/:projectId/runs/:runId`
-  - `GET /projects/:projectId/runs/:runId/instances`
-  - `POST /runs/:runId/results`
-  - `GET /instances/:instanceId/results`
-  - `POST /runs/:runId/close`
-- Loading state: summary/table/panel 분리 loading
-- Empty state: 인스턴스/이력 없음 안내
-- Error state: 패널별 오류 처리
-- MVP: Yes
-- Later: 일괄 결과 입력, 단축키 워크플로우, `ResultEntryDrawer`/`InlineResultEditor` 대안
+- Responsibility:
+  - run execution workspace 조립
+  - instance selection과 result entry panel 연결
+  - result history, close run, rerun, assignment, attachment/defect panels의 위치를 조율
+- Components:
+  - `RunDetailPage`: run detail route composition
+  - `RunHeader`: run metadata and primary actions
+  - `RunSummaryBar`: status counts/progress
+  - `TestInstanceTable`: instance list and selection
+  - `TestInstanceRow`: instance row display
+  - `TestInstanceFilterBar`: status/assignee/search filters
+  - `ResultEntryPanel`: selected instance result input
+  - `ResultHistoryList`: selected instance result history
+  - `StepResultEditor`: step-level result input
+  - `CloseRunDialog`: close confirmation
+  - `RerunDialog`: status-filtered rerun creation
+  - `AssigneeEditor`: run/test assignment editor
+  - `ResultAttachmentPanel`: result evidence attachments
+  - `DefectLinkPanel`: defect link/create actions
+- Status:
+  - `implemented`: `RunDetailPage`
+  - `planned`: `RunHeader`, `RunSummaryBar`, `TestInstanceTable`, `TestInstanceRow`, `TestInstanceFilterBar`, `ResultEntryPanel`, `ResultHistoryList`, `StepResultEditor`, `CloseRunDialog`, `RerunDialog`, `AssigneeEditor`, `ResultAttachmentPanel`, `DefectLinkPanel`
 
 ## Results Explorer
 
-- Route scope: `/projects/:projectId/runs/:runId/results`, `/projects/:projectId/results`
-- Purpose: 결과 이력을 런 범위/프로젝트 범위로 탐색
-- Main components:
-  - `ResultExplorerPage`
-  - `ResultFilterBar`
-  - `ResultTable`
-  - `ResultDetailDrawer`
-  - `ResultSourceBadge`
-- Required API:
-  - `GET /projects/:projectId/runs/:runId/results`
-  - `GET /projects/:projectId/results`
-- Loading state: table skeleton
-- Empty state: 결과 없음
-- Error state: 조회 실패 + 재시도
-- MVP:
-  - run scoped history: Yes (Run Detail 내부)
-  - project-wide explorer: Later
-- Later: 저장된 필터, export
+- Responsibility:
+  - run-scoped/project-scoped result history exploration
+  - filter state and result detail drawer orchestration
+- Components:
+  - `ResultExplorerPage`: result explorer route composition
+  - `ResultFilterBar`: run/status/source filters
+  - `ResultTable`: result history table
+  - `ResultDetailDrawer`: result detail display
+  - `ResultSourceBadge`: manual/automation/api source display
+- Status:
+  - `implemented`: `ResultExplorerPage`
+  - `planned`: `ResultFilterBar`, `ResultTable`, `ResultDetailDrawer`, `ResultSourceBadge`
 
 ## Milestones
 
-- Route scope: `/projects/:projectId/milestones`, `/projects/:projectId/milestones/:milestoneId`
-- Purpose: 릴리스/스프린트 단위 진행 관리
-- Main components:
-  - `MilestoneListPage`
-  - `MilestoneTable`
-  - `MilestoneCreateDialog`
-  - `MilestoneStatusBadge`
-  - `MilestoneProgressBar`
-  - `MilestoneDetailPage`
-  - `MilestoneHeader`
-  - `MilestoneSummaryCards`
-  - `MilestoneRunTable`
-  - `MilestoneProgressChart`
-- Required API:
-  - `GET/POST /projects/:projectId/milestones`
-  - `GET/PATCH /projects/:projectId/milestones/:milestoneId`
-  - `GET /projects/:projectId/milestones/:milestoneId/runs`
-- Loading state: table/card skeleton
-- Empty state: milestone 없음
-- Error state: 조회 실패 + 재시도
-- MVP: Later
-- Later: 추세 차트, 지연 경고
+- Responsibility:
+  - milestone list/detail 화면 조립
+  - linked run summary and progress chart placement
+- Components:
+  - `MilestoneListPage`, `MilestoneTable`, `MilestoneCreateDialog`
+  - `MilestoneStatusBadge`, `MilestoneProgressBar`
+  - `MilestoneDetailPage`, `MilestoneHeader`, `MilestoneSummaryCards`, `MilestoneRunTable`, `MilestoneProgressChart`
+- Status:
+  - `implemented`: `MilestonesPage`, `MilestoneDetailPage`
+  - `planned`: granular milestone components listed above
 
 ## Test Plans
 
-- Route scope: `/projects/:projectId/plans`, `/projects/:projectId/plans/:planId`
-- Purpose: 환경 조합별 plan/run 관리
-- Main components:
-  - `TestPlanListPage`
-  - `TestPlanTable`
-  - `TestPlanCreateDialog`
-  - `PlanProgressBar`
-  - `TestPlanDetailPage`
-  - `PlanEntryTable`
-  - `EnvironmentMatrix`
-  - `CreatePlanRunDialog`
-- Required API:
-  - `GET/POST /projects/:projectId/plans`
-  - `GET /projects/:projectId/plans/:planId`
-  - `GET /projects/:projectId/plans/:planId/entries`
-  - `POST /projects/:projectId/plans/:planId/runs`
-- Loading state: table/matrix skeleton
-- Empty state: plan/entry 없음
-- Error state: 조회 실패 + 재시도
-- MVP: Later
-- Later: plan template, entry preset
+- Responsibility:
+  - plan list/detail 화면 조립
+  - environment/configuration matrix and plan-entry run creation placement
+- Components:
+  - `TestPlanListPage`, `TestPlanTable`, `TestPlanCreateDialog`, `PlanProgressBar`
+  - `TestPlanDetailPage`, `PlanEntryTable`, `EnvironmentMatrix`, `CreatePlanRunDialog`
+- Status:
+  - `implemented`: `PlansPage`, `PlanDetailPage`
+  - `planned`: granular plan components listed above
 
 ## Automation
 
-- Route scope: `/projects/:projectId/automation`, `/projects/:projectId/automation/uploads/:uploadId`
-- Purpose: 자동화 매핑 현황과 업로드 결과 추적
-- Main components:
-  - `AutomationDashboard`
-  - `AutomationSummaryCards`
-  - `ApiTokenList`
-  - `ApiTokenCreateDialog`
-  - `AutomationMappingTable`
-  - `AutomationUploadHistory`
-  - `BulkUploadResultDetail`
-  - `BulkUploadSummary`
-  - `BulkUploadFailedItemTable`
-  - `CIMetadataCard`
-- Required API:
-  - `GET /projects/:projectId/automation/summary`
-  - `GET /projects/:projectId/automation/mappings`
-  - `GET /projects/:projectId/automation/uploads`
-  - `GET /projects/:projectId/automation/uploads/:uploadId`
-- Loading state: dashboard/detail skeleton
-- Empty state: 업로드 이력 없음
-- Error state: 조회 실패 + 재시도
-- MVP: 1차 완성 (핵심 MVP 이후)
-- Later: 실패 건 재처리, CI 메타 필터
+- Responsibility:
+  - automation mapping/upload dashboard 조립
+  - upload detail and token-management entry placement
+- Components:
+  - `AutomationDashboard`, `AutomationSummaryCards`, `AutomationMappingTable`, `AutomationUploadHistory`
+  - `BulkUploadResultDetail`, `BulkUploadSummary`, `BulkUploadFailedItemTable`, `CIMetadataCard`
+  - `ApiTokenList`, `ApiTokenCreateDialog`, `ApiTokenRevokeDialog`
+  - `UploadRetryAction`, `UploadReprocessAction`, `AutomationKeyMappingEditor`
+- Status:
+  - `implemented`: `AutomationPage`, `BulkUploadDetailPage`, `TokensPage`
+  - `planned`: granular automation/token components listed above
 
 ## Settings
 
-- Route scope: `/projects/:projectId/settings`, `/projects/:projectId/settings/tokens`, `/projects/:projectId/settings/members`, `/projects/:projectId/settings/custom-fields`, `/projects/:projectId/settings/webhooks`, `/projects/:projectId/settings/audit-logs`
-- Purpose: 프로젝트 운영 설정 관리
-- Main components:
-  - `ProjectSettingsPage`
-  - `ProjectGeneralSettingsForm`
-  - `DangerZone`
-  - `ApiTokenList`
-  - `ApiTokenCreateDialog`
-  - `ApiTokenRevokeDialog`
+- Responsibility:
+  - project settings category pages/tabs 조립
+  - admin forms and destructive action zones placement
+- Components:
+  - `ProjectSettingsPage`, `ProjectGeneralSettingsForm`, `DangerZone`
+  - `ApiTokenList`, `ApiTokenCreateDialog`, `ApiTokenRevokeDialog`
   - `MemberManagement`
-  - `CustomFieldSettings`
-  - `WebhookSettings`
-  - `AuditLogTable`
-- Required API:
-  - `GET/PATCH /projects/:projectId/settings`
-  - `GET/POST/DELETE /projects/:projectId/tokens`
-  - `GET/POST/PATCH/DELETE /projects/:projectId/members`
-  - `GET/POST/PATCH/DELETE /projects/:projectId/custom-fields`
-  - `GET/POST/PATCH/DELETE /projects/:projectId/webhooks`
-  - `GET /projects/:projectId/audit-logs`
-- Loading state: form/table skeleton
-- Empty state: 토큰/멤버 없음
-- Error state: 저장 실패/조회 실패
-- MVP:
-  - settings/tokens: Yes
-  - members: Later
-- Later: custom fields, webhook, audit logs
+  - `CustomFieldSettings`, `CustomStatusSettings`, `CaseTemplateSettings`
+  - `WebhookSettings`, `IntegrationSettings`, `NotificationSettings`, `AuditLogTable`
+- Status:
+  - `implemented`: `ProjectSettingsPage`, `TokensPage`, `CustomFieldsPage`, `WebhooksPage`, `AuditLogsPage`
+  - `planned`: `ProjectGeneralSettingsForm`, `DangerZone`, `MemberManagement`, `CustomStatusSettings`, `CaseTemplateSettings`, `IntegrationSettings`, `NotificationSettings`, granular token/webhook/audit components
 
 ## Reports
 
-- Route scope: `/projects/:projectId/reports`
-- Purpose: 품질 지표 분석과 추세 확인
-- Main components:
+- Responsibility:
+  - report dashboard composition
+  - chart/table widget placement
+  - traceability/coverage report expansion points
+- Components:
   - `ReportsPage`
-  - `StatusDistributionChart`
-  - `FailureTrendChart`
-  - `AutomationCoverageCard`
-  - `RecentFailuresTable`
-  - `RecentResultsList`
-  - `RunSummaryTable`
-- Required API:
-  - `GET /projects/:projectId/reports/status-distribution`
-  - `GET /projects/:projectId/reports/failure-trend`
-  - `GET /projects/:projectId/reports/automation-coverage`
-  - `GET /projects/:projectId/reports/recent-failures`
-  - `GET /projects/:projectId/reports/recent-results`
-  - `GET /projects/:projectId/reports/run-summary`
-- Loading state: chart/table skeleton
-- Empty state: 데이터 없음
-- Error state: 위젯 단위 에러 fallback
-- MVP: 1차 완성 (기본 카드·테이블)
-- Later: 리포트 export, 커스텀 구간 비교
+  - `StatusDistributionChart`, `FailureTrendChart`, `AutomationCoverageCard`
+  - `RecentFailuresTable`, `RecentResultsList`, `RunSummaryTable`
+  - `TraceabilityMatrix`, `CoverageGapTable`
+- Status:
+  - `implemented`: `ReportsPage`
+  - `planned`: chart/table primitives and traceability/coverage widgets

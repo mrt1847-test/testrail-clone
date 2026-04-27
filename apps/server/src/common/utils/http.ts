@@ -1,5 +1,7 @@
+import type { Ok, Paged } from "@testrail-clone/shared";
+
 export function ok<T>(data: T) {
-  return { data };
+  return { data } satisfies Ok<T>;
 }
 
 export function paged<T>(items: T[], page: number, pageSize: number) {
@@ -11,5 +13,5 @@ export function paged<T>(items: T[], page: number, pageSize: number) {
     pageSize,
     total,
     totalPages: Math.max(1, Math.ceil(total / pageSize))
-  };
+  } satisfies Paged<T>;
 }

@@ -25,11 +25,20 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
         <NavLink to={`${base}/runs`} className={tabClass}>
           Test Runs
         </NavLink>
+        <NavLink to={`${base}/results`} className={tabClass}>
+          Results
+        </NavLink>
         <NavLink to={`${base}/reports`} className={tabClass}>
           Reports
         </NavLink>
         <NavLink to={`${base}/automation`} className={tabClass}>
           Automation
+        </NavLink>
+        <NavLink to={`${base}/milestones`} className={tabClass}>
+          Milestones
+        </NavLink>
+        <NavLink to={`${base}/plans`} className={tabClass}>
+          Plans
         </NavLink>
         <NavLink to={`${base}/settings`} className={tabClass}>
           Settings

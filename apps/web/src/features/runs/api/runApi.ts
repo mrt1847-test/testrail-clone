@@ -1,8 +1,16 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Ok, Paged } from "../../../shared/api/types";
-import type { RunDetailDto, RunSummary } from "../types";
+import type { RunDetailDto, RunSummary, TestResultHistoryItem, TestResultStepItem } from "../types";
 
-type ApiRun = { id: string; name: string; status: string; includeAll?: boolean };
+type ApiRun = {
+  id: string;
+  name: string;
+  status: string;
+  includeAll?: boolean;
+  environment?: string | null;
+  assignedTo?: string | null;
+  milestoneId?: string | null;
+};
 
 type ApiInstance = {
   id: string;
@@ -28,15 +36,15 @@ export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
     status: r.status === "closed" ? "closed" : "open",
     progress: 0,
     failed: 0,
-    createdAt: "—"
+    createdAt: "—",
+    assignedTo: r.assignedTo ? String(r.assignedTo) : null
   }));
 }
 
 export async function fetchRunDetail(projectId: string, runId: string): Promise<RunDetailDto | null> {
-  void projectId;
   try {
     const [detailRes, summaryRes] = await Promise.all([
-      apiFetch<Ok<RunDetailPayload>>(`/api/runs/${runId}`),
+      apiFetch<Ok<RunDetailPayload>>(`/api/projects/${projectId}/runs/${runId}`),
       apiFetch<RunSummaryResponse>(`/api/runs/${runId}/summary`)
     ]);
     const { run, instances } = detailRes.data;
@@ -53,6 +61,8 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         id: String(run.id),
         name: run.name,
         status: run.status === "closed" ? "closed" : "open",
+        environment: run.environment ?? undefined,
+        assignedTo: run.assignedTo ? String(run.assignedTo) : null,
         progress,
         failed,
         createdAt: "—"
@@ -70,21 +80,68 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
   }
 }
 
-export async function createRun(projectId: string, name: string): Promise<RunSummary> {
-  const suites = await apiFetch<Paged<{ id: string }>>(
-    `/api/projects/${projectId}/suites?page=1&pageSize=1`
-  );
-  const suiteId = suites.data[0]?.id;
-  if (!suiteId) {
-    throw new Error("No suite found for project. Create a suite first.");
-  }
-  const created = await apiFetch<{ run: ApiRun; instances: ApiInstance[] }>("/api/runs", {
+export async function addRunResult(input: {
+  runId: string;
+  testId: string;
+  status: "passed" | "failed" | "blocked" | "retest" | "untested";
+  comment?: string;
+  elapsed?: string;
+  version?: string;
+  defects?: string[];
+  stepResults?: Array<{ stepOrder: number; status: "passed" | "failed" | "blocked" | "retest" | "untested"; actualResult?: string; comment?: string }>;
+}) {
+  return apiFetch(`/api/runs/${input.runId}/results`, {
     method: "POST",
     body: {
-      projectId,
-      suiteId,
-      name,
-      includeAll: true
+      testId: input.testId,
+      status: input.status,
+      comment: input.comment,
+      elapsed: input.elapsed,
+      version: input.version,
+      defects: input.defects,
+      stepResults: input.stepResults
+    }
+  });
+}
+
+export async function closeRun(runId: string) {
+  return apiFetch(`/api/runs/${runId}/close`, { method: "POST" });
+}
+
+export async function updateRunAssignee(runId: string, assignedTo: string | null) {
+  return apiFetch(`/api/runs/${runId}`, {
+    method: "PATCH",
+    body: { assignedTo }
+  });
+}
+
+export async function rerunFailed(runId: string) {
+  return apiFetch(`/api/runs/${runId}/rerun`, {
+    method: "POST",
+    body: { statuses: ["failed"] }
+  });
+}
+
+export type CreateRunInput = {
+  projectId: string;
+  suiteId: string;
+  name: string;
+  includeAll: boolean;
+  caseIds?: string[];
+  milestoneId?: string | null;
+  environment?: string;
+};
+
+export async function createRun(input: CreateRunInput): Promise<RunSummary> {
+  const created = await apiFetch<{ run: ApiRun; instances: ApiInstance[] }>(`/api/projects/${input.projectId}/runs`, {
+    method: "POST",
+    body: {
+      suiteId: input.suiteId,
+      name: input.name,
+      includeAll: input.includeAll,
+      caseIds: input.caseIds,
+      milestoneId: input.milestoneId ?? undefined,
+      environment: input.environment
     }
   });
   return {
@@ -93,6 +150,55 @@ export async function createRun(projectId: string, name: string): Promise<RunSum
     status: created.run.status === "closed" ? "closed" : "open",
     progress: 0,
     failed: 0,
-    createdAt: "—"
+    createdAt: "—",
+    assignedTo: created.run.assignedTo ? String(created.run.assignedTo) : null
   };
+}
+
+type ApiResultHistory = {
+  id: string;
+  status: string;
+  comment?: string;
+  elapsed?: string;
+  version?: string;
+  source: "manual" | "automation" | "api";
+  defects?: string[];
+  createdAt: string;
+};
+
+export async function fetchTestResults(testId: string): Promise<TestResultHistoryItem[]> {
+  const rows = await apiFetch<ApiResultHistory[]>(`/api/tests/${testId}/results`);
+  return rows.map((row) => ({
+    id: String(row.id),
+    status: row.status,
+    comment: row.comment,
+    elapsed: row.elapsed,
+    version: row.version,
+    source: row.source,
+    defects: row.defects ?? [],
+    createdAt: row.createdAt
+  }));
+}
+
+type ApiResultStep = {
+  id: string;
+  resultId: string;
+  stepOrder: number;
+  status: string;
+  actualResult?: string;
+  comment?: string;
+  createdAt: string;
+};
+
+export async function fetchResultSteps(resultId: string): Promise<TestResultStepItem[]> {
+  const rows = await apiFetch<ApiResultStep[]>(`/api/results/${resultId}/steps`);
+  return rows.map((row) => ({
+    id: String(row.id),
+    resultId: String(row.resultId),
+    stepOrder: row.stepOrder,
+    status: row.status,
+    actualResult: row.actualResult,
+    comment: row.comment,
+    createdAt: row.createdAt
+  }));
 }

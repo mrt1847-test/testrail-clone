@@ -1,19 +1,35 @@
-const ROLE_HEADER = "x-project-role";
+const TOKEN_KEY = "testrail.accessToken";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
+export function getAccessToken() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAccessToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  if (!token) {
+    window.localStorage.removeItem(TOKEN_KEY);
+    return;
+  }
+  window.localStorage.setItem(TOKEN_KEY, token);
+}
+
 type FetchOptions = {
   method?: HttpMethod;
   body?: unknown;
-  /** 변경 API용. 기본 `manager`. */
-  role?: string;
 };
 
 export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const { method = "GET", body, role = "manager" } = options;
-  const headers: Record<string, string> = { [ROLE_HEADER]: role };
+  const { method = "GET", body } = options;
+  const headers: Record<string, string> = {};
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }

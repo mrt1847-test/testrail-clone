@@ -98,6 +98,18 @@ export class ResultsService {
     };
   }
 
+  async listResultsForTestInstance(testId: bigint) {
+    const instance = await this.repo.transaction(async (tx) => tx.getTestInstanceById(testId));
+    if (!instance) {
+      throw new AppError("TEST_NOT_FOUND", `test instance ${testId.toString()} not found`);
+    }
+    return this.repo.listResultsForTestInstance(testId);
+  }
+
+  async listResultStepsByResultId(resultId: bigint) {
+    return this.repo.listResultStepsByResultId(resultId);
+  }
+
   private async writeResultTx(tx: Tx, testInstanceId: bigint, input: ResultInput) {
     const created = await tx.createResult(testInstanceId, input);
     if (input.stepResults && input.stepResults.length > 0) {

@@ -1,22 +1,22 @@
 import { AppError } from "../../common/errors/appError.js";
-import { ProjectsMemoryRepository } from "../projects/projects.memory.repository.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
 
 export class SectionsService {
-  constructor(private readonly repo: ProjectsMemoryRepository) {}
+  constructor(private readonly repo: ProjectsRepository) {}
 
-  listSections(suiteId: bigint) {
+  async listSections(suiteId: bigint) {
     return this.repo.listSectionsBySuite(suiteId);
   }
-  createSection(input: { suiteId: bigint; parentSectionId?: bigint | null; name: string }) {
+  async createSection(input: { suiteId: bigint; parentSectionId?: bigint | null; name: string }) {
     return this.repo.createSection(input);
   }
-  updateSection(sectionId: bigint, patch: { parentSectionId?: bigint | null; name?: string }) {
-    const updated = this.repo.updateSection(sectionId, patch);
+  async updateSection(sectionId: bigint, patch: { parentSectionId?: bigint | null; name?: string }) {
+    const updated = await this.repo.updateSection(sectionId, patch);
     if (!updated) throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found`, 404);
     return updated;
   }
-  deleteSection(sectionId: bigint) {
-    const deleted = this.repo.deleteSection(sectionId);
+  async deleteSection(sectionId: bigint) {
+    const deleted = await this.repo.deleteSection(sectionId);
     if (!deleted) throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found`, 404);
   }
 }

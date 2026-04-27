@@ -1,6 +1,6 @@
 import type { ResultInput } from "../results/results.types.js";
 import { testStatuses, type TestStatus } from "../../domain/status.js";
-import type { ProjectsMemoryRepository } from "../projects/projects.memory.repository.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
 function mapCatalogCaseToTestCase(
@@ -25,8 +25,11 @@ export type Tx = {
   createRun(input: {
     projectId: bigint;
     suiteId: bigint;
+    milestoneId?: bigint | null;
     name: string;
     includeAll: boolean;
+    assignedTo?: bigint | null;
+    environment?: string | null;
   }): Promise<TestRun>;
   getCasesForRun(input: {
     projectId: bigint;
@@ -44,6 +47,32 @@ export type Tx = {
   ): Promise<{ id: bigint; testInstanceId: bigint; status: TestStatus }>;
   createResultSteps(resultId: bigint, steps: NonNullable<ResultInput["stepResults"]>): Promise<void>;
   updateInstanceStatus(testInstanceId: bigint, status: TestStatus): Promise<void>;
+  closeRun(runId: bigint): Promise<void>;
+  updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<void>;
+  getResultsByTestInstanceId(testId: bigint): Promise<
+    Array<{
+      id: bigint;
+      testInstanceId: bigint;
+      status: TestStatus;
+      comment?: string;
+      elapsed?: string;
+      version?: string;
+      defects: string[];
+      source: "manual" | "automation" | "api";
+      createdAt: Date;
+    }>
+  >;
+  getResultStepsByResultId(resultId: bigint): Promise<
+    Array<{
+      id: bigint;
+      resultId: bigint;
+      stepOrder: number;
+      status: TestStatus;
+      actualResult?: string;
+      comment?: string;
+      createdAt: Date;
+    }>
+  >;
 };
 
 export interface RunsRepository {
@@ -51,16 +80,62 @@ export interface RunsRepository {
   listRunsByProject(projectId: bigint): Promise<TestRun[]>;
   getRun(runId: bigint): Promise<TestRun | null>;
   listInstancesForRun(runId: bigint): Promise<TestInstance[]>;
+  listResultsForTestInstance(testId: bigint): Promise<
+    Array<{
+      id: bigint;
+      testInstanceId: bigint;
+      status: TestStatus;
+      comment?: string;
+      elapsed?: string;
+      version?: string;
+      defects: string[];
+      source: "manual" | "automation" | "api";
+      createdAt: Date;
+    }>
+  >;
+  listResultStepsByResultId(resultId: bigint): Promise<
+    Array<{
+      id: bigint;
+      resultId: bigint;
+      stepOrder: number;
+      status: TestStatus;
+      actualResult?: string;
+      comment?: string;
+      createdAt: Date;
+    }>
+  >;
+  closeRun(runId: bigint): Promise<TestRun | null>;
+  updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null>;
 }
 
-type ResultRow = { id: bigint; testInstanceId: bigint; status: TestStatus };
+type ResultRow = {
+  id: bigint;
+  testInstanceId: bigint;
+  status: TestStatus;
+  comment?: string;
+  elapsed?: string;
+  version?: string;
+  defects: string[];
+  source: "manual" | "automation" | "api";
+  createdAt: Date;
+};
+type ResultStepRow = {
+  id: bigint;
+  resultId: bigint;
+  stepOrder: number;
+  status: TestStatus;
+  actualResult?: string;
+  comment?: string;
+  createdAt: Date;
+};
 
 export class InMemoryRunsRepository implements RunsRepository {
-  constructor(private readonly catalog?: ProjectsMemoryRepository) {}
+  constructor(private readonly catalog?: ProjectsRepository) {}
 
   private runSeq = 1n;
   private instanceSeq = 1n;
   private resultSeq = 1n;
+  private resultStepSeq = 1n;
   private runs: TestRun[] = [];
   private cases: TestCase[] = [
     {
@@ -88,6 +163,7 @@ export class InMemoryRunsRepository implements RunsRepository {
   ];
   private instances: TestInstance[] = [];
   private results: ResultRow[] = [];
+  private resultSteps: ResultStepRow[] = [];
 
   async listRunsByProject(projectId: bigint): Promise<TestRun[]> {
     return [...this.runs.filter((r) => r.projectId === projectId)].sort((a, b) => (a.id < b.id ? 1 : -1));
@@ -104,7 +180,14 @@ export class InMemoryRunsRepository implements RunsRepository {
   async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return fn({
       createRun: async (input) => {
-        const run: TestRun = { id: this.runSeq++, status: "open", ...input };
+        const run: TestRun = {
+          id: this.runSeq++,
+          status: "open",
+          milestoneId: input.milestoneId ?? null,
+          assignedTo: input.assignedTo ?? null,
+          environment: input.environment ?? null,
+          ...input
+        };
         this.runs.push(run);
         return run;
       },
@@ -112,7 +195,7 @@ export class InMemoryRunsRepository implements RunsRepository {
         const base = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
         let selected = includeAll ? base : base.filter((c) => caseIds?.includes(c.id));
         if (selected.length === 0 && this.catalog) {
-          const rows = this.catalog.listCasesForSuite(projectId, suiteId);
+          const rows = await this.catalog.listCasesForSuite(projectId, suiteId);
           selected = rows.map((c) => mapCatalogCaseToTestCase(c, projectId, suiteId));
           if (!includeAll && caseIds?.length) {
             selected = selected.filter((c) => caseIds.includes(c.id));
@@ -136,15 +219,88 @@ export class InMemoryRunsRepository implements RunsRepository {
         this.instances.find((i) => i.runId === runId && i.caseId === caseId) ?? null,
       createResult: async (testInstanceId, input: ResultInput) => {
         if (!testStatuses.includes(input.status)) throw new Error("invalid status");
-        const row = { id: this.resultSeq++, testInstanceId, status: input.status };
+        const row: ResultRow = {
+          id: this.resultSeq++,
+          testInstanceId,
+          status: input.status,
+          comment: input.comment,
+          elapsed: input.elapsed,
+          version: input.version,
+          defects: input.defects ?? [],
+          source: input.source ?? "manual",
+          createdAt: new Date()
+        };
         this.results.push(row);
         return row;
       },
-      createResultSteps: async () => undefined,
+      createResultSteps: async (resultId, steps) => {
+        for (const item of steps) {
+          this.resultSteps.push({
+            id: this.resultStepSeq++,
+            resultId,
+            stepOrder: item.stepOrder,
+            status: item.status,
+            actualResult: item.actualResult,
+            comment: item.comment,
+            createdAt: new Date()
+          });
+        }
+      },
       updateInstanceStatus: async (testInstanceId, status) => {
         const instance = this.instances.find((i) => i.id === testInstanceId);
         if (instance) instance.status = status;
-      }
+      },
+      closeRun: async (runId) => {
+        const run = this.runs.find((r) => r.id === runId);
+        if (!run) return;
+        run.status = "closed";
+      },
+      updateRun: async (runId, input) => {
+        const run = this.runs.find((r) => r.id === runId);
+        if (!run) return;
+        if (input.name !== undefined) run.name = input.name;
+        if (input.assignedTo !== undefined) run.assignedTo = input.assignedTo;
+      },
+      getResultsByTestInstanceId: async (testId) => {
+        return this.results
+          .filter((row) => row.testInstanceId === testId)
+          .sort((a, b) => (a.id < b.id ? 1 : -1));
+      },
+      getResultStepsByResultId: async (resultId) =>
+        this.resultSteps
+          .filter((row) => row.resultId === resultId)
+          .sort((a, b) => a.stepOrder - b.stepOrder)
     });
+  }
+
+  async listResultStepsByResultId(resultId: bigint) {
+    return this.resultSteps
+      .filter((row) => row.resultId === resultId)
+      .sort((a, b) => a.stepOrder - b.stepOrder);
+  }
+
+  async listResultsForTestInstance(testId: bigint) {
+    return this.results
+      .filter((row) => row.testInstanceId === testId)
+      .sort((a, b) => (a.id < b.id ? 1 : -1));
+  }
+
+  async closeRun(runId: bigint): Promise<TestRun | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    if (!run) return null;
+    run.status = "closed";
+    return run;
+  }
+
+  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    if (!run) return null;
+    if (input.name !== undefined) {
+      run.name = input.name;
+    }
+    if (input.assignedTo !== undefined) {
+      run.assignedTo = input.assignedTo;
+    }
+    return run;
   }
 }

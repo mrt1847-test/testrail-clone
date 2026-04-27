@@ -1,27 +1,27 @@
 import { AppError } from "../../common/errors/appError.js";
-import { ProjectsMemoryRepository } from "../projects/projects.memory.repository.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
 
 export class CasesService {
-  constructor(private readonly repo: ProjectsMemoryRepository) {}
+  constructor(private readonly repo: ProjectsRepository) {}
 
-  listCases(params: { projectId?: bigint; sectionId?: bigint; q?: string }) {
+  async listCases(params: { projectId?: bigint; sectionId?: bigint; q?: string }) {
     return this.repo.listCases(params);
   }
-  createCase(input: { sectionId: bigint; title: string; priority?: string; caseType?: string }) {
+  async createCase(input: { sectionId: bigint; title: string; priority?: string; caseType?: string }) {
     return this.repo.createCase(input);
   }
-  getCase(caseId: bigint) {
-    const found = this.repo.getCase(caseId);
+  async getCase(caseId: bigint) {
+    const found = await this.repo.getCase(caseId);
     if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
     return found;
   }
-  updateCase(caseId: bigint, patch: { title?: string; priority?: string; caseType?: string }) {
-    const updated = this.repo.updateCase(caseId, patch);
+  async updateCase(caseId: bigint, patch: { title?: string; priority?: string; caseType?: string }) {
+    const updated = await this.repo.updateCase(caseId, patch);
     if (!updated) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
     return updated;
   }
-  deleteCase(caseId: bigint) {
-    const deleted = this.repo.deleteCase(caseId);
+  async deleteCase(caseId: bigint) {
+    const deleted = await this.repo.deleteCase(caseId);
     if (!deleted) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
   }
 }

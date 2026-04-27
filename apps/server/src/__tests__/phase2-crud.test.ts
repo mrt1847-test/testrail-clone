@@ -14,7 +14,13 @@ afterAll(async () => {
 
 describe("phase2 CRUD flow", () => {
   it("creates project/suite/section/case and lists by filters", async () => {
-    const mutationHeaders = { "x-project-role": "manager" };
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const mutationHeaders = { authorization: `Bearer ${token}` };
     const projectRes = await app.inject({
       method: "POST",
       url: "/api/projects",

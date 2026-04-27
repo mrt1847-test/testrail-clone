@@ -51,6 +51,10 @@ If this separation is violated, past execution evidence becomes corrupted when t
   - `title_snapshot`, `priority_snapshot`, `type_snapshot`
   - optional `estimate_snapshot`, `automation_key_snapshot`
 - Holds current/latest status for UI and progress metrics.
+- Terminology policy:
+  - Domain canonical: `TestInstance`
+  - API compatibility alias: `test` (`/api/tests/*`)
+  - Both refer to the same run-scoped execution entity.
 
 ## 8) Test Result
 - Append-only history entries for a test instance.
@@ -79,6 +83,32 @@ If this separation is violated, past execution evidence becomes corrupted when t
 
 ## 14) Project Member
 - Relationship between user and project with role/permission scope.
+
+## 15) Configuration Group
+- Logical set of configuration dimensions for plan entries.
+- Example: `Browser`, `Device`, `OS`.
+
+## 16) Configuration
+- Concrete value inside a configuration group.
+- Example: `Chrome`, `iOS 17`, `Galaxy S24`.
+
+## 17) Requirement (Reference Target)
+- External/internal requirement item linked to cases for coverage tracking.
+
+## 18) DefectLink
+- Link between result and defect tracker entity (Jira/GitHub/Azure DevOps).
+
+## 19) CaseTemplate
+- Reusable structure for case creation fields and step defaults.
+
+## 20) CustomField
+- Dynamic project-level field extension for case/run/result entities.
+
+## 21) CustomStatus
+- Project-scoped result status extension/mapping layer.
+
+## 22) ActivityEvent
+- User-visible timeline event across case/run/result actions.
 
 ## Domain Relationship Overview
 
@@ -126,9 +156,7 @@ flowchart TD
   - Versioned case snapshots for formal review/approval workflows.
 - `SharedStep`
   - Reusable step blocks referenced by multiple test cases.
-- `CaseTemplate`
-  - Template-driven case creation to standardize authoring patterns.
-- `CustomField`
-  - Dynamic project-level schema extension for case/run/result metadata.
 
-These are explicit future capabilities and are not part of initial implementation phases.
+These remain explicit future capabilities and are not mandatory in initial MVP,
+but `Configuration`, `Requirement`, `DefectLink`, `CaseTemplate`, `CustomField`,
+`CustomStatus`, `ActivityEvent` are now first-class planning entities.

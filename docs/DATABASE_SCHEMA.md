@@ -36,7 +36,7 @@
 ## test_cases
 - `id`, `project_id`, `suite_id`, `section_id`, `title`
 - `preconditions`, `expected_result`, `priority`, `case_type`, `estimate`
-- `refs` text[] default `'{}'` (initial recommendation)
+- `refs` text (current implementation), `refs` text[] (target option)
 - `labels` text[] default `'{}'`
 - `automation_key`, `external_id`, audit fields
 - `priority`/`case_type` are text initially and can evolve into custom fields later
@@ -50,13 +50,14 @@
 - `name`, `description`, `include_all`
 - `status` run_status default `open`
 - `assigned_to`
-- `environment` jsonb
+- `environment` string (current implementation), `environment` jsonb (target option)
 - `metadata` jsonb nullable (CI/build context)
 - `started_at`, `closed_at`, audit fields
 
 ## test_instances
 - `id`, `run_id`, `case_id`, `status(test_status)`
 - snapshots: `title_snapshot`, `priority_snapshot`, `type_snapshot`, `estimate_snapshot`, `automation_key_snapshot`, `external_id_snapshot`
+- `latest_result_id` nullable (current implementation, optional optimization pointer)
 - audit fields
 - unique(`run_id`, `case_id`)
 - Initial recommendation: do not depend on `latest_result_id` in MVP
@@ -77,7 +78,7 @@
 - audit fields
 
 ## test_plan_entries
-- `id`, `plan_id`, `name`, `environment` jsonb, `suite_id`, `run_id`, audit fields
+- `id`, `plan_id`, `name`, `environment` string (current implementation), `suite_id`, `run_id`, audit fields
 
 ## milestones
 - `id`, `project_id`, `name`, `description`, `start_date`, `due_date`, `is_completed`, audit fields
@@ -92,6 +93,25 @@
 ## audit_logs
 - `id`, `project_id`, `actor_user_id`, `action`, `entity_type`, `entity_id`, `changes(jsonb)`, `request_id`, `created_at`
 
+## requirements
+- `id`, `project_id`, `key`, `title`, `url`, `created_at`, `updated_at`
+- 목적: case/reference traceability anchor
+
+## case_requirements
+- `id`, `case_id`, `requirement_id`, `created_at`
+- unique(`case_id`, `requirement_id`)
+
+## result_defects
+- `id`, `result_id`, `provider`, `defect_key`, `defect_url`, `status_snapshot`, `created_at`
+- 목적: result-defect 링크 및 defect coverage 계산
+
+## notification_preferences
+- `id`, `user_id`, `project_id`, `assignment_enabled`, `failed_result_enabled`, `mention_enabled`, `digest_enabled`, `updated_at`
+
+## activity_events
+- `id`, `project_id`, `actor_user_id`, `entity_type`, `entity_id`, `event_type`, `payload(jsonb)`, `created_at`
+- 목적: 사용자 친화 timeline feed
+
 ## Partial Unique Index Policy
 - Prisma schema alone may not fully express all partial unique indexes for active records.
 - Use raw SQL migration for constraints like:
@@ -103,4 +123,12 @@
 - `test_results` remains append-only.
 - Initial implementation caches only `test_instances.status`.
 - Latest result is read by `created_at desc`.
-- `latest_result_id` can be added later only if needed for performance.
+- `latest_result_id` exists in current schema but is treated as optional optimization; business logic must not depend on it in MVP.
+
+## Current Implementation Gap Notes
+- This document includes both **target model** and **current implementation** where they differ.
+- Canonical behavior priority:
+  1) append-only result history
+  2) snapshot immutability
+  3) status cache correctness on `test_instances`
+- Type normalization (`refs`, `environment`) is tracked as incremental migration, not blocking MVP workflows.

@@ -169,102 +169,91 @@
 - Case step CRUD
 - Basic filtering and pagination
 
+### Phase 2 Critical Migration Task
+- Replace memory repositories with Prisma repositories for:
+  - projects
+  - suites
+  - sections
+  - cases
+- Keep same service interfaces and swap concrete repository binding in `buildApp()`.
+- Verification:
+  - CRUD data persists after server restart
+  - `/api/projects/:projectId/cases` reflects DB state
+  - UI project/cases screens work with DB-backed data only
+
 ## UI Delivery Tracks (Separated from Backend)
 
+이 섹션은 구현 순서와 backend dependency만 다룬다.
+
+- UI phase/delivery tier는 `UI_ROADMAP.md`를 따른다.
+- 화면별 required API는 `SCREEN_INVENTORY.md`를 따른다.
+- endpoint 계약은 `API_SPEC.md`를 따른다.
+- 컴포넌트 책임은 `COMPONENT_MAP.md`를 따른다.
+
 ### UI Phase U0: App Shell Foundation
-- Scope:
-  - `AppShell`, `ProjectHeader`, `ProjectTabs`, `Breadcrumb`
-  - shared states: `LoadingState`, `ErrorState`, `EmptyState`, `ConfirmDialog`
-- Depends on Backend:
-  - no hard dependency (mock/static 가능)
-  - optional `GET /projects` for switcher context
+- Scope: project shell, navigation, shared state UI
+- Depends on Backend: B0, optional project context API
+- Implementation tasks:
+  - normalize shell layout across project routes
+  - keep shared state components reusable
 
 ### UI Phase U1: Entry and Project Screens
-- Scope:
-  - `/login`, `/projects`
-  - `ProjectListPage`, `ProjectCreateDialog`, `ProjectEmptyState`
-- Depends on Backend:
-  - `POST /auth/login`
-  - `GET /auth/me`
-  - `GET /projects`
-  - `POST /projects`
-- Backend prerequisite phase: B2 (`projects` module ready)
+- Scope: login, project selection, project creation, project overview entry
+- Depends on Backend: B2 plus auth baseline
+- Implementation tasks:
+  - add auth bootstrap path
+  - connect project list/create mutations
+  - enforce membership-aware navigation states
 
 ### UI Phase U2: Test Case Workspace (Expandable Detail)
-- Scope:
-  - `/projects/:projectId/cases`
-  - `CaseListPane`, `CaseListTable`, `CaseRow`, `ExpandableCaseDetail`, `SectionTreePane`
-  - 단일 확장 규칙(`expandedCaseId`) + query sync(`sectionId`, `caseId`, `mode`)
-- Depends on Backend:
-  - `GET /projects/:projectId/sections`
-  - `POST /projects/:projectId/sections`
-  - `GET /projects/:projectId/cases`
-  - `GET /cases/:caseId`
-  - `POST /projects/:projectId/cases`
-  - `PATCH /cases/:caseId`
-  - `DELETE /cases/:caseId`
-- Backend prerequisite phase: B2 (`sections`, `cases` module ready)
+- Scope: section/case CRUD workspace, expandable case detail, query sync
+- Depends on Backend: B2
+- Implementation tasks:
+  - connect DB-backed section/case queries
+  - implement single-expand query state
+  - connect create/update/delete mutations
+  - defer bulk/import/export to UI Phase 2B
 
 ### UI Phase U3: Run List and Run Create
-- Scope:
-  - `/projects/:projectId/runs`
-  - `/projects/:projectId/runs/new`
-  - `RunListTable`, `RunCreateForm`, `RunCaseSelector`, `EnvironmentEditor`
-- Depends on Backend:
-  - `GET /projects/:projectId/runs`
-  - `POST /projects/:projectId/runs`
-  - `GET /projects/:projectId/suites`
-  - `GET /projects/:projectId/cases`
-  - `GET /projects/:projectId/milestones` (optional)
-- Backend prerequisite phase: B3 (`runs` core create/list ready)
+- Scope: run list, run creation, case selection, environment input
+- Depends on Backend: B3
+- Implementation tasks:
+  - connect run list query
+  - create run from selected cases/include-all
+  - navigate to created run detail
 
 ### UI Phase U4: Run Detail Workspace
-- Scope:
-  - `/projects/:projectId/runs/:runId`
-  - `RunSummaryBar`, `TestInstanceTable`, `ResultEntryPanel`, `ResultHistoryList`, `StepResultEditor`
-- Depends on Backend:
-  - `GET /projects/:projectId/runs/:runId`
-  - `GET /projects/:projectId/runs/:runId/instances`
-  - `POST /runs/:runId/results`
-  - `GET /instances/:instanceId/results`
-  - `POST /runs/:runId/close`
-- Backend prerequisite phase: B3 (`results` and run status sync ready)
+- Scope: run detail, instance selection, result entry, result history, close run
+- Depends on Backend: B3
+- Implementation tasks:
+  - connect run/instance summary
+  - add result mutation and cache invalidation
+  - show selected test history
+  - wire close run action
 
 ### UI Phase U5: Automation Workspace
-- Scope:
-  - `/projects/:projectId/automation`
-  - `/projects/:projectId/automation/uploads/:uploadId`
-  - `AutomationDashboard`, `AutomationMappingTable`, `AutomationUploadHistory`, `BulkUploadResultDetail`
-- Depends on Backend:
-  - `GET /projects/:projectId/automation/mappings`
-  - `GET /projects/:projectId/automation/uploads`
-  - `GET /projects/:projectId/automation/uploads/:uploadId`
-  - token lifecycle APIs
-- Backend prerequisite phase: B4 (automation upload + token APIs ready)
+- Scope: automation dashboard, mappings, upload history/detail, token entry
+- Depends on Backend: B4
+- Implementation tasks:
+  - connect automation summary/mapping/upload queries
+  - connect token management path
+  - add retry/reprocess UX after backend support
 
 ### UI Phase U6: Dashboard and Reports
-- Scope:
-  - `/projects/:projectId`
-  - `/projects/:projectId/reports`
-  - summary cards + charts + recent failures tables
-- Depends on Backend:
-  - `GET /projects/:projectId/overview`
-  - `GET /projects/:projectId/reports/status-distribution`
-  - `GET /projects/:projectId/reports/failure-trend`
-  - `GET /projects/:projectId/reports/automation-coverage`
-  - `GET /projects/:projectId/reports/recent-failures`
-- Backend prerequisite phase: B5 (`reports` aggregation endpoints ready)
+- Scope: project overview, reports dashboard, traceability/coverage expansion
+- Depends on Backend: B5
+- Implementation tasks:
+  - connect overview widgets
+  - connect report widgets independently
+  - add traceability/coverage views after backend aggregations
 
 ### UI Phase U7: Settings and Advanced UI
-- Scope:
-  - `/projects/:projectId/settings`
-  - `/projects/:projectId/settings/tokens`
-  - `/projects/:projectId/settings/members`
-- Depends on Backend:
-  - settings CRUD APIs
-  - token CRUD APIs
-  - members CRUD APIs
-- Backend prerequisite phase: B7 (`permissions`, governance features hardened)
+- Scope: settings categories, tokens, members, fields/statuses/templates, integrations, notifications
+- Depends on Backend: B7
+- Implementation tasks:
+  - connect tokens first for automation
+  - add members/permissions management
+  - add governance/customization settings incrementally
 
 ## Backend and UI Dependency Matrix
 
@@ -280,7 +269,7 @@
 
 ### UI-to-Backend Mapping
 - U0 -> B0 (부분 의존)
-- U1 -> B2
+- U1 -> B2 (auth bootstrap은 B1/B0 baseline 선반영 허용)
 - U2 -> B2
 - U3 -> B3
 - U4 -> B3

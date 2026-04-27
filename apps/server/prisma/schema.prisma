@@ -229,6 +229,7 @@ model TestRun {
   status      String    @default("open")
   assignedTo  BigInt?
   environment String?
+  metadata    Json?
   startedAt   DateTime?
   closedAt    DateTime?
   createdAt   DateTime  @default(now())
@@ -292,6 +293,7 @@ model TestResult {
   version        String?
   defects        String[]
   source         String     @default("manual")
+  metadata       Json?
   createdBy      BigInt?
   createdAt      DateTime   @default(now())
 

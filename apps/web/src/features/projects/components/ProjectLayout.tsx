@@ -7,10 +7,12 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { ProjectHeader } from "../../../shared/ui/ProjectHeader";
 import { ProjectSwitcher } from "../../../shared/ui/ProjectSwitcher";
 import { ProjectTabs } from "../../../shared/ui/ProjectTabs";
+import { useAuth } from "../../auth/context/AuthContext";
 import { useProjectQuery, useProjectsQuery } from "../hooks/useProjectsApi";
 
 export function ProjectLayout() {
   const { projectId = "" } = useParams();
+  const { user, logout } = useAuth();
   const { data: project, isLoading, isError, refetch } = useProjectQuery(projectId);
   const { data: allProjects = [] } = useProjectsQuery();
 
@@ -42,7 +44,19 @@ export function ProjectLayout() {
           <Link to="/projects" className="text-lg font-semibold tracking-tight text-slate-900">
             QA Rail
           </Link>
-          <ProjectSwitcher projects={allProjects} currentProjectId={projectId} />
+          <div className="flex items-center gap-3">
+            <ProjectSwitcher projects={allProjects} currentProjectId={projectId} />
+            <div className="text-right">
+              <p className="text-xs text-slate-500">{user?.email ?? "unknown user"}</p>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="text-xs font-medium text-slate-700 underline"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <ProjectHeader projectName={project.name} subtitle={project.description} />

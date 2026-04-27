@@ -15,8 +15,11 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         data: {
           projectId: input.projectId,
           suiteId: input.suiteId,
+          milestoneId: input.milestoneId ?? null,
           name: input.name,
-          includeAll: input.includeAll
+          includeAll: input.includeAll,
+          assignedTo: input.assignedTo ?? null,
+          environment: input.environment ?? null
         }
       });
       return row as TestRun;
@@ -96,6 +99,53 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         where: { id: testInstanceId },
         data: { status }
       });
+    },
+    async closeRun(runId) {
+      await tx.testRun.update({
+        where: { id: runId },
+        data: { status: "closed", closedAt: new Date() }
+      });
+    },
+    async updateRun(runId, input) {
+      await tx.testRun.update({
+        where: { id: runId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {})
+        }
+      });
+    },
+    async getResultsByTestInstanceId(testId) {
+      const rows = await tx.testResult.findMany({
+        where: { testInstanceId: testId },
+        orderBy: { id: "desc" }
+      });
+      return rows.map((row: (typeof rows)[number]) => ({
+        id: row.id,
+        testInstanceId: row.testInstanceId,
+        status: mapStatus(row.status),
+        comment: row.comment ?? undefined,
+        elapsed: row.elapsed ?? undefined,
+        version: row.version ?? undefined,
+        defects: row.defects,
+        source: row.source as "manual" | "automation" | "api",
+        createdAt: row.createdAt
+      }));
+    },
+    async getResultStepsByResultId(resultId) {
+      const rows = await tx.testResultStep.findMany({
+        where: { resultId },
+        orderBy: { stepOrder: "asc" }
+      });
+      return rows.map((row: (typeof rows)[number]) => ({
+        id: row.id,
+        resultId: row.resultId,
+        stepOrder: row.stepOrder,
+        status: mapStatus(row.status),
+        actualResult: row.actualResult ?? undefined,
+        comment: row.comment ?? undefined,
+        createdAt: row.createdAt
+      }));
     }
   };
 }
@@ -112,9 +162,12 @@ export class PrismaRunsRepository implements RunsRepository {
       id: bigint;
       projectId: bigint;
       suiteId: bigint;
+      milestoneId: bigint | null;
       name: string;
       includeAll: boolean;
       status: string;
+      assignedTo: bigint | null;
+      environment: string | null;
     };
     const rows = (await this.prisma.testRun.findMany({
       where: { projectId, deletedAt: null },
@@ -124,9 +177,12 @@ export class PrismaRunsRepository implements RunsRepository {
       id: r.id,
       projectId: r.projectId,
       suiteId: r.suiteId,
+      milestoneId: r.milestoneId ?? null,
       name: r.name,
       includeAll: r.includeAll,
-      status: r.status === "closed" ? "closed" : "open"
+      status: r.status === "closed" ? "closed" : "open",
+      assignedTo: r.assignedTo ?? null,
+      environment: r.environment ?? null
     }));
   }
 
@@ -139,9 +195,12 @@ export class PrismaRunsRepository implements RunsRepository {
       id: r.id,
       projectId: r.projectId,
       suiteId: r.suiteId,
+      milestoneId: r.milestoneId ?? null,
       name: r.name,
       includeAll: r.includeAll,
-      status: r.status === "closed" ? "closed" : "open"
+      status: r.status === "closed" ? "closed" : "open",
+      assignedTo: r.assignedTo ?? null,
+      environment: r.environment ?? null
     };
   }
 
@@ -173,6 +232,87 @@ export class PrismaRunsRepository implements RunsRepository {
       estimateSnapshot: r.estimateSnapshot,
       automationKeySnapshot: r.automationKeySnapshot,
       externalIdSnapshot: r.externalIdSnapshot
+    }));
+  }
+
+  async closeRun(runId: bigint): Promise<TestRun | null> {
+    const row = await this.prisma.testRun.findFirst({
+      where: { id: runId, deletedAt: null }
+    });
+    if (!row) return null;
+    const updated = await this.prisma.testRun.update({
+      where: { id: runId },
+      data: { status: "closed", closedAt: new Date() }
+    });
+    return {
+      id: updated.id,
+      projectId: updated.projectId,
+      suiteId: updated.suiteId,
+      milestoneId: updated.milestoneId ?? null,
+      name: updated.name,
+      includeAll: updated.includeAll,
+      status: "closed",
+      assignedTo: updated.assignedTo ?? null,
+      environment: updated.environment ?? null
+    };
+  }
+
+  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null> {
+    const row = await this.prisma.testRun.findFirst({
+      where: { id: runId, deletedAt: null }
+    });
+    if (!row) return null;
+    const updated = await this.prisma.testRun.update({
+      where: { id: runId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {})
+      }
+    });
+    return {
+      id: updated.id,
+      projectId: updated.projectId,
+      suiteId: updated.suiteId,
+      milestoneId: updated.milestoneId ?? null,
+      name: updated.name,
+      includeAll: updated.includeAll,
+      status: updated.status === "closed" ? "closed" : "open",
+      assignedTo: updated.assignedTo ?? null,
+      environment: updated.environment ?? null
+    };
+  }
+
+  async listResultsForTestInstance(testId: bigint) {
+    const rows = await this.prisma.testResult.findMany({
+      where: { testInstanceId: testId },
+      orderBy: { id: "desc" }
+    });
+    return rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      testInstanceId: row.testInstanceId,
+      status: mapStatus(row.status),
+      comment: row.comment ?? undefined,
+      elapsed: row.elapsed ?? undefined,
+      version: row.version ?? undefined,
+      defects: row.defects,
+      source: row.source as "manual" | "automation" | "api",
+      createdAt: row.createdAt
+    }));
+  }
+
+  async listResultStepsByResultId(resultId: bigint) {
+    const rows = await this.prisma.testResultStep.findMany({
+      where: { resultId },
+      orderBy: { stepOrder: "asc" }
+    });
+    return rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      resultId: row.resultId,
+      stepOrder: row.stepOrder,
+      status: mapStatus(row.status),
+      actualResult: row.actualResult ?? undefined,
+      comment: row.comment ?? undefined,
+      createdAt: row.createdAt
     }));
   }
 }

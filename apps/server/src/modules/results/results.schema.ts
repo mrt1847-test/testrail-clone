@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+const normalizeResultAlias = (value: unknown) => {
+  if (!value || typeof value !== "object") return value;
+  const row = value as Record<string, unknown>;
+  return {
+    ...row,
+    caseId: row.caseId ?? row.case_id,
+    testId: row.testId ?? row.test_id
+  };
+};
+
 export const resultSchema = z.object({
   status: z.enum(["untested", "passed", "failed", "blocked", "retest"]),
   comment: z.string().optional(),
@@ -20,8 +30,38 @@ export const resultSchema = z.object({
 });
 
 export const testIdParamSchema = z.object({ testId: z.coerce.bigint() });
-export const byCaseSchema = z.object({ caseId: z.coerce.bigint() }).merge(resultSchema);
-export const bulkSchema = z.object({
-  atomic: z.boolean().optional(),
-  results: z.array(z.object({ caseId: z.coerce.bigint() }).merge(resultSchema))
-});
+export const resultIdParamSchema = z.object({ resultId: z.coerce.bigint() });
+export const byCaseSchema = z.preprocess(
+  normalizeResultAlias,
+  z.object({ caseId: z.coerce.bigint() }).merge(resultSchema)
+);
+export const runResultSchema = z.preprocess(
+  normalizeResultAlias,
+  z
+    .object({
+      caseId: z.coerce.bigint().optional(),
+      testId: z.coerce.bigint().optional()
+    })
+    .merge(resultSchema)
+    .refine((value) => Boolean(value.caseId || value.testId), {
+      message: "either caseId or testId is required"
+    })
+);
+export const bulkSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object") return value;
+    const row = value as { results?: unknown[]; atomic?: boolean };
+    return {
+      ...row,
+      results: (row.results ?? []).map((item) => normalizeResultAlias(item))
+    };
+  },
+  z.object({
+    atomic: z.boolean().optional(),
+    results: z
+      .array(z.object({ caseId: z.coerce.bigint().optional() }).merge(resultSchema))
+      .refine((items) => items.every((item) => item.caseId !== undefined), {
+        message: "caseId is required"
+      })
+  })
+);

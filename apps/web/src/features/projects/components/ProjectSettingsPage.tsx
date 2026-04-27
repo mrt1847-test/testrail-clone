@@ -8,7 +8,7 @@ export function ProjectSettingsPage() {
     <div className="space-y-6">
       <EmptyState
         title="Project settings"
-        description="General project options and danger zone will live here."
+        description="General project options and danger zone will live here. Some pages are currently read-only."
       />
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-900">Shortcuts</h3>
@@ -16,6 +16,26 @@ export function ProjectSettingsPage() {
           <li>
             <Link to={`/projects/${projectId}/settings/tokens`} className="text-slate-700 underline">
               API tokens
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/members`} className="text-slate-700 underline">
+              Members & roles
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/custom-fields`} className="text-slate-700 underline">
+              Custom fields
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/webhooks`} className="text-slate-700 underline">
+              Webhooks
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/audit-logs`} className="text-slate-700 underline">
+              Audit logs
             </Link>
           </li>
         </ul>

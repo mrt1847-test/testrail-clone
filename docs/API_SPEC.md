@@ -14,7 +14,14 @@
 - Content type: `application/json`
 - Time format: ISO8601 UTC
 - Soft-deleted records are hidden by default.
-- Pagination: `page`, `page_size`, with stable sort defaults.
+- Pagination canonical: `page`, `pageSize` (legacy alias: `page_size`).
+- Field naming canonical:
+  - request/response canonical: `camelCase` (`caseId`, `testId`, `runId`)
+  - backward-compatible alias accepted: `snake_case` (`case_id`, `test_id`, `run_id`)
+  - alias fields are compatibility-only and planned for deprecation in strict mode.
+- UI-facing endpoint policy:
+  - canonical: project-scoped route (`/api/projects/{projectId}/...`)
+  - global route is allowed only for compatibility or internal shortcut.
 
 ## Error Format
 ```json
@@ -67,8 +74,11 @@
 - `GET /api/projects/{projectId}/runs`
 - `POST /api/projects/{projectId}/runs`
 - `GET /api/runs/{runId}`
+- `GET /api/projects/{projectId}/runs/{runId}`
+- `GET /api/projects/{projectId}/runs/{runId}/instances`
 - `PATCH /api/runs/{runId}`
 - `POST /api/runs/{runId}/close`
+- `POST /api/runs/{runId}/rerun`
 
 ## Tests (Instances)
 - `GET /api/runs/{runId}/tests`
@@ -78,26 +88,44 @@
 ## Results
 - `GET /api/tests/{testId}/results`
 - `POST /api/tests/{testId}/results`
+- `POST /api/runs/{runId}/results`
 - `POST /api/runs/{runId}/results/by-case`
 - `POST /api/runs/{runId}/results/bulk`
 - `GET /api/runs/{runId}/results`
 
 Semantics:
 - `POST /api/tests/{testId}/results`: add result directly to a specific test instance.
+- `POST /api/runs/{runId}/results`: accepts `testId` or `caseId` and writes a single result.
 - `POST /api/runs/{runId}/results/by-case`: resolve test instance by `case_id` within the run, then add result.
 - `POST /api/runs/{runId}/results/bulk`: upload multiple results in one request.
+
+## Assignment & Personal Work
+- `PATCH /api/runs/{runId}/assignee`
+- `PATCH /api/tests/{testId}/assignee`
+- `GET /api/projects/{projectId}/tests/assigned-to-me`
+
+## Rerun
+- `POST /api/runs/{runId}/rerun`
+- `POST /api/plans/{planId}/rerun`
+
+Rerun request keys:
+- `sourceRunId`
+- `statusFilter` (`failed`, `blocked`, `retest`, `all`)
+- `includeClosed` (optional)
 
 ## Plans
 - `GET /api/projects/{projectId}/plans`
 - `POST /api/projects/{projectId}/plans`
-- `GET /api/plans/{planId}`
+- `GET /api/projects/{projectId}/plans/{planId}` (canonical)
+- `GET /api/plans/{planId}` (compatibility)
 - `PATCH /api/plans/{planId}`
 - `DELETE /api/plans/{planId}`
 
 ## Milestones
 - `GET /api/projects/{projectId}/milestones`
 - `POST /api/projects/{projectId}/milestones`
-- `GET /api/milestones/{milestoneId}`
+- `GET /api/projects/{projectId}/milestones/{milestoneId}` (canonical)
+- `GET /api/milestones/{milestoneId}` (compatibility)
 - `PATCH /api/milestones/{milestoneId}`
 - `DELETE /api/milestones/{milestoneId}`
 
@@ -105,18 +133,31 @@ Semantics:
 - `POST /api/attachments`
 - `GET /api/attachments/{attachmentId}`
 - `DELETE /api/attachments/{attachmentId}`
+- `POST /api/results/{resultId}/attachments`
+- `GET /api/results/{resultId}/attachments`
 
 ## Auth / API Tokens
 - `POST /api/auth/login`
+- `GET /api/auth/me`
 - `POST /api/auth/logout`
-- `GET /api/tokens`
-- `POST /api/tokens`
-- `DELETE /api/tokens/{tokenId}`
+- `GET /api/projects/{projectId}/tokens` (canonical)
+- `POST /api/projects/{projectId}/tokens` (canonical)
+- `DELETE /api/projects/{projectId}/tokens/{tokenId}` (canonical)
+- `GET /api/tokens` (compatibility)
+- `POST /api/tokens` (compatibility)
+- `DELETE /api/tokens/{tokenId}` (compatibility)
+
+## Membership / Permissions
+- `GET /api/projects/{projectId}/members`
+- `POST /api/projects/{projectId}/members`
+- `PATCH /api/projects/{projectId}/members/{memberId}`
+- `DELETE /api/projects/{projectId}/members/{memberId}`
 
 ## Automation Upload Endpoints
 - `POST /api/automation/runs`
 - `POST /api/automation/runs/{runId}/results`
 - `POST /api/automation/results/bulk`
+- `POST /api/automation/uploads/{uploadId}/retry`
 
 CI metadata fields (for automation endpoints and optionally run/result metadata):
 - `external_run_id`
@@ -200,6 +241,11 @@ CI metadata fields (for automation endpoints and optionally run/result metadata)
   - `4 -> retest`
   - `5 -> failed`
 
+## TestInstance Naming Rule
+- Internal domain canonical term: `TestInstance`.
+- API/UI short alias: `Test`.
+- `testId` always maps to `test_instances.id`.
+
 ## TestRail-like Adapter (Future)
 - `GET /api/v2/get_case/{case_id}`
 - `GET /api/v2/get_cases/{project_id}`
@@ -219,3 +265,30 @@ Adapter rules:
 ## Metadata Field Strategy
 - `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
 - Keep top-level required fields explicit; use metadata for optional provider-specific fields.
+
+## Traceability / Coverage
+- `GET /api/projects/{projectId}/requirements`
+- `POST /api/projects/{projectId}/requirements`
+- `POST /api/cases/{caseId}/requirements/{requirementId}`
+- `DELETE /api/cases/{caseId}/requirements/{requirementId}`
+- `GET /api/projects/{projectId}/reports/traceability`
+- `GET /api/projects/{projectId}/reports/coverage-gap`
+
+## Defect Integration
+- `GET /api/projects/{projectId}/integrations/defects`
+- `PATCH /api/projects/{projectId}/integrations/defects`
+- `POST /api/results/{resultId}/defects`
+- `POST /api/results/{resultId}/defects/push`
+
+## Import / Export
+- `POST /api/projects/{projectId}/cases/import/csv`
+- `GET /api/projects/{projectId}/cases/export/csv`
+- `GET /api/projects/{projectId}/runs/{runId}/results/export/csv`
+- `GET /api/projects/{projectId}/reports/export`
+
+## Notifications / Activity
+- `GET /api/notifications`
+- `PATCH /api/notifications/preferences`
+- `GET /api/projects/{projectId}/activity`
+- `GET /api/runs/{runId}/activity`
+- `GET /api/cases/{caseId}/activity`

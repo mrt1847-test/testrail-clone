@@ -8,6 +8,12 @@
 - Frontend stack direction: React + TypeScript, with Tailwind CSS, shadcn/ui, TanStack Query, TanStack Table, and Recharts.
 - Backend stack direction: Node.js + TypeScript + Prisma + Supabase PostgreSQL, with Fastify as default API framework.
 
+## MVP Baseline Clarification
+- MVP includes authentication and membership context:
+  - Login / logout / current user
+  - Project membership-aware authorization
+  - Role-based UI/API behavior (`owner`, `manager`, `tester`, `viewer`)
+
 ## Phase 0: Project Foundation
 ### Goals
 - Establish architecture and repository structure for long-term expansion.
@@ -98,11 +104,24 @@
 - Mapping by `case_id`, `automation_key`, and `external_id`
 - Store `comment`, `elapsed`, `version`, `defects`, and step results
 - Support CI metadata (`external_run_id`, `ci_provider`, `ci_build_id`, `job_url`, `commit_sha`, `branch`, `attempt`)
+- Execution productivity inside run workflow:
+  - test assignment (`run-level`, `instance-level`)
+  - `My Tests` / `Assigned to me` query views
+  - rerun workflow (`failed`/`blocked`/`retest`/`all` filters)
+  - bulk result entry path for fast triage
+  - result attachments and defect linking from result entry panel
 
 ### Exit Criteria
 - CI tools can upload results reliably via token-auth APIs.
 - Bulk upload supports partial failures with consistent error format.
 - Atomic and non-atomic bulk upload modes are both validated.
+- Teams can assign/reassign execution work and rerun selected subsets without manual run recreation.
+
+### Deliverables (Must-have)
+- `run assignment + my tests` API/UI path
+- `rerun` API with status filters
+- `bulk result entry` path in run detail
+- `result attachment + defect link` from execution context
 
 ## Phase 5: Dashboard & Reports
 ### Goals
@@ -113,10 +132,26 @@
 - Run summary and failed case views
 - Status trend and recent result reports
 - Milestone progress views
+- Traceability and coverage analytics:
+  - requirement/reference links
+  - requirement coverage report
+  - defect coverage report
+  - traceability matrix (requirement -> case -> run/result)
+- Collaboration views:
+  - activity timeline (case/run/result)
+  - comments/mentions in execution context
+  - notification feed + notification preference model
 
 ### Exit Criteria
 - Core report widgets load from domain-level aggregation queries.
 - Teams can identify quality risk and release readiness quickly.
+- Teams can answer "what is untested, what failed, and what requirement is at risk" from dashboards/reports.
+
+### Deliverables (Must-have)
+- traceability matrix report
+- requirement coverage and coverage gap report
+- recent failures/results and run summary widgets
+- activity timeline read view
 
 ## Phase 6: Milestones / Plans / Environment Matrix
 ### Goals
@@ -127,10 +162,26 @@
 - Test Plan CRUD
 - Plan entries for environment combinations (Chrome/Safari/Android/iOS, etc.)
 - Generate and track linked runs per plan entry
+- Promote configurations to first-class domain:
+  - `configuration_groups`
+  - `configurations`
+  - `plan_entry_configurations`
+- Plan-level rerun and entry-level run generation workflow
+- Import/export for planning and execution operations:
+  - cases CSV import/export
+  - runs/results export
+  - report export (CSV/PDF in later iteration)
 
 ### Exit Criteria
 - Users can manage release plans with environment-specific runs.
 - Plan detail provides per-run and rolled-up status summary.
+- Configuration matrix is reusable and does not depend on free-text environment strings.
+
+### Deliverables (Must-have)
+- configuration group/value management
+- plan-entry configuration mapping
+- run generation by plan entry configuration
+- import/export baseline (cases CSV, results CSV)
 
 ## Phase 7: Advanced Platform Features
 ### Goals
@@ -138,12 +189,28 @@
 
 ### Scope
 - Custom fields
+- Custom result statuses
+- Case templates
 - Attachments (result evidence files)
 - Project/member permission model hardening
 - Webhook events
 - Audit log query and compliance support
+- Defect integration UX and provider adapters:
+  - project integration settings
+  - defect URL templates
+  - push/create defect actions from result context
+- Notification delivery:
+  - assignment notifications
+  - failed-result notifications
+  - scheduled summary reports
 - TestRail-like API adapter completion and compatibility expansion
 
 ### Exit Criteria
 - Auditability and access controls meet team governance needs.
 - Integration surface is stable enough for external ecosystem onboarding.
+- Admins can configure fields/statuses/templates/integrations without schema migration for each project.
+
+### Deliverables (Must-have)
+- custom field/status/template admin
+- defect integration settings + push action baseline
+- notification preferences + assignment/failure notification delivery

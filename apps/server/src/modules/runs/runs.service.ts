@@ -13,8 +13,10 @@ export class RunsService {
       const run = await tx.createRun({
         projectId: input.projectId,
         suiteId: input.suiteId,
+        milestoneId: input.milestoneId ?? null,
         name: input.name,
-        includeAll: input.includeAll
+        includeAll: input.includeAll,
+        environment: input.environment ?? null
       });
 
       const cases = await tx.getCasesForRun({
@@ -42,6 +44,41 @@ export class RunsService {
       );
 
       return { run, instances };
+    });
+  }
+
+  async closeRun(runId: bigint) {
+    const closed = await this.repo.closeRun(runId);
+    if (!closed) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`);
+    }
+    return closed;
+  }
+
+  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }) {
+    const updated = await this.repo.updateRun(runId, input);
+    if (!updated) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`);
+    }
+    return updated;
+  }
+
+  async rerunByStatuses(runId: bigint, statuses: Array<"passed" | "failed" | "blocked" | "retest" | "untested">) {
+    const run = await this.repo.getRun(runId);
+    if (!run) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`);
+    }
+    const instances = await this.repo.listInstancesForRun(runId);
+    const caseIds = instances.filter((instance) => statuses.includes(instance.status)).map((instance) => instance.caseId);
+    if (caseIds.length === 0) {
+      throw new AppError("NO_CASES_FOUND", "no matching test instances for rerun");
+    }
+    return this.createRunWithInstances({
+      projectId: run.projectId,
+      suiteId: run.suiteId,
+      name: `${run.name} (rerun)`,
+      includeAll: false,
+      caseIds
     });
   }
 }

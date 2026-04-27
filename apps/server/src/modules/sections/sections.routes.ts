@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import type { AuthService } from "../auth/auth.service.js";
+import type { PrismaClient } from "@prisma/client";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
@@ -13,17 +15,17 @@ import {
 
 export async function registerSectionsRoutes(
   app: FastifyInstance,
-  deps: { sectionsService: SectionsService }
+  deps: { sectionsService: SectionsService; authService: AuthService; prisma?: PrismaClient }
 ) {
   app.get("/api/suites/:suiteId/sections", async (req, reply) => {
     const { suiteId } = suiteIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    const items = deps.sectionsService.listSections(suiteId);
+    const items = await deps.sectionsService.listSections(suiteId);
     return reply.send(toJsonSafe(paged(items, page, pageSize)));
   });
 
   app.post("/api/suites/:suiteId/sections", async (req, reply) => {
-    requireProjectMutationRole(req);
+    await requireProjectMutationRole(req, deps);
     const { suiteId } = suiteIdParamSchema.parse(req.params);
     const raw = (req.body ?? {}) as Record<string, unknown>;
     const body = createSectionSchema.parse({
@@ -31,20 +33,20 @@ export async function registerSectionsRoutes(
       parentSectionId: raw.parentSectionId,
       name: raw.name
     });
-    return reply.send(toJsonSafe(ok(deps.sectionsService.createSection(body))));
+    return reply.send(toJsonSafe(ok(await deps.sectionsService.createSection(body))));
   });
 
   app.patch("/api/sections/:sectionId", async (req, reply) => {
-    requireProjectMutationRole(req);
+    await requireProjectMutationRole(req, deps);
     const { sectionId } = sectionIdParamSchema.parse(req.params);
     const body = updateSectionSchema.parse(req.body);
-    return reply.send(toJsonSafe(ok(deps.sectionsService.updateSection(sectionId, body))));
+    return reply.send(toJsonSafe(ok(await deps.sectionsService.updateSection(sectionId, body))));
   });
 
   app.delete("/api/sections/:sectionId", async (req, reply) => {
-    requireProjectMutationRole(req);
+    await requireProjectMutationRole(req, deps);
     const { sectionId } = sectionIdParamSchema.parse(req.params);
-    deps.sectionsService.deleteSection(sectionId);
+    await deps.sectionsService.deleteSection(sectionId);
     return reply.status(204).send();
   });
 }
