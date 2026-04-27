@@ -1,0 +1,401 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TestStatus {
+  untested
+  passed
+  failed
+  blocked
+  retest
+}
+
+model User {
+  id        BigInt    @id @default(autoincrement())
+  email     String    @unique
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  projectMembers ProjectMember[]
+  apiTokens      ApiToken[]
+  auditLogs      AuditLog[]      @relation("AuditActor")
+  assignedRuns   TestRun[]       @relation("RunAssignee")
+  createdResults TestResult[]     @relation("ResultCreator")
+  createdProjects Project[]       @relation("ProjectCreatedBy")
+  updatedProjects Project[]       @relation("ProjectUpdatedBy")
+}
+
+model Project {
+  id          BigInt    @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  createdByUser User? @relation("ProjectCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("ProjectUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  members      ProjectMember[]
+  suites       TestSuite[]
+  cases        TestCase[]
+  runs         TestRun[]
+  plans        TestPlan[]
+  milestones   Milestone[]
+  attachments  Attachment[]
+  apiTokens    ApiToken[]
+  auditLogs    AuditLog[]
+
+  @@index([deletedAt])
+}
+
+model ProjectMember {
+  id        BigInt    @id @default(autoincrement())
+  projectId BigInt
+  userId    BigInt
+  role      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy BigInt?
+  updatedBy BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+model TestSuite {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  sections  Section[]
+  cases     TestCase[]
+  runs      TestRun[]
+  planEntries TestPlanEntry[]
+
+  @@index([projectId])
+  @@index([deletedAt])
+}
+
+model Section {
+  id              BigInt    @id @default(autoincrement())
+  suiteId         BigInt
+  parentSectionId BigInt?
+  name            String
+  displayOrder    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  suite         TestSuite @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  parentSection Section?  @relation("SectionTree", fields: [parentSectionId], references: [id], onDelete: SetNull)
+  childSections Section[] @relation("SectionTree")
+  cases         TestCase[]
+
+  @@index([suiteId])
+  @@index([parentSectionId])
+}
+
+model TestCase {
+  id             BigInt    @id @default(autoincrement())
+  projectId      BigInt
+  suiteId        BigInt
+  sectionId      BigInt
+  title          String
+  preconditions  String?
+  expectedResult String?
+  priority       String?
+  caseType       String?
+  estimate       String?
+  refs           String?
+  labels         String[]
+  automationKey  String?
+  externalId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      BigInt?
+  updatedBy      BigInt?
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  suite     TestSuite @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  section   Section   @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  steps     TestCaseStep[]
+  instances TestInstance[]
+
+  @@unique([projectId, automationKey])
+  @@unique([projectId, externalId])
+  @@index([projectId])
+  @@index([sectionId])
+  @@index([automationKey])
+  @@index([externalId])
+}
+
+model TestCaseStep {
+  id             BigInt    @id @default(autoincrement())
+  caseId         BigInt
+  stepOrder      Int
+  content        String
+  expectedResult String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      BigInt?
+  updatedBy      BigInt?
+
+  testCase TestCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, stepOrder])
+  @@index([caseId])
+}
+
+model Milestone {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  name        String
+  description String?
+  startDate   DateTime?
+  dueDate     DateTime?
+  isCompleted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  runs    TestRun[]
+  plans   TestPlan[]
+
+  @@index([projectId])
+}
+
+model TestPlan {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  milestoneId BigInt?
+  name        String
+  description String?
+  status      String    @default("open")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  runs      TestRun[]
+  entries   TestPlanEntry[]
+
+  @@index([projectId])
+  @@index([milestoneId])
+}
+
+model TestRun {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  suiteId     BigInt
+  milestoneId BigInt?
+  planId      BigInt?
+  name        String
+  description String?
+  includeAll  Boolean   @default(false)
+  status      String    @default("open")
+  assignedTo  BigInt?
+  environment String?
+  startedAt   DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  suite     TestSuite  @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  plan      TestPlan?  @relation(fields: [planId], references: [id], onDelete: SetNull)
+  assignee  User?      @relation("RunAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  instances   TestInstance[]
+  planEntries TestPlanEntry[]
+
+  @@index([projectId])
+  @@index([suiteId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+model TestInstance {
+  id                    BigInt      @id @default(autoincrement())
+  runId                 BigInt
+  caseId                BigInt
+  status                TestStatus  @default(untested)
+  titleSnapshot         String
+  prioritySnapshot      String?
+  typeSnapshot          String?
+  estimateSnapshot      String?
+  automationKeySnapshot String?
+  externalIdSnapshot    String?
+  latestResultId        BigInt?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  deletedAt             DateTime?
+  createdBy             BigInt?
+  updatedBy             BigInt?
+
+  run          TestRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  testCase      TestCase   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  latestResult  TestResult? @relation("LatestResult", fields: [latestResultId], references: [id], onDelete: SetNull)
+  results       TestResult[] @relation("InstanceResults")
+
+  @@unique([runId, caseId])
+  @@index([runId])
+  @@index([caseId])
+  @@index([status])
+  @@index([automationKeySnapshot])
+  @@index([externalIdSnapshot])
+}
+
+model TestResult {
+  id             BigInt     @id @default(autoincrement())
+  testInstanceId BigInt
+  status         TestStatus
+  comment        String?
+  elapsed        String?
+  version        String?
+  defects        String[]
+  source         String     @default("manual")
+  createdBy      BigInt?
+  createdAt      DateTime   @default(now())
+
+  instance           TestInstance @relation("InstanceResults", fields: [testInstanceId], references: [id], onDelete: Cascade)
+  createdByUser      User?        @relation("ResultCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  linkedAsLatestFor  TestInstance[] @relation("LatestResult")
+  stepResults        TestResultStep[]
+
+  @@index([testInstanceId, createdAt])
+  @@index([status])
+  @@index([source])
+}
+
+model TestResultStep {
+  id           BigInt     @id @default(autoincrement())
+  resultId     BigInt
+  stepOrder    Int
+  status       TestStatus
+  actualResult String?
+  comment      String?
+  createdAt    DateTime   @default(now())
+
+  result TestResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, stepOrder])
+  @@index([resultId])
+}
+
+model TestPlanEntry {
+  id          BigInt    @id @default(autoincrement())
+  planId      BigInt
+  name        String
+  environment String?
+  suiteId     BigInt?
+  runId       BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  plan  TestPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  suite TestSuite? @relation(fields: [suiteId], references: [id], onDelete: SetNull)
+  run   TestRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@index([runId])
+}
+
+model Attachment {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  entityType  String
+  entityId    BigInt
+  fileName    String
+  contentType String?
+  storagePath String
+  fileSize    BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+  updatedBy   BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([entityType, entityId])
+}
+
+model ApiToken {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt
+  projectId  BigInt?
+  name       String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([revokedAt])
+}
+
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  projectId   BigInt?
+  actorUserId BigInt?
+  action      String
+  entityType  String
+  entityId    String
+  changes     Json?
+  requestId   String?
+  createdAt   DateTime @default(now())
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  actorUser User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}

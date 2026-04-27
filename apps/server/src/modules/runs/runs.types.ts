@@ -1,0 +1,43 @@
+import type { TestStatus } from "../../domain/status.js";
+
+export type TestRun = {
+  id: bigint;
+  projectId: bigint;
+  suiteId: bigint;
+  name: string;
+  includeAll: boolean;
+  status: "open" | "closed";
+};
+
+export type TestCase = {
+  id: bigint;
+  projectId: bigint;
+  suiteId: bigint;
+  title: string;
+  priority: string | null;
+  caseType: string | null;
+  estimate: string | null;
+  automationKey: string | null;
+  externalId: string | null;
+};
+
+export type TestInstance = {
+  id: bigint;
+  runId: bigint;
+  caseId: bigint;
+  status: TestStatus;
+  titleSnapshot: string;
+  prioritySnapshot: string | null;
+  typeSnapshot: string | null;
+  estimateSnapshot: string | null;
+  automationKeySnapshot: string | null;
+  externalIdSnapshot: string | null;
+};
+
+export type CreateRunWithInstancesInput = {
+  projectId: bigint;
+  suiteId: bigint;
+  name: string;
+  includeAll: boolean;
+  caseIds?: bigint[];
+};

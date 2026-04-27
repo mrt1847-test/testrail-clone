@@ -1,0 +1,34 @@
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { ZodError } from "zod";
+
+import { AppError } from "../errors/appError.js";
+
+export function handleRouteError(error: unknown, _req: FastifyRequest, reply: FastifyReply) {
+  if (error instanceof AppError) {
+    return reply.status(error.statusCode).send({
+      error: {
+        code: error.code,
+        message: error.message
+      }
+    });
+  }
+  if (error instanceof ZodError) {
+    return reply.status(400).send({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "invalid request payload",
+        details: error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message
+        }))
+      }
+    });
+  }
+
+  return reply.status(500).send({
+    error: {
+      code: "INTERNAL_ERROR",
+      message: "unexpected server error"
+    }
+  });
+}
