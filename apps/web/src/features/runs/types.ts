@@ -15,6 +15,7 @@ export type TestInstanceRow = {
   caseCode: string;
   title: string;
   status: string;
+  assignedTo?: string | null;
 };
 
 export type RunDetailDto = {
@@ -41,5 +42,21 @@ export type TestResultStepItem = {
   status: string;
   actualResult?: string;
   comment?: string;
+  createdAt: string;
+};
+
+export type ResultAttachmentItem = {
+  id: string;
+  fileName: string;
+  contentType?: string | null;
+  storagePath: string;
+  fileSize?: string | null;
+  createdAt: string;
+};
+
+export type ResultDefectLinkItem = {
+  id: string;
+  defectKey: string;
+  url?: string | null;
   createdAt: string;
 };

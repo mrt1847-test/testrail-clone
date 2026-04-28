@@ -4,7 +4,7 @@ import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
 function mapCatalogCaseToTestCase(
-  c: { id: bigint; sectionId: bigint; title: string; priority?: string; caseType?: string },
+  c: { id: bigint; sectionId: bigint; title: string; priority?: string | null; caseType?: string | null },
   projectId: bigint,
   suiteId: bigint
 ): TestCase {
@@ -38,6 +38,7 @@ export type Tx = {
     includeAll: boolean;
   }): Promise<TestCase[]>;
   createInstances(instances: Omit<TestInstance, "id" | "status">[]): Promise<TestInstance[]>;
+  getRunById(runId: bigint): Promise<TestRun | null>;
   getInstancesByRunId(runId: bigint): Promise<Array<Pick<TestInstance, "status">>>;
   getTestInstanceById(testId: bigint): Promise<TestInstance | null>;
   getTestInstanceByCaseInRun(runId: bigint, caseId: bigint): Promise<TestInstance | null>;
@@ -49,6 +50,7 @@ export type Tx = {
   updateInstanceStatus(testInstanceId: bigint, status: TestStatus): Promise<void>;
   closeRun(runId: bigint): Promise<void>;
   updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<void>;
+  updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<void>;
   getResultsByTestInstanceId(testId: bigint): Promise<
     Array<{
       id: bigint;
@@ -80,6 +82,14 @@ export interface RunsRepository {
   listRunsByProject(projectId: bigint): Promise<TestRun[]>;
   getRun(runId: bigint): Promise<TestRun | null>;
   listInstancesForRun(runId: bigint): Promise<TestInstance[]>;
+  listInstancesForRunPage(input: {
+    runId: bigint;
+    page: number;
+    pageSize: number;
+    status?: TestStatus;
+    assignedTo?: bigint | null;
+    q?: string;
+  }): Promise<{ items: TestInstance[]; total: number }>;
   listResultsForTestInstance(testId: bigint): Promise<
     Array<{
       id: bigint;
@@ -106,6 +116,21 @@ export interface RunsRepository {
   >;
   closeRun(runId: bigint): Promise<TestRun | null>;
   updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null>;
+  updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null>;
+  listAssignedTests(input: {
+    projectId: bigint;
+    userId: bigint;
+  }): Promise<
+    Array<{
+      testId: bigint;
+      runId: bigint;
+      runName: string;
+      caseId: bigint;
+      title: string;
+      status: TestStatus;
+      assignedTo: bigint | null;
+    }>
+  >;
 }
 
 type ResultRow = {
@@ -117,6 +142,7 @@ type ResultRow = {
   version?: string;
   defects: string[];
   source: "manual" | "automation" | "api";
+  metadata?: Record<string, unknown>;
   createdAt: Date;
 };
 type ResultStepRow = {
@@ -177,6 +203,32 @@ export class InMemoryRunsRepository implements RunsRepository {
     return this.instances.filter((i) => i.runId === runId);
   }
 
+  async listInstancesForRunPage(input: {
+    runId: bigint;
+    page: number;
+    pageSize: number;
+    status?: TestStatus;
+    assignedTo?: bigint | null;
+    q?: string;
+  }): Promise<{ items: TestInstance[]; total: number }> {
+    const q = input.q?.toLowerCase();
+    const rows = this.instances.filter((i) => {
+      if (i.runId !== input.runId) return false;
+      if (input.status && i.status !== input.status) return false;
+      if (input.assignedTo !== undefined && i.assignedTo !== input.assignedTo) return false;
+      if (!q) return true;
+      return (
+        i.titleSnapshot.toLowerCase().includes(q) ||
+        `c${i.caseId.toString()}`.toLowerCase().includes(q)
+      );
+    });
+    const start = (input.page - 1) * input.pageSize;
+    return {
+      items: rows.slice(start, start + input.pageSize),
+      total: rows.length
+    };
+  }
+
   async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return fn({
       createRun: async (input) => {
@@ -212,6 +264,7 @@ export class InMemoryRunsRepository implements RunsRepository {
         this.instances.push(...created);
         return created;
       },
+      getRunById: async (runId) => this.runs.find((r) => r.id === runId) ?? null,
       getInstancesByRunId: async (runId) =>
         this.instances.filter((i) => i.runId === runId).map((i) => ({ status: i.status })),
       getTestInstanceById: async (testId) => this.instances.find((i) => i.id === testId) ?? null,
@@ -228,6 +281,7 @@ export class InMemoryRunsRepository implements RunsRepository {
           version: input.version,
           defects: input.defects ?? [],
           source: input.source ?? "manual",
+          metadata: input.metadata,
           createdAt: new Date()
         };
         this.results.push(row);
@@ -260,6 +314,10 @@ export class InMemoryRunsRepository implements RunsRepository {
         if (!run) return;
         if (input.name !== undefined) run.name = input.name;
         if (input.assignedTo !== undefined) run.assignedTo = input.assignedTo;
+      },
+      updateTestAssignee: async (testId, assignedTo) => {
+        const instance = this.instances.find((i) => i.id === testId);
+        if (instance) instance.assignedTo = assignedTo;
       },
       getResultsByTestInstanceId: async (testId) => {
         return this.results
@@ -302,5 +360,32 @@ export class InMemoryRunsRepository implements RunsRepository {
       run.assignedTo = input.assignedTo;
     }
     return run;
+  }
+
+  async updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null> {
+    const instance = this.instances.find((item) => item.id === testId);
+    if (!instance) return null;
+    instance.assignedTo = assignedTo;
+    return instance;
+  }
+
+  async listAssignedTests(input: { projectId: bigint; userId: bigint }) {
+    const runMap = new Map(this.runs.filter((run) => run.projectId === input.projectId).map((run) => [run.id, run]));
+    const caseMap = new Map(this.cases.map((c) => [c.id, c]));
+    return this.instances
+      .filter((instance) => instance.assignedTo === input.userId && runMap.has(instance.runId))
+      .map((instance) => {
+        const run = runMap.get(instance.runId)!;
+        const testCase = caseMap.get(instance.caseId);
+        return {
+          testId: instance.id,
+          runId: run.id,
+          runName: run.name,
+          caseId: instance.caseId,
+          title: testCase?.title ?? instance.titleSnapshot,
+          status: instance.status,
+          assignedTo: instance.assignedTo
+        };
+      });
   }
 }

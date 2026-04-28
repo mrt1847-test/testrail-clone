@@ -19,10 +19,13 @@ import { PlanDetailPage } from "./features/projects/components/PlanDetailPage";
 import { TokensPage } from "./features/projects/components/TokensPage";
 import { WebhooksPage } from "./features/projects/components/WebhooksPage";
 import { ProjectMembersPage } from "./features/projects/components/ProjectMembersPage";
+import { DefectIntegrationSettingsPage } from "./features/projects/components/DefectIntegrationSettingsPage";
+import { ImportExportPage } from "./features/projects/components/ImportExportPage";
 import { RunCreatePage } from "./features/runs/components/RunCreatePage";
 import { RunDetailPage } from "./features/runs/components/RunDetailPage";
 import { RunListPage } from "./features/runs/components/RunListPage";
 import { ResultExplorerPage } from "./features/runs/components/ResultExplorerPage";
+import { MyTestsPage } from "./features/runs/components/MyTestsPage";
 
 export function App() {
   return (
@@ -38,10 +41,12 @@ export function App() {
           <Route path="runs/new" element={<RunCreatePage />} />
           <Route path="runs/:runId" element={<RunDetailPage />} />
           <Route path="runs/:runId/results" element={<ResultExplorerPage />} />
+          <Route path="my-tests" element={<MyTestsPage />} />
           <Route path="results" element={<ResultExplorerPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="automation" element={<AutomationPage />} />
           <Route path="automation/uploads/:uploadId" element={<BulkUploadDetailPage />} />
+          <Route path="import-export" element={<ImportExportPage />} />
           <Route path="milestones" element={<MilestonesPage />} />
           <Route path="milestones/:milestoneId" element={<MilestoneDetailPage />} />
           <Route path="plans" element={<PlansPage />} />
@@ -51,6 +56,7 @@ export function App() {
           <Route path="settings/members" element={<ProjectMembersPage />} />
           <Route path="settings/custom-fields" element={<CustomFieldsPage />} />
           <Route path="settings/webhooks" element={<WebhooksPage />} />
+          <Route path="settings/defect-integration" element={<DefectIntegrationSettingsPage />} />
           <Route path="settings/audit-logs" element={<AuditLogsPage />} />
         </Route>
       </Route>

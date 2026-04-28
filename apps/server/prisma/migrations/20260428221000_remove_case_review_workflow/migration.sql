@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS "TestCaseComment";
+
+ALTER TABLE "TestCase" DROP COLUMN IF EXISTS "status";

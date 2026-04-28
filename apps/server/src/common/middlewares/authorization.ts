@@ -62,6 +62,62 @@ async function resolveProjectId(req: FastifyRequest, prisma?: PrismaClient) {
     return step?.testCase.projectId ?? null;
   }
 
+  if (params.testId !== undefined) {
+    const testInstance = await prisma.testInstance.findUnique({
+      where: { id: BigInt(String(params.testId)) },
+      select: { run: { select: { projectId: true } } }
+    });
+    return testInstance?.run.projectId ?? null;
+  }
+
+  if (params.runId !== undefined) {
+    const run = await prisma.testRun.findUnique({
+      where: { id: BigInt(String(params.runId)) },
+      select: { projectId: true }
+    });
+    return run?.projectId ?? null;
+  }
+
+  if (params.resultId !== undefined) {
+    const result = await prisma.testResult.findUnique({
+      where: { id: BigInt(String(params.resultId)) },
+      select: { instance: { select: { run: { select: { projectId: true } } } } }
+    });
+    return result?.instance.run.projectId ?? null;
+  }
+
+  if (params.requirementId !== undefined) {
+    const requirement = await prisma.requirement.findUnique({
+      where: { id: BigInt(String(params.requirementId)) },
+      select: { projectId: true }
+    });
+    return requirement?.projectId ?? null;
+  }
+
+  if (params.groupId !== undefined) {
+    const group = await prisma.configurationGroup.findUnique({
+      where: { id: BigInt(String(params.groupId)) },
+      select: { projectId: true }
+    });
+    return group?.projectId ?? null;
+  }
+
+  if (params.configurationId !== undefined) {
+    const configuration = await prisma.configuration.findUnique({
+      where: { id: BigInt(String(params.configurationId)) },
+      select: { group: { select: { projectId: true } } }
+    });
+    return configuration?.group.projectId ?? null;
+  }
+
+  if (params.attachmentId !== undefined) {
+    const attachment = await prisma.attachment.findUnique({
+      where: { id: BigInt(String(params.attachmentId)) },
+      select: { projectId: true }
+    });
+    return attachment?.projectId ?? null;
+  }
+
   return null;
 }
 

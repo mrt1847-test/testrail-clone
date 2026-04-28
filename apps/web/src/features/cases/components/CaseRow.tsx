@@ -1,4 +1,4 @@
-import type { TestCase } from "../types";
+import type { CaseVersion, TestCase } from "../types";
 
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
@@ -7,6 +7,7 @@ type CaseRowProps = {
   isExpanded: boolean;
   mode: "view" | "edit";
   detail: TestCase | null;
+  versions?: CaseVersion[];
   onToggle: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -28,6 +29,7 @@ export function CaseRow({
   isExpanded,
   mode,
   detail,
+  versions,
   onToggle,
   onEdit,
   onCloseDetail,
@@ -59,6 +61,7 @@ export function CaseRow({
       {isExpanded ? (
         <ExpandableCaseDetail
           data={detail ?? item}
+          versions={versions ?? []}
           mode={mode}
           onEdit={onEdit}
           onClose={onCloseDetail}

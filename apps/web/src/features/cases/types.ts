@@ -22,8 +22,18 @@ export interface TestCase {
   preconditions: string;
   steps: CaseStep[];
   sectionId: number;
+  lockVersion: number;
   updatedAt: string;
 }
+
+export type CaseVersion = {
+  id: number;
+  caseId: number;
+  versionNo: number;
+  title: string;
+  changeReason?: string | null;
+  createdAt: string;
+};
 
 export interface SectionNode {
   id: number;

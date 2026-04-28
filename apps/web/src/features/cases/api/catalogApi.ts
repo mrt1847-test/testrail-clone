@@ -1,6 +1,6 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Ok, Paged } from "../../../shared/api/types";
-import type { CasePriority, CaseType, SectionNode, TestCase } from "../types";
+import type { CasePriority, CaseType, CaseVersion, SectionNode, TestCase } from "../types";
 
 type ApiCase = {
   id: string;
@@ -9,6 +9,8 @@ type ApiCase = {
   priority?: string;
   caseType?: string;
   preconditions?: string | null;
+  lockVersion?: number;
+  updatedAt?: string;
 };
 
 type ApiCaseStep = {
@@ -63,7 +65,8 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
     preconditions: row.preconditions ?? "",
     steps: [],
     sectionId: asNum(row.sectionId),
-    updatedAt: "—"
+    lockVersion: row.lockVersion ?? 1,
+    updatedAt: row.updatedAt ?? "—"
   };
 }
 
@@ -117,9 +120,14 @@ export async function deleteSection(sectionId: number): Promise<void> {
   await apiFetch<void>(`/api/sections/${sectionId}`, { method: "DELETE" });
 }
 
-export async function fetchCasesForSection(projectId: string, sectionId: number): Promise<TestCase[]> {
+export async function fetchCasesForSection(
+  projectId: string,
+  sectionId: number,
+  page = 1,
+  pageSize = 100
+): Promise<TestCase[]> {
   const res = await apiFetch<Paged<ApiCase>>(
-    `/api/projects/${projectId}/cases?sectionId=${sectionId}&page=1&pageSize=500`
+    `/api/projects/${projectId}/cases?sectionId=${sectionId}&page=${page}&pageSize=${pageSize}`
   );
   return res.data.map(mapApiCaseToTestCase);
 }
@@ -142,7 +150,14 @@ export async function createCase(
 
 export async function updateCase(
   caseId: number,
-  patch: { title?: string; preconditions?: string | null; priority?: string; caseType?: string }
+  patch: {
+    title?: string;
+    preconditions?: string | null;
+    priority?: string;
+    caseType?: string;
+    expectedUpdatedAt?: string;
+    expectedVersion?: number;
+  }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/cases/${caseId}`, {
     method: "PATCH",
@@ -184,3 +199,25 @@ export async function updateCaseStep(
 export async function deleteCaseStep(stepId: number): Promise<void> {
   await apiFetch<void>(`/api/case-steps/${stepId}`, { method: "DELETE" });
 }
+
+type ApiCaseVersion = {
+  id: string;
+  caseId: string;
+  versionNo: number;
+  title: string;
+  changeReason?: string | null;
+  createdAt: string;
+};
+
+export async function fetchCaseVersions(caseId: number): Promise<CaseVersion[]> {
+  const res = await apiFetch<Paged<ApiCaseVersion>>(`/api/cases/${caseId}/versions?page=1&pageSize=20`);
+  return res.data.map((row) => ({
+    id: asNum(row.id),
+    caseId: asNum(row.caseId),
+    versionNo: row.versionNo,
+    title: row.title,
+    changeReason: row.changeReason ?? null,
+    createdAt: row.createdAt
+  }));
+}
+

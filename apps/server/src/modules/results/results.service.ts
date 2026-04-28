@@ -11,12 +11,14 @@ export class ResultsService {
       if (!instance) {
         throw new AppError("TEST_NOT_FOUND", `test instance ${testId.toString()} not found`);
       }
+      await this.assertRunIsWritableTx(tx, instance.runId);
       return this.writeResultTx(tx, instance.id, input);
     });
   }
 
   async addResultForCaseInRun(runId: bigint, caseId: bigint, input: ResultInput) {
     return this.repo.transaction(async (tx) => {
+      await this.assertRunIsWritableTx(tx, runId);
       const instance = await tx.getTestInstanceByCaseInRun(runId, caseId);
       if (!instance) {
         throw new AppError(
@@ -32,16 +34,43 @@ export class ResultsService {
     const atomic = input.atomic ?? false;
     if (atomic) {
       return this.repo.transaction(async (tx) => {
+        await this.assertRunIsWritableTx(tx, input.runId);
         const items: BulkResultResponse["items"] = [];
+        const validationErrors: Array<{ index: number; caseId: bigint; message: string }> = [];
         for (let i = 0; i < input.results.length; i += 1) {
           const resultItem = input.results[i];
           const instance = await tx.getTestInstanceByCaseInRun(input.runId, resultItem.caseId);
           if (!instance) {
-            throw new AppError(
-              "CASE_NOT_FOUND_IN_RUN",
-              `case ${resultItem.caseId.toString()} not found in run ${input.runId.toString()}`
-            );
+            validationErrors.push({
+              index: i,
+              caseId: resultItem.caseId,
+              message: `case ${resultItem.caseId.toString()} not found in run ${input.runId.toString()}`
+            });
           }
+        }
+        if (validationErrors.length > 0) {
+          const preview = validationErrors
+            .slice(0, 3)
+            .map((err) => `#${err.index}(C${err.caseId.toString()}): ${err.message}`)
+            .join(" | ");
+          throw new AppError(
+            "BULK_VALIDATION_FAILED",
+            `atomic bulk rejected (${validationErrors.length} issues): ${preview}`,
+            400,
+            {
+              issues: validationErrors.map((err) => ({
+                index: err.index,
+                caseId: err.caseId.toString(),
+                code: "CASE_NOT_FOUND_IN_RUN",
+                message: err.message
+              }))
+            }
+          );
+        }
+        for (let i = 0; i < input.results.length; i += 1) {
+          const resultItem = input.results[i];
+          const instance = await tx.getTestInstanceByCaseInRun(input.runId, resultItem.caseId);
+          if (!instance) continue;
           const created = await this.writeResultTx(tx, instance.id, resultItem);
           items.push({
             index: i,
@@ -117,5 +146,15 @@ export class ResultsService {
     }
     await tx.updateInstanceStatus(testInstanceId, input.status);
     return created;
+  }
+
+  private async assertRunIsWritableTx(tx: Tx, runId: bigint) {
+    const run = await tx.getRunById(runId);
+    if (!run) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`, 404);
+    }
+    if (run.status === "closed") {
+      throw new AppError("RUN_CLOSED", `run ${runId.toString()} is closed`, 409);
+    }
   }
 }

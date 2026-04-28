@@ -18,6 +18,15 @@ import {
   updateCaseStepSchema
 } from "./cases.schema.js";
 
+function parseIfMatchVersion(value?: string | string[]): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  const normalized = raw.replace(/^W\//i, "").replace(/"/g, "").trim();
+  const num = Number(normalized);
+  if (!Number.isInteger(num) || num < 1) return undefined;
+  return num;
+}
+
 export async function registerCasesRoutes(
   app: FastifyInstance,
   deps: { casesService: CasesService; authService: AuthService; prisma?: PrismaClient }
@@ -60,11 +69,28 @@ export async function registerCasesRoutes(
     return reply.send(toJsonSafe(ok(await deps.casesService.getCase(caseId))));
   });
 
+  app.get("/api/cases/:caseId/versions", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    const rows = await deps.casesService.listCaseVersions(caseId);
+    return reply.send(toJsonSafe(paged(rows, page, pageSize)));
+  });
+
   app.patch("/api/cases/:caseId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const body = updateCaseSchema.parse(req.body);
-    return reply.send(toJsonSafe(ok(await deps.casesService.updateCase(caseId, body))));
+    const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
+    return reply.send(
+      toJsonSafe(
+        ok(
+          await deps.casesService.updateCase(caseId, {
+            ...body,
+            expectedVersion: body.expectedVersion ?? ifMatchVersion
+          })
+        )
+      )
+    );
   });
 
   app.delete("/api/cases/:caseId", async (req, reply) => {

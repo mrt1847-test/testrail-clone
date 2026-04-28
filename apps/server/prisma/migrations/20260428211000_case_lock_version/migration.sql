@@ -1,0 +1,2 @@
+ALTER TABLE "TestCase"
+  ADD COLUMN "lockVersion" INTEGER NOT NULL DEFAULT 1;

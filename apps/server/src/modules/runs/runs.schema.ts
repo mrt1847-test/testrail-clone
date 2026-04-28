@@ -24,3 +24,23 @@ export const rerunSchema = z.object({
 export const runIdParamSchema = z.object({
   runId: z.coerce.bigint()
 });
+
+export const testIdParamSchema = z.object({
+  testId: z.coerce.bigint()
+});
+
+export const updateTestAssigneeSchema = z.object({
+  assignedTo: z.coerce.bigint().nullable()
+});
+
+export const runInstancesQuerySchema = z.object({
+  status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
+  assignedTo: z
+    .preprocess((value) => {
+      if (value === "" || value === "null") return null;
+      return value;
+    }, z.coerce.bigint().nullable())
+    .optional(),
+  q: z.string().trim().min(1).optional(),
+  includeInstances: z.coerce.boolean().optional()
+});

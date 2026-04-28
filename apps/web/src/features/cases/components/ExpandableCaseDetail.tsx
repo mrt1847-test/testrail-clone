@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
-import type { CaseStep, TestCase } from "../types";
+import type { CaseStep, CaseVersion, TestCase } from "../types";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
+  versions: CaseVersion[];
   mode: "view" | "edit";
   onEdit: () => void;
   onClose: () => void;
@@ -27,12 +28,13 @@ function toLocalSteps(steps: CaseStep[]): LocalStep[] {
   return steps.map((s) => ({
     id: s.id,
     description: s.description,
-    expected: s.expected === "—" ? "" : s.expected
+    expected: s.expected === "-" ? "" : s.expected
   }));
 }
 
 export function ExpandableCaseDetail({
   data,
+  versions,
   mode,
   onEdit,
   onClose,
@@ -68,8 +70,24 @@ export function ExpandableCaseDetail({
     const swap = direction === "up" ? idx - 1 : idx + 1;
     if (swap < 0 || swap >= localSteps.length) return;
     if (localSteps[swap]?.id == null) return;
-    const targetOrder = swap + 1;
-    void onUpdateStep?.(stepId, { stepOrder: targetOrder });
+    void onUpdateStep?.(stepId, { stepOrder: swap + 1 });
+  }
+
+  function persistStepIfChanged(step: LocalStep, index: number) {
+    if (step.id == null || !onUpdateStep) return;
+    const original = data.steps.find((s) => s.id === step.id);
+    if (!original) return;
+
+    const content = step.description.trim();
+    const expected = step.expected.trim();
+    const originalExpected = original.expected === "-" ? "" : original.expected;
+    if (original.description !== content || originalExpected !== expected) {
+      void onUpdateStep(step.id, {
+        content,
+        expectedResult: expected.length ? expected : null,
+        stepOrder: index + 1
+      });
+    }
   }
 
   return (
@@ -88,6 +106,7 @@ export function ExpandableCaseDetail({
               className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
             />
           </label>
+
           <label className="grid gap-1 text-sm text-slate-700">
             Preconditions
             <textarea
@@ -104,19 +123,18 @@ export function ExpandableCaseDetail({
                 type="button"
                 disabled={isStepsBusy || !onCreateStep}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                onClick={() =>
-                  void onCreateStep?.({ content: "New step", expected: "" })
-                }
+                onClick={() => void onCreateStep?.({ content: "New step", expected: "" })}
               >
-                {isStepsBusy ? "…" : "Add step"}
+                {isStepsBusy ? "Saving..." : "Add step"}
               </button>
             </div>
+
             {localSteps.length === 0 ? (
-              <p className="text-xs text-slate-500">스텝이 없습니다. Add step으로 추가하세요.</p>
+              <p className="text-xs text-slate-500">No steps yet.</p>
             ) : (
               <ol className="list-decimal space-y-3 pl-5 text-sm">
                 {localSteps.map((step, index) => (
-                  <li key={step.id ?? `draft-${index}`} className="grid gap-2 rounded-md border border-slate-200 bg-white p-2">
+                  <li key={step.id ?? `local-${index}`} className="grid gap-2 rounded-md border border-slate-200 bg-white p-2">
                     <div className="flex flex-wrap items-center gap-1">
                       <button
                         type="button"
@@ -145,55 +163,33 @@ export function ExpandableCaseDetail({
                         </button>
                       ) : null}
                     </div>
+
                     <label className="grid gap-0.5 text-xs text-slate-600">
                       Action
                       <textarea
                         value={step.description}
                         disabled={isStepsBusy}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, description: v } : s)));
+                          const value = e.target.value;
+                          setLocalSteps((prev) =>
+                            prev.map((s, i) => (i === index ? { ...s, description: value } : s))
+                          );
                         }}
-                        onBlur={() => {
-                          if (step.id == null || !onUpdateStep) return;
-                          const orig = data.steps.find((s) => s.id === step.id);
-                          if (!orig) return;
-                          const trimmed = step.description.trim();
-                          const expTrim = step.expected.trim();
-                          const origExp = orig.expected === "—" ? "" : orig.expected;
-                          if (orig.description !== trimmed || origExp !== expTrim) {
-                            void onUpdateStep(step.id, {
-                              content: trimmed,
-                              expectedResult: expTrim.length ? expTrim : null
-                            });
-                          }
-                        }}
+                        onBlur={() => persistStepIfChanged(step, index)}
                         className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
                       />
                     </label>
+
                     <label className="grid gap-0.5 text-xs text-slate-600">
                       Expected
                       <textarea
                         value={step.expected}
                         disabled={isStepsBusy}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, expected: v } : s)));
+                          const value = e.target.value;
+                          setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, expected: value } : s)));
                         }}
-                        onBlur={() => {
-                          if (step.id == null || !onUpdateStep) return;
-                          const orig = data.steps.find((s) => s.id === step.id);
-                          if (!orig) return;
-                          const trimmed = step.description.trim();
-                          const expTrim = step.expected.trim();
-                          const origExp = orig.expected === "—" ? "" : orig.expected;
-                          if (orig.description !== trimmed || origExp !== expTrim) {
-                            void onUpdateStep(step.id, {
-                              content: trimmed,
-                              expectedResult: expTrim.length ? expTrim : null
-                            });
-                          }
-                        }}
+                        onBlur={() => persistStepIfChanged(step, index)}
                         className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
                       />
                     </label>
@@ -210,7 +206,7 @@ export function ExpandableCaseDetail({
               className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
               onClick={() => void onSave({ title: title.trim(), preconditions: preconditions.trim() })}
             >
-              {isSaving ? "Saving…" : "Save"}
+              {isSaving ? "Saving..." : "Save"}
             </button>
             <button
               type="button"
@@ -224,18 +220,34 @@ export function ExpandableCaseDetail({
       ) : (
         <>
           <p className="mt-2 text-sm text-slate-700">
-            <span className="font-medium">Type:</span> {data.type} · <span className="font-medium">Priority:</span>{" "}
-            {data.priority} · <span className="font-medium">Estimate:</span> {data.estimate}
+            <span className="font-medium">Type:</span> {data.type} / <span className="font-medium">Priority:</span>{" "}
+            {data.priority} / <span className="font-medium">Estimate:</span> {data.estimate}
           </p>
           <p className="text-sm text-slate-700">
-            <span className="font-medium">References:</span> {data.references || "—"} ·{" "}
-            <span className="font-medium">Automation key:</span> {data.automationKey || "—"}
+            <span className="font-medium">References:</span> {data.references || "-"} /{" "}
+            <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
           </p>
           <p className="text-sm text-slate-700">
-            <span className="font-medium">Preconditions:</span> {data.preconditions || "—"}
+            <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}
           </p>
+
+          <div className="mt-2 rounded border border-slate-200 bg-white p-2">
+            <p className="text-xs font-medium text-slate-700">Version history</p>
+            {versions.length === 0 ? (
+              <p className="mt-1 text-xs text-slate-500">No versions yet.</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-xs text-slate-600">
+                {versions.map((v) => (
+                  <li key={v.id}>
+                    v{v.versionNo} / {v.changeReason ?? "updated"} / {new Date(v.createdAt).toLocaleString()}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {data.steps.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">등록된 스텝이 없습니다.</p>
+            <p className="mt-2 text-sm text-slate-500">No steps registered.</p>
           ) : (
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
               {data.steps.map((step, index) => (
@@ -245,6 +257,7 @@ export function ExpandableCaseDetail({
               ))}
             </ol>
           )}
+
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -267,8 +280,8 @@ export function ExpandableCaseDetail({
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Delete this test case?"
-        description="이 작업은 되돌릴 수 없습니다."
-        confirmLabel={isDeleting ? "Deleting…" : "Delete"}
+        description="This action cannot be undone."
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
         confirmDisabled={isDeleting}
         variant="danger"
         onCancel={() => setConfirmDeleteOpen(false)}
@@ -281,8 +294,8 @@ export function ExpandableCaseDetail({
       <ConfirmDialog
         open={stepDeleteId != null}
         title="Remove this step?"
-        description="스텝이 삭제되고 순서가 다시 매겨집니다."
-        confirmLabel={isStepsBusy ? "…" : "Remove"}
+        description="The remaining steps will be renumbered."
+        confirmLabel={isStepsBusy ? "Removing..." : "Remove"}
         confirmDisabled={isStepsBusy}
         variant="danger"
         onCancel={() => setStepDeleteId(null)}

@@ -17,6 +17,7 @@ import { registerAutomationRoutes } from "./modules/automation/automation.routes
 import { registerMilestonesRoutes } from "./modules/milestones/milestones.routes.js";
 import { registerPlansRoutes } from "./modules/plans/plans.routes.js";
 import { registerReportsRoutes } from "./modules/reports/reports.routes.js";
+import { registerRequirementsRoutes } from "./modules/requirements/requirements.routes.js";
 import { registerSectionsRoutes } from "./modules/sections/sections.routes.js";
 import { SectionsService } from "./modules/sections/sections.service.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
@@ -27,6 +28,9 @@ import { registerCors } from "./plugins/cors.js";
 import { getPrismaClient } from "./db/prisma.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
 import { AuthService } from "./modules/auth/auth.service.js";
+import { registerIntegrationsRoutes } from "./modules/integrations/integrations.routes.js";
+import { registerImportExportRoutes } from "./modules/importExport/importExport.routes.js";
+import { registerTestRailRoutes } from "./modules/testrail/testrail.routes.js";
 
 export function buildApp() {
   const app = Fastify({ logger: false });
@@ -57,9 +61,21 @@ export function buildApp() {
   void registerSectionsRoutes(app, { sectionsService, authService, prisma });
   void registerCasesRoutes(app, { casesService, authService, prisma });
   void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
-  void registerResultsRoutes(app, { resultsService });
-  void registerAutomationRoutes(app, { prisma });
+  void registerResultsRoutes(app, { resultsService, prisma, authService });
+  void registerAutomationRoutes(app, { prisma, runsService, resultsService });
   void registerReportsRoutes(app, { repo, prisma });
+  void registerRequirementsRoutes(app, { prisma, authService });
+  void registerIntegrationsRoutes(app, { prisma, authService });
+  void registerImportExportRoutes(app, { prisma, authService });
+  void registerTestRailRoutes(app, {
+    authService,
+    casesService,
+    runsService,
+    resultsService,
+    catalog: catalogRepo,
+    repo,
+    prisma
+  });
   void registerMilestonesRoutes(app, { prisma });
   void registerPlansRoutes(app, { prisma, runsService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });

@@ -1,6 +1,7 @@
 import type {
   CaseRow,
   CaseStepRow,
+  CaseVersionRow,
   ProjectRow,
   ProjectsRepository,
   SectionRow,
@@ -21,6 +22,8 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   private readonly sections: SectionRow[] = [];
   private readonly cases: CaseRow[] = [];
   private readonly caseSteps: StoredCaseStep[] = [];
+  private readonly caseVersions: CaseVersionRow[] = [];
+  private caseVersionSeq = 1n;
 
   async listProjects() {
     return [...this.projects];
@@ -121,8 +124,8 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       return true;
     });
   }
-  async createCase(input: Omit<CaseRow, "id">) {
-    const row: CaseRow = { id: this.caseSeq++, ...input };
+  async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">) {
+    const row: CaseRow = { id: this.caseSeq++, ...input, lockVersion: 1, updatedAt: new Date() };
     this.cases.push(row);
     return row;
   }
@@ -134,6 +137,55 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       .filter((s) => s.caseId === caseId)
       .sort((a, b) => a.stepOrder - b.stepOrder)
       .map(({ id, stepOrder, content, expectedResult }) => ({ id, stepOrder, content, expectedResult }));
+  }
+
+  async listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]> {
+    return this.caseVersions
+      .filter((v) => v.caseId === caseId)
+      .sort((a, b) => b.versionNo - a.versionNo);
+  }
+
+  async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
+    const current = this.cases.find((c) => c.id === caseId);
+    if (!current) return null;
+    const stepsSnapshot = this.caseSteps
+      .filter((s) => s.caseId === caseId)
+      .sort((a, b) => a.stepOrder - b.stepOrder)
+      .map((s) => ({ stepOrder: s.stepOrder, content: s.content, expectedResult: s.expectedResult ?? null }));
+    const latest = this.caseVersions
+      .filter((v) => v.caseId === caseId)
+      .sort((a, b) => b.versionNo - a.versionNo)[0];
+    const sig = JSON.stringify({
+      title: current.title,
+      priority: current.priority ?? null,
+      caseType: current.caseType ?? null,
+      preconditions: current.preconditions ?? null,
+      stepsSnapshot
+    });
+    if (latest) {
+      const latestSig = JSON.stringify({
+        title: latest.title,
+        priority: latest.priority ?? null,
+        caseType: latest.caseType ?? null,
+        preconditions: latest.preconditions ?? null,
+        stepsSnapshot: latest.stepsSnapshot
+      });
+      if (sig === latestSig) return null;
+    }
+    const next: CaseVersionRow = {
+      id: this.caseVersionSeq++,
+      caseId,
+      versionNo: (latest?.versionNo ?? 0) + 1,
+      title: current.title,
+      priority: current.priority ?? null,
+      caseType: current.caseType ?? null,
+      preconditions: current.preconditions ?? null,
+      stepsSnapshot,
+      changeReason: reason ?? null,
+      createdAt: new Date()
+    };
+    this.caseVersions.push(next);
+    return next;
   }
 
   async createCaseStep(input: {
@@ -191,10 +243,17 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     return true;
   }
 
-  async updateCase(caseId: bigint, patch: Partial<Omit<CaseRow, "id" | "sectionId">>) {
+  async updateCase(
+    caseId: bigint,
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    expectedVersion?: number
+  ) {
     const row = this.cases.find((c) => c.id === caseId);
     if (!row) return null;
+    if (expectedVersion !== undefined && row.lockVersion !== expectedVersion) return "conflict";
     Object.assign(row, patch);
+    row.lockVersion += 1;
+    row.updatedAt = new Date();
     return row;
   }
   async deleteCase(caseId: bigint) {

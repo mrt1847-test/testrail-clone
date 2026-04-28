@@ -11,6 +11,8 @@ export function useCaseDetail(caseId: number | null) {
   return useQuery({
     queryKey: enabled ? caseDetailKeys.detail(caseId) : (["case", "detail", "off"] as const),
     queryFn: () => fetchCaseById(caseId!),
-    enabled
+    enabled,
+    refetchInterval: false,
+    refetchIntervalInBackground: false
   });
 }

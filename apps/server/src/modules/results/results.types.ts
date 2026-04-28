@@ -7,6 +7,7 @@ export type ResultInput = {
   version?: string;
   defects?: string[];
   source?: "manual" | "automation" | "api";
+  metadata?: Record<string, unknown>;
   stepResults?: Array<{
     stepOrder: number;
     status: TestStatus;

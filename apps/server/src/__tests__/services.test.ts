@@ -55,4 +55,45 @@ describe("phase1 services", () => {
     expect(res.saved).toBe(1);
     expect(res.failed).toBe(1);
   });
+
+  it("rejects result writes to closed run", async () => {
+    const repo = new InMemoryRunsRepository();
+    const runService = new RunsService(repo);
+    const resultService = new ResultsService(repo);
+    const { run } = await runService.createRunWithInstances({
+      projectId: 1n,
+      suiteId: 1n,
+      name: "Run-closed",
+      includeAll: true
+    });
+    await runService.closeRun(run.id);
+    await expect(resultService.addResultForCaseInRun(run.id, 101n, { status: "passed" })).rejects.toMatchObject({
+      code: "RUN_CLOSED"
+    });
+  });
+
+  it("atomic bulk returns validation-friendly error for missing cases", async () => {
+    const repo = new InMemoryRunsRepository();
+    const runService = new RunsService(repo);
+    const resultService = new ResultsService(repo);
+    const { run } = await runService.createRunWithInstances({
+      projectId: 1n,
+      suiteId: 1n,
+      name: "Run-atomic",
+      includeAll: true
+    });
+    await expect(
+      resultService.bulkAddResults({
+        runId: run.id,
+        atomic: true,
+        results: [
+          { caseId: 101n, status: "passed" },
+          { caseId: 999n, status: "failed" }
+        ]
+      })
+    ).rejects.toMatchObject({
+      code: "BULK_VALIDATION_FAILED"
+    });
+  });
 });
+

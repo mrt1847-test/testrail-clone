@@ -74,6 +74,72 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
     return reply.send(toJsonSafe({ data: row }));
   });
 
+  app.patch("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const params = req.params as { milestoneId: string };
+    const milestoneId = BigInt(params.milestoneId);
+    const body = req.body as { name?: string; isCompleted?: boolean };
+    if (deps.prisma) {
+      const found = await deps.prisma.milestone.findFirst({
+        where: { id: milestoneId, projectId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!found) {
+        return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
+      }
+      const updated = await deps.prisma.milestone.update({
+        where: { id: milestoneId },
+        data: {
+          ...(body.name !== undefined ? { name: body.name.trim() || "Untitled milestone" } : {}),
+          ...(body.isCompleted !== undefined ? { isCompleted: body.isCompleted } : {})
+        }
+      });
+      return reply.send(
+        toJsonSafe({
+          data: {
+            id: updated.id,
+            projectId: updated.projectId,
+            name: updated.name,
+            isCompleted: updated.isCompleted
+          }
+        })
+      );
+    }
+    const row = milestones.find((item) => item.projectId === projectId && item.id === milestoneId);
+    if (!row) {
+      return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
+    }
+    if (body.name !== undefined) row.name = body.name.trim() || "Untitled milestone";
+    if (body.isCompleted !== undefined) row.isCompleted = body.isCompleted;
+    return reply.send(toJsonSafe({ data: row }));
+  });
+
+  app.delete("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const params = req.params as { milestoneId: string };
+    const milestoneId = BigInt(params.milestoneId);
+    if (deps.prisma) {
+      const found = await deps.prisma.milestone.findFirst({
+        where: { id: milestoneId, projectId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!found) {
+        return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
+      }
+      await deps.prisma.milestone.update({
+        where: { id: milestoneId },
+        data: { deletedAt: new Date() }
+      });
+      return reply.status(204).send();
+    }
+    const index = milestones.findIndex((item) => item.projectId === projectId && item.id === milestoneId);
+    if (index < 0) {
+      return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
+    }
+    milestones.splice(index, 1);
+    return reply.status(204).send();
+  });
+
   app.get("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { milestoneId: string };

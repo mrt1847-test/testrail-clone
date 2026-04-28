@@ -11,6 +11,7 @@ export function buildSnapshotFromCase(testCase: TestCase): Omit<TestInstance, "i
   return {
     runId: 0n,
     caseId: testCase.id,
+    assignedTo: null,
     titleSnapshot: testCase.title,
     prioritySnapshot: testCase.priority,
     typeSnapshot: testCase.caseType,

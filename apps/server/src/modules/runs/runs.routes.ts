@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
-import { requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { AppError } from "../../common/errors/appError.js";
 import type { AuthService } from "../auth/auth.service.js";
 import type { PrismaClient } from "@prisma/client";
@@ -11,7 +11,15 @@ import type { ResultsService } from "../results/results.service.js";
 import { byCaseSchema, bulkSchema, runResultSchema } from "../results/results.schema.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsService } from "./runs.service.js";
-import { createProjectRunSchema, rerunSchema, runIdParamSchema, updateRunSchema } from "./runs.schema.js";
+import {
+  createProjectRunSchema,
+  rerunSchema,
+  runInstancesQuerySchema,
+  runIdParamSchema,
+  testIdParamSchema,
+  updateRunSchema,
+  updateTestAssigneeSchema
+} from "./runs.schema.js";
 import { calculateRunSummary } from "../reports/reports.service.js";
 import type { RunsRepository } from "./runs.repository.js";
 
@@ -45,23 +53,41 @@ export async function registerRunsRoutes(
   app.get("/api/projects/:projectId/runs/:runId", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { runId } = runIdParamSchema.parse(req.params);
+    const { includeInstances } = runInstancesQuerySchema.parse(req.query ?? {});
     const run = await deps.repo.getRun(runId);
     if (!run || run.projectId !== projectId) {
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
-    const instances = await deps.repo.listInstancesForRun(runId);
+    const instances = includeInstances === false ? [] : await deps.repo.listInstancesForRun(runId);
     return reply.send(toJsonSafe(ok({ run, instances })));
   });
 
   app.get("/api/projects/:projectId/runs/:runId/instances", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { runId } = runIdParamSchema.parse(req.params);
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    const { status, assignedTo, q } = runInstancesQuerySchema.parse(req.query ?? {});
     const run = await deps.repo.getRun(runId);
     if (!run || run.projectId !== projectId) {
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
-    const instances = await deps.repo.listInstancesForRun(runId);
-    return reply.send(toJsonSafe(paged(instances, 1, instances.length || 1)));
+    const { items, total } = await deps.repo.listInstancesForRunPage({
+      runId,
+      page,
+      pageSize,
+      status,
+      assignedTo,
+      q
+    });
+    return reply.send(
+      toJsonSafe({
+        data: items,
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      })
+    );
   });
 
   app.post("/api/projects/:projectId/runs", async (req, reply) => {
@@ -78,6 +104,14 @@ export async function registerRunsRoutes(
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
     const updated = await deps.runsService.updateRun(runId, body);
+    return reply.send(toJsonSafe(ok(updated)));
+  });
+
+  app.patch("/api/runs/:runId/assignee", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = updateRunSchema.parse(req.body);
+    const updated = await deps.runsService.updateRun(runId, { assignedTo: body.assignedTo ?? null });
     return reply.send(toJsonSafe(ok(updated)));
   });
 
@@ -147,5 +181,20 @@ export async function registerRunsRoutes(
     const { statuses } = rerunSchema.parse(req.body);
     const created = await deps.runsService.rerunByStatuses(runId, statuses);
     return reply.send(toJsonSafe(created));
+  });
+
+  app.patch("/api/tests/:testId/assignee", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { testId } = testIdParamSchema.parse(req.params);
+    const { assignedTo } = updateTestAssigneeSchema.parse(req.body);
+    const updated = await deps.runsService.updateTestAssignee(testId, assignedTo);
+    return reply.send(toJsonSafe(ok(updated)));
+  });
+
+  app.get("/api/projects/:projectId/tests/assigned-to-me", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const rows = await deps.runsService.listAssignedToMe(projectId, user.id);
+    return reply.send(toJsonSafe(ok({ items: rows })));
   });
 }

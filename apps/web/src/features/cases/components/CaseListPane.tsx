@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { createCase, createCaseStep, deleteCase, deleteCaseStep, updateCase, updateCaseStep } from "../api/catalogApi";
+import { createCase, createCaseStep, deleteCase, deleteCaseStep, fetchCaseVersions, updateCase, updateCaseStep } from "../api/catalogApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
@@ -24,6 +25,11 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   const { selectedSectionId, expandedCaseId, mode, setExpandedCase } = useExpandedCase();
   const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId);
   const { data: caseDetailRemote } = useCaseDetail(expandedCaseId);
+  const caseVersionsQuery = useQuery({
+    queryKey: ["case-versions", expandedCaseId ?? -1],
+    queryFn: () => fetchCaseVersions(expandedCaseId!),
+    enabled: expandedCaseId != null
+  });
   const [addTitle, setAddTitle] = useState("");
   const [showAdd, setShowAdd] = useState(false);
 
@@ -32,6 +38,13 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
     void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
     void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+  };
+  const invalidateAfterCaseEdit = (caseId: number) => {
+    void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
+    void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(caseId) });
+    void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+    void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+    void qc.invalidateQueries({ queryKey: ["case-versions", caseId] });
   };
 
   const createCaseMutation = useMutation({
@@ -44,11 +57,14 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   });
 
   const updateCaseMutation = useMutation({
-    mutationFn: (input: { caseId: number; title: string; preconditions: string }) =>
-      updateCase(input.caseId, { title: input.title, preconditions: input.preconditions }),
+    mutationFn: (input: { caseId: number; title: string; preconditions: string; expectedVersion?: number }) =>
+      updateCase(input.caseId, {
+        title: input.title,
+        preconditions: input.preconditions,
+        expectedVersion: input.expectedVersion
+      }),
     onSuccess: (_, vars) => {
-      invalidateCases();
-      void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(vars.caseId) });
+      invalidateAfterCaseEdit(vars.caseId);
     }
   });
 
@@ -62,6 +78,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
 
   const invalidateCaseDetail = (caseId: number) => {
     void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(caseId) });
+    void qc.invalidateQueries({ queryKey: ["case-versions", caseId] });
   };
 
   const createStepMutation = useMutation({
@@ -179,11 +196,16 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                 isExpanded={isExpanded}
                 mode={mode}
                 detail={caseDetail}
+                versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
                 onToggle={() => setExpandedCase(isExpanded ? null : item.id)}
                 onEdit={() => setExpandedCase(item.id, "edit")}
                 onCloseDetail={() => setExpandedCase(null)}
                 onSave={async (patch) => {
-                  await updateCaseMutation.mutateAsync({ caseId: item.id, ...patch });
+                  await updateCaseMutation.mutateAsync({
+                    caseId: item.id,
+                    ...patch,
+                    expectedVersion: Number.isInteger(caseDetail.lockVersion) ? caseDetail.lockVersion : undefined
+                  });
                   setExpandedCase(item.id, "view");
                 }}
                 onDelete={async () => {

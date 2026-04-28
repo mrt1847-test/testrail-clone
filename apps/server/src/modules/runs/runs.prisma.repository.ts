@@ -40,6 +40,7 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         data: instances.map((i) => ({
           runId: i.runId,
           caseId: i.caseId,
+          assignedTo: i.assignedTo ?? null,
           titleSnapshot: i.titleSnapshot,
           prioritySnapshot: i.prioritySnapshot,
           typeSnapshot: i.typeSnapshot,
@@ -53,6 +54,23 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         orderBy: { id: "asc" }
       });
       return rows.map((r: { status: string } & Record<string, unknown>) => ({ ...r, status: mapStatus(r.status) })) as TestInstance[];
+    },
+    async getRunById(runId) {
+      const row = await tx.testRun.findFirst({
+        where: { id: runId, deletedAt: null }
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        projectId: row.projectId,
+        suiteId: row.suiteId,
+        milestoneId: row.milestoneId ?? null,
+        name: row.name,
+        includeAll: row.includeAll,
+        status: row.status === "closed" ? "closed" : "open",
+        assignedTo: row.assignedTo ?? null,
+        environment: row.environment ?? null
+      };
     },
     async getInstancesByRunId(runId) {
       const rows = await tx.testInstance.findMany({
@@ -78,7 +96,8 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           elapsed: input.elapsed,
           version: input.version,
           defects: input.defects ?? [],
-          source: input.source ?? "manual"
+          source: input.source ?? "manual",
+          metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
       });
       return { id: row.id, testInstanceId: row.testInstanceId, status: mapStatus(row.status) };
@@ -113,6 +132,12 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {})
         }
+      });
+    },
+    async updateTestAssignee(testId, assignedTo) {
+      await tx.testInstance.update({
+        where: { id: testId },
+        data: { assignedTo }
       });
     },
     async getResultsByTestInstanceId(testId) {
@@ -210,6 +235,7 @@ export class PrismaRunsRepository implements RunsRepository {
       runId: bigint;
       caseId: bigint;
       status: string;
+      assignedTo: bigint | null;
       titleSnapshot: string;
       prioritySnapshot: string | null;
       typeSnapshot: string | null;
@@ -226,6 +252,7 @@ export class PrismaRunsRepository implements RunsRepository {
       runId: r.runId,
       caseId: r.caseId,
       status: mapStatus(r.status),
+      assignedTo: r.assignedTo ?? null,
       titleSnapshot: r.titleSnapshot,
       prioritySnapshot: r.prioritySnapshot,
       typeSnapshot: r.typeSnapshot,
@@ -233,6 +260,68 @@ export class PrismaRunsRepository implements RunsRepository {
       automationKeySnapshot: r.automationKeySnapshot,
       externalIdSnapshot: r.externalIdSnapshot
     }));
+  }
+
+  async listInstancesForRunPage(input: {
+    runId: bigint;
+    page: number;
+    pageSize: number;
+    status?: TestInstance["status"];
+    assignedTo?: bigint | null;
+    q?: string;
+  }): Promise<{ items: TestInstance[]; total: number }> {
+    type Row = {
+      id: bigint;
+      runId: bigint;
+      caseId: bigint;
+      status: string;
+      assignedTo: bigint | null;
+      titleSnapshot: string;
+      prioritySnapshot: string | null;
+      typeSnapshot: string | null;
+      estimateSnapshot: string | null;
+      automationKeySnapshot: string | null;
+      externalIdSnapshot: string | null;
+    };
+    const where: Prisma.TestInstanceWhereInput = {
+      runId: input.runId,
+      deletedAt: null,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {}),
+      ...(input.q
+        ? {
+            OR: [
+              { titleSnapshot: { contains: input.q, mode: "insensitive" } },
+              { caseId: { equals: /^\d+$/.test(input.q.replace(/^c/i, "")) ? BigInt(input.q.replace(/^c/i, "")) : -1n } }
+            ]
+          }
+        : {})
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.testInstance.findMany({
+        where,
+        orderBy: { id: "asc" },
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize
+      }),
+      this.prisma.testInstance.count({ where })
+    ]);
+    return {
+      items: (rows as Row[]).map((r) => ({
+        id: r.id,
+        runId: r.runId,
+        caseId: r.caseId,
+        status: mapStatus(r.status),
+        assignedTo: r.assignedTo ?? null,
+        titleSnapshot: r.titleSnapshot,
+        prioritySnapshot: r.prioritySnapshot,
+        typeSnapshot: r.typeSnapshot,
+        estimateSnapshot: r.estimateSnapshot,
+        automationKeySnapshot: r.automationKeySnapshot,
+        externalIdSnapshot: r.externalIdSnapshot
+      })),
+      total
+    };
   }
 
   async closeRun(runId: bigint): Promise<TestRun | null> {
@@ -280,6 +369,55 @@ export class PrismaRunsRepository implements RunsRepository {
       assignedTo: updated.assignedTo ?? null,
       environment: updated.environment ?? null
     };
+  }
+
+  async updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null> {
+    const row = await this.prisma.testInstance.findFirst({
+      where: { id: testId, deletedAt: null }
+    });
+    if (!row) return null;
+    const updated = await this.prisma.testInstance.update({
+      where: { id: testId },
+      data: { assignedTo }
+    });
+    return {
+      id: updated.id,
+      runId: updated.runId,
+      caseId: updated.caseId,
+      status: mapStatus(updated.status),
+      assignedTo: updated.assignedTo ?? null,
+      titleSnapshot: updated.titleSnapshot,
+      prioritySnapshot: updated.prioritySnapshot,
+      typeSnapshot: updated.typeSnapshot,
+      estimateSnapshot: updated.estimateSnapshot,
+      automationKeySnapshot: updated.automationKeySnapshot,
+      externalIdSnapshot: updated.externalIdSnapshot
+    };
+  }
+
+  async listAssignedTests(input: { projectId: bigint; userId: bigint }) {
+    const rows = await this.prisma.testInstance.findMany({
+      where: {
+        assignedTo: input.userId,
+        deletedAt: null,
+        run: { projectId: input.projectId, deletedAt: null }
+      },
+      include: {
+        run: { select: { id: true, name: true } },
+        testCase: { select: { id: true, title: true } }
+      },
+      orderBy: { id: "desc" },
+      take: 200
+    });
+    return rows.map((row: (typeof rows)[number]) => ({
+      testId: row.id,
+      runId: row.run.id,
+      runName: row.run.name,
+      caseId: row.testCase.id,
+      title: row.testCase.title,
+      status: mapStatus(row.status),
+      assignedTo: row.assignedTo ?? null
+    }));
   }
 
   async listResultsForTestInstance(testId: bigint) {

@@ -1,223 +1,186 @@
-# TestRail Clone Product Roadmap
+# Roadmap
 
-## Product Direction
-- Goal: Build a test management platform with stable domain boundaries rather than a simple CRUD app.
-- Core data flow priority: `Test Case (source spec) -> Test Run -> Test Instance -> Test Result history`.
-- API strategy: REST-first internal API, with compatibility adapters added later.
-- Integration strategy: Support CI/CLI automation uploads from Playwright, pytest, pytest-bdd, and Appium.
-- Frontend stack direction: React + TypeScript, with Tailwind CSS, shadcn/ui, TanStack Query, TanStack Table, and Recharts.
-- Backend stack direction: Node.js + TypeScript + Prisma + Supabase PostgreSQL, with Fastify as default API framework.
+This is the single current execution roadmap. Product requirements live in [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) and its linked spec documents.
 
-## MVP Baseline Clarification
-- MVP includes authentication and membership context:
-  - Login / logout / current user
-  - Project membership-aware authorization
-  - Role-based UI/API behavior (`owner`, `manager`, `tester`, `viewer`)
+## Current Status Snapshot
 
-## Implementation Status Snapshot (2026-04-28)
-- 완료: Phase 2 핵심 경로(Projects/Suites/Sections/Cases + Case step CRUD)
-- 완료: Phase 3 핵심 경로(Run 생성 include-all/selected-cases, snapshot instances, 결과 입력/이력, close run)
-- 완료: 인증/멤버십 baseline(Login/Me/Logout + mutation role guard)
-- 진행 중: Phase 5 baseline(overview/reports 위젯 집계 및 반영), traceability/coverage는 미완
-- 대기: Phase 4 고도화 deliverables(assignment/my-tests/rerun 확장, bulk result entry, attachment/defect link), Phase 6+ 이후 영역
+Date: 2026-04-28
 
-## Phase 0: Project Foundation
-### Goals
-- Establish architecture and repository structure for long-term expansion.
-- Define product-level scope and delivery sequence before implementation.
+Completed or mostly completed:
+- Project, suite, section, case, and case-step CRUD.
+- Run creation with include-all and selected-case flows.
+- Test instance snapshots during run creation.
+- Manual result entry, result history, run summary, and close-run workflow.
+- Auth/current-user/login/logout baseline.
+- Project membership role guards for mutations.
+- Overview and basic report widgets.
+- API token and automation upload baseline.
+- Assignment, My Tests, rerun, and bulk manual result entry baseline.
+- Result attachment metadata and defect link baseline.
+- Milestone and plan CRUD baseline.
+- Initial query invalidation and polling policy.
+- Run instance list server-side pagination/filter baseline (`/api/projects/:projectId/runs/:runId/instances`).
+- Project-wide result explorer server-side pagination/filter baseline (`/api/projects/:projectId/reports/results-explorer`).
+- Closed-run write protection baseline (result write rejects with `RUN_CLOSED`).
+- Bulk result error handling baseline improved (atomic pre-validation with clear `BULK_VALIDATION_FAILED` diagnostics).
+- Bulk validation diagnostics envelope standardized (`error.details.issues[]`) and API spec-aligned.
+- Result explorer filters expanded to API-spec set (`runId`, `caseId`, `testId`, `status`, `source`, `createdFrom`, `createdTo`, `q`) with server-side pagination.
+- Case version persistence baseline (`test_case_versions`) supports TestRail-style authored-change history.
+- Requirement CRUD and case-requirement link API baseline.
+- Traceability report and coverage-gap report baseline.
+- Defect coverage report baseline.
+- Configuration group/value CRUD baseline.
+- Plan matrix preview and run-by-configuration baseline.
+- Plan rollup by configuration baseline.
+- Plan detail matrix/rollup web binding baseline.
+- Plan detail entry-configuration mapping read baseline.
+- Defect integration settings + defect push/delete API baseline.
+- Attachment signed upload/download URL + metadata registration baseline.
+- Run detail attachment presign upload web binding baseline.
+- Run detail attachment open/delete web binding baseline.
+- Run detail defect push web binding baseline.
+- Defect integration settings web binding baseline.
+- Run detail defect push provider/feedback UX baseline.
+- Run detail defect unlink web binding baseline.
+- Case CSV import dry-run/commit API baseline with import job history.
+- Case CSV export and run result CSV export API baseline with export job history.
+- Import/Export project tab web binding baseline.
+- Report CSV export job baseline for run summary, result explorer, traceability, coverage gap, and defect coverage reports.
+- TestRail-compatible `/api/v2` adapter baseline for core case, run, test, and result automation endpoints.
 
-### Scope
-- Analyze repository and decide baseline structure (greenfield in current state).
-- Create core design documents:
-  - `docs/ROADMAP.md`
-  - `docs/DOMAIN_MODEL.md`
-  - `docs/API_SPEC.md`
-  - `docs/DATABASE_SCHEMA.md`
-  - `docs/IMPLEMENTATION_PLAN.md`
-- Set up monorepo skeleton for React(TypeScript) frontend + Node.js(TypeScript) backend + Supabase(PostgreSQL).
+Partially complete:
+- Result evidence storage is metadata-first; object storage signed URL flow is still needed.
+- Defect links exist, but provider integrations and push/create actions are still needed.
+- Case optimistic locking moved to `lockVersion` + `expectedVersion`/`If-Match` baseline.
+- Reports baseline exists, but advanced traceability/coverage refinement is still pending.
+- Plan matrix semantics and rollup depth still need refinement, but Plan detail now consumes matrix/rollup APIs as a baseline.
+- Import/export exists as API/UI baseline; report export has a job/download baseline, while larger async file lifecycle is still pending.
 
-### Exit Criteria
-- Documents exist and align on shared vocabulary.
-- Layered backend skeleton is created (`API -> service -> repository/db`).
-- Phase 1 implementation tasks are clearly broken down.
+Not yet complete:
+- Activity feed and notification delivery.
+- Custom fields, custom statuses, and case templates.
+- TestRail-compatible `/api/v2` adapter completion beyond the core baseline.
 
-## Phase 1: Core Domain Model & Database
-### Goals
-- Implement foundational domain entities and persistence model.
-- Lock the separation between `TestCase`, `TestInstance`, and `TestResult`.
+## Delivery Phases From Here
 
-### Scope
-- Create base schema/migrations/tables for:
-  - users, projects, project_members
-  - test_suites, sections, test_cases, test_case_steps
-  - test_runs, test_instances, test_results, test_result_steps
-  - test_plans, test_plan_entries, milestones
-  - attachments, api_tokens, audit_logs
-- Add standard metadata:
-  - `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`
-- Add snapshot fields in `test_instances`:
-  - `title_snapshot`, `priority_snapshot`, `type_snapshot` (and related fields where needed)
-- Add initial seed data for local development.
+### Phase 1: Stabilize Execution Core
 
-### Exit Criteria
-- Migration applies cleanly.
-- Seed data inserts without FK violations.
-- Domain invariants are represented in schema and model constraints.
+Goal: make the current run/result workflow dependable under real team usage.
 
-## Phase 2: Project / Suite / Section / Case Management
-### Goals
-- Provide stable authoring workflows for test case specifications.
+Scope:
+- Server-side pagination and filtering for run instance lists.
+- Project-wide result explorer with server-side pagination/filtering.
+- Consistent result-entry cache invalidation.
+- Closed-run write protection policy.
+- Better bulk result error handling.
 
-### Scope
-- Projects CRUD
-- Suites CRUD by project
-- Section tree CRUD (nested sections via `parent_section_id`)
-- Test Case CRUD and step CRUD
-- Case list query/filter/search
+Exit criteria:
+- Large runs do not require loading every related object at once.
+- Result entry remains responsive and does not refresh unrelated project data.
+- Closed runs cannot receive accidental results.
 
-### Exit Criteria
-- Users can create and organize cases in section hierarchy.
-- Case details and case step ordering are persisted correctly.
-- API responses follow common error and pagination format.
+### Phase 2: Case History and Edit Safety
 
-## Phase 3: Runs / Instances / Results
-### Goals
-- Build execution workflow with immutable history and current status tracking.
+Goal: make authored test cases safe for collaboration.
 
-### Scope
-- Test Run CRUD and close workflow
-- Run creation modes:
-  - include all cases
-  - selected case IDs
-- Generate `test_instances` from selected cases with snapshot data
-- Result entry APIs:
-  - single result per test instance
-  - run-level result posting
-- Keep `test_results` append-only and sync latest status to `test_instances`
-- Compute run progress/status counts
+Scope:
+- `test_case_versions` persistence.
+- Case version creation on meaningful authored-content changes.
+- Version history API and UI.
+- Consistent optimistic locking with `lock_version` or `If-Match`.
 
-### Exit Criteria
-- Run generation works with both include-all and selected-cases flow.
-- Posting a new result updates instance latest status and preserves history.
-- Run detail surfaces status distribution and completion progress.
+Exit criteria:
+- Concurrent edits produce conflict responses instead of silent overwrites.
+- Runs can record the selected case version.
 
-## Phase 4: Automation Upload API
-### Goals
-- Open the system to automation pipelines and make CI-driven result ingestion a first-class capability.
+### Phase 3: Traceability and Reporting
 
-### Scope
-- API tokens for machine authentication
-- Bulk result upload endpoints
-- Mapping by `case_id`, `automation_key`, and `external_id`
-- Store `comment`, `elapsed`, `version`, `defects`, and step results
-- Support CI metadata (`external_run_id`, `ci_provider`, `ci_build_id`, `job_url`, `commit_sha`, `branch`, `attempt`)
-- Execution productivity inside run workflow:
-  - test assignment (`run-level`, `instance-level`)
-  - `My Tests` / `Assigned to me` query views
-  - rerun workflow (`failed`/`blocked`/`retest`/`all` filters)
-  - bulk result entry path for fast triage
-  - result attachments and defect linking from result entry panel
+Goal: answer release-risk questions like "what requirement is untested or failing?"
 
-### Exit Criteria
-- CI tools can upload results reliably via token-auth APIs.
-- Bulk upload supports partial failures with consistent error format.
-- Atomic and non-atomic bulk upload modes are both validated.
-- Teams can assign/reassign execution work and rerun selected subsets without manual run recreation.
+Scope:
+- Requirement CRUD.
+- Case-to-requirement links.
+- Requirement coverage report.
+- Coverage gap report.
+- Traceability matrix.
+- Defect coverage report.
 
-### Deliverables (Must-have)
-- `run assignment + my tests` API/UI path
-- `rerun` API with status filters
-- `bulk result entry` path in run detail
-- `result attachment + defect link` from execution context
+Exit criteria:
+- Requirements can be linked to cases.
+- Reports can trace requirement -> case -> run/test/result -> defect.
+- Coverage reports support milestone/run/plan filters.
 
-## Phase 5: Dashboard & Reports
-### Goals
-- Provide operational visibility for QA and release teams.
+### Phase 4: Planning Matrix
 
-### Scope
-- Project dashboard (case count, active runs, recent failures, automation coverage)
-- Run summary and failed case views
-- Status trend and recent result reports
-- Milestone progress views
-- Traceability and coverage analytics:
-  - requirement/reference links
-  - requirement coverage report
-  - defect coverage report
-  - traceability matrix (requirement -> case -> run/result)
-- Collaboration views:
-  - activity timeline (case/run/result)
-  - comments/mentions in execution context
-  - notification feed + notification preference model
+Goal: support TestRail-style planning across real environment combinations.
 
-### Exit Criteria
-- Core report widgets load from domain-level aggregation queries.
-- Teams can identify quality risk and release readiness quickly.
-- Teams can answer "what is untested, what failed, and what requirement is at risk" from dashboards/reports.
+Scope:
+- Configuration groups and values.
+- Plan entry configuration mapping.
+- Matrix preview and run generation.
+- Plan rollup by configuration.
 
-### Deliverables (Must-have)
-- traceability matrix report
-- requirement coverage and coverage gap report
-- recent failures/results and run summary widgets
-- activity timeline read view
+Exit criteria:
+- Plans no longer depend only on free-text environment strings.
+- Users can generate runs from selected configuration combinations.
+- Plan detail shows status per entry/configuration.
 
-## Phase 6: Milestones / Plans / Environment Matrix
-### Goals
-- Support release-level planning across environments/devices.
+### Phase 5: Evidence, Defects, and Integrations
 
-### Scope
-- Milestone CRUD
-- Test Plan CRUD
-- Plan entries for environment combinations (Chrome/Safari/Android/iOS, etc.)
-- Generate and track linked runs per plan entry
-- Promote configurations to first-class domain:
-  - `configuration_groups`
-  - `configurations`
-  - `plan_entry_configurations`
-- Plan-level rerun and entry-level run generation workflow
-- Import/export for planning and execution operations:
-  - cases CSV import/export
-  - runs/results export
-  - report export (CSV/PDF in later iteration)
+Goal: make execution evidence and defect workflows production-grade.
 
-### Exit Criteria
-- Users can manage release plans with environment-specific runs.
-- Plan detail provides per-run and rolled-up status summary.
-- Configuration matrix is reusable and does not depend on free-text environment strings.
+Scope:
+- Object storage upload/download signed URLs.
+- Attachment preview and deletion permissions.
+- Defect integration settings.
+- Jira/GitHub/Azure-style URL templates.
+- Push/create defect action baseline.
 
-### Deliverables (Must-have)
-- configuration group/value management
-- plan-entry configuration mapping
-- run generation by plan entry configuration
-- import/export baseline (cases CSV, results CSV)
+Exit criteria:
+- Binary evidence is stored outside PostgreSQL.
+- Result detail can reliably show evidence and linked defects.
+- Defect links power reporting rather than remaining display-only text.
 
-## Phase 7: Advanced Platform Features
-### Goals
-- Reach production-grade governance and extensibility.
+### Phase 6: Import, Export, and Compatibility
 
-### Scope
-- Custom fields
-- Custom result statuses
-- Case templates
-- Attachments (result evidence files)
-- Project/member permission model hardening
-- Webhook events
-- Audit log query and compliance support
-- Defect integration UX and provider adapters:
-  - project integration settings
-  - defect URL templates
-  - push/create defect actions from result context
-- Notification delivery:
-  - assignment notifications
-  - failed-result notifications
-  - scheduled summary reports
-- TestRail-like API adapter completion and compatibility expansion
+Goal: make migration and automation adoption realistic.
 
-### Exit Criteria
-- Auditability and access controls meet team governance needs.
-- Integration surface is stable enough for external ecosystem onboarding.
-- Admins can configure fields/statuses/templates/integrations without schema migration for each project.
+Scope:
+- Case CSV import with dry-run validation. (API baseline done)
+- Cases/results CSV exports. (API baseline done)
+- Import/export job history. (API baseline done)
+- Browser import/export UI. (baseline done)
+- Report exports as async jobs. (job/download baseline done)
+- TestRail-compatible `/api/v2` adapter baseline. (core case/run/test/result endpoints done)
+- Token scopes and compatibility examples.
 
-### Deliverables (Must-have)
-- custom field/status/template admin
-- defect integration settings + push action baseline
-- notification preferences + assignment/failure notification delivery
+Exit criteria:
+- Users can validate imports before committing.
+- Large exports do not block the browser.
+- Existing automation clients can target a compatibility surface.
+
+### Phase 7: Collaboration and Administration
+
+Goal: support daily team operations and project administration.
+
+Scope:
+- Activity feed.
+- Notification inbox and preferences.
+- Custom fields.
+- Custom result statuses.
+- Case templates.
+- Audit log query UI.
+- Webhook event model.
+
+Exit criteria:
+- Users can follow assignments, failures, and project activity.
+- Admins can configure project behavior without schema changes.
+- Auditable product events are queryable.
+
+## Priority Rules
+
+1. Preserve the case -> run -> instance -> result history model before adding decorative UI.
+2. Prefer DB-backed, paginated, indexed workflows over client-only expansion.
+3. Fix execution bottlenecks before advanced administration.
+4. If implementation conflicts with specs, update [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [API_SPEC.md](./API_SPEC.md), [DOMAIN_MODEL.md](./DOMAIN_MODEL.md), [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md), or [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md) first.
+5. Keep old roadmap files as redirects only; this file is the current delivery source.

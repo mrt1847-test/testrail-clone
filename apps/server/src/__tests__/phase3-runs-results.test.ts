@@ -20,6 +20,12 @@ describe("phase3 runs/results flow", () => {
       payload: { email: "admin@example.com", password: "password" }
     });
     const { token } = loginRes.json() as { token: string };
+    const meRes = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const meUserId = (meRes.json() as { user: { id: string } }).user.id;
     const headers = { authorization: `Bearer ${token}` };
 
     const projectRes = await app.inject({
@@ -120,6 +126,23 @@ describe("phase3 runs/results flow", () => {
     expect(history.length).toBe(1);
     expect(history[0].testInstanceId).toBe(testId);
     expect(history[0].status).toBe("passed");
+
+    const assignTestRes = await app.inject({
+      method: "PATCH",
+      url: `/api/tests/${testId}/assignee`,
+      headers,
+      payload: { assignedTo: meUserId }
+    });
+    expect(assignTestRes.statusCode).toBe(200);
+
+    const assignedToMeRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tests/assigned-to-me`,
+      headers
+    });
+    expect(assignedToMeRes.statusCode).toBe(200);
+    const assignedPayload = assignedToMeRes.json() as { data: { items: Array<{ testId: string }> } };
+    expect(assignedPayload.data.items.some((item) => item.testId === testId)).toBe(true);
 
     const stepsRes = await app.inject({
       method: "GET",
@@ -318,5 +341,49 @@ describe("phase3 runs/results flow", () => {
       headers
     });
     expect(removeRes.statusCode).toBe(409);
+  });
+
+  it("supports token compatibility routes", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Token Compat Project" }
+    });
+    expect(projectRes.statusCode).toBe(200);
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/tokens",
+      payload: { projectId, name: "compat token" }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const created = createRes.json() as { data: { id: string; projectId: string; name: string }; rawToken: string };
+    expect(created.data.projectId).toBe(projectId);
+    expect(created.data.name).toBe("compat token");
+    expect(created.rawToken).toContain("tok_");
+
+    const listRes = await app.inject({
+      method: "GET",
+      url: `/api/tokens?projectId=${projectId}`
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listPayload = listRes.json() as { data: Array<{ id: string; projectId: string }> };
+    expect(listPayload.data.some((item) => item.id === created.data.id)).toBe(true);
+
+    const deleteRes = await app.inject({
+      method: "DELETE",
+      url: `/api/tokens/${created.data.id}?projectId=${projectId}`
+    });
+    expect(deleteRes.statusCode).toBe(204);
   });
 });

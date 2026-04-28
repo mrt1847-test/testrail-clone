@@ -329,3 +329,124 @@
 - Error state: 저장 실패
 - MVP 여부: 후순위
 - Later 확장 여부: 시간대/요약 리포트 주기
+
+---
+
+# Product Spec Addendum: TestRail-like Gaps
+
+This addendum is the canonical screen-level supplement for making the app behave like a practical TestRail alternative. The older screen list remains useful for the current app shell, but the screens below should be treated as required product specs before calling the product complete.
+
+## A) Case History and Versioning
+
+### Screen: Case Version History
+- Route: `/projects/:projectId/cases/:caseId/versions`
+- Purpose: show immutable case revisions, compare authored changes, and restore a previous version.
+- Primary user actions: view version list, compare versions, restore version, copy version link.
+- Main components: `CaseVersionTimeline`, `CaseVersionDiff`, `CaseRestoreDialog`.
+- Required API: `GET /api/cases/:caseId/versions`, `GET /api/cases/:caseId/versions/:versionId`, `POST /api/cases/:caseId/versions/:versionId/restore`.
+- Required states: paginated loading, no versions yet, stale restore conflict, restore success.
+
+## B) Requirements and Traceability
+
+### Screen: Requirement List
+- Route: `/projects/:projectId/requirements`
+- Purpose: manage requirement/reference items that must be covered by test cases.
+- Primary user actions: create requirement, edit requirement, link/unlink cases, filter uncovered requirements.
+- Main components: `RequirementTable`, `RequirementEditor`, `RequirementCaseLinkPanel`.
+- Required API: `GET /api/projects/:projectId/requirements`, `POST /api/projects/:projectId/requirements`, `PATCH /api/requirements/:requirementId`, `POST /api/cases/:caseId/requirements`.
+- Required states: no requirements, duplicate key validation, link conflict.
+
+### Screen: Traceability Matrix
+- Route: `/projects/:projectId/reports/traceability`
+- Purpose: show requirement -> case -> run/result -> defect coverage in one matrix.
+- Primary user actions: filter by milestone/plan/run/status, drill into requirement/case/result, export.
+- Main components: `TraceabilityMatrix`, `CoverageFilterBar`, `CoverageExportAction`.
+- Required API: `GET /api/projects/:projectId/reports/traceability`, `GET /api/projects/:projectId/reports/coverage-gaps`.
+- Required states: long-running report loading, partial report error, export queued.
+
+## C) Plan Configuration Matrix
+
+### Screen: Configuration Settings
+- Route: `/projects/:projectId/settings/configurations`
+- Purpose: define reusable configuration groups and values such as Browser, OS, Device, Locale.
+- Primary user actions: create group, reorder groups, create values, disable values.
+- Main components: `ConfigurationGroupList`, `ConfigurationValueTable`.
+- Required API: `GET /api/projects/:projectId/configuration-groups`, `POST /api/projects/:projectId/configuration-groups`, `POST /api/configuration-groups/:groupId/configurations`.
+- Required states: duplicate value validation, disabled value warning.
+
+### Screen: Plan Matrix Builder
+- Route: `/projects/:projectId/plans/:planId/matrix`
+- Purpose: generate plan entries/runs from selected cases and selected configuration combinations.
+- Primary user actions: select configuration groups, preview combinations, create entries/runs.
+- Main components: `PlanMatrixBuilder`, `ConfigurationCombinationPreview`, `RunGenerationSummary`.
+- Required API: `GET /api/projects/:projectId/configuration-groups`, `POST /api/projects/:projectId/plans/:planId/entries`.
+- Required states: too many combinations warning, no cases selected, generation conflict.
+
+## D) Execution Evidence and Defects
+
+### Screen: Result Evidence Panel
+- Route: embedded in `/projects/:projectId/runs/:runId`
+- Purpose: attach screenshots/logs/traces to a result without reloading the run.
+- Primary user actions: upload attachment, preview metadata, download, delete if permitted.
+- Main components: `ResultAttachmentList`, `AttachmentUploadDropzone`, `AttachmentPreviewDrawer`.
+- Required API: `POST /api/attachments/presign-upload`, `POST /api/results/:resultId/attachments`, `GET /api/attachments/:attachmentId/download-url`.
+- Required states: upload progress, upload failed, expired signed URL.
+
+### Screen: Defect Link Panel
+- Route: embedded in result detail drawers.
+- Purpose: link failed results to Jira/GitHub/Azure-style defects and power defect coverage reports.
+- Primary user actions: add defect key/url, remove link, open external defect.
+- Main components: `DefectLinkList`, `DefectLinkForm`, `DefectProviderBadge`.
+- Required API: `GET /api/results/:resultId/defects`, `POST /api/results/:resultId/defects`, `DELETE /api/results/:resultId/defects/:linkId`.
+- Required states: invalid defect key, provider not configured, duplicate link.
+
+## E) Import, Export, and Compatibility
+
+### Screen: Import Wizard
+- Route: `/projects/:projectId/import`
+- Purpose: import cases/results from CSV/XML/JSON with dry-run validation before commit.
+- Primary user actions: upload file, map columns, run dry-run, fix row errors, commit import.
+- Main components: `ImportFileStep`, `ImportMappingStep`, `ImportValidationTable`, `ImportCommitSummary`.
+- Required API: `POST /api/projects/:projectId/import/cases`, `GET /api/projects/:projectId/import-jobs/:jobId`.
+- Required states: parsing failed, row validation errors, import job running, import completed.
+
+### Screen: Export Center
+- Route: `/projects/:projectId/exports`
+- Purpose: generate downloadable case/result/report exports without blocking the browser.
+- Primary user actions: choose export type, set filters, start export, download completed file.
+- Main components: `ExportJobList`, `ExportCreateDialog`, `ExportDownloadAction`.
+- Required API: `POST /api/projects/:projectId/export/cases`, `POST /api/projects/:projectId/export/results`, `GET /api/projects/:projectId/export-jobs`.
+- Required states: export queued, export failed, file expired.
+
+### Screen: API Compatibility Settings
+- Route: `/projects/:projectId/settings/api-compatibility`
+- Purpose: expose TestRail-compatible `/api/v2` behavior, token scopes, and automation upload examples.
+- Primary user actions: view compatibility status, create token, copy endpoint examples, revoke token.
+- Main components: `CompatibilityStatusCard`, `ApiTokenList`, `AutomationExamplePanel`.
+- Required API: `GET /api/projects/:projectId/tokens`, `POST /api/projects/:projectId/tokens`, `DELETE /api/projects/:projectId/tokens/:tokenId`.
+- Required states: no token, token expired, insufficient scope.
+
+## F) Activity and Notifications
+
+### Screen: Project Activity Feed
+- Route: `/projects/:projectId/activity`
+- Purpose: show project-wide audit/activity events in a human-readable timeline.
+- Primary user actions: filter by actor/entity/event, open related object.
+- Main components: `ActivityFeed`, `ActivityFilterBar`, `ActivityEntityLink`.
+- Required API: `GET /api/projects/:projectId/activity`.
+- Required states: cursor pagination loading, no activity, permission denied.
+
+### Screen: Notification Inbox
+- Route: `/notifications`
+- Purpose: show assignment, failed-result, and project activity notifications across projects.
+- Primary user actions: mark read, open target, filter unread.
+- Main components: `NotificationInbox`, `NotificationFilterTabs`, `NotificationPreferenceLink`.
+- Required API: `GET /api/notifications`, `PATCH /api/notifications/:notificationId/read`, `PATCH /api/notifications/preferences`.
+- Required states: no notifications, stale target deleted, preference update failed.
+
+## Cross-Screen Performance Rules
+- Case/run/result lists must be paginated and filterable.
+- Expensive children such as steps, attachments, result history, and defect links load on row expansion or drawer open.
+- Result entry updates the active test instance and summary counters optimistically, then revalidates the active run only.
+- Realtime events should invalidate scoped queries. They must not force a full project reload.
+- Report screens may use cached/materialized summaries, but detail drill-down must link back to canonical append-only records.

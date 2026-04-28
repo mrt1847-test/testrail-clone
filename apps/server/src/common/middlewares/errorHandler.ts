@@ -8,7 +8,8 @@ export function handleRouteError(error: unknown, _req: FastifyRequest, reply: Fa
     return reply.status(error.statusCode).send({
       error: {
         code: error.code,
-        message: error.message
+        message: error.message,
+        ...(error.details !== undefined ? { details: error.details } : {})
       }
     });
   }

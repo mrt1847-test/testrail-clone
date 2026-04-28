@@ -21,7 +21,9 @@ export function ReportsPage() {
       );
       return res.data;
     },
-    enabled: Boolean(projectId)
+    enabled: Boolean(projectId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
   });
 
   const failureTrendQuery = useQuery({
@@ -32,7 +34,9 @@ export function ReportsPage() {
       );
       return res.data.points;
     },
-    enabled: Boolean(projectId)
+    enabled: Boolean(projectId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
   });
 
   const runSummaryQuery = useQuery({
@@ -43,7 +47,9 @@ export function ReportsPage() {
       );
       return res.data.items;
     },
-    enabled: Boolean(projectId)
+    enabled: Boolean(projectId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
   });
 
   const statusDistribution = statusDistributionQuery.data;

@@ -5,12 +5,14 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { createPlan, fetchPlans } from "../api/advancedApi";
+import { createPlan, deletePlan, fetchPlans, updatePlan } from "../api/advancedApi";
 
 export function PlansPage() {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
   const [newPlanName, setNewPlanName] = useState("");
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [editingPlanName, setEditingPlanName] = useState("");
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["plans", projectId],
     queryFn: () => fetchPlans(projectId),
@@ -21,6 +23,20 @@ export function PlansPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["plans", projectId] });
       setNewPlanName("");
+    }
+  });
+  const updatePlanMutation = useMutation({
+    mutationFn: (input: { planId: string; name: string }) => updatePlan(projectId, input.planId, input.name),
+    onSuccess: () => {
+      setEditingPlanId(null);
+      setEditingPlanName("");
+      void qc.invalidateQueries({ queryKey: ["plans", projectId] });
+    }
+  });
+  const deletePlanMutation = useMutation({
+    mutationFn: (planId: string) => deletePlan(projectId, planId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["plans", projectId] });
     }
   });
 
@@ -55,9 +71,57 @@ export function PlansPage() {
           <ul className="mt-3 space-y-2 text-sm text-slate-800">
             {data.map((row) => (
               <li key={row.id} className="rounded border border-slate-200 px-3 py-2">
-                <Link to={`/projects/${projectId}/plans/${row.id}`} className="underline">
-                  {row.name}
-                </Link>
+                {editingPlanId === row.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                      value={editingPlanName}
+                      onChange={(e) => setEditingPlanName(e.target.value)}
+                    />
+                    <button
+                      className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+                      disabled={!editingPlanName.trim() || updatePlanMutation.isPending}
+                      onClick={() =>
+                        void updatePlanMutation.mutateAsync({ planId: row.id, name: editingPlanName.trim() })
+                      }
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="rounded border border-slate-300 px-2 py-1 text-xs"
+                      onClick={() => {
+                        setEditingPlanId(null);
+                        setEditingPlanName("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <Link to={`/projects/${projectId}/plans/${row.id}`} className="underline">
+                      {row.name}
+                    </Link>
+                    <div className="flex items-center gap-1">
+                      <button
+                        className="rounded border border-slate-300 px-2 py-1 text-xs"
+                        onClick={() => {
+                          setEditingPlanId(row.id);
+                          setEditingPlanName(row.name);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-50"
+                        disabled={deletePlanMutation.isPending}
+                        onClick={() => void deletePlanMutation.mutateAsync(row.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

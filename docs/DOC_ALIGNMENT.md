@@ -1,50 +1,64 @@
-# Documentation Alignment Notes
+# Documentation Alignment
 
-이 문서는 구현 단계에서 문서 간 경계를 맞추기 위한 기준 메모다.
+This document defines which docs are canonical and where future updates should go.
 
 ## Canonical Documents
-- 제품 범위(phase/우선순위): `docs/ROADMAP.md`
-- 현재 구현 상태 기반 실행 로드맵: `docs/INTEGRATED_ROADMAP.md`
-- 도메인 용어/불변식: `docs/DOMAIN_MODEL.md`
-- API 계약/경로/응답 규약: `docs/API_SPEC.md`
-- DB 구조/정책: `docs/DATABASE_SCHEMA.md`
-- 화면/라우트/행동 기준: `docs/SCREEN_INVENTORY.md`
 
-보조 문서(`UI_ROADMAP`, `UI_FLOW`, `COMPONENT_MAP`, `FRONTEND_ARCHITECTURE`, `ROUTE_MAP`)는 canonical 문서와 상충할 수 없다.
+- Product specification entry point: [PRODUCT_SPEC.md](./PRODUCT_SPEC.md)
+- Current execution roadmap: [ROADMAP.md](./ROADMAP.md)
+- Domain terms and invariants: [DOMAIN_MODEL.md](./DOMAIN_MODEL.md)
+- API contracts, paths, request/response rules: [API_SPEC.md](./API_SPEC.md)
+- Database schema and persistence policy: [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
+- Screen requirements, routes, UX states: [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md)
+- Route hierarchy and navigation rules: [ROUTE_MAP.md](./ROUTE_MAP.md)
+- Component ownership and implementation status: [COMPONENT_MAP.md](./COMPONENT_MAP.md)
+- Frontend architecture and data-flow rules: [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md)
+- Implementation task breakdown: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
 
-## Duplication Rules
-- API endpoint 목록과 요청/응답 계약은 `API_SPEC.md`에 둔다.
-- 화면별 required API, loading/empty/error 요구사항은 `SCREEN_INVENTORY.md`에 둔다.
-- 프론트엔드 route hierarchy와 query/navigation rule은 `ROUTE_MAP.md`에 둔다.
-- 컴포넌트 책임, 구현 상태, 교체 가능성은 `COMPONENT_MAP.md`에 둔다.
-- UI phase, delivery tier, phase exit criteria는 `UI_ROADMAP.md`에 둔다.
-- 현재 진행도, 다음 batch 순서, 단기 completion target은 `INTEGRATED_ROADMAP.md`에 둔다.
-- 실제 구현 task, 파일 단위 작업, phase dependency는 `IMPLEMENTATION_PLAN.md`에 둔다.
-- 보조 문서에서 canonical 정보를 다시 써야 할 때는 전체 목록을 복사하지 말고 해당 canonical 문서를 링크한다.
-- 같은 route/API/component 목록이 두 문서 이상에 필요해 보이면 먼저 어느 문서가 source of truth인지 정한 뒤 나머지는 요약/링크만 남긴다.
+## Spec vs Roadmap Boundary
 
-## Canonical Boundaries
-- `TestCase`: 설계 시점 명세
-- `TestInstance`: run 생성 시 materialize 되는 실행 단위
-- `TestResult`: append-only 결과 이력
+Put product requirements in spec documents:
+
+- Domain concepts and invariants go in `DOMAIN_MODEL.md`.
+- API endpoint lists and request/response contracts go in `API_SPEC.md`.
+- Storage structure, indexes, and consistency policy go in `DATABASE_SCHEMA.md`.
+- Screen-level actions, required APIs, loading/empty/error states go in `SCREEN_INVENTORY.md`.
+- Overall product capability expectations go in `PRODUCT_SPEC.md`.
+
+Put delivery order in roadmap documents:
+
+- Current phases, progress, and next implementation priorities go in `ROADMAP.md`.
+- File-level implementation details can stay in `IMPLEMENTATION_PLAN.md`, but they must not redefine product behavior.
+
+If a roadmap item conflicts with a spec, update the spec first and then adjust the roadmap.
+
+## Canonical Domain Boundaries
+
+- `TestCase`: authored source specification.
+- `TestCaseVersion`: immutable case history.
+- `TestRun`: execution container.
+- `TestInstance`: run-scoped executable snapshot.
+- `TestResult`: append-only execution history.
 
 ## API Path Convention
-- 프로젝트 스코프: `/api/projects/:projectId/*`
-- run 생성 표준: `POST /api/projects/:projectId/runs`
-- 런 상세 조회(권장): `/api/projects/:projectId/runs/:runId`
-- 런 상세 조회(호환): `/api/runs/:runId`
-- 결과 등록/조회: `/api/runs/:runId/results*`, `/api/tests/:testId/results`
-- 토큰/설정 API는 프로젝트 스코프 우선: `/api/projects/:projectId/tokens`, `/api/projects/:projectId/settings/*`
+
+- Project-scoped endpoints prefer `/api/projects/:projectId/*`.
+- Run creation: `POST /api/projects/:projectId/runs`.
+- Run detail: `/api/projects/:projectId/runs/:runId`.
+- Result registration/query: `/api/runs/:runId/results*`, `/api/tests/:testId/results`.
+- Token and settings APIs prefer project scope: `/api/projects/:projectId/tokens`, `/api/projects/:projectId/settings/*`.
+- Compatibility endpoints may live under `/api/v2`, but should reuse the same service layer.
 
 ## Naming Convention
-- API camelCase 우선: `pageSize`, `caseId`, `testId`
-- 하위 호환 alias 허용: `page_size`, `case_id`, `test_id`
-- 문서 예시는 canonical(`camelCase`)을 우선 사용하고, alias는 호환 설명에서만 사용한다.
+
+- API examples prefer camelCase: `pageSize`, `caseId`, `testId`.
+- Compatibility aliases such as `page_size`, `case_id`, `test_id` may be supported, but should be documented as aliases.
 
 ## Schema Baseline
-- Audit 필드: `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`
-- `test_instances` snapshot 불변
-- `test_results` append-only
-- attachments는 `entity_type + entity_id`로 다형 참조
-- 구현/문서 불일치가 있으면 `DATABASE_SCHEMA.md`에 `Current Implementation` 섹션으로 명시한다.
-- `docs/DB_SCHEMA.md`는 `docs/DATABASE_SCHEMA.md`를 가리키는 alias 문서로만 유지한다(내용 원본 작성 금지).
+
+- Audit fields: `created_at`, `updated_at`, `deleted_at`, `created_by`, `updated_by`.
+- `test_instances` snapshots are immutable after run creation.
+- `test_results` are append-only.
+- Authored records use optimistic locking where concurrent edits are possible.
+- Attachments store metadata in PostgreSQL and binary content in object storage.
+- Use `docs/DATABASE_SCHEMA.md` directly for schema content.

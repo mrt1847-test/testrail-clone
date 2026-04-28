@@ -3,11 +3,22 @@ import type { PrismaClient, Prisma } from "@prisma/client";
 import type {
   CaseRow,
   CaseStepRow,
+  CaseVersionRow,
   ProjectRow,
   ProjectsRepository,
   SectionRow,
   SuiteRow
 } from "./projects.repository.js";
+
+function serializeCaseSnapshot(input: {
+  title: string;
+  priority?: string | null;
+  caseType?: string | null;
+  preconditions?: string | null;
+  stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+}) {
+  return JSON.stringify(input);
+}
 
 function mapCaseStepRow(r: {
   id: bigint;
@@ -205,7 +216,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     return this.prisma.testCase.findMany({
       where: { projectId, suiteId, deletedAt: null },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
     });
   }
 
@@ -219,11 +230,11 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(params.q ? { title: { contains: params.q, mode: "insensitive" } } : {})
       },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
     });
   }
 
-  async createCase(input: Omit<CaseRow, "id">): Promise<CaseRow> {
+  async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow> {
     const section = await this.prisma.section.findFirst({
       where: { id: input.sectionId, deletedAt: null },
       select: { suiteId: true }
@@ -250,7 +261,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ? { preconditions: input.preconditions }
           : {})
       },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
     });
   }
 
@@ -263,7 +274,9 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         title: true,
         priority: true,
         caseType: true,
-        preconditions: true
+        preconditions: true,
+        lockVersion: true,
+        updatedAt: true
       }
     });
   }
@@ -275,6 +288,90 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       select: { id: true, stepOrder: true, content: true, expectedResult: true }
     });
     return rows.map((r: (typeof rows)[number]) => mapCaseStepRow(r));
+  }
+
+  async listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]> {
+    const rows = await this.prisma.testCaseVersion.findMany({
+      where: { caseId },
+      orderBy: { versionNo: "desc" }
+    });
+    return rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      caseId: row.caseId,
+      versionNo: row.versionNo,
+      title: row.title,
+      priority: row.priority ?? null,
+      caseType: row.caseType ?? null,
+      preconditions: row.preconditions ?? null,
+      stepsSnapshot:
+        (Array.isArray(row.stepsSnapshot)
+          ? row.stepsSnapshot
+          : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
+      changeReason: row.changeReason ?? null,
+      createdAt: row.createdAt
+    }));
+  }
+
+  async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
+    const current = await this.getCase(caseId);
+    if (!current) return null;
+    const steps = await this.listCaseSteps(caseId);
+    const stepsSnapshot = steps.map((s) => ({
+      stepOrder: s.stepOrder,
+      content: s.content,
+      expectedResult: s.expectedResult ?? null
+    }));
+    const latest = await this.prisma.testCaseVersion.findFirst({
+      where: { caseId },
+      orderBy: { versionNo: "desc" }
+    });
+    const snapshotSignature = serializeCaseSnapshot({
+      title: current.title,
+      priority: current.priority ?? null,
+      caseType: current.caseType ?? null,
+      preconditions: current.preconditions ?? null,
+      stepsSnapshot
+    });
+    if (latest) {
+      const latestSignature = serializeCaseSnapshot({
+        title: latest.title,
+        priority: latest.priority ?? null,
+        caseType: latest.caseType ?? null,
+        preconditions: latest.preconditions ?? null,
+        stepsSnapshot:
+          (Array.isArray(latest.stepsSnapshot)
+            ? latest.stepsSnapshot
+            : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>
+      });
+      if (latestSignature === snapshotSignature) return null;
+    }
+    const created = await this.prisma.testCaseVersion.create({
+      data: {
+        caseId,
+        versionNo: (latest?.versionNo ?? 0) + 1,
+        title: current.title,
+        priority: current.priority ?? null,
+        caseType: current.caseType ?? null,
+        preconditions: current.preconditions ?? null,
+        stepsSnapshot: stepsSnapshot as Prisma.InputJsonValue,
+        changeReason: reason ?? null
+      }
+    });
+    return {
+      id: created.id,
+      caseId: created.caseId,
+      versionNo: created.versionNo,
+      title: created.title,
+      priority: created.priority ?? null,
+      caseType: created.caseType ?? null,
+      preconditions: created.preconditions ?? null,
+      stepsSnapshot:
+        (Array.isArray(created.stepsSnapshot)
+          ? created.stepsSnapshot
+          : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
+      changeReason: created.changeReason ?? null,
+      createdAt: created.createdAt
+    };
   }
 
   async createCaseStep(input: {
@@ -374,17 +471,39 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
 
   async updateCase(
     caseId: bigint,
-    patch: Partial<Omit<CaseRow, "id" | "sectionId">>
-  ): Promise<CaseRow | null> {
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    expectedVersion?: number
+  ): Promise<CaseRow | "conflict" | null> {
     const found = await this.getCase(caseId);
     if (!found) return null;
+    if (expectedVersion !== undefined) {
+      const updated = await this.prisma.testCase.updateMany({
+        where: {
+          id: caseId,
+          deletedAt: null,
+          lockVersion: expectedVersion
+        },
+        data: {
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+          ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
+          ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+          lockVersion: { increment: 1 }
+        }
+      });
+      if (updated.count === 0) {
+        return "conflict";
+      }
+      return this.getCase(caseId);
+    }
     return this.prisma.testCase.update({
       where: { id: caseId },
       data: {
         ...(patch.title !== undefined ? { title: patch.title } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
-        ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {})
+        ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+        lockVersion: { increment: 1 }
       },
       select: {
         id: true,
@@ -392,7 +511,9 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         title: true,
         priority: true,
         caseType: true,
-        preconditions: true
+        preconditions: true,
+        lockVersion: true,
+        updatedAt: true
       }
     });
   }

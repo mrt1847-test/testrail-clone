@@ -185,7 +185,7 @@
 
 이 섹션은 구현 순서와 backend dependency만 다룬다.
 
-- UI phase/delivery tier는 `UI_ROADMAP.md`를 따른다.
+- UI delivery order는 `ROADMAP.md`를 따른다.
 - 화면별 required API는 `SCREEN_INVENTORY.md`를 따른다.
 - endpoint 계약은 `API_SPEC.md`를 따른다.
 - 컴포넌트 책임은 `COMPONENT_MAP.md`를 따른다.

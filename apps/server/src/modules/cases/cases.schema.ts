@@ -31,7 +31,9 @@ export const updateCaseSchema = z.object({
   title: z.string().min(1).optional(),
   priority: z.string().optional(),
   caseType: z.string().optional(),
-  preconditions: z.string().nullable().optional()
+  preconditions: z.string().nullable().optional(),
+  expectedUpdatedAt: z.string().datetime().optional(),
+  expectedVersion: z.coerce.number().int().positive().optional()
 });
 
 export const stepIdParamSchema = z.object({
@@ -48,3 +50,4 @@ export const updateCaseStepSchema = z.object({
   expectedResult: z.string().nullable().optional(),
   stepOrder: z.coerce.number().int().positive().optional()
 });
+

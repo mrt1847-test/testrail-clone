@@ -34,6 +34,7 @@ export class RunsService {
         cases.map((c) => ({
           runId: run.id,
           caseId: c.id,
+          assignedTo: null,
           titleSnapshot: c.title,
           prioritySnapshot: c.priority,
           typeSnapshot: c.caseType,
@@ -80,5 +81,17 @@ export class RunsService {
       includeAll: false,
       caseIds
     });
+  }
+
+  async updateTestAssignee(testId: bigint, assignedTo: bigint | null) {
+    const updated = await this.repo.updateTestAssignee(testId, assignedTo);
+    if (!updated) {
+      throw new AppError("TEST_NOT_FOUND", `test ${testId.toString()} not found`);
+    }
+    return updated;
+  }
+
+  async listAssignedToMe(projectId: bigint, userId: bigint) {
+    return this.repo.listAssignedTests({ projectId, userId });
   }
 }

@@ -29,6 +29,8 @@ export function useProjectOverviewQuery(projectId: string | undefined) {
     queryKey: projectKeys.overview(projectId ?? ""),
     queryFn: () => fetchProjectOverview(projectId!),
     enabled: Boolean(projectId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
   });
 }
 

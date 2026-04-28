@@ -29,6 +29,7 @@ export type TestInstance = {
   runId: bigint;
   caseId: bigint;
   status: TestStatus;
+  assignedTo: bigint | null;
   titleSnapshot: string;
   prioritySnapshot: string | null;
   typeSnapshot: string | null;

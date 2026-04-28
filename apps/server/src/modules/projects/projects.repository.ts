@@ -1,14 +1,14 @@
 export type ProjectRow = {
   id: bigint;
   name: string;
-  description?: string;
+  description?: string | null;
 };
 
 export type SuiteRow = {
   id: bigint;
   projectId: bigint;
   name: string;
-  description?: string;
+  description?: string | null;
 };
 
 export type SectionRow = {
@@ -22,9 +22,11 @@ export type CaseRow = {
   id: bigint;
   sectionId: bigint;
   title: string;
-  priority?: string;
-  caseType?: string;
+  priority?: string | null;
+  caseType?: string | null;
   preconditions?: string | null;
+  lockVersion: number;
+  updatedAt: Date;
 };
 
 export type CaseStepRow = {
@@ -32,6 +34,19 @@ export type CaseStepRow = {
   stepOrder: number;
   content: string;
   expectedResult?: string | null;
+};
+
+export type CaseVersionRow = {
+  id: bigint;
+  caseId: bigint;
+  versionNo: number;
+  title: string;
+  priority?: string | null;
+  caseType?: string | null;
+  preconditions?: string | null;
+  stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+  changeReason?: string | null;
+  createdAt: Date;
 };
 
 export interface ProjectsRepository {
@@ -58,9 +73,11 @@ export interface ProjectsRepository {
 
   listCasesForSuite(projectId: bigint, suiteId: bigint): Promise<CaseRow[]>;
   listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]>;
-  createCase(input: Omit<CaseRow, "id">): Promise<CaseRow>;
+  createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow>;
   getCase(caseId: bigint): Promise<CaseRow | null>;
   listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
+  listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]>;
+  createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null>;
   createCaseStep(input: {
     caseId: bigint;
     stepOrder: number;
@@ -72,7 +89,11 @@ export interface ProjectsRepository {
     patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
   ): Promise<CaseStepRow | null>;
   deleteCaseStep(stepId: bigint): Promise<boolean>;
-  updateCase(caseId: bigint, patch: Partial<Omit<CaseRow, "id" | "sectionId">>): Promise<CaseRow | null>;
+  updateCase(
+    caseId: bigint,
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    expectedVersion?: number
+  ): Promise<CaseRow | "conflict" | null>;
   deleteCase(caseId: bigint): Promise<boolean>;
 }
 export class ProjectsRepository {}

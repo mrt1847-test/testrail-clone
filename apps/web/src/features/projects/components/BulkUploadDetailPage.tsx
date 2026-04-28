@@ -20,6 +20,7 @@ export function BulkUploadDetailPage() {
   if (isLoading) return <LoadingState message="Loading upload detail…" />;
   if (isError || !data) return <ErrorState title="Could not load upload detail" onRetry={() => refetch()} />;
   const failedItems = data.items.filter((item) => item.status === "failed");
+  const uploadMeta = data.metadata;
 
   return (
     <div className="space-y-4">
@@ -29,6 +30,22 @@ export function BulkUploadDetailPage() {
         <p className="mt-1 text-xs text-slate-500">
           total {data.total} · saved {data.saved} · failed {data.failed} · uploaded {new Date(data.uploadedAt).toLocaleString()}
         </p>
+        <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+          <p>External run: {uploadMeta.external_run_id ?? "—"}</p>
+          <p>CI provider: {uploadMeta.ci_provider ?? "—"}</p>
+          <p>Branch: {uploadMeta.branch ?? "—"}</p>
+          <p>Commit: {uploadMeta.commit_sha ?? "—"}</p>
+          <p>Build ID: {uploadMeta.ci_build_id ?? "—"}</p>
+          <p>Attempt: {uploadMeta.attempt ?? "—"}</p>
+        </div>
+        {uploadMeta.job_url ? (
+          <p className="mt-1 text-xs text-slate-600">
+            Job URL:{" "}
+            <a href={uploadMeta.job_url} target="_blank" rel="noreferrer" className="underline">
+              {uploadMeta.job_url}
+            </a>
+          </p>
+        ) : null}
         <button
           className="mt-3 rounded border border-slate-300 px-2 py-1 text-xs"
           disabled={retryMutation.isPending || failedItems.length === 0}
