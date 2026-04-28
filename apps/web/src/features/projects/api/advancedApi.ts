@@ -179,6 +179,49 @@ export async function fetchPlanEntries(projectId: string, planId: string): Promi
   }));
 }
 
+export async function createPlan(projectId: string, name: string): Promise<PlanRow> {
+  const res = await apiFetch<Ok<PlanRow>>(`/api/projects/${projectId}/plans`, {
+    method: "POST",
+    body: { name }
+  });
+  return { ...res.data, id: String(res.data.id) };
+}
+
+export async function createPlanEntry(
+  projectId: string,
+  planId: string,
+  input: { name: string; environment?: string }
+): Promise<PlanEntryRow> {
+  const res = await apiFetch<Ok<PlanEntryRow>>(`/api/projects/${projectId}/plans/${planId}/entries`, {
+    method: "POST",
+    body: input
+  });
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    runId: res.data.runId ? String(res.data.runId) : undefined
+  };
+}
+
+export async function createRunFromPlanEntry(
+  projectId: string,
+  planId: string,
+  entryId?: string
+): Promise<{ planId: string; entryId: string; runId: string }> {
+  const res = await apiFetch<Ok<{ planId: string; entryId: string; runId: string }>>(
+    `/api/projects/${projectId}/plans/${planId}/runs`,
+    {
+      method: "POST",
+      body: entryId ? { entryId } : {}
+    }
+  );
+  return {
+    planId: String(res.data.planId),
+    entryId: String(res.data.entryId),
+    runId: String(res.data.runId)
+  };
+}
+
 export async function fetchCustomFields(projectId: string): Promise<CustomFieldRow[]> {
   const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields`);
   return res.data.map((row) => ({ ...row, id: String(row.id) }));

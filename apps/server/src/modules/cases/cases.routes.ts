@@ -9,10 +9,13 @@ import { CasesService } from "./cases.service.js";
 import {
   caseIdParamSchema,
   createCaseSchema,
+  createCaseStepSchema,
   listCasesQuerySchema,
   projectIdParamSchema,
   sectionIdParamSchema,
-  updateCaseSchema
+  stepIdParamSchema,
+  updateCaseSchema,
+  updateCaseStepSchema
 } from "./cases.schema.js";
 
 export async function registerCasesRoutes(
@@ -25,6 +28,7 @@ export async function registerCasesRoutes(
     const { page, pageSize } = paginationQuerySchema.parse(rawQuery);
     const query = listCasesQuerySchema.parse({
       projectId,
+      suiteId: rawQuery.suiteId,
       sectionId: rawQuery.sectionId,
       q: rawQuery.q
     });
@@ -45,7 +49,8 @@ export async function registerCasesRoutes(
       sectionId,
       title: raw.title,
       priority: raw.priority,
-      caseType: raw.caseType
+      caseType: raw.caseType,
+      preconditions: raw.preconditions
     });
     return reply.send(toJsonSafe(ok(await deps.casesService.createCase(body))));
   });
@@ -66,6 +71,27 @@ export async function registerCasesRoutes(
     await requireProjectMutationRole(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     await deps.casesService.deleteCase(caseId);
+    return reply.status(204).send();
+  });
+
+  app.post("/api/cases/:caseId/steps", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = createCaseStepSchema.parse(req.body ?? {});
+    return reply.send(toJsonSafe(ok(await deps.casesService.createCaseStep(caseId, body))));
+  });
+
+  app.patch("/api/case-steps/:stepId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { stepId } = stepIdParamSchema.parse(req.params);
+    const body = updateCaseStepSchema.parse(req.body ?? {});
+    return reply.send(toJsonSafe(ok(await deps.casesService.updateCaseStep(stepId, body))));
+  });
+
+  app.delete("/api/case-steps/:stepId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { stepId } = stepIdParamSchema.parse(req.params);
+    await deps.casesService.deleteCaseStep(stepId);
     return reply.status(204).send();
   });
 }

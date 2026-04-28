@@ -257,6 +257,11 @@ UI deliverables:
 - environment/configuration matrix
 - create plan run dialog
 
+Progress update (2026-04-28):
+- 완료: plans list 화면에서 plan 생성 UI/연결
+- 완료: plan detail 화면에서 entry 생성 UI/연결
+- 완료: plan detail에서 entry 기반 run 생성 액션 연결
+
 Exit criteria:
 - 릴리스/스프린트 단위 진행률을 마일스톤에서 확인할 수 있다.
 - 환경 조합별 run을 plan entry로 생성/추적할 수 있다.
@@ -308,7 +313,7 @@ Estimated current progress: 15-20%
 
 ## Immediate Execution Plan
 
-### Batch 1: Close DB-backed catalog foundation
+### Batch 1: Close DB-backed catalog foundation (Done)
 
 Target:
 - Phase A + Phase B prerequisite
@@ -319,13 +324,19 @@ Tasks:
 - seed 데이터로 project -> suite -> section -> case 화면 로딩 확인
 - error envelope와 pagination response 일관성 점검
 
+Progress update (2026-04-28):
+- 완료: catalog CRUD 핵심 경로 테스트(`phase2-crud`) 통과
+- 완료: run mutation 라우트에 role guard 적용 및 에러 envelope(`AppError`) 일관화
+- 완료: reports endpoint의 bigint 응답 직렬화 shape 정리(`runId`/`caseId` string)
+- 완료: in-memory 기준 `phase2-crud` + `phase3-runs-results` 통합 검증 통과
+
 Verification:
 - server lint/build 통과
 - web lint 통과
 - project/cases 화면이 DB 데이터로 표시
 - 서버 재시작 후 데이터 유지
 
-### Batch 2: Finish test case authoring workflow
+### Batch 2: Finish test case authoring workflow (Done)
 
 Target:
 - Phase B
@@ -337,13 +348,21 @@ Tasks:
 - case list query invalidation 정리
 - URL query sync edge case 보완
 
+Progress update (2026-04-28):
+- 완료: 섹션 추가/이름 변경/삭제 UI 및 API 연결(`SectionTreePane`)
+- 완료: 케이스 추가·상세 편집(제목·전제)·삭제 UI 및 API 연결(`CaseListPane` / `ExpandableCaseDetail`)
+- 완료: `GET /api/cases/:id` 응답에 DB 스텝 목록 포함(조회 전용), `preconditions` 생성/수정 지원
+- 완료: 케이스 스텝 CRUD API 추가(`POST /api/cases/:caseId/steps`, `PATCH /api/case-steps/:stepId`, `DELETE /api/case-steps/:stepId`) 및 `stepId` 권한 체크/정렬 재번호 처리
+- 완료: 케이스 상세 편집 모드에서 스텝 추가/수정/삭제/순서 이동 UI 연결 + 쿼리 무효화 정리
+- 완료: URL query sync edge case 보강(섹션 변경 시 `caseId`/`mode` 정리로 잘못된 확장 상태 방지)
+
 Verification:
 - section 선택/생성/수정/삭제 가능
 - case 생성/수정/삭제 가능
 - step 순서 저장/복원 가능
 - expand/edit mode가 URL에서 복원
 
-### Batch 3: Finish run creation workflow
+### Batch 3: Finish run creation workflow (Done)
 
 Target:
 - Phase C entry
@@ -357,6 +376,13 @@ Tasks:
   - optional milestone
 - run create API payload 정리
 - created run detail navigation 확인
+
+Progress update (2026-04-28):
+- 완료: run create form에 optional milestone 선택 연결
+- 완료: suite 기준 case 필터링(`suiteId`) 지원 및 run create 화면 반영
+- 완료: run detail header에 milestone 표시(있을 때)
+- 완료: include-all / selected-cases 생성 흐름 통합 테스트 보강 및 통과
+- 완료: 생성된 instances의 snapshot 필드(title/status 등) 검증 테스트 추가
 
 Verification:
 - include-all run 생성
@@ -376,13 +402,19 @@ Tasks:
 - result history list 연결
 - close run dialog 연결
 
+Progress update (2026-04-28):
+- 완료(기존): `GET /api/tests/:testId/results` 및 run detail 결과/이력 연동
+- 완료: `ResultEntryPanel` / `ResultHistoryList` 컴포넌트 분리 및 run detail에 반영
+- 완료: `CloseRunDialog` 확인 후 close run 연결
+- 완료: `ConfirmDialog`에 확인 버튼 비활성화(`confirmDisabled`) 지원
+
 Verification:
 - 결과 입력 후 instance status 변경
 - history가 append-only로 남음
 - run summary/status distribution이 갱신됨
 - close run 후 상태 변경
 
-### Batch 5: Add auth and membership baseline
+### Batch 5: Add auth and membership baseline (Done)
 
 Target:
 - Phase A completion
@@ -394,12 +426,19 @@ Tasks:
 - mutation route role guard 정리
 - `/login` route와 bootstrap UI 추가
 
+Progress update (2026-04-28):
+- 완료: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` 구현
+- 완료: 임시 로컬 세션 토큰 기반 인증 흐름 적용(`AuthService` in-memory sessions)
+- 완료: `project_members` 기반 role 조회(`AuthService.listMemberships`) 및 `/api/auth/me` 응답 포함
+- 완료: mutation 라우트 role guard 정리(`requireProjectMutationRole`, `projectId/suiteId/sectionId/caseId/stepId` 기준 project resolve)
+- 완료: `/login` 라우트 및 인증 보호 라우팅(`RequireAuth`) 반영
+
 Verification:
 - 비로그인 사용자는 `/login`으로 이동
 - 로그인 후 accessible projects 표시
 - role에 따라 mutation 가능 여부가 달라짐
 
-### Batch 6: Stabilize reports and overview
+### Batch 6: Stabilize reports and overview (Done)
 
 Target:
 - Phase D
@@ -409,6 +448,14 @@ Tasks:
 - reports widget response shape 정리
 - recent failures/results 실제 query 연결
 - empty/error/loading state를 widget 단위로 분리
+
+Progress update (2026-04-28):
+- 완료: Reports 화면의 loading/error/empty 처리를 위젯 단위 쿼리 상태로 분리(`status-distribution`, `failure-trend`, `run-summary`)
+- 완료: reports activity 응답 shape 정리(`recent-failures`/`recent-results`에 `runName` 포함)
+- 완료: overview 화면 recent runs 진행률을 `run-summary` 집계값으로 연결
+- 완료: `/overview` active runs 집계를 DB count 기준(`testRun.status=open`)으로 정리
+- 완료: case/run/result mutation 이후 overview/reports 쿼리 무효화 연결(변경 직후 대시보드 반영)
+- 완료: overview/run-summary 반영 동작을 `phase3-runs-results` 테스트에서 검증
 
 Verification:
 - case/run/result 변경이 overview/reports에 반영

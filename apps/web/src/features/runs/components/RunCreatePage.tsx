@@ -7,6 +7,7 @@ import { apiFetch } from "../../../shared/api/http";
 import type { Paged } from "../../../shared/api/types";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { fetchMilestones } from "../../projects/api/advancedApi";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 
 export function RunCreatePage() {
@@ -14,6 +15,7 @@ export function RunCreatePage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [suiteId, setSuiteId] = useState("");
+  const [milestoneId, setMilestoneId] = useState("");
   const [environment, setEnvironment] = useState("");
   const [includeAll, setIncludeAll] = useState(true);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
@@ -24,14 +26,22 @@ export function RunCreatePage() {
     enabled: Boolean(projectId)
   });
   const casesQuery = useQuery({
-    queryKey: ["run-create-cases", projectId],
+    queryKey: ["run-create-cases", projectId, suiteId],
     queryFn: async () =>
-      apiFetch<Paged<{ id: string; title: string }>>(`/api/projects/${projectId}/cases?page=1&pageSize=200`),
+      apiFetch<Paged<{ id: string; title: string }>>(
+        `/api/projects/${projectId}/cases?page=1&pageSize=200${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
+      ),
+    enabled: Boolean(projectId && suiteId)
+  });
+  const milestonesQuery = useQuery({
+    queryKey: ["run-create-milestones", projectId],
+    queryFn: () => fetchMilestones(projectId),
     enabled: Boolean(projectId)
   });
 
   const suites = suitesQuery.data?.data ?? [];
   const cases = casesQuery.data?.data ?? [];
+  const milestones = milestonesQuery.data ?? [];
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -42,6 +52,7 @@ export function RunCreatePage() {
         name: name.trim(),
         includeAll,
         caseIds: includeAll ? undefined : selectedCaseIds,
+        milestoneId: milestoneId || null,
         environment: environment.trim() || undefined
       },
       {
@@ -50,9 +61,20 @@ export function RunCreatePage() {
     );
   };
 
-  if (suitesQuery.isLoading || casesQuery.isLoading) return <LoadingState message="Loading run create dependencies…" />;
-  if (suitesQuery.isError || casesQuery.isError) {
-    return <ErrorState title="Could not load suite/case data" onRetry={() => { void suitesQuery.refetch(); void casesQuery.refetch(); }} />;
+  if (suitesQuery.isLoading || casesQuery.isLoading || milestonesQuery.isLoading) {
+    return <LoadingState message="Loading run create dependencies…" />;
+  }
+  if (suitesQuery.isError || casesQuery.isError || milestonesQuery.isError) {
+    return (
+      <ErrorState
+        title="Could not load suite/case data"
+        onRetry={() => {
+          void suitesQuery.refetch();
+          void casesQuery.refetch();
+          void milestonesQuery.refetch();
+        }}
+      />
+    );
   }
 
   return (
@@ -73,12 +95,30 @@ export function RunCreatePage() {
           <select
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={suiteId}
-            onChange={(e) => setSuiteId(e.target.value)}
+            onChange={(e) => {
+              setSuiteId(e.target.value);
+              setSelectedCaseIds([]);
+            }}
           >
             <option value="">Select suite</option>
             {suites.map((suite) => (
               <option key={suite.id} value={String(suite.id)}>
                 {suite.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Milestone (optional)
+          <select
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            value={milestoneId}
+            onChange={(e) => setMilestoneId(e.target.value)}
+          >
+            <option value="">No milestone</option>
+            {milestones.map((milestone) => (
+              <option key={milestone.id} value={String(milestone.id)}>
+                {milestone.name}
               </option>
             ))}
           </select>
@@ -100,6 +140,9 @@ export function RunCreatePage() {
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs font-medium text-slate-600">Select cases</p>
             <div className="mt-2 max-h-48 space-y-1 overflow-auto">
+              {!suiteId ? (
+                <p className="text-xs text-slate-500">Select a suite first.</p>
+              ) : null}
               {cases.map((c) => {
                 const id = String(c.id);
                 return (

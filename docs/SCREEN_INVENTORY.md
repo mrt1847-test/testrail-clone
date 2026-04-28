@@ -53,7 +53,7 @@
 - Purpose: 섹션 단위로 테스트 케이스를 생성/조회/수정/삭제한다.
 - Primary user actions: 섹션 선택, 케이스 검색/필터, 케이스 작성, row 확장 상세 확인, 상세 편집/삭제
 - Main components: `TestCaseWorkspace`, `CaseListPane`, `ExpandableCaseDetail`, `SectionTreePane`
-- Required API: `GET /api/projects/:projectId/cases`, `GET /api/suites/:suiteId/sections`, `POST /api/suites/:suiteId/sections`, `GET /api/cases/:caseId`, `POST /api/sections/:sectionId/cases`, `PATCH /api/cases/:caseId`, `DELETE /api/cases/:caseId`
+- Required API: `GET /api/projects/:projectId/cases`, `GET /api/suites/:suiteId/sections`, `POST /api/suites/:suiteId/sections`, `GET /api/cases/:caseId`, `POST /api/sections/:sectionId/cases`, `PATCH /api/cases/:caseId`, `DELETE /api/cases/:caseId`, `POST /api/cases/:caseId/steps`, `PATCH /api/case-steps/:stepId`, `DELETE /api/case-steps/:stepId`
 - Loading state: 목록/상세/트리 분리 로딩
 - Empty state: 섹션 내 케이스 없음 + `Add Case`
 - Error state: 패널 단위 오류 + `Retry`

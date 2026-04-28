@@ -59,6 +59,15 @@ UI 디테일은 유연하게 바꾸되, 아래는 초기에 최대한 안정적�
 - 컴포넌트 책임/구현 상태: `COMPONENT_MAP.md`
 - 구현 task와 backend dependency: `IMPLEMENTATION_PLAN.md`
 
+## Implementation Status Snapshot (2026-04-28)
+
+- 완료: Phase 0 (App Shell) / Phase 1 (Project Screens) 핵심 경로
+- 완료: Phase 2A (Test Case Core) - section/case CRUD, row expand, query sync, step editing baseline
+- 완료: Phase 3 (Test Run Screens) - run list/create, suite filter, selected cases, milestone/environment 입력
+- 완료: Phase 4 baseline - run detail 결과 입력/이력/close run/rerun failed/assignee 변경
+- 진행 중: Phase 6 (Reports) - 위젯 상태 분리 및 집계 반영 완료, traceability/coverage-gap은 후속
+- 후순위: Phase 2B, Phase 5 고도화, Phase 7~10 영역
+
 ### UI Phase 0: App Shell
 - Goal: 프로젝트 공통 레이아웃과 공통 상태 컴포넌트 구축
 - Scope: project shell, project navigation, shared state UI

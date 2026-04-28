@@ -1,15 +1,26 @@
-import type { CaseRow, ProjectRow, ProjectsRepository, SectionRow, SuiteRow } from "./projects.repository.js";
+import type {
+  CaseRow,
+  CaseStepRow,
+  ProjectRow,
+  ProjectsRepository,
+  SectionRow,
+  SuiteRow
+} from "./projects.repository.js";
+
+type StoredCaseStep = CaseStepRow & { caseId: bigint };
 
 export class ProjectsMemoryRepository implements ProjectsRepository {
   private projectSeq = 1n;
   private suiteSeq = 1n;
   private sectionSeq = 1n;
   private caseSeq = 1n;
+  private stepSeq = 1n;
 
   private readonly projects: ProjectRow[] = [];
   private readonly suites: SuiteRow[] = [];
   private readonly sections: SectionRow[] = [];
   private readonly cases: CaseRow[] = [];
+  private readonly caseSteps: StoredCaseStep[] = [];
 
   async listProjects() {
     return [...this.projects];
@@ -91,7 +102,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     return this.cases.filter((c) => sectionIds.has(c.sectionId));
   }
 
-  async listCases(params: { projectId?: bigint; sectionId?: bigint; q?: string }) {
+  async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }) {
     const suiteIds = params.projectId
       ? this.suites.filter((s) => s.projectId === params.projectId).map((s) => s.id)
       : null;
@@ -101,6 +112,10 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
 
     return this.cases.filter((c) => {
       if (params.sectionId && c.sectionId !== params.sectionId) return false;
+      if (params.suiteId) {
+        const section = this.sections.find((s) => s.id === c.sectionId);
+        if (!section || section.suiteId !== params.suiteId) return false;
+      }
       if (sectionIdsByProject && !sectionIdsByProject.includes(c.sectionId)) return false;
       if (params.q && !c.title.toLowerCase().includes(params.q.toLowerCase())) return false;
       return true;
@@ -114,6 +129,68 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   async getCase(caseId: bigint) {
     return this.cases.find((c) => c.id === caseId) ?? null;
   }
+  async listCaseSteps(caseId: bigint): Promise<CaseStepRow[]> {
+    return this.caseSteps
+      .filter((s) => s.caseId === caseId)
+      .sort((a, b) => a.stepOrder - b.stepOrder)
+      .map(({ id, stepOrder, content, expectedResult }) => ({ id, stepOrder, content, expectedResult }));
+  }
+
+  async createCaseStep(input: {
+    caseId: bigint;
+    stepOrder: number;
+    content: string;
+    expectedResult?: string | null;
+  }): Promise<CaseStepRow> {
+    const c = this.cases.find((row) => row.id === input.caseId);
+    if (!c) {
+      throw new Error("case not found");
+    }
+    const row: StoredCaseStep = {
+      id: this.stepSeq++,
+      caseId: input.caseId,
+      stepOrder: input.stepOrder,
+      content: input.content,
+      expectedResult: input.expectedResult ?? null
+    };
+    this.caseSteps.push(row);
+    return { id: row.id, stepOrder: row.stepOrder, content: row.content, expectedResult: row.expectedResult };
+  }
+
+  async updateCaseStep(
+    stepId: bigint,
+    patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
+  ): Promise<CaseStepRow | null> {
+    const row = this.caseSteps.find((s) => s.id === stepId);
+    if (!row) return null;
+    if (patch.content !== undefined) row.content = patch.content;
+    if (patch.expectedResult !== undefined) row.expectedResult = patch.expectedResult;
+    if (patch.stepOrder !== undefined && patch.stepOrder !== row.stepOrder) {
+      const forCase = this.caseSteps.filter((s) => s.caseId === row.caseId).sort((a, b) => a.stepOrder - b.stepOrder);
+      const rest = forCase.filter((s) => s.id !== stepId);
+      const targetPos = Math.min(Math.max(1, patch.stepOrder), forCase.length);
+      const idx = targetPos - 1;
+      const reordered = [...rest.slice(0, idx), row, ...rest.slice(idx)];
+      reordered.forEach((s, i) => {
+        s.stepOrder = i + 1;
+      });
+    }
+    return { id: row.id, stepOrder: row.stepOrder, content: row.content, expectedResult: row.expectedResult };
+  }
+
+  async deleteCaseStep(stepId: bigint): Promise<boolean> {
+    const row = this.caseSteps.find((s) => s.id === stepId);
+    if (!row) return false;
+    const caseId = row.caseId;
+    const idx = this.caseSteps.findIndex((s) => s.id === stepId);
+    this.caseSteps.splice(idx, 1);
+    const remaining = this.caseSteps.filter((s) => s.caseId === caseId).sort((a, b) => a.stepOrder - b.stepOrder);
+    remaining.forEach((s, i) => {
+      s.stepOrder = i + 1;
+    });
+    return true;
+  }
+
   async updateCase(caseId: bigint, patch: Partial<Omit<CaseRow, "id" | "sectionId">>) {
     const row = this.cases.find((c) => c.id === caseId);
     if (!row) return null;
@@ -124,6 +201,9 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     const idx = this.cases.findIndex((c) => c.id === caseId);
     if (idx === -1) return false;
     this.cases.splice(idx, 1);
+    for (let i = this.caseSteps.length - 1; i >= 0; i -= 1) {
+      if (this.caseSteps[i]!.caseId === caseId) this.caseSteps.splice(i, 1);
+    }
     return true;
   }
 }

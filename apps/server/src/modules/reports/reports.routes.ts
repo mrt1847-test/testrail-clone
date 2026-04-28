@@ -5,6 +5,16 @@ import { ok } from "../../common/utils/http.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
 
+type ReportActivityItem = {
+  runId: string;
+  runName: string;
+  caseId: string;
+  title: string;
+  status: string;
+  source: string;
+  createdAt: Date | string;
+};
+
 function toIsoDate(offsetDays: number) {
   const now = new Date();
   now.setDate(now.getDate() - offsetDays);
@@ -20,8 +30,9 @@ export async function registerReportsRoutes(
     const runs = await deps.repo.listRunsByProject(projectId);
     const activeRuns = runs.filter((run) => run.status === "open").length;
     if (deps.prisma) {
-      const [totalCases, recentFailures, mappedCases] = await Promise.all([
+      const [totalCases, activeRunsCount, recentFailures, mappedCases] = await Promise.all([
         deps.prisma.testCase.count({ where: { projectId, deletedAt: null } }),
+        deps.prisma.testRun.count({ where: { projectId, status: "open", deletedAt: null } }),
         deps.prisma.testResult.count({
           where: {
             status: "failed",
@@ -36,7 +47,7 @@ export async function registerReportsRoutes(
       return reply.send(
         ok({
           totalCases,
-          activeRuns,
+          activeRuns: activeRunsCount,
           recentFailures,
           automationCoveragePct
         })
@@ -111,8 +122,9 @@ export async function registerReportsRoutes(
       return reply.send(
         ok({
           items: rows.map((row: (typeof rows)[number]) => ({
-            runId: row.instance.runId,
-            caseId: row.instance.caseId,
+            runId: row.instance.runId.toString(),
+            runName: row.instance.run.name,
+            caseId: row.instance.caseId.toString(),
             title: row.instance.titleSnapshot,
             status: row.status,
             source: row.source,
@@ -122,14 +134,15 @@ export async function registerReportsRoutes(
       );
     }
     const runs = await deps.repo.listRunsByProject(projectId);
-    const items: Array<{ runId: bigint; caseId: bigint; title: string; status: string; source: string; createdAt: string }> = [];
+    const items: ReportActivityItem[] = [];
     for (const run of runs) {
       const instances = await deps.repo.listInstancesForRun(run.id);
       for (const instance of instances) {
         if (instance.status === "failed") {
           items.push({
-            runId: run.id,
-            caseId: instance.caseId,
+            runId: run.id.toString(),
+            runName: run.name,
+            caseId: instance.caseId.toString(),
             title: instance.titleSnapshot,
             status: instance.status,
             source: "manual",
@@ -148,13 +161,14 @@ export async function registerReportsRoutes(
         where: { instance: { run: { projectId, deletedAt: null } } },
         orderBy: { id: "desc" },
         take: 20,
-        include: { instance: true }
+        include: { instance: { include: { run: true } } }
       });
       return reply.send(
         ok({
           items: rows.map((row: (typeof rows)[number]) => ({
-            runId: row.instance.runId,
-            caseId: row.instance.caseId,
+            runId: row.instance.runId.toString(),
+            runName: row.instance.run.name,
+            caseId: row.instance.caseId.toString(),
             title: row.instance.titleSnapshot,
             status: row.status,
             source: row.source,
@@ -164,13 +178,14 @@ export async function registerReportsRoutes(
       );
     }
     const runs = await deps.repo.listRunsByProject(projectId);
-    const items: Array<{ runId: bigint; caseId: bigint; title: string; status: string; source: string; createdAt: string }> = [];
+    const items: ReportActivityItem[] = [];
     for (const run of runs) {
       const instances = await deps.repo.listInstancesForRun(run.id);
       for (const instance of instances) {
         items.push({
-          runId: run.id,
-          caseId: instance.caseId,
+          runId: run.id.toString(),
+          runName: run.name,
+          caseId: instance.caseId.toString(),
           title: instance.titleSnapshot,
           status: instance.status,
           source: "manual",
@@ -191,7 +206,7 @@ export async function registerReportsRoutes(
       const passed = instances.filter((item) => item.status === "passed").length;
       const failed = instances.filter((item) => item.status === "failed").length;
       const progress = total === 0 ? 0 : Math.round(((total - instances.filter((i) => i.status === "untested").length) / total) * 100);
-      items.push({ runId: run.id, name: run.name, status: run.status, total, passed, failed, progress });
+      items.push({ runId: run.id.toString(), name: run.name, status: run.status, total, passed, failed, progress });
     }
     return reply.send(ok({ items }));
   });

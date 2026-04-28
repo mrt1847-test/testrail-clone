@@ -10,9 +10,36 @@ type CaseRowProps = {
   onToggle: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
+  onSave: (patch: { title: string; preconditions: string }) => Promise<void>;
+  onDelete: () => Promise<void>;
+  isSaving?: boolean;
+  isDeleting?: boolean;
+  onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
+  onUpdateStep?: (
+    stepId: number,
+    patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
+  ) => Promise<void>;
+  onDeleteStep?: (stepId: number) => Promise<void>;
+  isStepsBusy?: boolean;
 };
 
-export function CaseRow({ item, isExpanded, mode, detail, onToggle, onEdit, onCloseDetail }: CaseRowProps) {
+export function CaseRow({
+  item,
+  isExpanded,
+  mode,
+  detail,
+  onToggle,
+  onEdit,
+  onCloseDetail,
+  onSave,
+  onDelete,
+  isSaving,
+  isDeleting,
+  onCreateStep,
+  onUpdateStep,
+  onDeleteStep,
+  isStepsBusy
+}: CaseRowProps) {
   return (
     <article className="border-b border-slate-100 last:border-0">
       <button
@@ -29,7 +56,22 @@ export function CaseRow({ item, isExpanded, mode, detail, onToggle, onEdit, onCl
           {item.type} / {item.priority} / {item.automationStatus} {isExpanded ? "▼" : "▶"}
         </span>
       </button>
-      {isExpanded ? <ExpandableCaseDetail data={detail ?? item} mode={mode} onEdit={onEdit} onClose={onCloseDetail} /> : null}
+      {isExpanded ? (
+        <ExpandableCaseDetail
+          data={detail ?? item}
+          mode={mode}
+          onEdit={onEdit}
+          onClose={onCloseDetail}
+          onSave={onSave}
+          onDelete={onDelete}
+          isSaving={isSaving}
+          isDeleting={isDeleting}
+          onCreateStep={onCreateStep}
+          onUpdateStep={onUpdateStep}
+          onDeleteStep={onDeleteStep}
+          isStepsBusy={isStepsBusy}
+        />
+      ) : null}
     </article>
   );
 }

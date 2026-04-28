@@ -4,9 +4,9 @@ import type { ProjectOverviewDto, ProjectSummary } from "../types";
 
 type ProjectRow = { id: string; name: string; description?: string };
 
-type CaseRow = { id: string; sectionId: string; title: string; priority?: string; caseType?: string };
-
 type RunRow = { id: string; name: string; status: string };
+type RunSummaryRow = { runId: string; name: string; status: string; total: number; passed: number; failed: number; progress: number };
+type ReportActivityRow = { runId: string; runName?: string; caseId: string; title: string; status: string; source?: string; createdAt?: string };
 
 async function fetchFirstSuiteId(projectId: string): Promise<string | null> {
   const res = await apiFetch<Paged<{ id: string }>>(`/api/projects/${projectId}/suites?page=1&pageSize=1`);
@@ -27,7 +27,7 @@ async function bootstrapDefaultCatalog(projectId: string): Promise<void> {
 
 export async function fetchProjects(): Promise<ProjectSummary[]> {
   const res = await apiFetch<Paged<ProjectRow>>("/api/projects?page=1&pageSize=100");
-  return res.data.map((p) => ({ id: String(p.id), name: p.name, description: p.description }));
+  return res.data.map((p: ProjectRow) => ({ id: String(p.id), name: p.name, description: p.description }));
 }
 
 export async function fetchProject(projectId: string): Promise<ProjectSummary | null> {
@@ -52,29 +52,32 @@ export async function createProject(name: string): Promise<ProjectSummary> {
 }
 
 export async function fetchProjectOverview(projectId: string): Promise<ProjectOverviewDto> {
-  const [overviewRes, casesRes, runsRes, failuresRes, resultsRes] = await Promise.all([
+  const [overviewRes, runsRes, runSummaryRes, failuresRes, resultsRes] = await Promise.all([
     apiFetch<{ data: { totalCases: number; activeRuns: number; recentFailures: number; automationCoveragePct: number } }>(
       `/api/projects/${projectId}/overview`
     ),
-    apiFetch<Paged<CaseRow>>(`/api/projects/${projectId}/cases?page=1&pageSize=1`),
     apiFetch<Paged<RunRow>>(`/api/projects/${projectId}/runs?page=1&pageSize=20`),
-    apiFetch<{ data: { items: Array<{ runId: string; caseId: string; title: string; status: string; source?: string; createdAt?: string }> } }>(
+    apiFetch<{ data: { items: RunSummaryRow[] } }>(`/api/projects/${projectId}/reports/run-summary`),
+    apiFetch<{ data: { items: ReportActivityRow[] } }>(
       `/api/projects/${projectId}/reports/recent-failures`
     ),
-    apiFetch<{ data: { items: Array<{ runId: string; caseId: string; title: string; status: string; source?: string; createdAt?: string }> } }>(
+    apiFetch<{ data: { items: ReportActivityRow[] } }>(
       `/api/projects/${projectId}/reports/recent-results`
     )
   ]);
 
-  const totalCases = overviewRes.data.totalCases || casesRes.total;
+  const totalCases = overviewRes.data.totalCases;
   const runs = runsRes.data;
   const activeRuns = overviewRes.data.activeRuns;
+  const runSummaryMap = new Map<string, RunSummaryRow>(
+    runSummaryRes.data.items.map((row: RunSummaryRow) => [String(row.runId), row])
+  );
 
-  const recentRuns = runs.slice(0, 5).map((r) => ({
+  const recentRuns = runs.slice(0, 5).map((r: RunRow) => ({
     id: String(r.id),
     name: r.name,
     status: r.status,
-    progress: 0,
+    progress: runSummaryMap.get(String(r.id))?.progress ?? 0,
     createdAt: "—"
   }));
 
@@ -86,13 +89,13 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
       automationCoveragePct: overviewRes.data.automationCoveragePct
     },
     recentRuns,
-    recentFailures: failuresRes.data.items.map((item) => ({
+    recentFailures: failuresRes.data.items.map((item: ReportActivityRow) => ({
       caseCode: `C${item.caseId}`,
-      runName: `Run ${item.runId}`,
+      runName: item.runName ?? `Run ${item.runId}`,
       title: item.title,
       at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"
     })),
-    recentResults: resultsRes.data.items.map((item) => ({
+    recentResults: resultsRes.data.items.map((item: ReportActivityRow) => ({
       caseCode: `C${item.caseId}`,
       status: item.status,
       source: item.source ?? "manual",

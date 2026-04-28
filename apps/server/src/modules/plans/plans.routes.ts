@@ -1,14 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 
+import { AppError } from "../../common/errors/appError.js";
 import { paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import type { RunsService } from "../runs/runs.service.js";
 
 type PlanEntry = {
   id: bigint;
   name: string;
   environment?: string;
+  suiteId?: bigint;
   runId?: bigint;
 };
 
@@ -21,7 +25,22 @@ type PlanRow = {
 
 const plans: PlanRow[] = [];
 
-export async function registerPlansRoutes(app: FastifyInstance, deps: { prisma?: PrismaClient }) {
+function parseOptionalEntryId(raw: unknown): bigint | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "bigint") return undefined;
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  try {
+    return BigInt(s);
+  } catch {
+    throw new AppError("VALIDATION_ERROR", "invalid entryId", 400);
+  }
+}
+
+export async function registerPlansRoutes(
+  app: FastifyInstance,
+  deps: { prisma?: PrismaClient; runsService: RunsService; catalog: ProjectsRepository }
+) {
   app.get("/api/projects/:projectId/plans", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
@@ -185,46 +204,120 @@ export async function registerPlansRoutes(app: FastifyInstance, deps: { prisma?:
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
+    const body = (req.body ?? {}) as { entryId?: unknown };
+    let entryId: bigint | undefined;
+    try {
+      entryId = parseOptionalEntryId(body.entryId);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
+
+    async function resolveSuiteId(targetSuiteId: bigint | null | undefined): Promise<bigint | null> {
+      if (targetSuiteId != null) {
+        const suite = await deps.catalog.getSuite(targetSuiteId);
+        if (!suite || suite.projectId !== projectId) return null;
+        return suite.id;
+      }
+      const suites = await deps.catalog.listSuitesByProject(projectId);
+      return suites[0]?.id ?? null;
+    }
+
     if (deps.prisma) {
       const plan = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true, milestoneId: true }
       });
       if (!plan) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
       }
-      const body = req.body as { entryId?: string };
-      const entryId = body.entryId ? BigInt(body.entryId) : undefined;
       const target =
-        (entryId
+        entryId !== undefined
           ? await deps.prisma.testPlanEntry.findFirst({
               where: { id: entryId, planId, deletedAt: null }
             })
           : await deps.prisma.testPlanEntry.findFirst({
               where: { planId, deletedAt: null },
               orderBy: { id: "asc" }
-            })) ?? null;
+            });
       if (!target) {
+        if (entryId !== undefined) {
+          return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
+        }
         return reply.status(400).send({ error: "BAD_REQUEST", message: "no plan entry exists" });
       }
-      const runId = target.runId ?? target.id;
-      await deps.prisma.testPlanEntry.update({
-        where: { id: target.id },
-        data: { runId }
-      });
-      return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId } }));
+      if (target.runId) {
+        return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: target.runId } }));
+      }
+      const suiteId = await resolveSuiteId(target.suiteId);
+      if (!suiteId) {
+        return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
+      }
+      try {
+        const { run } = await deps.runsService.createRunWithInstances({
+          projectId,
+          suiteId,
+          milestoneId: plan.milestoneId ?? null,
+          name: `${plan.name} — ${target.name}`,
+          includeAll: true,
+          environment: target.environment?.trim() ?? null
+        });
+        await deps.prisma.$transaction([
+          deps.prisma.testPlanEntry.update({
+            where: { id: target.id },
+            data: { runId: run.id }
+          }),
+          deps.prisma.testRun.update({
+            where: { id: run.id },
+            data: { planId }
+          })
+        ]);
+        return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: run.id } }));
+      } catch (err) {
+        if (err instanceof AppError && err.code === "NO_CASES_FOUND") {
+          return reply.status(400).send({ error: err.code, message: err.message });
+        }
+        throw err;
+      }
     }
+
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
     }
-    const body = req.body as { entryId?: string };
-    const entryId = body.entryId ? BigInt(body.entryId) : undefined;
-    const target = row.entries.find((item) => item.id === entryId) ?? row.entries[0];
+    const target =
+      entryId !== undefined ? row.entries.find((item) => item.id === entryId) ?? null : row.entries[0] ?? null;
     if (!target) {
+      if (entryId !== undefined) {
+        return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
+      }
       return reply.status(400).send({ error: "BAD_REQUEST", message: "no plan entry exists" });
     }
-    target.runId = BigInt(Date.now());
-    return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: target.runId } }));
+    if (target.runId) {
+      return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: target.runId } }));
+    }
+    const suiteId = await resolveSuiteId(target.suiteId);
+    if (!suiteId) {
+      return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
+    }
+    try {
+      const { run } = await deps.runsService.createRunWithInstances({
+        projectId,
+        suiteId,
+        milestoneId: null,
+        name: `${row.name} — ${target.name}`,
+        includeAll: true,
+        environment: target.environment?.trim() ?? null
+      });
+      target.runId = run.id;
+      return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: run.id } }));
+    } catch (err) {
+      if (err instanceof AppError && err.code === "NO_CASES_FOUND") {
+        return reply.status(400).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
   });
 }

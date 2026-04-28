@@ -69,6 +69,16 @@
 - `GET /api/cases/{caseId}`
 - `PATCH /api/cases/{caseId}`
 - `DELETE /api/cases/{caseId}`
+- `POST /api/cases/{caseId}/steps`
+- `PATCH /api/case-steps/{stepId}`
+- `DELETE /api/case-steps/{stepId}`
+
+Semantics (case steps):
+- `GET /api/cases/{caseId}` includes an ordered `steps` array. Each step exposes `id`, `stepOrder`, `content`, and `expectedResult` (nullable). Soft-deleted steps are omitted.
+- `POST /api/cases/{caseId}/steps`: body requires `content`; `expectedResult` is optional (nullable). The server assigns the next `stepOrder` within the case (clients do not choose the insert position via this endpoint).
+- `PATCH /api/case-steps/{stepId}`: send only fields to change among `content`, `expectedResult`, and `stepOrder`. Changing `stepOrder` re-sequences all active steps for that case to contiguous `1..n`.
+- `DELETE /api/case-steps/{stepId}`: soft-deletes the step, then renumbers remaining active steps to `1..n`.
+- Case and case-step mutations require the same project membership role as other project-scoped writes (mutate-capable role when authorization is enforced).
 
 ## Runs
 - `GET /api/projects/{projectId}/runs`
@@ -103,6 +113,20 @@ Semantics:
 - `PATCH /api/runs/{runId}/assignee`
 - `PATCH /api/tests/{testId}/assignee`
 - `GET /api/projects/{projectId}/tests/assigned-to-me`
+
+## Overview / Reports (Dashboard)
+- `GET /api/projects/{projectId}/overview`
+- `GET /api/projects/{projectId}/reports/status-distribution`
+- `GET /api/projects/{projectId}/reports/failure-trend`
+- `GET /api/projects/{projectId}/reports/recent-failures`
+- `GET /api/projects/{projectId}/reports/recent-results`
+- `GET /api/projects/{projectId}/reports/run-summary`
+
+Semantics (overview/reports baseline):
+- `/overview` returns project-level counters used on overview cards: `totalCases`, `activeRuns`, `recentFailures`, `automationCoveragePct`.
+- `recent-failures` and `recent-results` return ordered `items` with `runId`, `runName`, `caseId`, `title`, `status`, `source`, `createdAt`.
+- `run-summary` returns per-run aggregation rows: `runId`, `name`, `status`, `total`, `passed`, `failed`, `progress`.
+- Empty datasets return `200` with empty collections (no 404 for "no data").
 
 ## Rerun
 - `POST /api/runs/{runId}/rerun`

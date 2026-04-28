@@ -14,6 +14,13 @@
   - Project membership-aware authorization
   - Role-based UI/API behavior (`owner`, `manager`, `tester`, `viewer`)
 
+## Implementation Status Snapshot (2026-04-28)
+- 완료: Phase 2 핵심 경로(Projects/Suites/Sections/Cases + Case step CRUD)
+- 완료: Phase 3 핵심 경로(Run 생성 include-all/selected-cases, snapshot instances, 결과 입력/이력, close run)
+- 완료: 인증/멤버십 baseline(Login/Me/Logout + mutation role guard)
+- 진행 중: Phase 5 baseline(overview/reports 위젯 집계 및 반영), traceability/coverage는 미완
+- 대기: Phase 4 고도화 deliverables(assignment/my-tests/rerun 확장, bulk result entry, attachment/defect link), Phase 6+ 이후 영역
+
 ## Phase 0: Project Foundation
 ### Goals
 - Establish architecture and repository structure for long-term expansion.

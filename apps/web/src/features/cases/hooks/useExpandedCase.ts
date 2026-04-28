@@ -37,6 +37,8 @@ export function useExpandedCase() {
   function setSelectedSection(nextSectionId: number) {
     const next = new URLSearchParams(searchParams);
     next.set("sectionId", String(nextSectionId));
+    next.delete("caseId");
+    next.delete("mode");
     setSearchParams(next);
   }
 

@@ -4,7 +4,8 @@ export const createCaseSchema = z.object({
   sectionId: z.coerce.bigint(),
   title: z.string().min(1),
   priority: z.string().optional(),
-  caseType: z.string().optional()
+  caseType: z.string().optional(),
+  preconditions: z.string().optional()
 });
 
 export const caseIdParamSchema = z.object({
@@ -21,6 +22,7 @@ export const sectionIdParamSchema = z.object({
 
 export const listCasesQuerySchema = z.object({
   projectId: z.coerce.bigint().optional(),
+  suiteId: z.coerce.bigint().optional(),
   sectionId: z.coerce.bigint().optional(),
   q: z.string().optional()
 });
@@ -28,5 +30,21 @@ export const listCasesQuerySchema = z.object({
 export const updateCaseSchema = z.object({
   title: z.string().min(1).optional(),
   priority: z.string().optional(),
-  caseType: z.string().optional()
+  caseType: z.string().optional(),
+  preconditions: z.string().nullable().optional()
+});
+
+export const stepIdParamSchema = z.object({
+  stepId: z.coerce.bigint()
+});
+
+export const createCaseStepSchema = z.object({
+  content: z.string().min(1),
+  expectedResult: z.string().nullable().optional()
+});
+
+export const updateCaseStepSchema = z.object({
+  content: z.string().min(1).optional(),
+  expectedResult: z.string().nullable().optional(),
+  stepOrder: z.coerce.number().int().positive().optional()
 });

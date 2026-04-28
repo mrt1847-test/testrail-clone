@@ -61,6 +61,7 @@ describe("phase3 runs/results flow", () => {
     const runRes = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/runs`,
+      headers,
       payload: {
         suiteId,
         name: "Initial run name",
@@ -74,6 +75,7 @@ describe("phase3 runs/results flow", () => {
     const patchRes = await app.inject({
       method: "PATCH",
       url: `/api/runs/${runId}`,
+      headers,
       payload: { name: "Updated run name" }
     });
     expect(patchRes.statusCode).toBe(200);
@@ -84,13 +86,21 @@ describe("phase3 runs/results flow", () => {
       url: `/api/projects/${projectId}/runs/${runId}`
     });
     expect(detailRes.statusCode).toBe(200);
-    const detail = detailRes.json() as { data: { run: { id: string; status: string }; instances: Array<{ id: string }> } };
+    const detail = detailRes.json() as {
+      data: {
+        run: { id: string; status: string };
+        instances: Array<{ id: string; titleSnapshot: string; status: string; automationKeySnapshot?: string | null }>;
+      };
+    };
     expect(detail.data.instances.length).toBe(1);
+    expect(detail.data.instances[0].titleSnapshot).toBe("Phase3 case");
+    expect(detail.data.instances[0].status).toBe("untested");
     const testId = detail.data.instances[0].id;
 
     const resultRes = await app.inject({
       method: "POST",
       url: `/api/runs/${runId}/results`,
+      headers,
       payload: {
         testId,
         status: "passed",
@@ -129,12 +139,116 @@ describe("phase3 runs/results flow", () => {
     const summary = summaryRes.json() as { counts: Record<string, number> };
     expect(summary.counts.passed).toBe(1);
 
+    const overviewBeforeCloseRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/overview`
+    });
+    expect(overviewBeforeCloseRes.statusCode).toBe(200);
+    const overviewBeforeClose = overviewBeforeCloseRes.json() as {
+      data: { totalCases: number; activeRuns: number; recentFailures: number; automationCoveragePct: number };
+    };
+    expect(overviewBeforeClose.data.totalCases).toBeGreaterThanOrEqual(0);
+    expect(overviewBeforeClose.data.activeRuns).toBe(1);
+
+    const runSummaryRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/reports/run-summary`
+    });
+    expect(runSummaryRes.statusCode).toBe(200);
+    const runSummaryPayload = runSummaryRes.json() as { data: { items: Array<{ runId: string; passed: number; progress: number }> } };
+    const matchedRun = runSummaryPayload.data.items.find((item) => item.runId === runId);
+    expect(matchedRun?.passed).toBe(1);
+    expect((matchedRun?.progress ?? 0) > 0).toBe(true);
+
     const closeRes = await app.inject({
       method: "POST",
-      url: `/api/runs/${runId}/close`
+      url: `/api/runs/${runId}/close`,
+      headers
     });
     expect(closeRes.statusCode).toBe(200);
     expect((closeRes.json() as { data: { status: string } }).data.status).toBe("closed");
+
+    const overviewAfterCloseRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/overview`
+    });
+    expect(overviewAfterCloseRes.statusCode).toBe(200);
+    const overviewAfterClose = overviewAfterCloseRes.json() as {
+      data: { activeRuns: number };
+    };
+    expect(overviewAfterClose.data.activeRuns).toBe(0);
+  });
+
+  it("supports include-all run creation with suite snapshots", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Phase3 IncludeAll Project" }
+    });
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/suites`,
+      headers,
+      payload: { name: "IncludeAll Suite" }
+    });
+    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "IncludeAll Section" }
+    });
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "IA case 1", priority: "medium", caseType: "functional" }
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "IA case 2", priority: "high", caseType: "regression" }
+    });
+
+    const runRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      headers,
+      payload: { suiteId, name: "Include all run", includeAll: true }
+    });
+    expect(runRes.statusCode).toBe(200);
+    const runId = (runRes.json() as { run: { id: string } }).run.id;
+
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/runs/${runId}`
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const payload = detailRes.json() as {
+      data: {
+        instances: Array<{ titleSnapshot: string; status: string }>;
+      };
+    };
+    expect(payload.data.instances.length).toBe(2);
+    expect(payload.data.instances.every((row) => row.status === "untested")).toBe(true);
+    expect(payload.data.instances.map((row) => row.titleSnapshot)).toEqual(
+      expect.arrayContaining(["IA case 1", "IA case 2"])
+    );
   });
 
   it("supports auth login -> me -> logout", async () => {

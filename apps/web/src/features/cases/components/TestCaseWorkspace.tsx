@@ -10,8 +10,9 @@ import { SectionTreePane } from "./SectionTreePane";
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
-  const { data: sections = [], isLoading: sectionsLoading, isError: sectionsError, refetch } =
-    useSections(projectId);
+  const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(projectId);
+  const sections = bundle?.sections ?? [];
+  const suiteId = bundle?.suiteId ?? "";
   const { selectedSectionId, setExpandedCase, setSelectedSection } = useExpandedCase();
 
   useEffect(() => {
@@ -49,6 +50,8 @@ export function TestCaseWorkspace() {
     <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
       <CaseListPane projectId={projectId} />
       <SectionTreePane
+        suiteId={suiteId}
+        sections={sections}
         selectedSectionId={selectedSectionId}
         onSelectSection={setSelectedSection}
         onClearExpand={() => setExpandedCase(null)}

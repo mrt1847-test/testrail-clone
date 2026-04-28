@@ -56,12 +56,12 @@ export function buildApp() {
   void registerSuitesRoutes(app, { suitesService, authService, prisma });
   void registerSectionsRoutes(app, { sectionsService, authService, prisma });
   void registerCasesRoutes(app, { casesService, authService, prisma });
-  void registerRunsRoutes(app, { runsService, resultsService, repo });
+  void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
   void registerResultsRoutes(app, { resultsService });
   void registerAutomationRoutes(app, { prisma });
   void registerReportsRoutes(app, { repo, prisma });
   void registerMilestonesRoutes(app, { prisma });
-  void registerPlansRoutes(app, { prisma });
+  void registerPlansRoutes(app, { prisma, runsService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });
   void registerTokensRoutes(app, { prisma });
 

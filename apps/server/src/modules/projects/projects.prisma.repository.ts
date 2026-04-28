@@ -1,9 +1,47 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 
-import type { CaseRow, ProjectRow, ProjectsRepository, SectionRow, SuiteRow } from "./projects.repository.js";
+import type {
+  CaseRow,
+  CaseStepRow,
+  ProjectRow,
+  ProjectsRepository,
+  SectionRow,
+  SuiteRow
+} from "./projects.repository.js";
+
+function mapCaseStepRow(r: {
+  id: bigint;
+  stepOrder: number;
+  content: string;
+  expectedResult: string | null;
+}): CaseStepRow {
+  return {
+    id: r.id,
+    stepOrder: r.stepOrder,
+    content: r.content,
+    expectedResult: r.expectedResult ?? null
+  };
+}
 
 export class ProjectsPrismaRepository implements ProjectsRepository {
   constructor(private readonly prisma: PrismaClient) {}
+
+  /** Avoid unique(caseId, stepOrder) violations while rewriting contiguous orders 1..n */
+  private async solidifyStepOrders(tx: Prisma.TransactionClient, orderedIds: bigint[]) {
+    const bump = 1_000_000;
+    for (let i = 0; i < orderedIds.length; i += 1) {
+      await tx.testCaseStep.update({
+        where: { id: orderedIds[i]! },
+        data: { stepOrder: bump + i }
+      });
+    }
+    for (let i = 0; i < orderedIds.length; i += 1) {
+      await tx.testCaseStep.update({
+        where: { id: orderedIds[i]! },
+        data: { stepOrder: i + 1 }
+      });
+    }
+  }
 
   async listProjects(): Promise<ProjectRow[]> {
     return this.prisma.project.findMany({
@@ -167,20 +205,21 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     return this.prisma.testCase.findMany({
       where: { projectId, suiteId, deletedAt: null },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
     });
   }
 
-  async listCases(params: { projectId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]> {
+  async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]> {
     return this.prisma.testCase.findMany({
       where: {
         deletedAt: null,
         ...(params.projectId !== undefined ? { projectId: params.projectId } : {}),
+        ...(params.suiteId !== undefined ? { suiteId: params.suiteId } : {}),
         ...(params.sectionId !== undefined ? { sectionId: params.sectionId } : {}),
         ...(params.q ? { title: { contains: params.q, mode: "insensitive" } } : {})
       },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
     });
   }
 
@@ -206,17 +245,131 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         sectionId: input.sectionId,
         title: input.title,
         priority: input.priority,
-        caseType: input.caseType
+        caseType: input.caseType,
+        ...(input.preconditions !== undefined && input.preconditions !== null
+          ? { preconditions: input.preconditions }
+          : {})
       },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true }
+      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true }
     });
   }
 
   async getCase(caseId: bigint): Promise<CaseRow | null> {
     return this.prisma.testCase.findFirst({
       where: { id: caseId, deletedAt: null },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true }
+      select: {
+        id: true,
+        sectionId: true,
+        title: true,
+        priority: true,
+        caseType: true,
+        preconditions: true
+      }
     });
+  }
+
+  async listCaseSteps(caseId: bigint): Promise<CaseStepRow[]> {
+    const rows = await this.prisma.testCaseStep.findMany({
+      where: { caseId, deletedAt: null },
+      orderBy: { stepOrder: "asc" },
+      select: { id: true, stepOrder: true, content: true, expectedResult: true }
+    });
+    return rows.map((r: (typeof rows)[number]) => mapCaseStepRow(r));
+  }
+
+  async createCaseStep(input: {
+    caseId: bigint;
+    stepOrder: number;
+    content: string;
+    expectedResult?: string | null;
+  }): Promise<CaseStepRow> {
+    const row = await this.prisma.testCaseStep.create({
+      data: {
+        caseId: input.caseId,
+        stepOrder: input.stepOrder,
+        content: input.content,
+        expectedResult: input.expectedResult ?? undefined
+      },
+      select: { id: true, stepOrder: true, content: true, expectedResult: true }
+    });
+    return mapCaseStepRow(row);
+  }
+
+  async updateCaseStep(
+    stepId: bigint,
+    patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
+  ): Promise<CaseStepRow | null> {
+    const found = await this.prisma.testCaseStep.findFirst({
+      where: { id: stepId, deletedAt: null },
+      select: { id: true, caseId: true, stepOrder: true, content: true, expectedResult: true }
+    });
+    if (!found) return null;
+
+    if (patch.stepOrder === undefined || patch.stepOrder === found.stepOrder) {
+      const row = await this.prisma.testCaseStep.update({
+        where: { id: stepId },
+        data: {
+          ...(patch.content !== undefined ? { content: patch.content } : {}),
+          ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {})
+        },
+        select: { id: true, stepOrder: true, content: true, expectedResult: true }
+      });
+      return mapCaseStepRow(row);
+    }
+
+    const desiredOrder = patch.stepOrder;
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const all = await tx.testCaseStep.findMany({
+        where: { caseId: found.caseId, deletedAt: null },
+        orderBy: { stepOrder: "asc" },
+        select: { id: true, stepOrder: true, content: true, expectedResult: true }
+      });
+      const moving = all.find((s: (typeof all)[number]) => s.id === stepId);
+      if (!moving) return null;
+      const rest = all.filter((s: (typeof all)[number]) => s.id !== stepId);
+      const targetPos = Math.min(Math.max(1, desiredOrder), all.length);
+      const idx = targetPos - 1;
+      const reordered = [...rest.slice(0, idx), moving, ...rest.slice(idx)];
+      await this.solidifyStepOrders(
+        tx,
+        reordered.map((s) => s.id)
+      );
+      const row = await tx.testCaseStep.update({
+        where: { id: stepId },
+        data: {
+          ...(patch.content !== undefined ? { content: patch.content } : {}),
+          ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {})
+        },
+        select: { id: true, stepOrder: true, content: true, expectedResult: true }
+      });
+      return mapCaseStepRow(row);
+    });
+  }
+
+  async deleteCaseStep(stepId: bigint): Promise<boolean> {
+    const found = await this.prisma.testCaseStep.findFirst({
+      where: { id: stepId, deletedAt: null },
+      select: { id: true, caseId: true }
+    });
+    if (!found) return false;
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.testCaseStep.update({
+        where: { id: stepId },
+        data: { deletedAt: new Date() }
+      });
+      const remaining = await tx.testCaseStep.findMany({
+        where: { caseId: found.caseId, deletedAt: null },
+        orderBy: { stepOrder: "asc" },
+        select: { id: true }
+      });
+      if (remaining.length > 0) {
+        await this.solidifyStepOrders(
+          tx,
+          remaining.map((r: (typeof remaining)[number]) => r.id)
+        );
+      }
+    });
+    return true;
   }
 
   async updateCase(
@@ -230,9 +383,17 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       data: {
         ...(patch.title !== undefined ? { title: patch.title } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-        ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {})
+        ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
+        ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {})
       },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true }
+      select: {
+        id: true,
+        sectionId: true,
+        title: true,
+        priority: true,
+        caseType: true,
+        preconditions: true
+      }
     });
   }
 

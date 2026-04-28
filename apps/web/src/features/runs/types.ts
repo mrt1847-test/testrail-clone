@@ -6,6 +6,7 @@ export type RunSummary = {
   failed: number;
   createdAt: string;
   milestone?: string;
+  milestoneId?: string | null;
   assignedTo?: string | null;
 };
 

@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { fetchProjectMembers } from "../../projects/api/advancedApi";
+import { fetchMilestone, fetchProjectMembers } from "../../projects/api/advancedApi";
 import type { TestInstanceRow } from "../types";
 import {
   useAddRunResultMutation,
@@ -15,26 +15,29 @@ import {
   useTestResultsQuery,
   useUpdateRunAssigneeMutation
 } from "../hooks/useRunsApi";
+import { CloseRunDialog } from "./CloseRunDialog";
+import { ResultEntryPanel } from "./ResultEntryPanel";
+import { ResultHistoryList } from "./ResultHistoryList";
 
 export function RunDetailPage() {
   const { projectId = "", runId = "" } = useParams();
   const { data, isLoading, isError, refetch } = useRunDetailQuery(projectId, runId);
+  const milestoneId = data?.run.milestoneId ?? null;
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
-  const [nextStatus, setNextStatus] = useState<"passed" | "failed" | "blocked" | "retest" | "untested">("passed");
-  const [comment, setComment] = useState("");
-  const [elapsed, setElapsed] = useState("");
-  const [version, setVersion] = useState("");
-  const [defects, setDefects] = useState("");
-  const [step1Status, setStep1Status] = useState<"passed" | "failed" | "blocked" | "retest" | "untested">("passed");
-  const [step1Comment, setStep1Comment] = useState("");
   const [assigneeInput, setAssigneeInput] = useState("");
+  const [closeRunDialogOpen, setCloseRunDialogOpen] = useState(false);
   const { data: history = [], isLoading: isHistoryLoading } = useTestResultsQuery(selected?.id);
   const { data: steps = [], isLoading: isStepsLoading } = useResultStepsQuery(selectedResultId ?? undefined);
   const membersQuery = useQuery({
     queryKey: ["run-assignee-members", projectId],
     queryFn: () => fetchProjectMembers(projectId),
     enabled: Boolean(projectId)
+  });
+  const milestoneQuery = useQuery({
+    queryKey: ["run-detail-milestone", projectId, milestoneId ?? ""],
+    queryFn: () => fetchMilestone(projectId, milestoneId ?? ""),
+    enabled: Boolean(projectId && milestoneId)
   });
   const addResultMutation = useAddRunResultMutation(projectId, runId);
   const closeRunMutation = useCloseRunMutation(projectId, runId);
@@ -56,12 +59,27 @@ export function RunDetailPage() {
 
   return (
     <div className="space-y-4">
+      <CloseRunDialog
+        open={closeRunDialogOpen}
+        runName={run.name}
+        isPending={closeRunMutation.isPending}
+        onCancel={() => setCloseRunDialogOpen(false)}
+        onConfirm={async () => {
+          await closeRunMutation.mutateAsync();
+          setCloseRunDialogOpen(false);
+        }}
+      />
       <header className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <p className="text-xs font-medium uppercase text-slate-500">Run</p>
         <h2 className="text-xl font-semibold text-slate-900">{run.name}</h2>
         <p className="text-sm text-slate-600">
           {run.status} {run.environment ? `· ${run.environment}` : ""}
         </p>
+        {run.milestoneId ? (
+          <p className="text-xs text-slate-500">
+            milestone: {milestoneQuery.data?.name ?? `#${run.milestoneId}`}
+          </p>
+        ) : null}
         <p className="text-xs text-slate-500">assignee: {run.assignedTo ?? "unassigned"}</p>
       </header>
 
@@ -102,163 +120,35 @@ export function RunDetailPage() {
         <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-900">Result entry</h3>
           {selected ? (
-            <div className="mt-3 space-y-2 text-sm text-slate-700">
-              <p>
-                <span className="font-mono text-xs">{selected.caseCode}</span> — {selected.title}
-              </p>
-              <div className="rounded border border-slate-200 p-2">
-                <p className="text-xs font-medium text-slate-700">Submit result</p>
-                <div className="mt-2 flex gap-2">
-                  <select
-                    className="rounded border border-slate-300 px-2 py-1 text-xs"
-                    value={nextStatus}
-                    onChange={(e) =>
-                      setNextStatus(e.target.value as "passed" | "failed" | "blocked" | "retest" | "untested")
-                    }
-                  >
-                    <option value="passed">passed</option>
-                    <option value="failed">failed</option>
-                    <option value="blocked">blocked</option>
-                    <option value="retest">retest</option>
-                    <option value="untested">untested</option>
-                  </select>
-                  <input
-                    className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="comment"
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                  />
-                  <input
-                    className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="elapsed"
-                    value={elapsed}
-                    onChange={(e) => setElapsed(e.target.value)}
-                  />
-                  <input
-                    className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="version"
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                  />
-                  <input
-                    className="w-36 rounded border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="defects comma-separated"
-                    value={defects}
-                    onChange={(e) => setDefects(e.target.value)}
-                  />
-                  <button
-                    className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50"
-                    disabled={addResultMutation.isPending}
-                    onClick={() => {
-                      void addResultMutation.mutateAsync({
-                        testId: selected.id,
-                        status: nextStatus,
-                        comment: comment.trim() || undefined,
-                        elapsed: elapsed.trim() || undefined,
-                        version: version.trim() || undefined,
-                        defects: defects
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                        stepResults: [
-                          {
-                            stepOrder: 1,
-                            status: step1Status,
-                            comment: step1Comment.trim() || undefined
-                          }
-                        ]
-                      });
-                      setComment("");
-                      setElapsed("");
-                      setVersion("");
-                      setDefects("");
-                      setStep1Comment("");
-                    }}
-                  >
-                    Save
-                  </button>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <select
-                    className="rounded border border-slate-300 px-2 py-1 text-xs"
-                    value={step1Status}
-                    onChange={(e) =>
-                      setStep1Status(e.target.value as "passed" | "failed" | "blocked" | "retest" | "untested")
-                    }
-                  >
-                    <option value="passed">step1 passed</option>
-                    <option value="failed">step1 failed</option>
-                    <option value="blocked">step1 blocked</option>
-                    <option value="retest">step1 retest</option>
-                    <option value="untested">step1 untested</option>
-                  </select>
-                  <input
-                    className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="step1 comment"
-                    value={step1Comment}
-                    onChange={(e) => setStep1Comment(e.target.value)}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-slate-500">
-                Result history from{" "}
-                <code className="rounded bg-slate-100 px-1">GET /api/tests/:testId/results</code>.
-              </p>
-              <div className="max-h-64 space-y-2 overflow-auto">
-                {isHistoryLoading ? (
-                  <p className="text-xs text-slate-500">Loading history…</p>
-                ) : history.length === 0 ? (
-                  <p className="text-xs text-slate-500">No results yet.</p>
-                ) : (
-                  history.map((item) => (
-                    <div
-                      key={item.id}
-                      className={
-                        selectedResultId === item.id
-                          ? "cursor-pointer rounded border border-slate-400 bg-slate-50 p-2"
-                          : "cursor-pointer rounded border border-slate-200 p-2"
-                      }
-                      onClick={() => setSelectedResultId(item.id)}
-                    >
-                      <p className="text-xs font-medium text-slate-800">
-                        {item.status} · {new Date(item.createdAt).toLocaleString()}
-                      </p>
-                      {item.comment ? <p className="text-xs text-slate-700">{item.comment}</p> : null}
-                      <p className="text-[11px] text-slate-500">
-                        source={item.source}
-                        {item.elapsed ? ` · elapsed=${item.elapsed}` : ""}
-                        {item.version ? ` · version=${item.version}` : ""}
-                      </p>
-                      {item.defects.length > 0 ? (
-                        <p className="text-[11px] text-slate-500">defects: {item.defects.join(", ")}</p>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-3 rounded border border-slate-200 p-2">
-                <p className="text-xs font-medium text-slate-700">Step results</p>
-                {!selectedResultId ? (
-                  <p className="mt-1 text-xs text-slate-500">Select a history item to inspect per-step results.</p>
-                ) : isStepsLoading ? (
-                  <p className="mt-1 text-xs text-slate-500">Loading step results…</p>
-                ) : steps.length === 0 ? (
-                  <p className="mt-1 text-xs text-slate-500">No step results for this result.</p>
-                ) : (
-                  <div className="mt-2 max-h-40 space-y-1 overflow-auto">
-                    {steps.map((step) => (
-                      <div key={step.id} className="rounded border border-slate-100 p-2">
-                        <p className="text-[11px] font-medium text-slate-700">
-                          Step {step.stepOrder} · {step.status}
-                        </p>
-                        {step.actualResult ? <p className="text-[11px] text-slate-600">{step.actualResult}</p> : null}
-                        {step.comment ? <p className="text-[11px] text-slate-500">{step.comment}</p> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className="mt-3 space-y-4 text-sm text-slate-700">
+              <ResultEntryPanel
+                key={selected.id}
+                instance={{
+                  id: selected.id,
+                  caseCode: selected.caseCode,
+                  title: selected.title
+                }}
+                isSubmitting={addResultMutation.isPending}
+                onSubmit={(payload) => {
+                  void addResultMutation.mutateAsync({
+                    testId: selected.id,
+                    status: payload.status,
+                    comment: payload.comment,
+                    elapsed: payload.elapsed,
+                    version: payload.version,
+                    defects: payload.defects,
+                    stepResults: payload.stepResults
+                  });
+                }}
+              />
+              <ResultHistoryList
+                history={history}
+                isHistoryLoading={isHistoryLoading}
+                selectedResultId={selectedResultId}
+                onSelectResult={setSelectedResultId}
+                steps={steps}
+                isStepsLoading={isStepsLoading}
+              />
             </div>
           ) : (
             <p className="mt-3 text-sm text-slate-500">Select a test instance to enter results.</p>
@@ -298,9 +188,10 @@ export function RunDetailPage() {
                 Rerun failed
               </button>
               <button
+                type="button"
                 className="rounded bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50"
                 disabled={run.status === "closed" || closeRunMutation.isPending}
-                onClick={() => void closeRunMutation.mutateAsync()}
+                onClick={() => setCloseRunDialogOpen(true)}
               >
                 Close run
               </button>

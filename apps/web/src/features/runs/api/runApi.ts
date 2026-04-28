@@ -37,6 +37,7 @@ export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
     progress: 0,
     failed: 0,
     createdAt: "—",
+    milestoneId: r.milestoneId ? String(r.milestoneId) : null,
     assignedTo: r.assignedTo ? String(r.assignedTo) : null
   }));
 }
@@ -62,6 +63,7 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         name: run.name,
         status: run.status === "closed" ? "closed" : "open",
         environment: run.environment ?? undefined,
+        milestoneId: run.milestoneId ? String(run.milestoneId) : null,
         assignedTo: run.assignedTo ? String(run.assignedTo) : null,
         progress,
         failed,
@@ -151,6 +153,7 @@ export async function createRun(input: CreateRunInput): Promise<RunSummary> {
     progress: 0,
     failed: 0,
     createdAt: "—",
+    milestoneId: created.run.milestoneId ? String(created.run.milestoneId) : null,
     assignedTo: created.run.assignedTo ? String(created.run.assignedTo) : null
   };
 }

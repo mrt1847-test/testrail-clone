@@ -24,6 +24,14 @@ export type CaseRow = {
   title: string;
   priority?: string;
   caseType?: string;
+  preconditions?: string | null;
+};
+
+export type CaseStepRow = {
+  id: bigint;
+  stepOrder: number;
+  content: string;
+  expectedResult?: string | null;
 };
 
 export interface ProjectsRepository {
@@ -49,9 +57,21 @@ export interface ProjectsRepository {
   getSection(sectionId: bigint): Promise<SectionRow | null>;
 
   listCasesForSuite(projectId: bigint, suiteId: bigint): Promise<CaseRow[]>;
-  listCases(params: { projectId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]>;
+  listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]>;
   createCase(input: Omit<CaseRow, "id">): Promise<CaseRow>;
   getCase(caseId: bigint): Promise<CaseRow | null>;
+  listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
+  createCaseStep(input: {
+    caseId: bigint;
+    stepOrder: number;
+    content: string;
+    expectedResult?: string | null;
+  }): Promise<CaseStepRow>;
+  updateCaseStep(
+    stepId: bigint,
+    patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
+  ): Promise<CaseStepRow | null>;
+  deleteCaseStep(stepId: bigint): Promise<boolean>;
   updateCase(caseId: bigint, patch: Partial<Omit<CaseRow, "id" | "sectionId">>): Promise<CaseRow | null>;
   deleteCase(caseId: bigint): Promise<boolean>;
 }

@@ -54,6 +54,14 @@ async function resolveProjectId(req: FastifyRequest, prisma?: PrismaClient) {
     return testCase?.projectId ?? null;
   }
 
+  if (params.stepId !== undefined) {
+    const step = await prisma.testCaseStep.findFirst({
+      where: { id: BigInt(String(params.stepId)), deletedAt: null },
+      select: { testCase: { select: { projectId: true } } }
+    });
+    return step?.testCase.projectId ?? null;
+  }
+
   return null;
 }
 

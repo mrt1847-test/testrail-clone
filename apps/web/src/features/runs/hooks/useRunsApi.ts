@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
+import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   addRunResult,
   closeRun,
@@ -46,6 +47,7 @@ export function useCreateRunMutation(projectId: string | undefined) {
       if (!projectId) return;
       void qc.invalidateQueries({ queryKey: runKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });
 }
@@ -88,6 +90,8 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.results(vars.testId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });
 }
@@ -100,6 +104,8 @@ export function useCloseRunMutation(projectId: string | undefined, runId: string
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });
 }
@@ -111,6 +117,8 @@ export function useUpdateRunAssigneeMutation(projectId: string | undefined, runI
     onSuccess: () => {
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });
 }
@@ -123,6 +131,8 @@ export function useRerunFailedMutation(projectId: string | undefined, runId: str
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });
 }

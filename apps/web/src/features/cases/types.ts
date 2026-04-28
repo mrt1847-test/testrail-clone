@@ -1,6 +1,13 @@
 export type CasePriority = "Low" | "Medium" | "High";
 export type CaseType = "Functional" | "Integration" | "Regression";
 
+export type CaseStep = {
+  id?: number;
+  stepOrder?: number;
+  description: string;
+  expected: string;
+};
+
 export interface TestCase {
   id: number;
   caseCode: string;
@@ -13,7 +20,7 @@ export interface TestCase {
   labels: string[];
   automationKey: string;
   preconditions: string;
-  steps: Array<{ description: string; expected: string }>;
+  steps: CaseStep[];
   sectionId: number;
   updatedAt: string;
 }
