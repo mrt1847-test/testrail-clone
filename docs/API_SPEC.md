@@ -125,6 +125,8 @@ Case optimistic locking (phase 2 baseline):
 - `PATCH /api/cases/{caseId}/assignee`
 
 Semantics (case steps):
+- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept `customValues` as an object keyed by custom field `systemName`.
+- `GET /api/cases/{caseId}` and case list responses include `customValues`; current baseline stores scalar values (`string`, `number`, `boolean`, or `null`).
 - `GET /api/cases/{caseId}` includes an ordered `steps` array. Each step exposes `id`, `stepOrder`, `content`, and `expectedResult` (nullable). Soft-deleted steps are omitted.
 - `POST /api/cases/{caseId}/steps`: body requires `content`; `expectedResult` is optional (nullable). The server assigns the next `stepOrder` within the case (clients do not choose the insert position via this endpoint).
 - `PATCH /api/case-steps/{stepId}`: send only fields to change among `content`, `expectedResult`, and `stepOrder`. Changing `stepOrder` re-sequences all active steps for that case to contiguous `1..n`.
@@ -148,6 +150,10 @@ Semantics (case steps):
     "caseType": "regression",
     "refs": ["REQ-1"],
     "labels": ["checkout"],
+    "customValues": {
+      "risk": "High",
+      "automation_candidate": true
+    },
     "steps": [
       { "stepOrder": 1, "content": "Open checkout", "expectedResult": "Checkout opens" }
     ]
@@ -161,6 +167,7 @@ Semantics (case steps):
 Current baseline:
 - `GET /api/cases/{caseId}/versions` returns paged history with `versionNo`, case authored snapshot fields, step snapshot, `changeReason`, and `createdAt`.
 - New versions are created automatically on meaningful authored changes (`PATCH /api/cases/{caseId}`, step create/update/delete).
+- Case version snapshots include `customValuesSnapshot`.
 
 ## Runs
 - `GET /api/projects/{projectId}/runs`
@@ -376,6 +383,12 @@ Permission baseline:
 - `POST /api/projects/{projectId}/settings/statuses`
 - `PATCH /api/projects/{projectId}/settings/statuses/{statusId}`
 - `DELETE /api/projects/{projectId}/settings/statuses/{statusId}`
+- `GET /api/projects/{projectId}/settings/templates`
+- `POST /api/projects/{projectId}/settings/templates`
+- `PATCH /api/projects/{projectId}/settings/templates/{templateId}`
+- `DELETE /api/projects/{projectId}/settings/templates/{templateId}`
+- `GET /api/projects/{projectId}/settings/audit-logs`
+- `GET /api/projects/{projectId}/settings/audit-log-filters`
 
 Custom field shape:
 ```json
@@ -414,6 +427,32 @@ Rules:
 - `canonicalStatus` maps custom labels onto the internal execution status set: `untested`, `passed`, `failed`, `blocked`, `retest`.
 - If no project rows exist yet, the API returns the five default system definitions.
 - System definitions are protected from deletion.
+
+Case template shape:
+```json
+{
+  "id": "30",
+  "name": "Exploratory",
+  "description": "Lightweight testing",
+  "fields": ["title", "charter", "notes"],
+  "isDefault": true,
+  "isActive": true,
+  "displayOrder": 0
+}
+```
+
+Rules:
+- `fields` is an ordered list of field keys; built-in and custom field keys can both be represented.
+- At most one active project template should be marked default by the settings API.
+- Deletes are soft deletes in DB-backed mode and create audit log entries.
+
+Audit log query parameters:
+- `page`, `pageSize`
+- `action`, `entityType`, `entityId`, `actorUserId`
+- `createdFrom`, `createdTo` as ISO datetimes
+- `q` searches action, entity type, and entity id
+
+Audit log response includes `items`, `filters`, `page`, `pageSize`, `total`, and `totalPages`.
 
 ## Automation Upload Endpoints
 - `POST /api/automation/runs`

@@ -4,11 +4,13 @@ import type { CasePriority, CaseType, CaseVersion, SectionNode, TestCase } from 
 
 type ApiCase = {
   id: string;
+  projectId?: string;
   sectionId: string;
   title: string;
   priority?: string;
   caseType?: string;
   preconditions?: string | null;
+  customValues?: Record<string, string | number | boolean | null>;
   lockVersion?: number;
   updatedAt?: string;
 };
@@ -53,6 +55,7 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
   const id = asNum(row.id);
   return {
     id,
+    projectId: row.projectId ? asNum(row.projectId) : undefined,
     caseCode: `C${row.id}`,
     title: row.title,
     type: normalizeType(row.caseType),
@@ -63,6 +66,7 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
     labels: [],
     automationKey: "",
     preconditions: row.preconditions ?? "",
+    customValues: row.customValues ?? {},
     steps: [],
     sectionId: asNum(row.sectionId),
     lockVersion: row.lockVersion ?? 1,
@@ -139,7 +143,13 @@ export async function fetchCaseById(caseId: number): Promise<TestCase> {
 
 export async function createCase(
   sectionId: number,
-  input: { title: string; priority?: string; caseType?: string; preconditions?: string }
+  input: {
+    title: string;
+    priority?: string;
+    caseType?: string;
+    preconditions?: string;
+    customValues?: Record<string, string | number | boolean | null>;
+  }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/sections/${sectionId}/cases`, {
     method: "POST",
@@ -157,6 +167,7 @@ export async function updateCase(
     caseType?: string;
     expectedUpdatedAt?: string;
     expectedVersion?: number;
+    customValues?: Record<string, string | number | boolean | null>;
   }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/cases/${caseId}`, {

@@ -299,7 +299,7 @@
 - Purpose: 케이스 작성 템플릿을 관리한다.
 - Primary user actions: 템플릿 생성/편집/삭제
 - Main components: `CaseTemplateSettings`
-- Required API: `GET /api/projects/:projectId/settings/templates`, `POST /api/projects/:projectId/settings/templates`
+- Required API: `GET /api/projects/:projectId/settings/templates`, `POST /api/projects/:projectId/settings/templates`, `PATCH /api/projects/:projectId/settings/templates/:templateId`, `DELETE /api/projects/:projectId/settings/templates/:templateId`
 - Loading state: list skeleton
 - Empty state: 템플릿 없음
 - Error state: 저장/조회 실패
@@ -317,6 +317,18 @@
 - Error state: 저장 실패
 - MVP 여부: 후순위
 - Later 확장 여부: 다중 provider
+
+### Screen: Audit Logs
+- Route: `/projects/:projectId/settings/audit-logs`
+- Purpose: query project audit events for troubleshooting and governance.
+- Primary user actions: filter by actor/entity/action/date/search text, inspect changes, paginate results
+- Main components: `AuditLogTable`
+- Required API: `GET /api/projects/:projectId/settings/audit-logs`, `GET /api/projects/:projectId/settings/audit-log-filters`
+- Loading state: table skeleton
+- Empty state: no matching audit logs
+- Error state: query failed + retry
+- MVP status: simple
+- Later expansion: saved filters/export
 
 ### Screen: Notifications
 - Route: `/projects/:projectId/settings/notifications`

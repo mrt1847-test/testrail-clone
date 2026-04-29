@@ -2,16 +2,30 @@ import type { CaseVersion, TestCase } from "../types";
 
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
+type CaseCustomFieldDefinition = {
+  systemName: string;
+  name: string;
+  fieldType: "text" | "number" | "select";
+  options: string[];
+  isRequired: boolean;
+  isActive: boolean;
+};
+
 type CaseRowProps = {
   item: TestCase;
   isExpanded: boolean;
   mode: "view" | "edit";
   detail: TestCase | null;
   versions?: CaseVersion[];
+  customFields?: CaseCustomFieldDefinition[];
   onToggle: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
-  onSave: (patch: { title: string; preconditions: string }) => Promise<void>;
+  onSave: (patch: {
+    title: string;
+    preconditions: string;
+    customValues: Record<string, string | number | boolean | null>;
+  }) => Promise<void>;
   onDelete: () => Promise<void>;
   isSaving?: boolean;
   isDeleting?: boolean;
@@ -30,6 +44,7 @@ export function CaseRow({
   mode,
   detail,
   versions,
+  customFields,
   onToggle,
   onEdit,
   onCloseDetail,
@@ -62,6 +77,7 @@ export function CaseRow({
         <ExpandableCaseDetail
           data={detail ?? item}
           versions={versions ?? []}
+          customFields={customFields ?? []}
           mode={mode}
           onEdit={onEdit}
           onClose={onCloseDetail}

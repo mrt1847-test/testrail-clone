@@ -43,6 +43,7 @@
 - `refs` text (current implementation), `refs` text[] (target option)
 - `labels` text[] default `'{}'`
 - `automation_key`, `external_id`
+- `custom_values` jsonb not null default `'{}'` (implemented in Prisma as `customValues`)
 - `version` integer default `1`
 - `lock_version` integer default `1`
 - audit fields
@@ -57,6 +58,7 @@
 - `id`, `case_id`, `version`
 - snapshot fields: `title`, `preconditions`, `expected_result`, `priority`, `case_type`, `estimate`, `refs`, `labels`, `automation_key`, `external_id`
 - `steps_snapshot` jsonb not null default `'[]'`
+- `custom_values_snapshot` jsonb not null default `'{}'`
 - `change_summary`, `created_by`, `created_at`
 - unique(`case_id`, `version`)
 - Purpose: immutable authored-case history and reproducible run creation.
@@ -118,6 +120,13 @@
 - `color`, `is_system`, `is_active`, `display_order`, audit fields
 - unique(`project_id`, `system_name`)
 - Purpose: project-scoped result status labels mapped onto the canonical `test_status` enum.
+
+## case_templates
+- `id`, `project_id`, `name`, `description`
+- `fields` jsonb ordered list of field keys
+- `is_default`, `is_active`, `display_order`, audit fields
+- unique(`project_id`, `name`)
+- Purpose: project-scoped case authoring templates using built-in and custom field keys.
 
 ## test_plan_entry_configurations
 - `id`, `plan_entry_id`, `configuration_id`

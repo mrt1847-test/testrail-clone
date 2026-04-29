@@ -10,6 +10,7 @@ export type CaseStep = {
 
 export interface TestCase {
   id: number;
+  projectId?: number;
   caseCode: string;
   title: string;
   type: CaseType;
@@ -20,6 +21,7 @@ export interface TestCase {
   labels: string[];
   automationKey: string;
   preconditions: string;
+  customValues: Record<string, string | number | boolean | null>;
   steps: CaseStep[];
   sectionId: number;
   lockVersion: number;

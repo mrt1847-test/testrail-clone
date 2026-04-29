@@ -14,6 +14,7 @@ export class CasesService {
     priority?: string;
     caseType?: string;
     preconditions?: string;
+    customValues?: Record<string, string | number | boolean | null>;
   }) {
     const created = await this.repo.createCase(input);
     await this.repo.createCaseVersionSnapshot(created.id, "case_created");
@@ -37,6 +38,7 @@ export class CasesService {
       priority?: string;
       caseType?: string;
       preconditions?: string | null;
+      customValues?: Record<string, string | number | boolean | null>;
       expectedUpdatedAt?: string;
       expectedVersion?: number;
     }

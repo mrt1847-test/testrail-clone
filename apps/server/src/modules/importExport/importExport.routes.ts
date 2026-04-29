@@ -13,6 +13,13 @@ import { runIdParamSchema } from "../runs/runs.schema.js";
 
 type CsvRow = Record<string, string>;
 type ImportIssue = { row: number; field?: string; code: string; message: string };
+type ScalarCustomValue = string | number | boolean | null;
+type CustomFieldDefinition = {
+  systemName: string;
+  fieldType: string;
+  options: Prisma.JsonValue | null;
+  isRequired: boolean;
+};
 
 const caseImportSchema = z.object({
   csv: z.string().min(1),
@@ -128,6 +135,60 @@ function firstValue(row: CsvRow, keys: string[]) {
 
 function splitList(value?: string) {
   return value ? value.split(/[|;]/).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function customColumnName(systemName: string) {
+  return `custom_${systemName}`;
+}
+
+function fieldOptions(value: Prisma.JsonValue | null): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseCustomFieldValue(
+  rawValue: string | undefined,
+  field: CustomFieldDefinition,
+  rowNumber: number,
+  issues: ImportIssue[]
+): ScalarCustomValue | undefined {
+  const fieldName = customColumnName(field.systemName);
+  if (rawValue == null || rawValue === "") {
+    if (field.isRequired) {
+      issues.push({ row: rowNumber, field: fieldName, code: "REQUIRED", message: `${fieldName} is required` });
+    }
+    return undefined;
+  }
+  if (field.fieldType === "number") {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) {
+      issues.push({ row: rowNumber, field: fieldName, code: "INVALID_NUMBER", message: `${fieldName} must be a number` });
+      return undefined;
+    }
+    return value;
+  }
+  if (field.fieldType === "select") {
+    const options = fieldOptions(field.options);
+    if (!options.includes(rawValue)) {
+      issues.push({
+        row: rowNumber,
+        field: fieldName,
+        code: "INVALID_OPTION",
+        message: `${fieldName} must be one of: ${options.join(", ")}`
+      });
+      return undefined;
+    }
+  }
+  return rawValue;
+}
+
+function extractCustomValues(row: CsvRow, fields: CustomFieldDefinition[], rowNumber: number, issues: ImportIssue[]) {
+  const values: Record<string, ScalarCustomValue> = {};
+  for (const field of fields) {
+    const rawValue = firstValue(row, [customColumnName(field.systemName), field.systemName]);
+    const parsed = parseCustomFieldValue(rawValue, field, rowNumber, issues);
+    if (parsed !== undefined) values[field.systemName] = parsed;
+  }
+  return values;
 }
 
 async function resolveDefaultSection(prisma: PrismaClient, projectId: bigint) {
@@ -344,6 +405,11 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
 
 async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows: CsvRow[], fallbackSectionId?: bigint) {
   const issues: ImportIssue[] = [];
+  const customFields = await prisma.customField.findMany({
+    where: { projectId, deletedAt: null, isActive: true },
+    orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+    select: { systemName: true, fieldType: true, options: true, isRequired: true }
+  });
   const normalized: Array<{
     rowNumber: number;
     sectionId: bigint;
@@ -355,6 +421,7 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
     labels: string[];
     automationKey?: string;
     externalId?: string;
+    customValues: Record<string, ScalarCustomValue>;
     steps: Array<{ content: string; expectedResult?: string | null }>;
   }> = [];
 
@@ -386,10 +453,13 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
     }
     if (!title || !sectionIds.has(sectionId.toString())) return;
 
+    const rowIssueStart = issues.length;
     const steps = splitList(firstValue(row, ["steps", "Steps"])).map((step) => {
       const [content, expected] = step.split("=>").map((part) => part.trim());
       return { content: content ?? step, expectedResult: expected || null };
     });
+    const customValues = extractCustomValues(row, customFields, rowNumber, issues);
+    if (issues.length > rowIssueStart) return;
 
     normalized.push({
       rowNumber,
@@ -402,6 +472,7 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
       labels: splitList(firstValue(row, ["labels", "Labels"])),
       automationKey: firstValue(row, ["automation_key", "automationKey"]),
       externalId: firstValue(row, ["external_id", "externalId"]),
+      customValues,
       steps
     });
   });
@@ -461,6 +532,7 @@ export async function registerImportExportRoutes(
             labels: item.labels,
             automationKey: item.automationKey,
             externalId: item.externalId,
+            customValues: item.customValues,
             createdBy: user.id,
             updatedBy: user.id,
             steps: {
@@ -480,6 +552,7 @@ export async function registerImportExportRoutes(
             priority: item.priority,
             caseType: item.caseType,
             preconditions: item.preconditions,
+            customValuesSnapshot: item.customValues as Prisma.InputJsonValue,
             stepsSnapshot: item.steps.map((step, index) => ({ stepOrder: index + 1, ...step })) as Prisma.InputJsonValue,
             changeReason: "csv_import"
           }
@@ -620,8 +693,27 @@ export async function registerImportExportRoutes(
       orderBy: { id: "asc" },
       include: { steps: { where: { deletedAt: null }, orderBy: { stepOrder: "asc" } } }
     });
+    const customFields = await deps.prisma.customField.findMany({
+      where: { projectId, deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { systemName: true }
+    });
+    const headers = [
+      "id",
+      "section_id",
+      "title",
+      "preconditions",
+      "priority",
+      "type",
+      "refs",
+      "labels",
+      "automation_key",
+      "external_id",
+      ...customFields.map((field) => customColumnName(field.systemName)),
+      "steps"
+    ];
     const csv = toCsv(
-      ["id", "section_id", "title", "preconditions", "priority", "type", "refs", "labels", "automation_key", "external_id", "steps"],
+      headers,
       rows.map((row) => ({
         id: row.id,
         section_id: row.sectionId,
@@ -633,6 +725,15 @@ export async function registerImportExportRoutes(
         labels: row.labels.join("|"),
         automation_key: row.automationKey,
         external_id: row.externalId,
+        ...Object.fromEntries(
+          customFields.map((field) => {
+            const value =
+              row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+                ? (row.customValues as Record<string, unknown>)[field.systemName]
+                : undefined;
+            return [customColumnName(field.systemName), value ?? ""];
+          })
+        ),
         steps: row.steps.map((step) => `${step.content}${step.expectedResult ? `=>${step.expectedResult}` : ""}`).join("|")
       }))
     );

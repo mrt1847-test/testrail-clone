@@ -52,9 +52,11 @@ describe("phase2 CRUD flow", () => {
       method: "POST",
       url: `/api/sections/${section.data.id}/cases`,
       headers: mutationHeaders,
-      payload: { title: "Login case", priority: "high" }
+      payload: { title: "Login case", priority: "high", customValues: { risk: "High" } }
     });
     expect(caseRes.statusCode).toBe(200);
+    const createdCase = caseRes.json() as { data: { id: string; customValues: Record<string, unknown> } };
+    expect(createdCase.data.customValues).toMatchObject({ risk: "High" });
 
     const listByProject = await app.inject({
       method: "GET",
@@ -71,6 +73,22 @@ describe("phase2 CRUD flow", () => {
     expect(listBySection.statusCode).toBe(200);
     const arr2 = listBySection.json() as { data: Array<{ title: string }> };
     expect(arr2.data.length).toBeGreaterThan(0);
+
+    const updateCaseRes = await app.inject({
+      method: "PATCH",
+      url: `/api/cases/${createdCase.data.id}`,
+      headers: mutationHeaders,
+      payload: {
+        title: "Login case updated",
+        customValues: { risk: "Medium", automation_candidate: true },
+        expectedVersion: 1
+      }
+    });
+    expect(updateCaseRes.statusCode).toBe(200);
+    expect((updateCaseRes.json() as { data: { customValues: Record<string, unknown> } }).data.customValues).toMatchObject({
+      risk: "Medium",
+      automation_candidate: true
+    });
   });
 
   it("creates and updates project custom fields", async () => {
@@ -178,6 +196,106 @@ describe("phase2 CRUD flow", () => {
     expect((updateRes.json() as { data: { canonicalStatus: string; isActive: boolean } }).data).toMatchObject({
       canonicalStatus: "failed",
       isActive: false
+    });
+  });
+
+  it("creates and updates project case templates", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const mutationHeaders = { authorization: `Bearer ${token}` };
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: mutationHeaders,
+      payload: { name: "Case template project" }
+    });
+    const project = projectRes.json() as { data: { id: string } };
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/templates`,
+      headers: mutationHeaders,
+      payload: {
+        name: "Exploratory",
+        description: "Lightweight testing",
+        fields: ["title", "charter", "notes"],
+        isDefault: true
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const created = createRes.json() as { data: { id: string; fields: string[]; isDefault: boolean } };
+    expect(created.data.fields).toEqual(["title", "charter", "notes"]);
+    expect(created.data.isDefault).toBe(true);
+
+    const secondRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/templates`,
+      headers: mutationHeaders,
+      payload: {
+        name: "Regression",
+        fields: ["title", "preconditions", "steps", "expectedResult"],
+        isDefault: true
+      }
+    });
+    expect(secondRes.statusCode).toBe(200);
+    const second = secondRes.json() as { data: { id: string } };
+
+    const updateRes = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${project.data.id}/settings/templates/${second.data.id}`,
+      headers: mutationHeaders,
+      payload: { description: "Full regression format", isActive: false }
+    });
+    expect(updateRes.statusCode).toBe(200);
+    expect((updateRes.json() as { data: { description: string; isActive: boolean } }).data).toMatchObject({
+      description: "Full regression format",
+      isActive: false
+    });
+
+    const listRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.data.id}/settings/templates`
+    });
+    expect(listRes.statusCode).toBe(200);
+    const list = listRes.json() as { data: Array<{ name: string; isDefault: boolean }> };
+    expect(list.data.filter((template) => template.isDefault)).toHaveLength(1);
+    expect(list.data.find((template) => template.name === "Regression")?.isDefault).toBe(true);
+  });
+
+  it("returns audit log query pagination metadata", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const mutationHeaders = { authorization: `Bearer ${token}` };
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: mutationHeaders,
+      payload: { name: "Audit query project" }
+    });
+    const project = projectRes.json() as { data: { id: string } };
+
+    const auditRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.data.id}/settings/audit-logs?page=1&pageSize=10&q=project`,
+      headers: mutationHeaders
+    });
+    expect(auditRes.statusCode).toBe(200);
+    expect(auditRes.json()).toMatchObject({
+      data: {
+        items: [],
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 1
+      }
     });
   });
 });

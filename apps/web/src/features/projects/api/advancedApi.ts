@@ -183,6 +183,16 @@ export type CustomStatusRow = {
   displayOrder: number;
 };
 
+export type CaseTemplateRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  fields: string[];
+  isDefault: boolean;
+  isActive: boolean;
+  displayOrder: number;
+};
+
 export type WebhookRow = {
   id: string;
   event: string;
@@ -206,6 +216,32 @@ export type AuditLogRow = {
   entityId: string;
   changes?: Record<string, unknown> | null;
   createdAt: string;
+};
+
+export type AuditLogQuery = {
+  page?: number;
+  pageSize?: number;
+  action?: string;
+  entityType?: string;
+  entityId?: string;
+  actorUserId?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  q?: string;
+};
+
+export type AuditLogResult = {
+  items: AuditLogRow[];
+  filters: string[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AuditLogFilterOptions = {
+  actions: string[];
+  entityTypes: string[];
 };
 
 export type DefectIntegrationSettings = {
@@ -731,19 +767,78 @@ export async function deleteCustomStatus(projectId: string, statusId: string) {
   await apiFetch<void>(`/api/projects/${projectId}/settings/statuses/${statusId}`, { method: "DELETE" });
 }
 
+export async function fetchCaseTemplates(projectId: string): Promise<CaseTemplateRow[]> {
+  const res = await apiFetch<Paged<CaseTemplateRow>>(`/api/projects/${projectId}/settings/templates`);
+  return res.data.map((row) => ({
+    ...row,
+    id: String(row.id),
+    description: row.description ?? null,
+    fields: row.fields ?? [],
+    isDefault: row.isDefault ?? false,
+    isActive: row.isActive ?? true,
+    displayOrder: row.displayOrder ?? 0
+  }));
+}
+
+export async function createCaseTemplate(
+  projectId: string,
+  input: Omit<CaseTemplateRow, "id">
+): Promise<CaseTemplateRow> {
+  const res = await apiFetch<Ok<CaseTemplateRow>>(`/api/projects/${projectId}/settings/templates`, {
+    method: "POST",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id), fields: res.data.fields ?? [] };
+}
+
+export async function updateCaseTemplate(
+  projectId: string,
+  templateId: string,
+  input: Partial<Omit<CaseTemplateRow, "id">>
+): Promise<CaseTemplateRow> {
+  const res = await apiFetch<Ok<CaseTemplateRow>>(`/api/projects/${projectId}/settings/templates/${templateId}`, {
+    method: "PATCH",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id), fields: res.data.fields ?? [] };
+}
+
+export async function deleteCaseTemplate(projectId: string, templateId: string) {
+  await apiFetch<void>(`/api/projects/${projectId}/settings/templates/${templateId}`, { method: "DELETE" });
+}
+
 export async function fetchWebhooks(projectId: string): Promise<WebhookRow[]> {
   const res = await apiFetch<Paged<WebhookRow>>(`/api/projects/${projectId}/settings/webhooks`);
   return res.data.map((row) => ({ ...row, id: String(row.id) }));
 }
 
-export async function fetchAuditLogs(projectId: string): Promise<AuditLogRow[]> {
-  const res = await apiFetch<Ok<{ items: AuditLogRow[] }>>(`/api/projects/${projectId}/settings/audit-logs`);
-  return res.data.items.map((row) => ({
-    ...row,
-    id: String(row.id),
-    actorUserId: row.actorUserId ? String(row.actorUserId) : null,
-    entityId: String(row.entityId)
-  }));
+export async function fetchAuditLogs(projectId: string, query: AuditLogQuery = {}): Promise<AuditLogResult> {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.action?.trim()) params.set("action", query.action.trim());
+  if (query.entityType?.trim()) params.set("entityType", query.entityType.trim());
+  if (query.entityId?.trim()) params.set("entityId", query.entityId.trim());
+  if (query.actorUserId?.trim()) params.set("actorUserId", query.actorUserId.trim());
+  if (query.createdFrom?.trim()) params.set("createdFrom", query.createdFrom.trim());
+  if (query.createdTo?.trim()) params.set("createdTo", query.createdTo.trim());
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await apiFetch<Ok<AuditLogResult>>(`/api/projects/${projectId}/settings/audit-logs${suffix}`);
+  return {
+    ...res.data,
+    items: res.data.items.map((row) => ({
+      ...row,
+      id: String(row.id),
+      actorUserId: row.actorUserId ? String(row.actorUserId) : null,
+      entityId: String(row.entityId)
+    }))
+  };
+}
+
+export async function fetchAuditLogFilterOptions(projectId: string): Promise<AuditLogFilterOptions> {
+  const res = await apiFetch<Ok<AuditLogFilterOptions>>(`/api/projects/${projectId}/settings/audit-log-filters`);
+  return res.data;
 }
 
 export async function fetchProjectMembers(projectId: string): Promise<ProjectMemberRow[]> {

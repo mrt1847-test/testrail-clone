@@ -160,6 +160,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       priority: current.priority ?? null,
       caseType: current.caseType ?? null,
       preconditions: current.preconditions ?? null,
+      customValues: current.customValues ?? {},
       stepsSnapshot
     });
     if (latest) {
@@ -168,6 +169,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
         priority: latest.priority ?? null,
         caseType: latest.caseType ?? null,
         preconditions: latest.preconditions ?? null,
+        customValues: latest.customValuesSnapshot ?? {},
         stepsSnapshot: latest.stepsSnapshot
       });
       if (sig === latestSig) return null;
@@ -180,6 +182,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       priority: current.priority ?? null,
       caseType: current.caseType ?? null,
       preconditions: current.preconditions ?? null,
+      customValuesSnapshot: current.customValues ?? {},
       stepsSnapshot,
       changeReason: reason ?? null,
       createdAt: new Date()

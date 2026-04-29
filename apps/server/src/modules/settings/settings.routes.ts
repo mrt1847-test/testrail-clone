@@ -41,8 +41,20 @@ type CustomStatusRow = {
   displayOrder: number;
 };
 
+type CaseTemplateRow = {
+  id: bigint;
+  projectId: bigint;
+  name: string;
+  description: string | null;
+  fields: string[];
+  isDefault: boolean;
+  isActive: boolean;
+  displayOrder: number;
+};
+
 const customFields: CustomFieldRow[] = [];
 const customStatuses: CustomStatusRow[] = [];
+const caseTemplates: CaseTemplateRow[] = [];
 const webhooks: WebhookRow[] = [];
 
 type CustomFieldType = "text" | "number" | "select";
@@ -75,6 +87,30 @@ const customStatusUpdateSchema = customStatusCreateSchema.partial();
 const customStatusIdParamSchema = z.object({
   projectId: z.coerce.bigint(),
   statusId: z.coerce.bigint()
+});
+const caseTemplateCreateSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().nullable().optional(),
+  fields: z.array(z.string().trim().min(1)).default(["title", "preconditions", "steps", "expectedResult"]),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  displayOrder: z.number().int().default(0)
+});
+const caseTemplateUpdateSchema = caseTemplateCreateSchema.partial();
+const caseTemplateIdParamSchema = z.object({
+  projectId: z.coerce.bigint(),
+  templateId: z.coerce.bigint()
+});
+const auditLogsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(25),
+  action: z.string().trim().min(1).optional(),
+  entityType: z.string().trim().min(1).optional(),
+  entityId: z.string().trim().min(1).optional(),
+  actorUserId: z.coerce.bigint().optional(),
+  createdFrom: z.string().datetime().optional(),
+  createdTo: z.string().datetime().optional(),
+  q: z.string().trim().min(1).optional()
 });
 const memberRoleSchema = z.enum(["owner", "manager", "tester", "viewer"]);
 const addMemberSchema = z.object({
@@ -174,6 +210,33 @@ function statusToResponse(row: {
 }
 
 function statusAuditChanges(row: ReturnType<typeof statusToResponse>) {
+  return {
+    ...row,
+    id: row.id.toString()
+  };
+}
+
+function templateToResponse(row: {
+  id: bigint;
+  name: string;
+  description: string | null;
+  fields: Prisma.JsonValue;
+  isDefault: boolean;
+  isActive: boolean;
+  displayOrder: number;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    fields: Array.isArray(row.fields) ? row.fields.filter((item): item is string => typeof item === "string") : [],
+    isDefault: row.isDefault,
+    isActive: row.isActive,
+    displayOrder: row.displayOrder
+  };
+}
+
+function templateAuditChanges(row: ReturnType<typeof templateToResponse>) {
   return {
     ...row,
     id: row.id.toString()
@@ -602,6 +665,206 @@ export async function registerSettingsRoutes(
     return reply.code(204).send();
   });
 
+  app.get("/api/projects/:projectId/settings/templates", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.caseTemplate.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+      });
+      return reply.send(toJsonSafe(paged(rows.map(templateToResponse), 1, 100)));
+    }
+    return reply.send(toJsonSafe(paged(caseTemplates.filter((item) => item.projectId === projectId), 1, 100)));
+  });
+
+  app.post("/api/projects/:projectId/settings/templates", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = caseTemplateCreateSchema.parse(req.body);
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          if (body.isDefault) {
+            await tx.caseTemplate.updateMany({
+              where: { projectId, deletedAt: null, isDefault: true },
+              data: { isDefault: false, updatedBy: actor.id }
+            });
+          }
+          const created = await tx.caseTemplate.create({
+            data: {
+              projectId,
+              name: body.name,
+              description: body.description ?? null,
+              fields: body.fields,
+              isDefault: body.isDefault,
+              isActive: body.isActive,
+              displayOrder: body.displayOrder,
+              createdBy: actor.id,
+              updatedBy: actor.id
+            }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.case_template.created",
+              entityType: "case_template",
+              entityId: created.id.toString(),
+              changes: templateAuditChanges(templateToResponse(created))
+            }
+          });
+          return created;
+        });
+        return reply.send(toJsonSafe(ok(templateToResponse(row))));
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("Unique constraint")) {
+          return reply.code(409).send({ code: "CASE_TEMPLATE_EXISTS", message: "case template name already exists" });
+        }
+        throw e;
+      }
+    }
+    if (caseTemplates.some((item) => item.projectId === projectId && item.name === body.name)) {
+      return reply.code(409).send({ code: "CASE_TEMPLATE_EXISTS", message: "case template name already exists" });
+    }
+    if (body.isDefault) {
+      caseTemplates.forEach((item) => {
+        if (item.projectId === projectId) item.isDefault = false;
+      });
+    }
+    const row: CaseTemplateRow = {
+      id: BigInt(Date.now()),
+      projectId,
+      name: body.name,
+      description: body.description ?? null,
+      fields: body.fields,
+      isDefault: body.isDefault,
+      isActive: body.isActive,
+      displayOrder: body.displayOrder
+    };
+    caseTemplates.push(row);
+    return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.patch("/api/projects/:projectId/settings/templates/:templateId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, templateId } = caseTemplateIdParamSchema.parse(req.params);
+    const body = caseTemplateUpdateSchema.parse(req.body);
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const existing = await tx.caseTemplate.findFirst({
+            where: { id: templateId, projectId, deletedAt: null },
+            select: { id: true }
+          });
+          if (!existing) {
+            throw new Error("CASE_TEMPLATE_NOT_FOUND");
+          }
+          if (body.isDefault) {
+            await tx.caseTemplate.updateMany({
+              where: { projectId, deletedAt: null, isDefault: true, NOT: { id: existing.id } },
+              data: { isDefault: false, updatedBy: actor.id }
+            });
+          }
+          const updated = await tx.caseTemplate.update({
+            where: { id: existing.id },
+            data: {
+              ...(body.name !== undefined ? { name: body.name } : {}),
+              ...(body.description !== undefined ? { description: body.description } : {}),
+              ...(body.fields !== undefined ? { fields: body.fields } : {}),
+              ...(body.isDefault !== undefined ? { isDefault: body.isDefault } : {}),
+              ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+              ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
+              updatedBy: actor.id
+            }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.case_template.updated",
+              entityType: "case_template",
+              entityId: updated.id.toString(),
+              changes: templateAuditChanges(templateToResponse(updated))
+            }
+          });
+          return updated;
+        });
+        return reply.send(toJsonSafe(ok(templateToResponse(row))));
+      } catch (e) {
+        if (e instanceof Error && e.message === "CASE_TEMPLATE_NOT_FOUND") {
+          return reply.code(404).send({ code: "NOT_FOUND", message: "case template not found" });
+        }
+        if (e instanceof Error && e.message.includes("Unique constraint")) {
+          return reply.code(409).send({ code: "CASE_TEMPLATE_EXISTS", message: "case template name already exists" });
+        }
+        throw e;
+      }
+    }
+    const row = caseTemplates.find((item) => item.projectId === projectId && item.id === templateId);
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "case template not found" });
+    if (body.name && caseTemplates.some((item) => item.projectId === projectId && item.id !== templateId && item.name === body.name)) {
+      return reply.code(409).send({ code: "CASE_TEMPLATE_EXISTS", message: "case template name already exists" });
+    }
+    if (body.isDefault) {
+      caseTemplates.forEach((item) => {
+        if (item.projectId === projectId && item.id !== templateId) item.isDefault = false;
+      });
+    }
+    Object.assign(row, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.fields !== undefined ? { fields: body.fields } : {}),
+      ...(body.isDefault !== undefined ? { isDefault: body.isDefault } : {}),
+      ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {})
+    });
+    return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.delete("/api/projects/:projectId/settings/templates/:templateId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, templateId } = caseTemplateIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const existing = await tx.caseTemplate.findFirst({
+            where: { id: templateId, projectId, deletedAt: null },
+            select: { id: true }
+          });
+          if (!existing) {
+            throw new Error("CASE_TEMPLATE_NOT_FOUND");
+          }
+          const row = await tx.caseTemplate.update({
+            where: { id: existing.id },
+            data: { deletedAt: new Date(), isActive: false, isDefault: false, updatedBy: actor.id }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.case_template.deleted",
+              entityType: "case_template",
+              entityId: row.id.toString()
+            }
+          });
+        });
+      } catch (e) {
+        if (e instanceof Error && e.message === "CASE_TEMPLATE_NOT_FOUND") {
+          return reply.code(404).send({ code: "NOT_FOUND", message: "case template not found" });
+        }
+        throw e;
+      }
+      return reply.code(204).send();
+    }
+    const index = caseTemplates.findIndex((item) => item.projectId === projectId && item.id === templateId);
+    if (index === -1) return reply.code(404).send({ code: "NOT_FOUND", message: "case template not found" });
+    caseTemplates.splice(index, 1);
+    return reply.code(204).send();
+  });
+
   app.get("/api/projects/:projectId/settings/webhooks", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
@@ -672,15 +935,44 @@ export async function registerSettingsRoutes(
   app.get("/api/projects/:projectId/settings/audit-logs", async (req, reply) => {
     await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = auditLogsQuerySchema.parse(req.query ?? {});
     if (deps.prisma) {
-      const rows = await deps.prisma.auditLog.findMany({
-        where: { projectId },
-        orderBy: { id: "desc" },
-        take: 100
-      });
+      const where: Prisma.AuditLogWhereInput = {
+        projectId,
+        ...(query.action ? { action: { contains: query.action, mode: "insensitive" } } : {}),
+        ...(query.entityType ? { entityType: { contains: query.entityType, mode: "insensitive" } } : {}),
+        ...(query.entityId ? { entityId: { contains: query.entityId, mode: "insensitive" } } : {}),
+        ...(query.actorUserId ? { actorUserId: query.actorUserId } : {}),
+        ...(query.createdFrom || query.createdTo
+          ? {
+              createdAt: {
+                ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+                ...(query.createdTo ? { lte: new Date(query.createdTo) } : {})
+              }
+            }
+          : {}),
+        ...(query.q
+          ? {
+              OR: [
+                { action: { contains: query.q, mode: "insensitive" } },
+                { entityType: { contains: query.q, mode: "insensitive" } },
+                { entityId: { contains: query.q, mode: "insensitive" } }
+              ]
+            }
+          : {})
+      };
+      const [total, rows] = await Promise.all([
+        deps.prisma.auditLog.count({ where }),
+        deps.prisma.auditLog.findMany({
+          where,
+          orderBy: { id: "desc" },
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize
+        })
+      ]);
       return reply.send(
-        toJsonSafe(
-          ok({
+        toJsonSafe({
+          data: {
             items: rows.map((row: (typeof rows)[number]) => ({
               id: row.id,
               action: row.action,
@@ -690,15 +982,64 @@ export async function registerSettingsRoutes(
               changes: row.changes,
               createdAt: row.createdAt
             })),
-            filters: ["actor", "entity_type", "action", "from", "to"]
-          })
-        )
+            filters: ["actorUserId", "entityType", "entityId", "action", "createdFrom", "createdTo", "q"],
+            page: query.page,
+            pageSize: query.pageSize,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / query.pageSize))
+          }
+        })
       );
     }
+    const rows = [] as Array<{
+      id: bigint;
+      action: string;
+      actorUserId: bigint | null;
+      entityType: string;
+      entityId: string;
+      changes: Prisma.JsonValue | null;
+      createdAt: Date;
+    }>;
+    return reply.send(
+      toJsonSafe({
+        data: {
+          items: rows,
+          filters: ["actorUserId", "entityType", "entityId", "action", "createdFrom", "createdTo", "q"],
+          page: query.page,
+          pageSize: query.pageSize,
+          total: 0,
+          totalPages: 1
+        }
+      })
+    );
+  });
+
+  app.get("/api/projects/:projectId/settings/audit-log-filters", async (req, reply) => {
+    await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) {
+      return reply.send(ok({ actions: [], entityTypes: [] }));
+    }
+    const [actions, entityTypes] = await Promise.all([
+      deps.prisma.auditLog.findMany({
+        where: { projectId },
+        distinct: ["action"],
+        select: { action: true },
+        orderBy: { id: "desc" },
+        take: 100
+      }),
+      deps.prisma.auditLog.findMany({
+        where: { projectId },
+        distinct: ["entityType"],
+        select: { entityType: true },
+        orderBy: { id: "desc" },
+        take: 100
+      })
+    ]);
     return reply.send(
       ok({
-        items: [],
-        filters: ["actor", "entity_type", "action", "from", "to"]
+        actions: actions.map((row: (typeof actions)[number]) => row.action).sort(),
+        entityTypes: entityTypes.map((row: (typeof entityTypes)[number]) => row.entityType).sort()
       })
     );
   });

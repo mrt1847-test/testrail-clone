@@ -3,13 +3,27 @@ import { useEffect, useState } from "react";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import type { CaseStep, CaseVersion, TestCase } from "../types";
 
+type CaseCustomFieldDefinition = {
+  systemName: string;
+  name: string;
+  fieldType: "text" | "number" | "select";
+  options: string[];
+  isRequired: boolean;
+  isActive: boolean;
+};
+
 type ExpandableCaseDetailProps = {
   data: TestCase;
   versions: CaseVersion[];
+  customFields?: CaseCustomFieldDefinition[];
   mode: "view" | "edit";
   onEdit: () => void;
   onClose: () => void;
-  onSave: (patch: { title: string; preconditions: string }) => Promise<void>;
+  onSave: (patch: {
+    title: string;
+    preconditions: string;
+    customValues: Record<string, string | number | boolean | null>;
+  }) => Promise<void>;
   onDelete: () => Promise<void>;
   isSaving?: boolean;
   isDeleting?: boolean;
@@ -35,6 +49,7 @@ function toLocalSteps(steps: CaseStep[]): LocalStep[] {
 export function ExpandableCaseDetail({
   data,
   versions,
+  customFields = [],
   mode,
   onEdit,
   onClose,
@@ -49,6 +64,9 @@ export function ExpandableCaseDetail({
 }: ExpandableCaseDetailProps) {
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
+  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | null>>(
+    () => data.customValues ?? {}
+  );
   const [localSteps, setLocalSteps] = useState<LocalStep[]>(() => toLocalSteps(data.steps));
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [stepDeleteId, setStepDeleteId] = useState<number | null>(null);
@@ -56,7 +74,8 @@ export function ExpandableCaseDetail({
   useEffect(() => {
     setTitle(data.title);
     setPreconditions(data.preconditions);
-  }, [data.id, data.title, data.preconditions]);
+    setCustomValues(data.customValues ?? {});
+  }, [data.id, data.title, data.preconditions, data.customValues]);
 
   useEffect(() => {
     if (mode === "edit") {
@@ -88,6 +107,10 @@ export function ExpandableCaseDetail({
         stepOrder: index + 1
       });
     }
+  }
+
+  function setCustomValue(systemName: string, value: string | number | boolean | null) {
+    setCustomValues((prev) => ({ ...prev, [systemName]: value }));
   }
 
   return (
@@ -199,12 +222,66 @@ export function ExpandableCaseDetail({
             )}
           </div>
 
+          {customFields.filter((field) => field.isActive).length > 0 ? (
+            <div className="grid gap-2 rounded-md border border-slate-200 bg-white p-3">
+              <p className="text-sm font-medium text-slate-800">Custom fields</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {customFields
+                  .filter((field) => field.isActive)
+                  .map((field) => {
+                    const value = customValues[field.systemName];
+                    if (field.fieldType === "select") {
+                      return (
+                        <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
+                          {field.name}
+                          <select
+                            className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                            value={typeof value === "string" ? value : ""}
+                            onChange={(e) => setCustomValue(field.systemName, e.target.value || null)}
+                          >
+                            <option value="">-</option>
+                            {field.options.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    }
+                    return (
+                      <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
+                        {field.name}
+                        <input
+                          type={field.fieldType === "number" ? "number" : "text"}
+                          className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                          value={value == null ? "" : String(value)}
+                          onChange={(e) =>
+                            setCustomValue(
+                              field.systemName,
+                              field.fieldType === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value || null
+                            )
+                          }
+                        />
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex gap-2">
             <button
               type="button"
               disabled={isSaving || !title.trim()}
               className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
-              onClick={() => void onSave({ title: title.trim(), preconditions: preconditions.trim() })}
+              onClick={() =>
+                void onSave({
+                  title: title.trim(),
+                  preconditions: preconditions.trim(),
+                  customValues
+                })
+              }
             >
               {isSaving ? "Saving..." : "Save"}
             </button>
@@ -245,6 +322,22 @@ export function ExpandableCaseDetail({
               </ul>
             )}
           </div>
+
+          {customFields.filter((field) => field.isActive).length > 0 ? (
+            <div className="mt-2 rounded border border-slate-200 bg-white p-2">
+              <p className="text-xs font-medium text-slate-700">Custom fields</p>
+              <dl className="mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                {customFields
+                  .filter((field) => field.isActive)
+                  .map((field) => (
+                    <div key={field.systemName} className="flex gap-1">
+                      <dt className="font-medium">{field.name}:</dt>
+                      <dd>{data.customValues[field.systemName] == null ? "-" : String(data.customValues[field.systemName])}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </div>
+          ) : null}
 
           {data.steps.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500">No steps registered.</p>

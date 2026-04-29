@@ -2,6 +2,10 @@
 
 This is the single current execution roadmap. Product requirements live in [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) and its linked spec documents.
 
+TestRail parity is not complete. The canonical gap checklist is [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md).
+
+Near-term main workflow completion is planned in [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md).
+
 ## Current Status Snapshot
 
 Date: 2026-04-28
@@ -49,6 +53,9 @@ Completed or mostly completed:
 - TestRail-compatible `/api/v2` adapter baseline for core case, run, test, and result automation endpoints.
 - Project custom field CRUD API, DB persistence, audit logging, and settings UI baseline.
 - Project custom result status CRUD API, DB persistence, audit logging, and settings UI baseline.
+- Project case template CRUD API, DB persistence, audit logging, and settings UI baseline.
+- Audit log query UI with server-side filters and pagination baseline.
+- Case custom field value persistence, case detail form rendering, and version snapshot inclusion baseline.
 
 Partially complete:
 - Result evidence storage is metadata-first; object storage signed URL flow is still needed.
@@ -60,8 +67,11 @@ Partially complete:
 
 Not yet complete:
 - Activity feed and notification delivery.
-- Case templates.
-- TestRail-compatible `/api/v2` adapter completion beyond the core baseline.
+- Webhook event delivery model.
+- Custom field value persistence on results; case custom value import/export and advanced validation remain.
+- Full users/groups/roles/permission administration.
+- Saved/scheduled reports and broader report catalog.
+- Expanded TestRail-compatible `/api/v2` adapter across the official API categories.
 
 ## Delivery Phases From Here
 
@@ -170,14 +180,51 @@ Scope:
 - Notification inbox and preferences.
 - Custom fields. (CRUD baseline done)
 - Custom result statuses. (CRUD baseline done)
-- Case templates.
-- Audit log query UI.
+- Case templates. (CRUD baseline done)
+- Audit log query UI. (filter/pagination baseline done)
 - Webhook event model.
 
 Exit criteria:
 - Users can follow assignments, failures, and project activity.
 - Admins can configure project behavior without schema changes.
 - Auditable product events are queryable.
+
+### Phase 8: TestRail Parity Completion
+
+Goal: close the highest-value TestRail parity gaps after the core workflow and administration baselines.
+
+Scope:
+- Activity feed and notification delivery.
+- Webhook subscriptions, event taxonomy, signed delivery, retry logs.
+- Custom field value persistence on results, plus case custom value import/export and advanced validation.
+- Saved and scheduled reports with report history/downloads.
+- Users, groups, global roles, permission matrix, and project-level administration.
+- Expanded `/api/v2` compatibility for projects, suites, sections, milestones, plans, configurations, customization metadata, reports, users, and roles.
+
+Exit criteria:
+- [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md) P0/P1 gaps are either implemented or intentionally deferred with product sign-off.
+- TestRail migration and automation clients can cover projects, cases, runs, plans, configurations, results, and core metadata without manual reshaping.
+- Team collaboration workflows have visible activity, actionable notifications, and auditable webhook delivery logs.
+
+### Phase 8A: Core Workflow Completion
+
+Goal: finish the main daily workflows before broad parity expansion.
+
+Scope:
+- Case custom field value persistence and case form integration. (baseline done)
+- Case version compare/restore UI.
+- Run detail workspace UX upgrade.
+- Report detail pages with filters, exports, and drilldowns.
+- Activity and notifications as workflow glue.
+- Webhook delivery model after activity events exist.
+
+Execution source:
+- [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md)
+
+Exit criteria:
+- Test case management, execution/result entry, and result reporting can be used end-to-end from UI without hidden API-only behavior.
+- Settings definitions are reflected in actual case/result forms.
+- Reports link back to source requirements, cases, runs, tests, results, defects, and evidence.
 
 ## Priority Rules
 

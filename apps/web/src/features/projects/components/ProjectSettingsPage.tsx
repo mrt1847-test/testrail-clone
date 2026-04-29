@@ -34,6 +34,11 @@ export function ProjectSettingsPage() {
             </Link>
           </li>
           <li>
+            <Link to={`/projects/${projectId}/settings/templates`} className="text-slate-700 underline">
+              Case templates
+            </Link>
+          </li>
+          <li>
             <Link to={`/projects/${projectId}/settings/webhooks`} className="text-slate-700 underline">
               Webhooks
             </Link>

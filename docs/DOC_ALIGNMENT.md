@@ -14,6 +14,8 @@ This document defines which docs are canonical and where future updates should g
 - Component ownership and implementation status: [COMPONENT_MAP.md](./COMPONENT_MAP.md)
 - Frontend architecture and data-flow rules: [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md)
 - Implementation task breakdown: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
+- TestRail parity gap checklist: [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md)
+- Core workflow completion plan: [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md)
 
 ## Spec vs Roadmap Boundary
 
@@ -24,6 +26,8 @@ Put product requirements in spec documents:
 - Storage structure, indexes, and consistency policy go in `DATABASE_SCHEMA.md`.
 - Screen-level actions, required APIs, loading/empty/error states go in `SCREEN_INVENTORY.md`.
 - Overall product capability expectations go in `PRODUCT_SPEC.md`.
+- TestRail parity gaps and missing feature categories go in `TESTRail_GAP_ANALYSIS.md`.
+- Near-term implementation planning for main workflows and UI/UX integration goes in `CORE_FEATURE_COMPLETION_PLAN.md`.
 
 Put delivery order in roadmap documents:
 

@@ -1,11 +1,14 @@
 import { z } from "zod";
 
+const customValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+
 export const createCaseSchema = z.object({
   sectionId: z.coerce.bigint(),
   title: z.string().min(1),
   priority: z.string().optional(),
   caseType: z.string().optional(),
-  preconditions: z.string().optional()
+  preconditions: z.string().optional(),
+  customValues: customValuesSchema.optional()
 });
 
 export const caseIdParamSchema = z.object({
@@ -32,6 +35,7 @@ export const updateCaseSchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   preconditions: z.string().nullable().optional(),
+  customValues: customValuesSchema.optional(),
   expectedUpdatedAt: z.string().datetime().optional(),
   expectedVersion: z.coerce.number().int().positive().optional()
 });

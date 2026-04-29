@@ -20,11 +20,13 @@ export type SectionRow = {
 
 export type CaseRow = {
   id: bigint;
+  projectId?: bigint;
   sectionId: bigint;
   title: string;
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
+  customValues?: Record<string, string | number | boolean | null>;
   lockVersion: number;
   updatedAt: Date;
 };
@@ -44,6 +46,7 @@ export type CaseVersionRow = {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
+  customValuesSnapshot?: Record<string, string | number | boolean | null>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   changeReason?: string | null;
   createdAt: Date;

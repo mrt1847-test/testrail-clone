@@ -15,9 +15,60 @@ function serializeCaseSnapshot(input: {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
+  customValues?: Record<string, string | number | boolean | null>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
 }) {
   return JSON.stringify(input);
+}
+
+function jsonObject(value: Prisma.JsonValue | null): Record<string, string | number | boolean | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean" || item === null) {
+      out[key] = item;
+    }
+  }
+  return out;
+}
+
+const caseSelect = {
+  id: true,
+  projectId: true,
+  sectionId: true,
+  title: true,
+  priority: true,
+  caseType: true,
+  preconditions: true,
+  customValues: true,
+  lockVersion: true,
+  updatedAt: true
+} satisfies Prisma.TestCaseSelect;
+
+function mapCaseRow(row: {
+  id: bigint;
+  projectId: bigint;
+  sectionId: bigint;
+  title: string;
+  priority: string | null;
+  caseType: string | null;
+  preconditions: string | null;
+  customValues: Prisma.JsonValue;
+  lockVersion: number;
+  updatedAt: Date;
+}): CaseRow {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    sectionId: row.sectionId,
+    title: row.title,
+    priority: row.priority,
+    caseType: row.caseType,
+    preconditions: row.preconditions,
+    customValues: jsonObject(row.customValues),
+    lockVersion: row.lockVersion,
+    updatedAt: row.updatedAt
+  };
 }
 
 function mapCaseStepRow(r: {
@@ -213,15 +264,16 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   }
 
   async listCasesForSuite(projectId: bigint, suiteId: bigint): Promise<CaseRow[]> {
-    return this.prisma.testCase.findMany({
+    const rows = await this.prisma.testCase.findMany({
       where: { projectId, suiteId, deletedAt: null },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
+      select: caseSelect
     });
+    return rows.map(mapCaseRow);
   }
 
   async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]> {
-    return this.prisma.testCase.findMany({
+    const rows = await this.prisma.testCase.findMany({
       where: {
         deletedAt: null,
         ...(params.projectId !== undefined ? { projectId: params.projectId } : {}),
@@ -230,8 +282,9 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(params.q ? { title: { contains: params.q, mode: "insensitive" } } : {})
       },
       orderBy: { id: "asc" },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
+      select: caseSelect
     });
+    return rows.map(mapCaseRow);
   }
 
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow> {
@@ -249,7 +302,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     if (!suite) {
       throw new Error("suite not found");
     }
-    return this.prisma.testCase.create({
+    const row = await this.prisma.testCase.create({
       data: {
         projectId: suite.projectId,
         suiteId: section.suiteId,
@@ -259,26 +312,20 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         caseType: input.caseType,
         ...(input.preconditions !== undefined && input.preconditions !== null
           ? { preconditions: input.preconditions }
-          : {})
+          : {}),
+        customValues: input.customValues ?? {}
       },
-      select: { id: true, sectionId: true, title: true, priority: true, caseType: true, preconditions: true, lockVersion: true, updatedAt: true }
+      select: caseSelect
     });
+    return mapCaseRow(row);
   }
 
   async getCase(caseId: bigint): Promise<CaseRow | null> {
-    return this.prisma.testCase.findFirst({
+    const row = await this.prisma.testCase.findFirst({
       where: { id: caseId, deletedAt: null },
-      select: {
-        id: true,
-        sectionId: true,
-        title: true,
-        priority: true,
-        caseType: true,
-        preconditions: true,
-        lockVersion: true,
-        updatedAt: true
-      }
+      select: caseSelect
     });
+    return row ? mapCaseRow(row) : null;
   }
 
   async listCaseSteps(caseId: bigint): Promise<CaseStepRow[]> {
@@ -303,6 +350,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       priority: row.priority ?? null,
       caseType: row.caseType ?? null,
       preconditions: row.preconditions ?? null,
+      customValuesSnapshot: jsonObject(row.customValuesSnapshot),
       stepsSnapshot:
         (Array.isArray(row.stepsSnapshot)
           ? row.stepsSnapshot
@@ -330,6 +378,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       priority: current.priority ?? null,
       caseType: current.caseType ?? null,
       preconditions: current.preconditions ?? null,
+      customValues: current.customValues ?? {},
       stepsSnapshot
     });
     if (latest) {
@@ -338,6 +387,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         priority: latest.priority ?? null,
         caseType: latest.caseType ?? null,
         preconditions: latest.preconditions ?? null,
+        customValues: jsonObject(latest.customValuesSnapshot),
         stepsSnapshot:
           (Array.isArray(latest.stepsSnapshot)
             ? latest.stepsSnapshot
@@ -353,6 +403,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         priority: current.priority ?? null,
         caseType: current.caseType ?? null,
         preconditions: current.preconditions ?? null,
+        customValuesSnapshot: (current.customValues ?? {}) as Prisma.InputJsonValue,
         stepsSnapshot: stepsSnapshot as Prisma.InputJsonValue,
         changeReason: reason ?? null
       }
@@ -365,6 +416,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       priority: created.priority ?? null,
       caseType: created.caseType ?? null,
       preconditions: created.preconditions ?? null,
+      customValuesSnapshot: jsonObject(created.customValuesSnapshot),
       stepsSnapshot:
         (Array.isArray(created.stepsSnapshot)
           ? created.stepsSnapshot
@@ -488,6 +540,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
           ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
           ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+          ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
           lockVersion: { increment: 1 }
         }
       });
@@ -496,26 +549,19 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       }
       return this.getCase(caseId);
     }
-    return this.prisma.testCase.update({
+    const row = await this.prisma.testCase.update({
       where: { id: caseId },
       data: {
         ...(patch.title !== undefined ? { title: patch.title } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
         ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+        ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
         lockVersion: { increment: 1 }
       },
-      select: {
-        id: true,
-        sectionId: true,
-        title: true,
-        priority: true,
-        caseType: true,
-        preconditions: true,
-        lockVersion: true,
-        updatedAt: true
-      }
+      select: caseSelect
     });
+    return mapCaseRow(row);
   }
 
   async deleteCase(caseId: bigint): Promise<boolean> {

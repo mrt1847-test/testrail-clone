@@ -7,6 +7,7 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { createCase, createCaseStep, deleteCase, deleteCaseStep, fetchCaseVersions, updateCase, updateCaseStep } from "../api/catalogApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
+import { fetchCustomFields } from "../../projects/api/advancedApi";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { caseKeys } from "../hooks/useCases";
@@ -24,6 +25,11 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   const qc = useQueryClient();
   const { selectedSectionId, expandedCaseId, mode, setExpandedCase } = useExpandedCase();
   const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId);
+  const { data: customFields = [] } = useQuery({
+    queryKey: ["case-custom-fields", projectId],
+    queryFn: () => fetchCustomFields(projectId),
+    enabled: Boolean(projectId)
+  });
   const { data: caseDetailRemote } = useCaseDetail(expandedCaseId);
   const caseVersionsQuery = useQuery({
     queryKey: ["case-versions", expandedCaseId ?? -1],
@@ -57,10 +63,17 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   });
 
   const updateCaseMutation = useMutation({
-    mutationFn: (input: { caseId: number; title: string; preconditions: string; expectedVersion?: number }) =>
+    mutationFn: (input: {
+      caseId: number;
+      title: string;
+      preconditions: string;
+      customValues: Record<string, string | number | boolean | null>;
+      expectedVersion?: number;
+    }) =>
       updateCase(input.caseId, {
         title: input.title,
         preconditions: input.preconditions,
+        customValues: input.customValues,
         expectedVersion: input.expectedVersion
       }),
     onSuccess: (_, vars) => {
@@ -197,6 +210,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                 mode={mode}
                 detail={caseDetail}
                 versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
+                customFields={customFields}
                 onToggle={() => setExpandedCase(isExpanded ? null : item.id)}
                 onEdit={() => setExpandedCase(item.id, "edit")}
                 onCloseDetail={() => setExpandedCase(null)}

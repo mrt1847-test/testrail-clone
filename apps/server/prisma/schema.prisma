@@ -61,6 +61,7 @@ model Project {
   defectIntegrationSetting DefectIntegrationSetting?
   customFields CustomField[]
   customStatuses CustomStatus[]
+  caseTemplates CaseTemplate[]
   apiTokens    ApiToken[]
   auditLogs    AuditLog[]
   importJobs   ImportJob[]
@@ -145,6 +146,7 @@ model TestCase {
   labels         String[]
   automationKey  String?
   externalId     String?
+  customValues   Json      @default("{}")
   lockVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -210,6 +212,7 @@ model TestCaseVersion {
   caseType       String?
   preconditions  String?
   stepsSnapshot  Json
+  customValuesSnapshot Json @default("{}")
   changeReason   String?
   createdAt      DateTime @default(now())
 
@@ -596,6 +599,28 @@ model CustomStatus {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, systemName])
+  @@index([projectId, isActive, displayOrder])
+  @@index([projectId, deletedAt])
+}
+
+model CaseTemplate {
+  id           BigInt    @id @default(autoincrement())
+  projectId    BigInt
+  name         String
+  description  String?
+  fields       Json
+  isDefault    Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    BigInt?
+  updatedBy    BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
   @@index([projectId, isActive, displayOrder])
   @@index([projectId, deletedAt])
 }

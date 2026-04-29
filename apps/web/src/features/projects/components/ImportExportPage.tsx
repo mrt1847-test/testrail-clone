@@ -13,8 +13,8 @@ import {
 } from "../api/advancedApi";
 
 const sampleCsv = [
-  "section_id,title,preconditions,priority,type,refs,labels,automation_key,external_id,steps",
-  ',"Checkout with saved card","User has saved card",High,Regression,REQ-1,checkout|payment,checkout.saved_card,EXT-100,"Open checkout=>Checkout opens|Pay with saved card=>Payment succeeds"'
+  "section_id,title,preconditions,priority,type,refs,labels,automation_key,external_id,custom_risk,steps",
+  ',"Checkout with saved card","User has saved card",High,Regression,REQ-1,checkout|payment,checkout.saved_card,EXT-100,High,"Open checkout=>Checkout opens|Pay with saved card=>Payment succeeds"'
 ].join("\n");
 
 function JobTable({ title, rows }: { title: string; rows: ImportExportJobRow[] }) {
@@ -145,7 +145,7 @@ export function ImportExportPage() {
             <h2 className="text-sm font-semibold text-slate-900">Case CSV Import</h2>
             <p className="mt-1 text-xs text-slate-500">
               Columns: section_id, title, preconditions, priority, type, refs, labels, automation_key, external_id,
-              steps.
+              custom_{"{systemName}"}, steps.
             </p>
           </div>
           <input
