@@ -29,6 +29,11 @@ export function ProjectSettingsPage() {
             </Link>
           </li>
           <li>
+            <Link to={`/projects/${projectId}/settings/statuses`} className="text-slate-700 underline">
+              Custom statuses
+            </Link>
+          </li>
+          <li>
             <Link to={`/projects/${projectId}/settings/webhooks`} className="text-slate-700 underline">
               Webhooks
             </Link>

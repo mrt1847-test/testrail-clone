@@ -59,6 +59,8 @@ model Project {
   requirements Requirement[]
   attachments  Attachment[]
   defectIntegrationSetting DefectIntegrationSetting?
+  customFields CustomField[]
+  customStatuses CustomStatus[]
   apiTokens    ApiToken[]
   auditLogs    AuditLog[]
   importJobs   ImportJob[]
@@ -550,6 +552,52 @@ model AuditLog {
   @@index([projectId, createdAt])
   @@index([entityType, entityId])
   @@index([actorUserId])
+}
+
+model CustomField {
+  id           BigInt    @id @default(autoincrement())
+  projectId    BigInt
+  name         String
+  systemName   String
+  fieldType    String
+  options      Json?
+  isRequired   Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    BigInt?
+  updatedBy    BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, systemName])
+  @@index([projectId, isActive, displayOrder])
+  @@index([projectId, deletedAt])
+}
+
+model CustomStatus {
+  id              BigInt    @id @default(autoincrement())
+  projectId       BigInt
+  name            String
+  systemName      String
+  canonicalStatus String
+  color           String    @default("#64748b")
+  isSystem        Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  displayOrder    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, systemName])
+  @@index([projectId, isActive, displayOrder])
+  @@index([projectId, deletedAt])
 }
 
 model ImportJob {

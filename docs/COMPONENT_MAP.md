@@ -225,8 +225,8 @@
   - `CustomFieldSettings`, `CustomStatusSettings`, `CaseTemplateSettings`
   - `WebhookSettings`, `IntegrationSettings`, `NotificationSettings`, `AuditLogTable`
 - Status:
-  - `implemented`: `ProjectSettingsPage`, `TokensPage`, `CustomFieldsPage`, `WebhooksPage`, `AuditLogsPage`
-  - `planned`: `ProjectGeneralSettingsForm`, `DangerZone`, `MemberManagement`, `CustomStatusSettings`, `CaseTemplateSettings`, `IntegrationSettings`, `NotificationSettings`, granular token/webhook/audit components
+- `implemented`: `ProjectSettingsPage`, `TokensPage`, `CustomFieldsPage`, `CustomStatusesPage`, `WebhooksPage`, `AuditLogsPage`
+- `planned`: `ProjectGeneralSettingsForm`, `DangerZone`, `MemberManagement`, `CaseTemplateSettings`, `IntegrationSettings`, `NotificationSettings`, granular token/webhook/audit components
 
 ## Reports
 

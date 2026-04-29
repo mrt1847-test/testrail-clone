@@ -12,6 +12,7 @@ import { ReportsPage } from "./features/projects/components/ReportsPage";
 import { BulkUploadDetailPage } from "./features/projects/components/BulkUploadDetailPage";
 import { AuditLogsPage } from "./features/projects/components/AuditLogsPage";
 import { CustomFieldsPage } from "./features/projects/components/CustomFieldsPage";
+import { CustomStatusesPage } from "./features/projects/components/CustomStatusesPage";
 import { MilestonesPage } from "./features/projects/components/MilestonesPage";
 import { MilestoneDetailPage } from "./features/projects/components/MilestoneDetailPage";
 import { PlansPage } from "./features/projects/components/PlansPage";
@@ -55,6 +56,7 @@ export function App() {
           <Route path="settings/tokens" element={<TokensPage />} />
           <Route path="settings/members" element={<ProjectMembersPage />} />
           <Route path="settings/custom-fields" element={<CustomFieldsPage />} />
+          <Route path="settings/statuses" element={<CustomStatusesPage />} />
           <Route path="settings/webhooks" element={<WebhooksPage />} />
           <Route path="settings/defect-integration" element={<DefectIntegrationSettingsPage />} />
           <Route path="settings/audit-logs" element={<AuditLogsPage />} />

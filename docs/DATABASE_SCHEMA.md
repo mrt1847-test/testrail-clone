@@ -106,6 +106,19 @@
 - `id`, `group_id`, `name`, `display_order`, `is_active`, audit fields
 - unique(`group_id`, `name`)
 
+## custom_fields
+- `id`, `project_id`, `name`, `system_name`, `field_type`
+- `options` jsonb nullable for select-style choices
+- `is_required`, `is_active`, `display_order`, audit fields
+- unique(`project_id`, `system_name`)
+- Purpose: project-scoped field definitions for case/template form customization.
+
+## custom_statuses
+- `id`, `project_id`, `name`, `system_name`, `canonical_status`
+- `color`, `is_system`, `is_active`, `display_order`, audit fields
+- unique(`project_id`, `system_name`)
+- Purpose: project-scoped result status labels mapped onto the canonical `test_status` enum.
+
 ## test_plan_entry_configurations
 - `id`, `plan_entry_id`, `configuration_id`
 - unique(`plan_entry_id`, `configuration_id`)

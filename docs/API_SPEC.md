@@ -367,6 +367,54 @@ Permission baseline:
 - `viewer`: read-only access.
 - Last active project owner cannot be removed or demoted.
 
+## Project Settings
+- `GET /api/projects/{projectId}/settings/custom-fields`
+- `POST /api/projects/{projectId}/settings/custom-fields`
+- `PATCH /api/projects/{projectId}/settings/custom-fields/{fieldId}`
+- `DELETE /api/projects/{projectId}/settings/custom-fields/{fieldId}`
+- `GET /api/projects/{projectId}/settings/statuses`
+- `POST /api/projects/{projectId}/settings/statuses`
+- `PATCH /api/projects/{projectId}/settings/statuses/{statusId}`
+- `DELETE /api/projects/{projectId}/settings/statuses/{statusId}`
+
+Custom field shape:
+```json
+{
+  "id": "10",
+  "name": "Risk",
+  "systemName": "risk",
+  "fieldType": "select",
+  "options": ["High", "Medium", "Low"],
+  "isRequired": true,
+  "isActive": true,
+  "displayOrder": 0
+}
+```
+
+Rules:
+- `fieldType` is currently `text`, `number`, or `select`.
+- `systemName` is project-unique and normalized to lowercase snake_case.
+- Deletes are soft deletes in DB-backed mode and create audit log entries.
+
+Custom status shape:
+```json
+{
+  "id": "20",
+  "name": "Needs Investigation",
+  "systemName": "needs_investigation",
+  "canonicalStatus": "retest",
+  "color": "#0f766e",
+  "isSystem": false,
+  "isActive": true,
+  "displayOrder": 50
+}
+```
+
+Rules:
+- `canonicalStatus` maps custom labels onto the internal execution status set: `untested`, `passed`, `failed`, `blocked`, `retest`.
+- If no project rows exist yet, the API returns the five default system definitions.
+- System definitions are protected from deletion.
+
 ## Automation Upload Endpoints
 - `POST /api/automation/runs`
 - `POST /api/automation/runs/{runId}/results`

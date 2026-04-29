@@ -47,6 +47,8 @@ Completed or mostly completed:
 - Import/Export project tab web binding baseline.
 - Report CSV export job baseline for run summary, result explorer, traceability, coverage gap, and defect coverage reports.
 - TestRail-compatible `/api/v2` adapter baseline for core case, run, test, and result automation endpoints.
+- Project custom field CRUD API, DB persistence, audit logging, and settings UI baseline.
+- Project custom result status CRUD API, DB persistence, audit logging, and settings UI baseline.
 
 Partially complete:
 - Result evidence storage is metadata-first; object storage signed URL flow is still needed.
@@ -58,7 +60,7 @@ Partially complete:
 
 Not yet complete:
 - Activity feed and notification delivery.
-- Custom fields, custom statuses, and case templates.
+- Case templates.
 - TestRail-compatible `/api/v2` adapter completion beyond the core baseline.
 
 ## Delivery Phases From Here
@@ -166,8 +168,8 @@ Goal: support daily team operations and project administration.
 Scope:
 - Activity feed.
 - Notification inbox and preferences.
-- Custom fields.
-- Custom result statuses.
+- Custom fields. (CRUD baseline done)
+- Custom result statuses. (CRUD baseline done)
 - Case templates.
 - Audit log query UI.
 - Webhook event model.

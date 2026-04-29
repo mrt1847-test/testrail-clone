@@ -275,7 +275,7 @@
 - Purpose: case/run/result 확장 필드를 관리한다.
 - Primary user actions: 필드 생성, 옵션 수정, 활성/비활성
 - Main components: `CustomFieldSettings`
-- Required API: `GET /api/projects/:projectId/settings/custom-fields`, `POST /api/projects/:projectId/settings/custom-fields`
+- Required API: `GET /api/projects/:projectId/settings/custom-fields`, `POST /api/projects/:projectId/settings/custom-fields`, `PATCH /api/projects/:projectId/settings/custom-fields/:fieldId`, `DELETE /api/projects/:projectId/settings/custom-fields/:fieldId`
 - Loading state: list/form skeleton
 - Empty state: 필드 없음 + 생성 CTA
 - Error state: 저장/조회 실패
@@ -287,7 +287,7 @@
 - Purpose: 결과 상태 집합을 프로젝트에 맞게 확장/매핑한다.
 - Primary user actions: 상태 추가, 표시 순서 조정, 매핑 수정
 - Main components: `CustomStatusSettings`
-- Required API: `GET /api/projects/:projectId/settings/statuses`, `POST /api/projects/:projectId/settings/statuses`
+- Required API: `GET /api/projects/:projectId/settings/statuses`, `POST /api/projects/:projectId/settings/statuses`, `PATCH /api/projects/:projectId/settings/statuses/:statusId`, `DELETE /api/projects/:projectId/settings/statuses/:statusId`
 - Loading state: table skeleton
 - Empty state: 커스텀 상태 없음
 - Error state: 저장/조회 실패

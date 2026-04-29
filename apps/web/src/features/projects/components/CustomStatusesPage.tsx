@@ -6,33 +6,39 @@ import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
-  createCustomField,
-  deleteCustomField,
-  fetchCustomFields,
-  updateCustomField,
-  type CustomFieldRow
+  createCustomStatus,
+  deleteCustomStatus,
+  fetchCustomStatuses,
+  updateCustomStatus,
+  type CustomStatusRow
 } from "../api/advancedApi";
 
-type FieldForm = {
+type StatusForm = {
   id?: string;
   name: string;
   systemName: string;
-  fieldType: CustomFieldRow["fieldType"];
-  optionsText: string;
-  isRequired: boolean;
+  canonicalStatus: CustomStatusRow["canonicalStatus"];
+  color: string;
   isActive: boolean;
   displayOrder: number;
 };
 
-const emptyForm: FieldForm = {
+const emptyForm: StatusForm = {
   name: "",
   systemName: "",
-  fieldType: "text",
-  optionsText: "",
-  isRequired: false,
+  canonicalStatus: "untested",
+  color: "#64748b",
   isActive: true,
   displayOrder: 0
 };
+
+const canonicalStatuses: Array<CustomStatusRow["canonicalStatus"]> = [
+  "untested",
+  "passed",
+  "failed",
+  "blocked",
+  "retest"
+];
 
 function toSystemName(value: string) {
   return value
@@ -42,42 +48,39 @@ function toSystemName(value: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-function formFromField(row: CustomFieldRow): FieldForm {
+function formFromStatus(row: CustomStatusRow): StatusForm {
   return {
     id: row.id,
     name: row.name,
     systemName: row.systemName,
-    fieldType: row.fieldType,
-    optionsText: row.options.join("\n"),
-    isRequired: row.isRequired,
+    canonicalStatus: row.canonicalStatus,
+    color: row.color,
     isActive: row.isActive,
     displayOrder: row.displayOrder
   };
 }
 
-function payloadFromForm(form: FieldForm): Omit<CustomFieldRow, "id"> {
-  const options = form.fieldType === "select" ? form.optionsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) : [];
+function payloadFromForm(form: StatusForm): Omit<CustomStatusRow, "id" | "isSystem"> {
   return {
     name: form.name.trim(),
     systemName: toSystemName(form.systemName || form.name),
-    fieldType: form.fieldType,
-    options,
-    isRequired: form.isRequired,
+    canonicalStatus: form.canonicalStatus,
+    color: form.color,
     isActive: form.isActive,
     displayOrder: form.displayOrder
   };
 }
 
-export function CustomFieldsPage() {
+export function CustomStatusesPage() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => ["custom-fields", projectId], [projectId]);
-  const [form, setForm] = useState<FieldForm>(emptyForm);
+  const queryKey = useMemo(() => ["custom-statuses", projectId], [projectId]);
+  const [form, setForm] = useState<StatusForm>(emptyForm);
   const [error, setError] = useState<string | null>(null);
 
   const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey,
-    queryFn: () => fetchCustomFields(projectId),
+    queryFn: () => fetchCustomStatuses(projectId),
     enabled: Boolean(projectId)
   });
 
@@ -90,32 +93,32 @@ export function CustomFieldsPage() {
       const payload = payloadFromForm(form);
       if (!payload.name) throw new Error("Name is required");
       if (!payload.systemName) throw new Error("System name must contain a letter or number");
-      if (form.id) return updateCustomField(projectId, form.id, payload);
-      return createCustomField(projectId, payload);
+      if (form.id) return updateCustomStatus(projectId, form.id, payload);
+      return createCustomStatus(projectId, payload);
     },
     onSuccess: async () => {
       setForm(emptyForm);
       setError(null);
       await refresh();
     },
-    onError: (e) => setError(e instanceof Error ? e.message : "Could not save custom field")
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not save custom status")
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (fieldId: string) => deleteCustomField(projectId, fieldId),
+    mutationFn: (statusId: string) => deleteCustomStatus(projectId, statusId),
     onSuccess: refresh,
-    onError: (e) => setError(e instanceof Error ? e.message : "Could not delete custom field")
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not delete custom status")
   });
 
-  if (isLoading) return <LoadingState message="Loading custom fields..." />;
-  if (isError) return <ErrorState title="Could not load custom fields" onRetry={() => refetch()} />;
+  if (isLoading) return <LoadingState message="Loading custom statuses..." />;
+  if (isError) return <ErrorState title="Could not load custom statuses" onRetry={() => refetch()} />;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Custom Fields</h1>
-          <p className="text-sm text-slate-600">Project-specific case fields available to future templates and forms.</p>
+          <h1 className="text-lg font-semibold text-slate-900">Custom Statuses</h1>
+          <p className="text-sm text-slate-600">Project status labels mapped to the canonical execution states.</p>
         </div>
         {form.id ? (
           <button
@@ -126,7 +129,7 @@ export function CustomFieldsPage() {
             }}
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            New field
+            New status
           </button>
         ) : null}
       </div>
@@ -150,7 +153,7 @@ export function CustomFieldsPage() {
               }))
             }
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Risk"
+            placeholder="Needs investigation"
           />
         </label>
         <label className="md:col-span-2">
@@ -159,21 +162,26 @@ export function CustomFieldsPage() {
             value={form.systemName}
             onChange={(event) => setForm((current) => ({ ...current, systemName: event.target.value }))}
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="risk"
+            placeholder="needs_investigation"
           />
         </label>
         <label>
-          <span className="text-xs font-medium uppercase text-slate-500">Type</span>
+          <span className="text-xs font-medium uppercase text-slate-500">Maps to</span>
           <select
-            value={form.fieldType}
+            value={form.canonicalStatus}
             onChange={(event) =>
-              setForm((current) => ({ ...current, fieldType: event.target.value as CustomFieldRow["fieldType"] }))
+              setForm((current) => ({
+                ...current,
+                canonicalStatus: event.target.value as CustomStatusRow["canonicalStatus"]
+              }))
             }
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           >
-            <option value="text">Text</option>
-            <option value="number">Number</option>
-            <option value="select">Select</option>
+            {canonicalStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -185,25 +193,15 @@ export function CustomFieldsPage() {
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
-        {form.fieldType === "select" ? (
-          <label className="md:col-span-6">
-            <span className="text-xs font-medium uppercase text-slate-500">Options</span>
-            <textarea
-              value={form.optionsText}
-              onChange={(event) => setForm((current) => ({ ...current, optionsText: event.target.value }))}
-              className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder={"High\nMedium\nLow"}
-            />
-          </label>
-        ) : null}
         <div className="flex flex-wrap items-center gap-4 md:col-span-4">
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
-              type="checkbox"
-              checked={form.isRequired}
-              onChange={(event) => setForm((current) => ({ ...current, isRequired: event.target.checked }))}
+              type="color"
+              value={form.color}
+              onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))}
+              className="h-8 w-10 rounded border border-slate-300"
             />
-            Required
+            Color
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -221,39 +219,42 @@ export function CustomFieldsPage() {
             disabled={saveMutation.isPending}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
           >
-            {form.id ? "Save changes" : "Create field"}
+            {form.id ? "Save changes" : "Create status"}
           </button>
         </div>
       </form>
 
       {data.length === 0 ? (
-        <EmptyState title="No custom fields" description="Create the first project-specific field above." />
+        <EmptyState title="No custom statuses" description="Create a project status mapped to a canonical result state." />
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">System name</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Rules</th>
+                <th className="px-4 py-3">Maps to</th>
+                <th className="px-4 py-3">State</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {data.map((row) => (
                 <tr key={row.id}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <span className="mr-2 inline-block h-3 w-3 rounded-full" style={{ backgroundColor: row.color }} />
+                    {row.name}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{row.systemName}</td>
-                  <td className="px-4 py-3 text-slate-600">{row.fieldType}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.canonicalStatus}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {[row.isRequired ? "required" : "optional", row.isActive ? "active" : "inactive"].join(", ")}
+                    {[row.isSystem ? "system" : "custom", row.isActive ? "active" : "inactive"].join(", ")}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => {
-                        setForm(formFromField(row));
+                        setForm(formFromStatus(row));
                         setError(null);
                       }}
                       className="mr-3 text-sm font-medium text-slate-700 underline"
@@ -263,8 +264,8 @@ export function CustomFieldsPage() {
                     <button
                       type="button"
                       onClick={() => deleteMutation.mutate(row.id)}
-                      disabled={deleteMutation.isPending}
-                      className="text-sm font-medium text-red-700 underline disabled:opacity-50"
+                      disabled={deleteMutation.isPending || row.isSystem}
+                      className="text-sm font-medium text-red-700 underline disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Delete
                     </button>

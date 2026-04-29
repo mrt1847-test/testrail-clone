@@ -164,7 +164,23 @@ export type PlanEntryConfigurationMapping = {
 export type CustomFieldRow = {
   id: string;
   name: string;
+  systemName: string;
   fieldType: "text" | "number" | "select";
+  options: string[];
+  isRequired: boolean;
+  isActive: boolean;
+  displayOrder: number;
+};
+
+export type CustomStatusRow = {
+  id: string;
+  name: string;
+  systemName: string;
+  canonicalStatus: TestStatus;
+  color: string;
+  isSystem: boolean;
+  isActive: boolean;
+  displayOrder: number;
 };
 
 export type WebhookRow = {
@@ -632,7 +648,87 @@ export async function fetchPlanEntryConfigurations(
 
 export async function fetchCustomFields(projectId: string): Promise<CustomFieldRow[]> {
   const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields`);
-  return res.data.map((row) => ({ ...row, id: String(row.id) }));
+  return res.data.map((row) => ({
+    ...row,
+    id: String(row.id),
+    options: row.options ?? [],
+    isRequired: row.isRequired ?? false,
+    isActive: row.isActive ?? true,
+    displayOrder: row.displayOrder ?? 0
+  }));
+}
+
+export async function createCustomField(
+  projectId: string,
+  input: Omit<CustomFieldRow, "id">
+): Promise<CustomFieldRow> {
+  const res = await apiFetch<Ok<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields`, {
+    method: "POST",
+    body: input
+  });
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    options: res.data.options ?? []
+  };
+}
+
+export async function updateCustomField(
+  projectId: string,
+  fieldId: string,
+  input: Partial<Omit<CustomFieldRow, "id">>
+): Promise<CustomFieldRow> {
+  const res = await apiFetch<Ok<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields/${fieldId}`, {
+    method: "PATCH",
+    body: input
+  });
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    options: res.data.options ?? []
+  };
+}
+
+export async function deleteCustomField(projectId: string, fieldId: string) {
+  await apiFetch<void>(`/api/projects/${projectId}/settings/custom-fields/${fieldId}`, { method: "DELETE" });
+}
+
+export async function fetchCustomStatuses(projectId: string): Promise<CustomStatusRow[]> {
+  const res = await apiFetch<Paged<CustomStatusRow>>(`/api/projects/${projectId}/settings/statuses`);
+  return res.data.map((row) => ({
+    ...row,
+    id: String(row.id),
+    isSystem: row.isSystem ?? false,
+    isActive: row.isActive ?? true,
+    displayOrder: row.displayOrder ?? 0
+  }));
+}
+
+export async function createCustomStatus(
+  projectId: string,
+  input: Omit<CustomStatusRow, "id" | "isSystem">
+): Promise<CustomStatusRow> {
+  const res = await apiFetch<Ok<CustomStatusRow>>(`/api/projects/${projectId}/settings/statuses`, {
+    method: "POST",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id) };
+}
+
+export async function updateCustomStatus(
+  projectId: string,
+  statusId: string,
+  input: Partial<Omit<CustomStatusRow, "id" | "isSystem">>
+): Promise<CustomStatusRow> {
+  const res = await apiFetch<Ok<CustomStatusRow>>(`/api/projects/${projectId}/settings/statuses/${statusId}`, {
+    method: "PATCH",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id) };
+}
+
+export async function deleteCustomStatus(projectId: string, statusId: string) {
+  await apiFetch<void>(`/api/projects/${projectId}/settings/statuses/${statusId}`, { method: "DELETE" });
 }
 
 export async function fetchWebhooks(projectId: string): Promise<WebhookRow[]> {
