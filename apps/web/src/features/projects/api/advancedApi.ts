@@ -54,6 +54,7 @@ export type AutomationBulkUploadInput = {
     elapsed?: string;
     version?: string;
     defects?: string[];
+    customValues?: Record<string, string | number | boolean | null>;
     stepResults?: Array<{
       stepOrder: number;
       status: TestStatus;
@@ -166,6 +167,7 @@ export type CustomFieldRow = {
   name: string;
   systemName: string;
   fieldType: "text" | "number" | "select";
+  scope: "case" | "result";
   options: string[];
   isRequired: boolean;
   isActive: boolean;
@@ -197,7 +199,26 @@ export type WebhookRow = {
   id: string;
   event: string;
   targetUrl: string;
+  secretPrefix?: string;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type WebhookAttemptRow = {
+  id: string;
+  webhookId: string;
+  activityEventId: string | null;
+  event: string;
+  targetUrl: string;
+  status: string;
+  attemptNo: number;
+  responseStatus: number | null;
+  error: string | null;
+  nextRetryAt: string | null;
+  deliveredAt: string | null;
+  signaturePrefix: string;
+  createdAt: string;
 };
 
 export type ProjectMemberRow = {
@@ -262,6 +283,48 @@ export type ImportExportJobRow = {
   errors?: unknown;
   filters?: Record<string, unknown> | null;
   createdAt: string;
+};
+
+export type ActivityEventRow = {
+  id: string;
+  projectId: string;
+  actorUserId: string | null;
+  actor: { id: string; email: string; name: string | null } | null;
+  entityType: string;
+  entityId: string;
+  eventType: string;
+  title: string;
+  body: string | null;
+  payload?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type NotificationRow = {
+  id: string;
+  projectId: string;
+  activityEventId: string | null;
+  type: string;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  createdAt: string;
+  activity: { id: string; entityType: string; entityId: string; eventType: string } | null;
+};
+
+export type NotificationResult = {
+  items: NotificationRow[];
+  unreadCount: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type NotificationPreferences = {
+  assignmentEnabled: boolean;
+  failedResultEnabled: boolean;
+  mentionEnabled: boolean;
+  digestEnabled: boolean;
 };
 
 export type CaseImportResult = {
@@ -357,6 +420,7 @@ export async function uploadAutomationResults(input: AutomationBulkUploadInput):
       elapsed: item.elapsed,
       version: item.version,
       defects: item.defects,
+      customValues: item.customValues,
       stepResults: item.stepResults
     }))
   };
@@ -682,16 +746,78 @@ export async function fetchPlanEntryConfigurations(
   };
 }
 
-export async function fetchCustomFields(projectId: string): Promise<CustomFieldRow[]> {
-  const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields`);
+export async function fetchCustomFields(projectId: string, scope?: CustomFieldRow["scope"]): Promise<CustomFieldRow[]> {
+  const suffix = scope ? `?scope=${scope}` : "";
+  const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields${suffix}`);
   return res.data.map((row) => ({
     ...row,
     id: String(row.id),
+    scope: row.scope ?? "case",
     options: row.options ?? [],
     isRequired: row.isRequired ?? false,
     isActive: row.isActive ?? true,
     displayOrder: row.displayOrder ?? 0
   }));
+}
+
+export async function fetchProjectActivity(projectId: string, page = 1, pageSize = 25) {
+  const res = await apiFetch<Paged<ActivityEventRow>>(
+    `/api/projects/${projectId}/activity?page=${page}&pageSize=${pageSize}`
+  );
+  return {
+    ...res,
+    data: res.data.map((row) => ({
+      ...row,
+      id: String(row.id),
+      projectId: String(row.projectId),
+      actorUserId: row.actorUserId ? String(row.actorUserId) : null,
+      actor: row.actor ? { ...row.actor, id: String(row.actor.id) } : null,
+      entityId: String(row.entityId)
+    }))
+  };
+}
+
+export async function fetchNotifications(projectId: string, page = 1, pageSize = 25): Promise<NotificationResult> {
+  const res = await apiFetch<Paged<NotificationRow> & { unreadCount: number }>(
+    `/api/projects/${projectId}/notifications?page=${page}&pageSize=${pageSize}`
+  );
+  return {
+    ...res,
+    items: res.data.map((row) => ({
+      ...row,
+      id: String(row.id),
+      projectId: String(row.projectId),
+      activityEventId: row.activityEventId ? String(row.activityEventId) : null,
+      activity: row.activity ? { ...row.activity, id: String(row.activity.id), entityId: String(row.activity.entityId) } : null
+    }))
+  };
+}
+
+export async function markNotificationRead(projectId: string, notificationId: string) {
+  await apiFetch<Ok<{ id: string; readAt: string }>>(
+    `/api/projects/${projectId}/notifications/${notificationId}/read`,
+    { method: "PATCH" }
+  );
+}
+
+export async function markAllNotificationsRead(projectId: string) {
+  await apiFetch<Ok<{ updated: number }>>(`/api/projects/${projectId}/notifications/read-all`, { method: "POST" });
+}
+
+export async function fetchNotificationPreferences(projectId: string): Promise<NotificationPreferences> {
+  const res = await apiFetch<Ok<NotificationPreferences>>(`/api/projects/${projectId}/notification-preferences`);
+  return res.data;
+}
+
+export async function updateNotificationPreferences(
+  projectId: string,
+  input: Partial<NotificationPreferences>
+): Promise<NotificationPreferences> {
+  const res = await apiFetch<Ok<NotificationPreferences>>(`/api/projects/${projectId}/notification-preferences`, {
+    method: "PATCH",
+    body: input
+  });
+  return res.data;
 }
 
 export async function createCustomField(
@@ -705,6 +831,7 @@ export async function createCustomField(
   return {
     ...res.data,
     id: String(res.data.id),
+    scope: res.data.scope ?? "case",
     options: res.data.options ?? []
   };
 }
@@ -721,6 +848,7 @@ export async function updateCustomField(
   return {
     ...res.data,
     id: String(res.data.id),
+    scope: res.data.scope ?? "case",
     options: res.data.options ?? []
   };
 }
@@ -810,6 +938,64 @@ export async function deleteCaseTemplate(projectId: string, templateId: string) 
 export async function fetchWebhooks(projectId: string): Promise<WebhookRow[]> {
   const res = await apiFetch<Paged<WebhookRow>>(`/api/projects/${projectId}/settings/webhooks`);
   return res.data.map((row) => ({ ...row, id: String(row.id) }));
+}
+
+export async function fetchWebhookEvents(projectId: string): Promise<string[]> {
+  const res = await apiFetch<Ok<{ events: string[] }>>(`/api/projects/${projectId}/settings/webhook-events`);
+  return res.data.events;
+}
+
+export async function createWebhook(projectId: string, input: {
+  event: string;
+  targetUrl: string;
+  secret?: string;
+  isActive?: boolean;
+}): Promise<WebhookRow> {
+  const res = await apiFetch<Ok<WebhookRow>>(`/api/projects/${projectId}/settings/webhooks`, {
+    method: "POST",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id) };
+}
+
+export async function updateWebhook(projectId: string, webhookId: string, input: Partial<{
+  event: string;
+  targetUrl: string;
+  secret: string;
+  isActive: boolean;
+}>): Promise<WebhookRow> {
+  const res = await apiFetch<Ok<WebhookRow>>(`/api/projects/${projectId}/settings/webhooks/${webhookId}`, {
+    method: "PATCH",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id) };
+}
+
+export async function deleteWebhook(projectId: string, webhookId: string) {
+  await apiFetch<void>(`/api/projects/${projectId}/settings/webhooks/${webhookId}`, { method: "DELETE" });
+}
+
+export async function fetchWebhookAttempts(projectId: string): Promise<WebhookAttemptRow[]> {
+  const res = await apiFetch<Paged<WebhookAttemptRow>>(`/api/projects/${projectId}/settings/webhook-attempts`);
+  return res.data.map((row) => ({
+    ...row,
+    id: String(row.id),
+    webhookId: String(row.webhookId),
+    activityEventId: row.activityEventId ? String(row.activityEventId) : null
+  }));
+}
+
+export async function retryWebhookAttempt(projectId: string, attemptId: string): Promise<WebhookAttemptRow> {
+  const res = await apiFetch<Ok<WebhookAttemptRow>>(
+    `/api/projects/${projectId}/settings/webhook-attempts/${attemptId}/retry`,
+    { method: "POST" }
+  );
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    webhookId: String(res.data.webhookId),
+    activityEventId: res.data.activityEventId ? String(res.data.activityEventId) : null
+  };
 }
 
 export async function fetchAuditLogs(projectId: string, query: AuditLogQuery = {}): Promise<AuditLogResult> {

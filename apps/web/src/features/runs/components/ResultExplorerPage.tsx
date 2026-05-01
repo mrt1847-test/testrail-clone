@@ -130,7 +130,7 @@ export function ResultExplorerPage() {
         </div>
 
         {explorerQuery.isLoading ? (
-          <LoadingState message="Loading results…" />
+          <LoadingState message="Loading results..." />
         ) : explorerQuery.isError ? (
           <ErrorState title="Could not load result explorer" onRetry={() => void explorerQuery.refetch()} />
         ) : rows.length === 0 ? (
@@ -149,32 +149,41 @@ export function ResultExplorerPage() {
                     <th className="px-3 py-2">Case</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Source</th>
+                    <th className="px-3 py-2">Custom values</th>
                     <th className="px-3 py-2">Created</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
-                      <td className="px-3 py-2">
-                        <Link to={`/projects/${projectId}/runs/${row.runId}`} className="underline">
-                          {row.runName}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2">
-                        C{row.caseId} · {row.title}
-                      </td>
-                      <td className="px-3 py-2">{row.status}</td>
-                      <td className="px-3 py-2">{row.source}</td>
-                      <td className="px-3 py-2">{new Date(row.createdAt).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {rows.map((row) => {
+                    const values = Object.entries(row.customValues ?? {}).filter(([, value]) => value !== null && value !== "");
+                    return (
+                      <tr key={row.id}>
+                        <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
+                        <td className="px-3 py-2">
+                          <Link to={`/projects/${projectId}/runs/${row.runId}`} className="underline">
+                            {row.runName}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          C{row.caseId} - {row.title}
+                        </td>
+                        <td className="px-3 py-2">{row.status}</td>
+                        <td className="px-3 py-2">{row.source}</td>
+                        <td className="px-3 py-2 text-xs text-slate-600">
+                          {values.length > 0
+                            ? values.map(([key, value]) => `${key}=${String(value)}`).join(", ")
+                            : "-"}
+                        </td>
+                        <td className="px-3 py-2">{new Date(row.createdAt).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-600">
               <p>
-                page {explorerQuery.data?.page ?? page} / {explorerQuery.data?.totalPages ?? 1} · total{" "}
+                page {explorerQuery.data?.page ?? page} / {explorerQuery.data?.totalPages ?? 1} - total{" "}
                 {explorerQuery.data?.total ?? 0}
               </p>
               <div className="flex gap-2">

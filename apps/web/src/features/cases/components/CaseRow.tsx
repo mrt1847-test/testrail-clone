@@ -27,8 +27,10 @@ type CaseRowProps = {
     customValues: Record<string, string | number | boolean | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
+  onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
   isDeleting?: boolean;
+  isRestoring?: boolean;
   onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
   onUpdateStep?: (
     stepId: number,
@@ -50,8 +52,10 @@ export function CaseRow({
   onCloseDetail,
   onSave,
   onDelete,
+  onRestoreVersion,
   isSaving,
   isDeleting,
+  isRestoring,
   onCreateStep,
   onUpdateStep,
   onDeleteStep,
@@ -70,7 +74,7 @@ export function CaseRow({
           <span className="text-slate-900">{item.title}</span>
         </span>
         <span className="shrink-0 text-xs text-slate-500">
-          {item.type} / {item.priority} / {item.automationStatus} {isExpanded ? "▼" : "▶"}
+          {item.type} / {item.priority} / {item.automationStatus} {isExpanded ? "-" : "+"}
         </span>
       </button>
       {isExpanded ? (
@@ -83,8 +87,10 @@ export function CaseRow({
           onClose={onCloseDetail}
           onSave={onSave}
           onDelete={onDelete}
+          onRestoreVersion={onRestoreVersion}
           isSaving={isSaving}
           isDeleting={isDeleting}
+          isRestoring={isRestoring}
           onCreateStep={onCreateStep}
           onUpdateStep={onUpdateStep}
           onDeleteStep={onDeleteStep}

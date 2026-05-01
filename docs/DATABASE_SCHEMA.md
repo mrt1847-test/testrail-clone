@@ -84,6 +84,7 @@
 ## test_results
 - `id`, `test_instance_id`, `status(test_status)`, `comment`, `elapsed`, `version`, `defects`
 - `source` result_source default `manual`
+- `custom_values` jsonb not null default `'{}'` (implemented in Prisma as `customValues`)
 - `metadata` jsonb nullable (CI uploader context)
 - `created_by`, `created_at`
 - Append-only. Updates/deletes are not part of normal product behavior.
@@ -110,10 +111,11 @@
 
 ## custom_fields
 - `id`, `project_id`, `name`, `system_name`, `field_type`
+- `scope` text default `case`; current values are `case` and `result`
 - `options` jsonb nullable for select-style choices
 - `is_required`, `is_active`, `display_order`, audit fields
 - unique(`project_id`, `system_name`)
-- Purpose: project-scoped field definitions for case/template form customization.
+- Purpose: project-scoped field definitions for case authoring and result entry customization.
 
 ## custom_statuses
 - `id`, `project_id`, `name`, `system_name`, `canonical_status`
@@ -171,14 +173,17 @@
 
 ## notification_preferences
 - `id`, `user_id`, `project_id`, `assignment_enabled`, `failed_result_enabled`, `mention_enabled`, `digest_enabled`, `updated_at`
+- Implemented in Prisma as `NotificationPreference`.
 
 ## notifications
 - `id`, `user_id`, `project_id`, `activity_event_id`, `type`, `title`, `body`, `read_at`, `created_at`
 - Index unread notifications by (`user_id`, `project_id`, `read_at`, `created_at desc`).
+- Implemented in Prisma as `Notification`.
 
 ## activity_events
 - `id`, `project_id`, `actor_user_id`, `entity_type`, `entity_id`, `event_type`, `payload(jsonb)`, `created_at`
 - Purpose: user-visible timeline feed and notification fan-out source.
+- Implemented in Prisma as `ActivityEvent` with `title` and optional `body`.
 
 ## import_jobs
 - `id`, `project_id`, `type`, `status(job_status)`, `file_attachment_id`, `dry_run`, `summary(jsonb)`, `errors(jsonb)`, audit fields
@@ -230,4 +235,4 @@
   4. optimistic locking for authored assets
   5. paginated, indexed project-wide browsing
 - Type normalization (`refs`, `environment`) is tracked as incremental migration, not blocking MVP workflows.
-- Versioning, traceability, defect links, import/export jobs, notifications, and configuration matrix tables are required for a full TestRail-like product even if implemented after the current MVP screens.
+- Versioning, traceability, defect links, import/export jobs, activity/notifications, and configuration matrix tables are required for a full TestRail-like product.

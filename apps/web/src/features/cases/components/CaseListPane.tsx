@@ -4,7 +4,16 @@ import { useState } from "react";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { createCase, createCaseStep, deleteCase, deleteCaseStep, fetchCaseVersions, updateCase, updateCaseStep } from "../api/catalogApi";
+import {
+  createCase,
+  createCaseStep,
+  deleteCase,
+  deleteCaseStep,
+  fetchCaseVersions,
+  restoreCaseVersion,
+  updateCase,
+  updateCaseStep
+} from "../api/catalogApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import { fetchCustomFields } from "../../projects/api/advancedApi";
@@ -27,7 +36,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
-    queryFn: () => fetchCustomFields(projectId),
+    queryFn: () => fetchCustomFields(projectId, "case"),
     enabled: Boolean(projectId)
   });
   const { data: caseDetailRemote } = useCaseDetail(expandedCaseId);
@@ -86,6 +95,14 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     onSuccess: () => {
       invalidateCases();
       setExpandedCase(null);
+    }
+  });
+
+  const restoreVersionMutation = useMutation({
+    mutationFn: (input: { caseId: number; versionId: number; expectedVersion?: number }) =>
+      restoreCaseVersion(input.caseId, input.versionId, input.expectedVersion),
+    onSuccess: (_, vars) => {
+      invalidateAfterCaseEdit(vars.caseId);
     }
   });
 
@@ -225,8 +242,16 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                 onDelete={async () => {
                   await deleteCaseMutation.mutateAsync(item.id);
                 }}
+                onRestoreVersion={async (versionId) => {
+                  await restoreVersionMutation.mutateAsync({
+                    caseId: item.id,
+                    versionId,
+                    expectedVersion: Number.isInteger(caseDetail.lockVersion) ? caseDetail.lockVersion : undefined
+                  });
+                }}
                 isSaving={updateCaseMutation.isPending}
                 isDeleting={deleteCaseMutation.isPending}
+                isRestoring={restoreVersionMutation.isPending}
                 onCreateStep={async (input) => {
                   await createStepMutation.mutateAsync({ caseId: item.id, ...input });
                 }}

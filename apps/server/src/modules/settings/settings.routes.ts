@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { ok, paged } from "../../common/utils/http.js";
@@ -15,6 +16,7 @@ type CustomFieldRow = {
   name: string;
   systemName: string;
   fieldType: CustomFieldType;
+  scope: CustomFieldScope;
   options: string[];
   isRequired: boolean;
   isActive: boolean;
@@ -26,6 +28,7 @@ type WebhookRow = {
   projectId: bigint;
   event: string;
   targetUrl: string;
+  secret: string;
   isActive: boolean;
 };
 
@@ -56,14 +59,28 @@ const customFields: CustomFieldRow[] = [];
 const customStatuses: CustomStatusRow[] = [];
 const caseTemplates: CaseTemplateRow[] = [];
 const webhooks: WebhookRow[] = [];
+const webhookAttempts: Array<{
+  id: bigint;
+  projectId: bigint;
+  webhookId: bigint;
+  event: string;
+  targetUrl: string;
+  status: string;
+  attemptNo: number;
+  signature: string;
+  createdAt: Date;
+}> = [];
 
 type CustomFieldType = "text" | "number" | "select";
+type CustomFieldScope = "case" | "result";
 
 const customFieldTypeSchema = z.enum(["text", "number", "select"]);
+const customFieldScopeSchema = z.enum(["case", "result"]);
 const customFieldCreateSchema = z.object({
   name: z.string().trim().min(1),
   systemName: z.string().trim().min(1).optional(),
   fieldType: customFieldTypeSchema.default("text"),
+  scope: customFieldScopeSchema.default("case"),
   options: z.array(z.string().trim().min(1)).default([]),
   isRequired: z.boolean().default(false),
   isActive: z.boolean().default(true),
@@ -101,6 +118,40 @@ const caseTemplateIdParamSchema = z.object({
   projectId: z.coerce.bigint(),
   templateId: z.coerce.bigint()
 });
+const webhookCreateSchema = z.object({
+  event: z.string().trim().min(1).default("*"),
+  targetUrl: z.string().trim().url(),
+  secret: z.string().trim().min(8).optional(),
+  isActive: z.boolean().default(true)
+});
+const webhookUpdateSchema = webhookCreateSchema.partial();
+const webhookIdParamSchema = z.object({
+  projectId: z.coerce.bigint(),
+  webhookId: z.coerce.bigint()
+});
+const webhookRetryParamSchema = z.object({
+  projectId: z.coerce.bigint(),
+  attemptId: z.coerce.bigint()
+});
+const webhookEvents = [
+  "*",
+  "case.*",
+  "case.created",
+  "case.updated",
+  "case.deleted",
+  "case.version_restored",
+  "run.*",
+  "run.created",
+  "run.assigned",
+  "run.closed",
+  "run.rerun_created",
+  "test.assigned",
+  "result.*",
+  "result.created",
+  "result.failed",
+  "defect.linked",
+  "defect.pushed"
+] as const;
 const auditLogsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25),
@@ -161,6 +212,7 @@ function fieldToResponse(row: {
   name: string;
   systemName: string;
   fieldType: string;
+  scope?: string;
   options: Prisma.JsonValue | null;
   isRequired: boolean;
   isActive: boolean;
@@ -171,6 +223,7 @@ function fieldToResponse(row: {
     name: row.name,
     systemName: row.systemName,
     fieldType: row.fieldType,
+    scope: row.scope === "result" ? "result" : "case",
     options: Array.isArray(row.options) ? row.options.filter((item): item is string => typeof item === "string") : [],
     isRequired: row.isRequired,
     isActive: row.isActive,
@@ -243,6 +296,62 @@ function templateAuditChanges(row: ReturnType<typeof templateToResponse>) {
   };
 }
 
+function newWebhookSecret() {
+  return `whsec_${randomBytes(24).toString("hex")}`;
+}
+
+function webhookToResponse(row: {
+  id: bigint;
+  event: string;
+  targetUrl: string;
+  secret: string;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}) {
+  return {
+    id: row.id,
+    event: row.event,
+    targetUrl: row.targetUrl,
+    secretPrefix: `${row.secret.slice(0, 10)}...`,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function webhookAttemptToResponse(row: {
+  id: bigint;
+  webhookId: bigint;
+  activityEventId?: bigint | null;
+  event: string;
+  targetUrl: string;
+  status: string;
+  attemptNo: number;
+  responseStatus?: number | null;
+  error?: string | null;
+  nextRetryAt?: Date | null;
+  deliveredAt?: Date | null;
+  signature: string;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    webhookId: row.webhookId,
+    activityEventId: row.activityEventId ?? null,
+    event: row.event,
+    targetUrl: row.targetUrl,
+    status: row.status,
+    attemptNo: row.attemptNo,
+    responseStatus: row.responseStatus ?? null,
+    error: row.error ?? null,
+    nextRetryAt: row.nextRetryAt ?? null,
+    deliveredAt: row.deliveredAt ?? null,
+    signaturePrefix: `${row.signature.slice(0, 18)}...`,
+    createdAt: row.createdAt
+  };
+}
+
 function defaultStatusRows(projectId: bigint): CustomStatusRow[] {
   return [
     { id: 1n, projectId, name: "Untested", systemName: "untested", canonicalStatus: "untested", color: "#64748b", isSystem: true, isActive: true, displayOrder: 0 },
@@ -269,15 +378,19 @@ export async function registerSettingsRoutes(
 
   app.get("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
+    const rawScope = (req.query as { scope?: unknown } | undefined)?.scope;
+    const scope = rawScope === "case" || rawScope === "result" ? rawScope : undefined;
     if (deps.prisma) {
       const rows = await deps.prisma.customField.findMany({
-        where: { projectId, deletedAt: null },
+        where: { projectId, deletedAt: null, ...(scope ? { scope } : {}) },
         orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
       });
       const items = rows.map(fieldToResponse);
       return reply.send(toJsonSafe(paged(items, 1, 100)));
     }
-    return reply.send(toJsonSafe(paged(customFields.filter((item) => item.projectId === projectId), 1, 100)));
+    return reply.send(
+      toJsonSafe(paged(customFields.filter((item) => item.projectId === projectId && (!scope || item.scope === scope)), 1, 100))
+    );
   });
 
   app.post("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
@@ -298,6 +411,7 @@ export async function registerSettingsRoutes(
               name: body.name,
               systemName,
               fieldType: body.fieldType,
+              scope: body.scope,
               options: body.fieldType === "select" ? body.options : [],
               isRequired: body.isRequired,
               isActive: body.isActive,
@@ -335,6 +449,7 @@ export async function registerSettingsRoutes(
       name: body.name,
       systemName,
       fieldType: body.fieldType,
+      scope: body.scope,
       options: body.fieldType === "select" ? body.options : [],
       isRequired: body.isRequired,
       isActive: body.isActive,
@@ -369,6 +484,7 @@ export async function registerSettingsRoutes(
               ...(body.name !== undefined ? { name: body.name } : {}),
               ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
               ...(body.fieldType !== undefined ? { fieldType: body.fieldType } : {}),
+              ...(body.scope !== undefined ? { scope: body.scope } : {}),
               ...(body.options !== undefined || body.fieldType !== undefined
                 ? { options: body.fieldType === "select" || body.options !== undefined ? body.options ?? [] : [] }
                 : {}),
@@ -413,6 +529,7 @@ export async function registerSettingsRoutes(
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
       ...(body.fieldType !== undefined ? { fieldType: body.fieldType } : {}),
+      ...(body.scope !== undefined ? { scope: body.scope } : {}),
       ...(body.options !== undefined ? { options: body.options } : {}),
       ...(body.isRequired !== undefined ? { isRequired: body.isRequired } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
@@ -868,68 +985,210 @@ export async function registerSettingsRoutes(
   app.get("/api/projects/:projectId/settings/webhooks", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
-      const logs = await deps.prisma.auditLog.findMany({
-        where: { projectId, entityType: "webhook" },
-        orderBy: { id: "desc" },
-        take: 100
+      const rows = await deps.prisma.webhookSubscription.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: [{ isActive: "desc" }, { id: "desc" }],
+        take: 100,
+        select: {
+          id: true,
+          event: true,
+          targetUrl: true,
+          secret: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true
+        }
       });
-      const items = logs
-        .map((row: (typeof logs)[number]) => row.changes as { event?: string; targetUrl?: string; isActive?: boolean } | null)
-        .filter(
-          (
-            value: { event?: string; targetUrl?: string; isActive?: boolean } | null
-          ): value is { event?: string; targetUrl?: string; isActive?: boolean } => Boolean(value?.event)
-        )
-        .map((value: { event?: string; targetUrl?: string; isActive?: boolean }, index: number) => ({
-          id: BigInt(index + 1),
-          event: value.event!,
-          targetUrl: value.targetUrl ?? "",
-          isActive: value.isActive ?? true
-        }));
-      return reply.send(toJsonSafe(paged(items, 1, 100)));
+      return reply.send(toJsonSafe(paged(rows.map(webhookToResponse), 1, 100)));
     }
-    return reply.send(toJsonSafe(paged(webhooks.filter((item) => item.projectId === projectId), 1, 100)));
+    return reply.send(toJsonSafe(paged(webhooks.filter((item) => item.projectId === projectId).map(webhookToResponse), 1, 100)));
+  });
+
+  app.get("/api/projects/:projectId/settings/webhook-events", async (req, reply) => {
+    projectIdParamSchema.parse(req.params);
+    return reply.send(ok({ events: [...webhookEvents] }));
+  });
+
+  app.get("/api/projects/:projectId/settings/webhook-attempts", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.webhookDeliveryAttempt.findMany({
+        where: { projectId },
+        orderBy: { id: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          webhookId: true,
+          activityEventId: true,
+          event: true,
+          targetUrl: true,
+          status: true,
+          attemptNo: true,
+          responseStatus: true,
+          error: true,
+          nextRetryAt: true,
+          deliveredAt: true,
+          signature: true,
+          createdAt: true
+        }
+      });
+      return reply.send(toJsonSafe(paged(rows.map(webhookAttemptToResponse), 1, 50)));
+    }
+    return reply.send(
+      toJsonSafe(paged(webhookAttempts.filter((item) => item.projectId === projectId).map(webhookAttemptToResponse), 1, 50))
+    );
   });
 
   app.post("/api/projects/:projectId/settings/webhooks", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const body = req.body as { event?: string; targetUrl?: string };
+    const body = webhookCreateSchema.parse(req.body ?? {});
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
-      await deps.prisma.auditLog.create({
-        data: {
-          projectId,
-          actorUserId: actor.id,
-          action: "settings.webhook.created",
-          entityType: "webhook",
-          entityId: `${Date.now()}`,
-          changes: {
-            event: body.event?.trim() || "result.created",
-            targetUrl: body.targetUrl?.trim() || "https://example.com/webhook",
-            isActive: true
-          }
-        }
-      });
-      return reply.send(
-        toJsonSafe({
+      const created = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const row = await tx.webhookSubscription.create({
           data: {
-            id: BigInt(Date.now()),
-            event: body.event?.trim() || "result.created",
-            targetUrl: body.targetUrl?.trim() || "https://example.com/webhook",
-            isActive: true
+            projectId,
+            event: body.event,
+            targetUrl: body.targetUrl,
+            secret: body.secret ?? newWebhookSecret(),
+            isActive: body.isActive,
+            createdBy: actor.id,
+            updatedBy: actor.id
           }
-        })
-      );
+        });
+        await tx.auditLog.create({
+          data: {
+            projectId,
+            actorUserId: actor.id,
+            action: "settings.webhook.created",
+            entityType: "webhook",
+            entityId: row.id.toString(),
+            changes: {
+              event: row.event,
+              targetUrl: row.targetUrl,
+              isActive: row.isActive
+            }
+          }
+        });
+        return row;
+      });
+      return reply.send(toJsonSafe(ok(webhookToResponse(created))));
     }
     const row: WebhookRow = {
       id: BigInt(Date.now()),
       projectId,
-      event: body.event?.trim() || "result.created",
-      targetUrl: body.targetUrl?.trim() || "https://example.com/webhook",
-      isActive: true
+      event: body.event,
+      targetUrl: body.targetUrl,
+      secret: body.secret ?? newWebhookSecret(),
+      isActive: body.isActive
     };
     webhooks.unshift(row);
-    return reply.send(toJsonSafe({ data: row }));
+    return reply.send(toJsonSafe(ok(webhookToResponse(row))));
+  });
+
+  app.patch("/api/projects/:projectId/settings/webhooks/:webhookId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, webhookId } = webhookIdParamSchema.parse(req.params);
+    const body = webhookUpdateSchema.parse(req.body ?? {});
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      const existing = await deps.prisma.webhookSubscription.findFirst({
+        where: { id: webhookId, projectId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!existing) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+      const updated = await deps.prisma.webhookSubscription.update({
+        where: { id: existing.id },
+        data: {
+          ...(body.event !== undefined ? { event: body.event } : {}),
+          ...(body.targetUrl !== undefined ? { targetUrl: body.targetUrl } : {}),
+          ...(body.secret !== undefined ? { secret: body.secret } : {}),
+          ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          updatedBy: actor.id
+        }
+      });
+      await deps.prisma.auditLog.create({
+        data: {
+          projectId,
+          actorUserId: actor.id,
+          action: "settings.webhook.updated",
+          entityType: "webhook",
+          entityId: updated.id.toString(),
+          changes: { event: updated.event, targetUrl: updated.targetUrl, isActive: updated.isActive }
+        }
+      });
+      return reply.send(toJsonSafe(ok(webhookToResponse(updated))));
+    }
+    const row = webhooks.find((item) => item.projectId === projectId && item.id === webhookId);
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+    Object.assign(row, {
+      ...(body.event !== undefined ? { event: body.event } : {}),
+      ...(body.targetUrl !== undefined ? { targetUrl: body.targetUrl } : {}),
+      ...(body.secret !== undefined ? { secret: body.secret } : {}),
+      ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
+    });
+    return reply.send(toJsonSafe(ok(webhookToResponse(row))));
+  });
+
+  app.delete("/api/projects/:projectId/settings/webhooks/:webhookId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, webhookId } = webhookIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      const existing = await deps.prisma.webhookSubscription.findFirst({
+        where: { id: webhookId, projectId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!existing) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+      await deps.prisma.webhookSubscription.update({
+        where: { id: existing.id },
+        data: { deletedAt: new Date(), isActive: false, updatedBy: actor.id }
+      });
+      await deps.prisma.auditLog.create({
+        data: {
+          projectId,
+          actorUserId: actor.id,
+          action: "settings.webhook.deleted",
+          entityType: "webhook",
+          entityId: webhookId.toString()
+        }
+      });
+      return reply.code(204).send();
+    }
+    const index = webhooks.findIndex((item) => item.projectId === projectId && item.id === webhookId);
+    if (index === -1) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+    webhooks.splice(index, 1);
+    return reply.code(204).send();
+  });
+
+  app.post("/api/projects/:projectId/settings/webhook-attempts/:attemptId/retry", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, attemptId } = webhookRetryParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const existing = await deps.prisma.webhookDeliveryAttempt.findFirst({
+        where: { id: attemptId, projectId },
+        select: { id: true, webhookId: true, attemptNo: true }
+      });
+      if (!existing) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
+      const updated = await deps.prisma.webhookDeliveryAttempt.update({
+        where: { id: existing.id },
+        data: {
+          status: "pending",
+          attemptNo: { increment: 1 },
+          error: null,
+          responseStatus: null,
+          responseBody: null,
+          nextRetryAt: null
+        }
+      });
+      return reply.send(toJsonSafe(ok(webhookAttemptToResponse(updated))));
+    }
+    const row = webhookAttempts.find((item) => item.projectId === projectId && item.id === attemptId);
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
+    row.status = "pending";
+    row.attemptNo += 1;
+    return reply.send(toJsonSafe(ok(webhookAttemptToResponse(row))));
   });
 
   app.get("/api/projects/:projectId/settings/audit-logs", async (req, reply) => {

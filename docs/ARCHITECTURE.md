@@ -1,5 +1,7 @@
 # Architecture
 
+Last aligned: 2026-04-30
+
 ## System Overview
 - This project is a web service based on:
   - Frontend: React + TypeScript
@@ -43,6 +45,7 @@ apps/server/src/
     invariants.ts
     testrailMapping.ts
   modules/
+    auth/
     projects/
     suites/
     sections/
@@ -50,10 +53,15 @@ apps/server/src/
     runs/
     results/
     automation/
+    importExport/
+    integrations/
+    milestones/
+    plans/
+    requirements/
     reports/
+    settings/
+    testrail/
     tokens/
-    attachments/
-    users/
   plugins/
 ```
 
@@ -75,7 +83,8 @@ moduleName/
 - Handle HTTP request/response.
 - Invoke request/response schema validation.
 - Call service layer.
-- Must not call Prisma directly.
+- Target rule: call service layer rather than Prisma directly.
+- Current note: several newer baseline modules still call Prisma in route files; move them behind services/repositories when the workflow stabilizes.
 
 ### schemas
 - Define request/response validation.
@@ -133,7 +142,8 @@ moduleName/
 
 ```text
 apps/web/src/
-  app/
+  App.tsx
+  main.tsx
   shared/
     ui/
     api/
@@ -141,13 +151,10 @@ apps/web/src/
     utils/
     types/
   features/
+    auth/
     projects/
     cases/
     runs/
-    results/
-    automation/
-    reports/
-  pages/
 ```
 
 ### Frontend Principles

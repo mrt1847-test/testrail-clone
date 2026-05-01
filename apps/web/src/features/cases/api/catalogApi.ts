@@ -216,19 +216,52 @@ type ApiCaseVersion = {
   caseId: string;
   versionNo: number;
   title: string;
+  priority?: string | null;
+  caseType?: string | null;
+  preconditions?: string | null;
+  customValuesSnapshot?: Record<string, string | number | boolean | null>;
+  stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   changeReason?: string | null;
   createdAt: string;
 };
 
-export async function fetchCaseVersions(caseId: number): Promise<CaseVersion[]> {
-  const res = await apiFetch<Paged<ApiCaseVersion>>(`/api/cases/${caseId}/versions?page=1&pageSize=20`);
-  return res.data.map((row) => ({
+function mapApiCaseVersion(row: ApiCaseVersion): CaseVersion {
+  return {
     id: asNum(row.id),
     caseId: asNum(row.caseId),
     versionNo: row.versionNo,
     title: row.title,
+    priority: row.priority ?? null,
+    caseType: row.caseType ?? null,
+    preconditions: row.preconditions ?? null,
+    customValuesSnapshot: row.customValuesSnapshot ?? {},
+    stepsSnapshot: row.stepsSnapshot ?? [],
     changeReason: row.changeReason ?? null,
     createdAt: row.createdAt
-  }));
+  };
+}
+
+export async function fetchCaseVersions(caseId: number): Promise<CaseVersion[]> {
+  const res = await apiFetch<Paged<ApiCaseVersion>>(`/api/cases/${caseId}/versions?page=1&pageSize=20`);
+  return res.data.map(mapApiCaseVersion);
+}
+
+export async function fetchCaseVersion(caseId: number, versionId: number): Promise<CaseVersion> {
+  const res = await apiFetch<Ok<ApiCaseVersion>>(`/api/cases/${caseId}/versions/${versionId}`);
+  return mapApiCaseVersion(res.data);
+}
+
+export async function restoreCaseVersion(
+  caseId: number,
+  versionId: number,
+  expectedVersion?: number
+): Promise<TestCase> {
+  const res = await apiFetch<Ok<ApiCaseDetail>>(`/api/cases/${caseId}/versions/${versionId}/restore`, {
+    method: "POST",
+    body: {
+      ...(expectedVersion !== undefined ? { expectedVersion } : {})
+    }
+  });
+  return mapApiCaseDetailToTestCase(res.data);
 }
 

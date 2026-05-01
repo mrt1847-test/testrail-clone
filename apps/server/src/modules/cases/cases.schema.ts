@@ -15,6 +15,15 @@ export const caseIdParamSchema = z.object({
   caseId: z.coerce.bigint()
 });
 
+export const caseVersionIdParamSchema = z.object({
+  caseId: z.coerce.bigint(),
+  versionId: z.coerce.bigint()
+});
+
+export const restoreCaseVersionSchema = z.object({
+  expectedVersion: z.coerce.number().int().positive().optional()
+});
+
 export const projectIdParamSchema = z.object({
   projectId: z.coerce.bigint()
 });

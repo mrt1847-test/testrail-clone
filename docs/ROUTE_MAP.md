@@ -1,147 +1,81 @@
 # Route Map
 
+Last aligned: 2026-04-30
+
+This document tracks the actual frontend route tree in `apps/web/src/App.tsx`.
+
 ## Route Hierarchy
 
 ```text
 /
-├─ /login
-│  └─ LoginPage
-├─ /projects
-│  ├─ ProjectListPage
-│  └─ ProjectCreateDialog (modal)
-└─ /projects/:projectId/*
-   ├─ ProjectLayout (AppShell, ProjectHeader, ProjectTabs, ProjectSwitcher, Breadcrumb)
-   ├─ /projects/:projectId
-   │  └─ ProjectOverview
-   ├─ /projects/:projectId/cases
-   │  └─ TestCaseWorkspace
-   │     ├─ CaseListPane
-   │     │  ├─ CaseListToolbar
-   │     │  ├─ CaseListTable
-   │     │  ├─ CaseRow
-   │     │  └─ ExpandableCaseDetail (in-row)
-   │     └─ SectionTreePane
-   ├─ /projects/:projectId/runs
-   │  └─ RunList
-   ├─ /projects/:projectId/my-tests
-   │  └─ MyTestsPage
-   ├─ /projects/:projectId/runs/new
-   │  └─ RunCreate
-   ├─ /projects/:projectId/runs/:runId
-   │  └─ RunDetailPage
-   ├─ /projects/:projectId/runs/:runId/results
-   │  └─ RunResultExplorer
-   ├─ /projects/:projectId/results
-   │  └─ ProjectResultExplorer
-   ├─ /projects/:projectId/milestones
-   │  └─ MilestoneList
-   ├─ /projects/:projectId/milestones/:milestoneId
-   │  └─ MilestoneDetail
-   ├─ /projects/:projectId/plans
-   │  └─ TestPlanList
-   ├─ /projects/:projectId/plans/:planId
-   │  └─ TestPlanDetail
-   ├─ /projects/:projectId/automation
-   │  └─ AutomationDashboard
-   ├─ /projects/:projectId/automation/uploads/:uploadId
-   │  └─ BulkUploadResultDetail
-   ├─ /projects/:projectId/settings
-   │  └─ ProjectSettingsPage
-   ├─ /projects/:projectId/settings/tokens
-   │  └─ ApiTokenList
-   ├─ /projects/:projectId/settings/members
-   │  └─ MemberManagement
-   ├─ /projects/:projectId/settings/custom-fields
-   │  └─ CustomFieldSettings
-   ├─ /projects/:projectId/settings/webhooks
-   │  └─ WebhookSettings
-   ├─ /projects/:projectId/settings/audit-logs
-   │  └─ AuditLogTable
-   ├─ /projects/:projectId/settings/statuses
-   │  └─ CustomStatusSettings
-   ├─ /projects/:projectId/settings/templates
-   │  └─ CaseTemplateSettings
-   ├─ /projects/:projectId/settings/integrations
-   │  └─ IntegrationSettings
-   ├─ /projects/:projectId/settings/notifications
-   │  └─ NotificationSettings
-   └─ /projects/:projectId/reports
-      └─ ReportsDashboard
+  -> /projects
+
+/login
+  LoginPage
+
+/projects
+  ProjectListPage
+
+/projects/:projectId
+  ProjectLayout
+  index                              ProjectOverviewPage
+  cases                              TestCaseWorkspacePage
+  runs                               RunListPage
+  runs/new                           RunCreatePage
+  runs/:runId                        RunDetailPage
+  runs/:runId/results                ResultExplorerPage
+  my-tests                           MyTestsPage
+  results                            ResultExplorerPage
+  reports                            ReportsPage
+  activity                           ActivityPage
+  notifications                      NotificationsPage
+  automation                         AutomationPage
+  automation/uploads/:uploadId       BulkUploadDetailPage
+  import-export                      ImportExportPage
+  milestones                         MilestonesPage
+  milestones/:milestoneId            MilestoneDetailPage
+  plans                              PlansPage
+  plans/:planId                      PlanDetailPage
+  settings                           ProjectSettingsPage
+  settings/tokens                    TokensPage
+  settings/members                   ProjectMembersPage
+  settings/custom-fields             CustomFieldsPage
+  settings/statuses                  CustomStatusesPage
+  settings/templates                 CaseTemplatesPage
+  settings/webhooks                  WebhooksPage
+  settings/defect-integration        DefectIntegrationSettingsPage
+  settings/audit-logs                AuditLogsPage
 ```
+
+Unknown routes redirect to `/projects`.
+
+## Navigation Rules
+
+- All `/projects/:projectId/*` routes render inside `ProjectLayout`.
+- Unauthenticated users are redirected through `RequireAuth`.
+- Case details stay inline in the case workspace; there is no standalone case detail route.
+- Project-wide result exploration uses `/projects/:projectId/results`.
+- Run-scoped result exploration uses `/projects/:projectId/runs/:runId/results`.
+- Project activity feed uses `/projects/:projectId/activity`.
+- Notification inbox and preferences use `/projects/:projectId/notifications`.
+- Defect integration is currently routed at `/settings/defect-integration`, not `/settings/integrations`.
 
 ## Query State Policy
 
-### Cases Route Query
-- `sectionId`: 선택된 섹션 컨텍스트
-- `caseId`: 펼쳐진 케이스 식별자(`expandedCaseId`와 동기화)
-- `mode`: 상세 패널 모드(`view` | `edit`)
+### Cases
 
-### Examples
+- `sectionId`: selected section context.
+- `caseId`: expanded case row.
+- `mode`: detail mode, usually `view` or `edit`.
+
+Examples:
+
 - `/projects/1/cases?sectionId=10`
 - `/projects/1/cases?sectionId=10&caseId=101`
 - `/projects/1/cases?sectionId=10&caseId=101&mode=edit`
 
-## Navigation Rules
+## Related Docs
 
-- `/projects/:projectId/*` 하위 라우트는 공통 `ProjectLayout`을 사용한다.
-- 케이스 상세는 별도 페이지로 라우팅하지 않고 `CaseRow` 확장 상태로 처리한다.
-- `caseId` 없는 `/cases` 진입 시 기본 목록 모드로 렌더링한다.
-- 쿼리의 `caseId`가 현재 필터/섹션 결과에 없으면 확장 상태를 초기화한다.
-- 인증되지 않은 사용자는 `/login`으로 리다이렉트한다.
-
-## Route-to-Screen Mapping
-
-이 문서는 route tree와 navigation/query rule만 canonical로 다룬다.
-
-- 화면별 required API는 `SCREEN_INVENTORY.md`를 참조한다.
-- endpoint 계약은 `API_SPEC.md`를 참조한다.
-- 컴포넌트 책임은 `COMPONENT_MAP.md`를 참조한다.
-
-### Primary Mapping
-- `/login` -> `LoginPage`
-- `/projects` -> `Project Selection`
-- `/projects/:projectId` -> `Project Overview`
-- `/projects/:projectId/cases` -> `Test Case Workspace`
-- `/projects/:projectId/runs` -> `Test Run List`
-- `/projects/:projectId/runs/new` -> `Test Run Create`
-- `/projects/:projectId/my-tests` -> `My Tests`
-- `/projects/:projectId/runs/:runId` -> `Run Detail`
-- `/projects/:projectId/runs/:runId/results` -> `Run Result History`
-- `/projects/:projectId/results` -> `Project-wide Result Explorer`
-- `/projects/:projectId/milestones` -> `Milestone List`
-- `/projects/:projectId/milestones/:milestoneId` -> `Milestone Detail`
-- `/projects/:projectId/plans` -> `Test Plan List`
-- `/projects/:projectId/plans/:planId` -> `Test Plan Detail`
-- `/projects/:projectId/automation` -> `Automation Dashboard`
-- `/projects/:projectId/automation/uploads/:uploadId` -> `Bulk Upload Result Detail`
-- `/projects/:projectId/settings/*` -> `Project Settings` category screens
-- `/projects/:projectId/reports` -> `Reports`
-
-## MVP Route Set
-
-- `/projects`
-- `/projects/:projectId`
-- `/projects/:projectId/cases`
-- `/projects/:projectId/runs`
-- `/projects/:projectId/runs/new`
-- `/projects/:projectId/runs/:runId`
-- `/projects/:projectId/settings`
-
-## First Complete Route Set (Automation + Tokens + Basic Reports)
-
-- `/projects/:projectId/automation`
-- `/projects/:projectId/automation/uploads/:uploadId`
-- `/projects/:projectId/settings/tokens`
-- `/projects/:projectId/reports`
-
-## Later Route Set
-
-- `/projects/:projectId/milestones`
-- `/projects/:projectId/milestones/:milestoneId`
-- `/projects/:projectId/plans`
-- `/projects/:projectId/plans/:planId`
-- `/projects/:projectId/results`
-- `/projects/:projectId/settings/members`
-- `/projects/:projectId/settings/custom-fields`
-- `/projects/:projectId/settings/webhooks`
-- `/projects/:projectId/settings/audit-logs`
+- Screen behavior: [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md)
+- API contracts: [API_SPEC.md](./API_SPEC.md)
+- Component ownership: [COMPONENT_MAP.md](./COMPONENT_MAP.md)

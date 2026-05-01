@@ -120,8 +120,8 @@ Case optimistic locking (phase 2 baseline):
 - Server stores and increments `lockVersion` on every successful case update.
 - If expected version does not match current `lockVersion`, server returns `409 CONFLICT`.
 - `GET /api/cases/{caseId}/versions`
-- `GET /api/cases/{caseId}/versions/{versionId}` (planned)
-- `POST /api/cases/{caseId}/versions/{versionId}/restore` (planned)
+- `GET /api/cases/{caseId}/versions/{versionId}`
+- `POST /api/cases/{caseId}/versions/{versionId}/restore`
 - `PATCH /api/cases/{caseId}/assignee`
 
 Semantics (case steps):

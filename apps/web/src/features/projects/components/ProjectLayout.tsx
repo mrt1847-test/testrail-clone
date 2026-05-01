@@ -1,4 +1,5 @@
 import { Link, Outlet, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../shared/ui/AppShell";
 import { Breadcrumb } from "../../../shared/ui/Breadcrumb";
@@ -8,6 +9,7 @@ import { ProjectHeader } from "../../../shared/ui/ProjectHeader";
 import { ProjectSwitcher } from "../../../shared/ui/ProjectSwitcher";
 import { ProjectTabs } from "../../../shared/ui/ProjectTabs";
 import { useAuth } from "../../auth/context/AuthContext";
+import { fetchNotifications } from "../api/advancedApi";
 import { useProjectQuery, useProjectsQuery } from "../hooks/useProjectsApi";
 
 export function ProjectLayout() {
@@ -15,11 +17,16 @@ export function ProjectLayout() {
   const { user, logout } = useAuth();
   const { data: project, isLoading, isError, refetch } = useProjectQuery(projectId);
   const { data: allProjects = [] } = useProjectsQuery();
+  const { data: notifications } = useQuery({
+    queryKey: ["notifications", projectId, "shell"],
+    queryFn: () => fetchNotifications(projectId, 1, 1),
+    enabled: Boolean(projectId && user)
+  });
 
   if (isLoading) {
     return (
       <div className="p-6">
-        <LoadingState message="Loading project…" />
+        <LoadingState message="Loading project..." />
       </div>
     );
   }
@@ -46,6 +53,12 @@ export function ProjectLayout() {
           </Link>
           <div className="flex items-center gap-3">
             <ProjectSwitcher projects={allProjects} currentProjectId={projectId} />
+            <Link
+              to={`/projects/${projectId}/notifications`}
+              className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Inbox {notifications?.unreadCount ? `(${notifications.unreadCount})` : ""}
+            </Link>
             <div className="text-right">
               <p className="text-xs text-slate-500">{user?.email ?? "unknown user"}</p>
               <button

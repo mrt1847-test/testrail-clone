@@ -80,6 +80,7 @@ export interface ProjectsRepository {
   getCase(caseId: bigint): Promise<CaseRow | null>;
   listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
   listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]>;
+  getCaseVersion(caseId: bigint, versionId: bigint): Promise<CaseVersionRow | null>;
   createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null>;
   createCaseStep(input: {
     caseId: bigint;

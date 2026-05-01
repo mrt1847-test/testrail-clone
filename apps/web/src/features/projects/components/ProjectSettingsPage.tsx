@@ -53,6 +53,11 @@ export function ProjectSettingsPage() {
               Audit logs
             </Link>
           </li>
+          <li>
+            <Link to={`/projects/${projectId}/notifications`} className="text-slate-700 underline">
+              Notifications
+            </Link>
+          </li>
         </ul>
       </div>
     </div>

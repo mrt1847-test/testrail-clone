@@ -406,7 +406,7 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
 async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows: CsvRow[], fallbackSectionId?: bigint) {
   const issues: ImportIssue[] = [];
   const customFields = await prisma.customField.findMany({
-    where: { projectId, deletedAt: null, isActive: true },
+    where: { projectId, scope: "case", deletedAt: null, isActive: true },
     orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
     select: { systemName: true, fieldType: true, options: true, isRequired: true }
   });
@@ -694,7 +694,7 @@ export async function registerImportExportRoutes(
       include: { steps: { where: { deletedAt: null }, orderBy: { stepOrder: "asc" } } }
     });
     const customFields = await deps.prisma.customField.findMany({
-      where: { projectId, deletedAt: null, isActive: true },
+      where: { projectId, scope: "case", deletedAt: null, isActive: true },
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       select: { systemName: true }
     });

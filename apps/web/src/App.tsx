@@ -4,6 +4,7 @@ import { LoginPage } from "./features/auth/components/LoginPage";
 import { RequireAuth } from "./features/auth/components/RequireAuth";
 import { TestCaseWorkspacePage } from "./features/cases/components/TestCaseWorkspacePage";
 import { AutomationPage } from "./features/projects/components/AutomationPage";
+import { ActivityPage } from "./features/projects/components/ActivityPage";
 import { ProjectLayout } from "./features/projects/components/ProjectLayout";
 import { ProjectListPage } from "./features/projects/components/ProjectListPage";
 import { ProjectOverviewPage } from "./features/projects/components/ProjectOverviewPage";
@@ -23,6 +24,7 @@ import { WebhooksPage } from "./features/projects/components/WebhooksPage";
 import { ProjectMembersPage } from "./features/projects/components/ProjectMembersPage";
 import { DefectIntegrationSettingsPage } from "./features/projects/components/DefectIntegrationSettingsPage";
 import { ImportExportPage } from "./features/projects/components/ImportExportPage";
+import { NotificationsPage } from "./features/projects/components/NotificationsPage";
 import { RunCreatePage } from "./features/runs/components/RunCreatePage";
 import { RunDetailPage } from "./features/runs/components/RunDetailPage";
 import { RunListPage } from "./features/runs/components/RunListPage";
@@ -46,6 +48,8 @@ export function App() {
           <Route path="my-tests" element={<MyTestsPage />} />
           <Route path="results" element={<ResultExplorerPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="automation" element={<AutomationPage />} />
           <Route path="automation/uploads/:uploadId" element={<BulkUploadDetailPage />} />
           <Route path="import-export" element={<ImportExportPage />} />

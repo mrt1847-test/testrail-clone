@@ -25,8 +25,10 @@ type ExpandableCaseDetailProps = {
     customValues: Record<string, string | number | boolean | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
+  onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
   isDeleting?: boolean;
+  isRestoring?: boolean;
   onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
   onUpdateStep?: (
     stepId: number,
@@ -55,8 +57,10 @@ export function ExpandableCaseDetail({
   onClose,
   onSave,
   onDelete,
+  onRestoreVersion,
   isSaving = false,
   isDeleting = false,
+  isRestoring = false,
   onCreateStep,
   onUpdateStep,
   onDeleteStep,
@@ -70,6 +74,9 @@ export function ExpandableCaseDetail({
   const [localSteps, setLocalSteps] = useState<LocalStep[]>(() => toLocalSteps(data.steps));
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [stepDeleteId, setStepDeleteId] = useState<number | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [restoreVersionId, setRestoreVersionId] = useState<number | null>(null);
+  const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? null;
 
   useEffect(() => {
     setTitle(data.title);
@@ -309,19 +316,117 @@ export function ExpandableCaseDetail({
           </p>
 
           <div className="mt-2 rounded border border-slate-200 bg-white p-2">
-            <p className="text-xs font-medium text-slate-700">Version history</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-slate-700">Version history</p>
+              {selectedVersion ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-slate-600 underline"
+                  onClick={() => setSelectedVersionId(null)}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
             {versions.length === 0 ? (
               <p className="mt-1 text-xs text-slate-500">No versions yet.</p>
             ) : (
               <ul className="mt-1 space-y-1 text-xs text-slate-600">
                 {versions.map((v) => (
-                  <li key={v.id}>
-                    v{v.versionNo} / {v.changeReason ?? "updated"} / {new Date(v.createdAt).toLocaleString()}
+                  <li key={v.id} className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className={
+                        selectedVersionId === v.id
+                          ? "font-medium text-slate-900 underline"
+                          : "font-medium text-slate-700 underline"
+                      }
+                      onClick={() => setSelectedVersionId(v.id)}
+                    >
+                      v{v.versionNo}
+                    </button>
+                    <span>{v.changeReason ?? "updated"}</span>
+                    <span>{new Date(v.createdAt).toLocaleString()}</span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
+
+          {selectedVersion ? (
+            <div className="mt-2 rounded border border-slate-200 bg-white p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-700">Compare with v{selectedVersion.versionNo}</p>
+                {onRestoreVersion ? (
+                  <button
+                    type="button"
+                    disabled={isRestoring}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+                    onClick={() => setRestoreVersionId(selectedVersion.id)}
+                  >
+                    {isRestoring ? "Restoring..." : "Restore"}
+                  </button>
+                ) : null}
+              </div>
+              <dl className="mt-2 grid gap-2 text-xs text-slate-600">
+                {[
+                  ["Title", data.title, selectedVersion.title],
+                  ["Priority", data.priority, selectedVersion.priority ?? "-"],
+                  ["Type", data.type, selectedVersion.caseType ?? "-"],
+                  ["Preconditions", data.preconditions || "-", selectedVersion.preconditions || "-"]
+                ].map(([label, current, snapshot]) => (
+                  <div key={label} className="grid gap-1 rounded border border-slate-100 p-2 sm:grid-cols-[120px_1fr_1fr]">
+                    <dt className="font-medium text-slate-700">{label}</dt>
+                    <dd className={current !== snapshot ? "text-red-700" : ""}>Current: {current}</dd>
+                    <dd className={current !== snapshot ? "text-emerald-700" : ""}>Version: {snapshot}</dd>
+                  </div>
+                ))}
+              </dl>
+              {customFields.filter((field) => field.isActive).length > 0 ? (
+                <div className="mt-2 grid gap-1 text-xs text-slate-600">
+                  {customFields
+                    .filter((field) => field.isActive)
+                    .map((field) => {
+                      const current = data.customValues[field.systemName] ?? null;
+                      const snapshot = selectedVersion.customValuesSnapshot?.[field.systemName] ?? null;
+                      return (
+                        <div key={field.systemName} className="grid gap-1 rounded border border-slate-100 p-2 sm:grid-cols-[120px_1fr_1fr]">
+                          <span className="font-medium text-slate-700">{field.name}</span>
+                          <span className={current !== snapshot ? "text-red-700" : ""}>
+                            Current: {current == null ? "-" : String(current)}
+                          </span>
+                          <span className={current !== snapshot ? "text-emerald-700" : ""}>
+                            Version: {snapshot == null ? "-" : String(snapshot)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : null}
+              <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                <div className="rounded border border-slate-100 p-2">
+                  <p className="font-medium text-slate-700">Current steps</p>
+                  <ol className="mt-1 list-decimal space-y-1 pl-4">
+                    {data.steps.map((step, index) => (
+                      <li key={step.id ?? index}>
+                        {step.description} <span className="text-slate-500">({step.expected})</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div className="rounded border border-slate-100 p-2">
+                  <p className="font-medium text-slate-700">Version steps</p>
+                  <ol className="mt-1 list-decimal space-y-1 pl-4">
+                    {(selectedVersion.stepsSnapshot ?? []).map((step) => (
+                      <li key={step.stepOrder}>
+                        {step.content} <span className="text-slate-500">({step.expectedResult ?? "-"})</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {customFields.filter((field) => field.isActive).length > 0 ? (
             <div className="mt-2 rounded border border-slate-200 bg-white p-2">
@@ -396,6 +501,20 @@ export function ExpandableCaseDetail({
           const id = stepDeleteId;
           setStepDeleteId(null);
           if (id != null) void onDeleteStep?.(id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={restoreVersionId != null}
+        title="Restore this version?"
+        description="The selected snapshot will become the current case and a new version will be created."
+        confirmLabel={isRestoring ? "Restoring..." : "Restore"}
+        confirmDisabled={isRestoring}
+        onCancel={() => setRestoreVersionId(null)}
+        onConfirm={() => {
+          const id = restoreVersionId;
+          setRestoreVersionId(null);
+          if (id != null) void onRestoreVersion?.(id);
         }}
       />
     </div>

@@ -264,7 +264,11 @@ export async function registerReportsRoutes(
             status: row.status,
             source: row.source,
             createdAt: row.createdAt,
-            comment: row.comment ?? null
+            comment: row.comment ?? null,
+            customValues:
+              row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+                ? row.customValues
+                : {}
           })),
           page,
           pageSize,
@@ -288,6 +292,7 @@ export async function registerReportsRoutes(
       source: string;
       createdAt: string;
       comment: string | null;
+      customValues?: Record<string, string | number | boolean | null>;
     }> = [];
     for (const run of targetRuns) {
       const instances = await deps.repo.listInstancesForRun(run.id);
@@ -319,7 +324,8 @@ export async function registerReportsRoutes(
             status: row.status,
             source: row.source,
             createdAt: row.createdAt.toISOString(),
-            comment: row.comment ?? null
+            comment: row.comment ?? null,
+            customValues: row.customValues ?? {}
           });
         }
       }

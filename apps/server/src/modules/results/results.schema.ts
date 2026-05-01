@@ -16,6 +16,7 @@ export const resultSchema = z.object({
   elapsed: z.string().optional(),
   version: z.string().optional(),
   defects: z.array(z.string()).optional(),
+  customValues: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   source: z.enum(["manual", "automation", "api"]).optional(),
   stepResults: z
     .array(

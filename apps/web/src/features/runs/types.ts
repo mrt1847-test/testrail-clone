@@ -32,6 +32,7 @@ export type TestResultHistoryItem = {
   version?: string;
   source: "manual" | "automation" | "api";
   defects: string[];
+  customValues?: Record<string, string | number | boolean | null>;
   createdAt: string;
 };
 

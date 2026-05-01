@@ -96,6 +96,7 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           elapsed: input.elapsed,
           version: input.version,
           defects: input.defects ?? [],
+          customValues: (input.customValues as Prisma.InputJsonValue | undefined) ?? undefined,
           source: input.source ?? "manual",
           metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
@@ -153,6 +154,10 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         elapsed: row.elapsed ?? undefined,
         version: row.version ?? undefined,
         defects: row.defects,
+        customValues:
+          row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+            ? (row.customValues as Record<string, string | number | boolean | null>)
+            : {},
         source: row.source as "manual" | "automation" | "api",
         createdAt: row.createdAt
       }));
@@ -433,6 +438,10 @@ export class PrismaRunsRepository implements RunsRepository {
       elapsed: row.elapsed ?? undefined,
       version: row.version ?? undefined,
       defects: row.defects,
+      customValues:
+        row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+          ? (row.customValues as Record<string, string | number | boolean | null>)
+          : {},
       source: row.source as "manual" | "automation" | "api",
       createdAt: row.createdAt
     }));

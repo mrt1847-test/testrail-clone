@@ -14,6 +14,7 @@ import { InMemoryRunsRepository } from "./modules/runs/runs.repository.js";
 import { PrismaRunsRepository } from "./modules/runs/runs.prisma.repository.js";
 import { RunsService } from "./modules/runs/runs.service.js";
 import { registerAutomationRoutes } from "./modules/automation/automation.routes.js";
+import { registerActivityRoutes } from "./modules/activity/activity.routes.js";
 import { registerMilestonesRoutes } from "./modules/milestones/milestones.routes.js";
 import { registerPlansRoutes } from "./modules/plans/plans.routes.js";
 import { registerReportsRoutes } from "./modules/reports/reports.routes.js";
@@ -56,6 +57,7 @@ export function buildApp() {
 
   app.get("/api/health", async () => ({ status: "ok" }));
   void registerAuthRoutes(app, { authService });
+  void registerActivityRoutes(app, { authService, prisma });
   void registerProjectsRoutes(app, { projectsService, authService, prisma });
   void registerSuitesRoutes(app, { suitesService, authService, prisma });
   void registerSectionsRoutes(app, { sectionsService, authService, prisma });

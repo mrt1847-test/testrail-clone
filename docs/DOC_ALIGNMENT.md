@@ -1,11 +1,15 @@
 # Documentation Alignment
 
+Last aligned: 2026-04-30
+
 This document defines which docs are canonical and where future updates should go.
 
 ## Canonical Documents
 
+- Documentation index: [README.md](./README.md)
 - Product specification entry point: [PRODUCT_SPEC.md](./PRODUCT_SPEC.md)
 - Current execution roadmap: [ROADMAP.md](./ROADMAP.md)
+- Immediate implementation queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
 - Domain terms and invariants: [DOMAIN_MODEL.md](./DOMAIN_MODEL.md)
 - API contracts, paths, request/response rules: [API_SPEC.md](./API_SPEC.md)
 - Database schema and persistence policy: [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
@@ -13,9 +17,6 @@ This document defines which docs are canonical and where future updates should g
 - Route hierarchy and navigation rules: [ROUTE_MAP.md](./ROUTE_MAP.md)
 - Component ownership and implementation status: [COMPONENT_MAP.md](./COMPONENT_MAP.md)
 - Frontend architecture and data-flow rules: [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md)
-- Implementation task breakdown: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
-- TestRail parity gap checklist: [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md)
-- Core workflow completion plan: [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md)
 
 ## Spec vs Roadmap Boundary
 
@@ -26,13 +27,13 @@ Put product requirements in spec documents:
 - Storage structure, indexes, and consistency policy go in `DATABASE_SCHEMA.md`.
 - Screen-level actions, required APIs, loading/empty/error states go in `SCREEN_INVENTORY.md`.
 - Overall product capability expectations go in `PRODUCT_SPEC.md`.
-- TestRail parity gaps and missing feature categories go in `TESTRail_GAP_ANALYSIS.md`.
-- Near-term implementation planning for main workflows and UI/UX integration goes in `CORE_FEATURE_COMPLETION_PLAN.md`.
+- TestRail parity gaps and missing feature categories go in `ROADMAP.md`.
+- Immediate implementation batches go in `NEXT_ACTIONS.md`.
 
 Put delivery order in roadmap documents:
 
 - Current phases, progress, and next implementation priorities go in `ROADMAP.md`.
-- File-level implementation details can stay in `IMPLEMENTATION_PLAN.md`, but they must not redefine product behavior.
+- File-level implementation details should be captured in the issue/PR or `NEXT_ACTIONS.md` for active work only.
 
 If a roadmap item conflicts with a spec, update the spec first and then adjust the roadmap.
 

@@ -379,6 +379,7 @@ export function RunDetailPage() {
             <div className="mt-3 space-y-4 text-sm text-slate-700">
               <ResultEntryPanel
                 key={selected.id}
+                projectId={projectId}
                 instance={{
                   id: selected.id,
                   caseCode: selected.caseCode,
@@ -393,6 +394,7 @@ export function RunDetailPage() {
                     elapsed: payload.elapsed,
                     version: payload.version,
                     defects: payload.defects,
+                    customValues: payload.customValues,
                     stepResults: payload.stepResults
                   });
                 }}

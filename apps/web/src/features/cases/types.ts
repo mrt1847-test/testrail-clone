@@ -33,6 +33,11 @@ export type CaseVersion = {
   caseId: number;
   versionNo: number;
   title: string;
+  priority?: string | null;
+  caseType?: string | null;
+  preconditions?: string | null;
+  customValuesSnapshot?: Record<string, string | number | boolean | null>;
+  stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   changeReason?: string | null;
   createdAt: string;
 };

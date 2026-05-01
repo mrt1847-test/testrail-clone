@@ -9,6 +9,7 @@ import type { AuthService } from "../auth/auth.service.js";
 import type { PrismaClient } from "@prisma/client";
 import type { ResultsService } from "../results/results.service.js";
 import { byCaseSchema, bulkSchema, runResultSchema } from "../results/results.schema.js";
+import { resultCustomFieldErrorResponse, validateResultCustomValues } from "../results/resultCustomValues.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsService } from "./runs.service.js";
 import {
@@ -22,6 +23,12 @@ import {
 } from "./runs.schema.js";
 import { calculateRunSummary } from "../reports/reports.service.js";
 import type { RunsRepository } from "./runs.repository.js";
+import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
+
+async function projectIdForRun(repo: RunsRepository, runId: bigint) {
+  const run = await repo.getRun(runId);
+  return run?.projectId ?? null;
+}
 
 export async function registerRunsRoutes(
   app: FastifyInstance,
@@ -92,15 +99,26 @@ export async function registerRunsRoutes(
 
   app.post("/api/projects/:projectId/runs", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const raw = createProjectRunSchema.parse(req.body);
     const body = { ...raw, projectId };
     const created = await deps.runsService.createRunWithInstances(body);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: created.run.id,
+      eventType: "run.created",
+      title: "Test run created",
+      body: created.run.name
+    });
     return reply.send(toJsonSafe(created));
   });
 
   app.patch("/api/runs/:runId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
     const updated = await deps.runsService.updateRun(runId, body);
@@ -109,24 +127,57 @@ export async function registerRunsRoutes(
 
   app.patch("/api/runs/:runId/assignee", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
     const updated = await deps.runsService.updateRun(runId, { assignedTo: body.assignedTo ?? null });
+    await recordActivityEvent(deps.prisma, {
+      projectId: updated.projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: updated.id,
+      eventType: "run.assigned",
+      title: "Run assignment changed",
+      body: updated.name,
+      payload: { assignedTo: updated.assignedTo?.toString() ?? null },
+      notificationType: "assignment"
+    });
     return reply.send(toJsonSafe(ok(updated)));
   });
 
   app.post("/api/runs/:runId/results/by-case", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const params = runIdParamSchema.parse(req.params);
     const body = byCaseSchema.parse(req.body);
+    const projectId = await projectIdForRun(deps.repo, params.runId);
+    try {
+      body.customValues = await validateResultCustomValues(deps.prisma, projectId, body.customValues);
+    } catch (e) {
+      const customFieldError = resultCustomFieldErrorResponse(e);
+      if (customFieldError) return reply.code(400).send(customFieldError);
+      throw e;
+    }
     const created = await deps.resultsService.addResultForCaseInRun(params.runId, body.caseId, body);
+    await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: user.id });
     return reply.send(toJsonSafe(created));
   });
 
   app.post("/api/runs/:runId/results/bulk", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const params = runIdParamSchema.parse(req.params);
     const body = bulkSchema.parse(req.body);
+    const projectId = await projectIdForRun(deps.repo, params.runId);
+    try {
+      for (const item of body.results) {
+        item.customValues = await validateResultCustomValues(deps.prisma, projectId, item.customValues);
+      }
+    } catch (e) {
+      const customFieldError = resultCustomFieldErrorResponse(e);
+      if (customFieldError) return reply.code(400).send(customFieldError);
+      throw e;
+    }
     const res = await deps.resultsService.bulkAddResults({
       runId: params.runId,
       atomic: body.atomic,
@@ -135,13 +186,27 @@ export async function registerRunsRoutes(
         caseId: item.caseId as bigint
       }))
     });
+    for (const item of res.items) {
+      if (item.status === "saved") {
+        await recordResultActivity(deps.prisma, { resultId: item.resultId, actorUserId: user.id });
+      }
+    }
     return reply.send(toJsonSafe(res));
   });
 
   app.post("/api/runs/:runId/results", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = runResultSchema.parse(req.body);
+    const projectId = await projectIdForRun(deps.repo, runId);
+    try {
+      body.customValues = await validateResultCustomValues(deps.prisma, projectId, body.customValues);
+    } catch (e) {
+      const customFieldError = resultCustomFieldErrorResponse(e);
+      if (customFieldError) return reply.code(400).send(customFieldError);
+      throw e;
+    }
     if (body.testId) {
       const instances = await deps.repo.listInstancesForRun(runId);
       const exists = instances.some((instance) => instance.id === body.testId);
@@ -153,19 +218,31 @@ export async function registerRunsRoutes(
         );
       }
       const created = await deps.resultsService.addResultToTestInstance(body.testId, body);
+      await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: user.id });
       return reply.send(toJsonSafe(created));
     }
     if (!body.caseId) {
       throw new AppError("VALIDATION_ERROR", "caseId is required", 400);
     }
     const created = await deps.resultsService.addResultForCaseInRun(runId, body.caseId, body);
+    await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: user.id });
     return reply.send(toJsonSafe(created));
   });
 
   app.post("/api/runs/:runId/close", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const closed = await deps.runsService.closeRun(runId);
+    await recordActivityEvent(deps.prisma, {
+      projectId: closed.projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: closed.id,
+      eventType: "run.closed",
+      title: "Test run closed",
+      body: closed.name
+    });
     return reply.send(toJsonSafe(ok(closed)));
   });
 
@@ -177,17 +254,48 @@ export async function registerRunsRoutes(
 
   app.post("/api/runs/:runId/rerun", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const { statuses } = rerunSchema.parse(req.body);
     const created = await deps.runsService.rerunByStatuses(runId, statuses);
+    await recordActivityEvent(deps.prisma, {
+      projectId: created.run.projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: created.run.id,
+      eventType: "run.rerun_created",
+      title: "Rerun created",
+      body: created.run.name,
+      payload: { sourceRunId: runId.toString(), statuses }
+    });
     return reply.send(toJsonSafe(created));
   });
 
   app.patch("/api/tests/:testId/assignee", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { testId } = testIdParamSchema.parse(req.params);
     const { assignedTo } = updateTestAssigneeSchema.parse(req.body);
     const updated = await deps.runsService.updateTestAssignee(testId, assignedTo);
+    if (deps.prisma) {
+      const instance = await deps.prisma.testInstance.findUnique({
+        where: { id: testId },
+        select: { run: { select: { projectId: true } }, titleSnapshot: true }
+      });
+      if (instance) {
+        await recordActivityEvent(deps.prisma, {
+          projectId: instance.run.projectId,
+          actorUserId: user.id,
+          entityType: "test",
+          entityId: testId,
+          eventType: "test.assigned",
+          title: "Test assignment changed",
+          body: instance.titleSnapshot,
+          payload: { assignedTo: assignedTo?.toString() ?? null },
+          notificationType: "assignment"
+        });
+      }
+    }
     return reply.send(toJsonSafe(ok(updated)));
   });
 

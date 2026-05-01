@@ -8,6 +8,12 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
 import { getAuthenticatedUser, requireAuthenticated, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import type { AuthService } from "../auth/auth.service.js";
+import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
+import {
+  projectIdForTestInstance,
+  resultCustomFieldErrorResponse,
+  validateResultCustomValues
+} from "./resultCustomValues.js";
 
 const attachmentBodySchema = z.object({
   fileName: z.string().min(1),
@@ -110,9 +116,20 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/tests/:testId/results", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const params = testIdParamSchema.parse(req.params);
     const body = resultSchema.parse(req.body);
+    const projectId = await projectIdForTestInstance(deps.prisma, params.testId);
+    try {
+      body.customValues = await validateResultCustomValues(deps.prisma, projectId, body.customValues);
+    } catch (e) {
+      const customFieldError = resultCustomFieldErrorResponse(e);
+      if (customFieldError) return reply.code(400).send(customFieldError);
+      throw e;
+    }
     const created = await deps.resultsService.addResultToTestInstance(params.testId, body);
+    await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: user.id });
     return reply.send(toJsonSafe(created));
   });
 
@@ -366,6 +383,23 @@ export async function registerResultsRoutes(
         url: body.url
       }
     });
+    const context = await deps.prisma.testResult.findUnique({
+      where: { id: params.resultId },
+      select: { instance: { select: { run: { select: { projectId: true } }, titleSnapshot: true } } }
+    });
+    if (context) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: context.instance.run.projectId,
+        actorUserId: user.id,
+        entityType: "result",
+        entityId: params.resultId,
+        eventType: "defect.linked",
+        title: "Defect linked",
+        body: `${body.defectKey} linked to ${context.instance.titleSnapshot}.`,
+        payload: { defectKey: body.defectKey, defectLinkId: upserted.id.toString() },
+        notificationType: "activity"
+      });
+    }
     return reply.send(
       toJsonSafe({
         id: upserted.id,
@@ -442,6 +476,17 @@ export async function registerResultsRoutes(
         deletedAt: null,
         url
       }
+    });
+    await recordActivityEvent(deps.prisma, {
+      projectId: result.instance.run.projectId,
+      actorUserId: user.id,
+      entityType: "result",
+      entityId: params.resultId,
+      eventType: "defect.pushed",
+      title: "Defect pushed",
+      body: `${generatedKey} was created or linked for ${result.instance.titleSnapshot}.`,
+      payload: { defectKey: generatedKey, defectLinkId: upserted.id.toString(), provider },
+      notificationType: "activity"
     });
     return reply.send(
       toJsonSafe({

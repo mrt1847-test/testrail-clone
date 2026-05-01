@@ -342,7 +342,30 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       where: { caseId },
       orderBy: { versionNo: "desc" }
     });
-    return rows.map((row: (typeof rows)[number]) => ({
+    return rows.map((row: (typeof rows)[number]) => this.mapCaseVersionRow(row));
+  }
+
+  async getCaseVersion(caseId: bigint, versionId: bigint): Promise<CaseVersionRow | null> {
+    const row = await this.prisma.testCaseVersion.findFirst({
+      where: { id: versionId, caseId }
+    });
+    return row ? this.mapCaseVersionRow(row) : null;
+  }
+
+  private mapCaseVersionRow(row: {
+    id: bigint;
+    caseId: bigint;
+    versionNo: number;
+    title: string;
+    priority: string | null;
+    caseType: string | null;
+    preconditions: string | null;
+    customValuesSnapshot: Prisma.JsonValue;
+    stepsSnapshot: Prisma.JsonValue;
+    changeReason: string | null;
+    createdAt: Date;
+  }): CaseVersionRow {
+    return {
       id: row.id,
       caseId: row.caseId,
       versionNo: row.versionNo,
@@ -357,7 +380,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
       changeReason: row.changeReason ?? null,
       createdAt: row.createdAt
-    }));
+    };
   }
 
   async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {

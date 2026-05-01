@@ -145,6 +145,10 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       .sort((a, b) => b.versionNo - a.versionNo);
   }
 
+  async getCaseVersion(caseId: bigint, versionId: bigint): Promise<CaseVersionRow | null> {
+    return this.caseVersions.find((v) => v.caseId === caseId && v.id === versionId) ?? null;
+  }
+
   async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
     const current = this.cases.find((c) => c.id === caseId);
     if (!current) return null;

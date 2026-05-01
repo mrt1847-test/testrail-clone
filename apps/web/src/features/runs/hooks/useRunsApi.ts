@@ -152,6 +152,7 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
       elapsed?: string;
       version?: string;
       defects?: string[];
+      customValues?: Record<string, string | number | boolean | null>;
       stepResults?: Array<{
         stepOrder: number;
         status: "passed" | "failed" | "blocked" | "retest" | "untested";

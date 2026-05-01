@@ -134,7 +134,8 @@ If this separation is violated, past execution evidence becomes corrupted when t
 - Reusable structure for case creation fields and step defaults.
 
 ## 23) CustomField
-- Dynamic project-level field extension for case/run/result entities.
+- Dynamic project-level field extension for case and result entities.
+- Current implementation uses `scope=case|result`; result values are stored on `TestResult.customValues`.
 
 ## 24) CustomStatus
 - Project-scoped result status extension/mapping layer.

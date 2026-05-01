@@ -1,5 +1,7 @@
 # Product Spec
 
+Last aligned: 2026-04-30
+
 This is the canonical entry point for the TestRail-like product specification.
 Roadmaps describe delivery order; this document and the linked spec files describe what the product must do.
 
@@ -13,8 +15,8 @@ Roadmaps describe delivery order; this document and the linked spec files descri
 - Component ownership map: [COMPONENT_MAP.md](./COMPONENT_MAP.md)
 - Frontend architecture: [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md)
 - High-level architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
-- TestRail parity gap analysis: [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md)
-- Core feature completion plan: [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md)
+- Roadmap and TestRail parity gaps: [ROADMAP.md](./ROADMAP.md)
+- Immediate implementation queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
 
 ## Product Shape
 
@@ -98,6 +100,6 @@ The product must preserve these boundaries:
 
 Current delivery order and progress live in [ROADMAP.md](./ROADMAP.md). If roadmap text conflicts with this product spec, update the spec first and then adjust the roadmap.
 
-The current app is not yet a full TestRail feature clone. Use [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md) as the canonical parity checklist when deciding what remains beyond the core execution workflow.
+The current app is not yet a full TestRail feature clone. Use the parity sections in [ROADMAP.md](./ROADMAP.md) as the canonical checklist when deciding what remains beyond the core execution workflow.
 
-For near-term execution, use [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md). It narrows the broad parity list into the main workflows: test case management, execution/result entry, reports/traceability, and UI/UX integration.
+For near-term execution, use [NEXT_ACTIONS.md](./NEXT_ACTIONS.md). It narrows the broad parity list into the main workflows: test case management, execution/result entry, reports/traceability, and UI/UX integration.

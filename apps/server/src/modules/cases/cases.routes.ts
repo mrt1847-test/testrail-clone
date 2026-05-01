@@ -1,17 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { CasesService } from "./cases.service.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 import {
   caseIdParamSchema,
+  caseVersionIdParamSchema,
   createCaseSchema,
   createCaseStepSchema,
   listCasesQuerySchema,
   projectIdParamSchema,
+  restoreCaseVersionSchema,
   sectionIdParamSchema,
   stepIdParamSchema,
   updateCaseSchema,
@@ -65,7 +68,7 @@ async function projectIdForCase(prisma: PrismaClient, caseId: bigint) {
 async function validateCaseCustomValues(prisma: PrismaClient | undefined, projectId: bigint | null, values: CustomValues | undefined) {
   if (!prisma || !projectId || values === undefined) return values;
   const fields = await prisma.customField.findMany({
-    where: { projectId, deletedAt: null, isActive: true },
+    where: { projectId, scope: "case", deletedAt: null, isActive: true },
     orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
   });
   const known = new Map(fields.map((field) => [field.systemName, field]));
@@ -152,12 +155,25 @@ export async function registerCasesRoutes(
       customValues: raw.customValues
     });
     try {
+      const user = await getAuthenticatedUser(req, deps);
       const customValues = await validateCaseCustomValues(
         deps.prisma,
         deps.prisma ? await projectIdForSection(deps.prisma, sectionId) : null,
         asCustomValues(body.customValues)
       );
-      return reply.send(toJsonSafe(ok(await deps.casesService.createCase({ ...body, customValues }))));
+      const created = await deps.casesService.createCase({ ...body, customValues });
+      if (created.projectId) {
+        await recordActivityEvent(deps.prisma, {
+          projectId: created.projectId,
+          actorUserId: user.id,
+          entityType: "case",
+          entityId: created.id,
+          eventType: "case.created",
+          title: "Test case created",
+          body: created.title
+        });
+      }
+      return reply.send(toJsonSafe(ok(created)));
     } catch (e) {
       const customFieldError = customFieldErrorResponse(e);
       if (customFieldError) return reply.code(400).send(customFieldError);
@@ -177,9 +193,38 @@ export async function registerCasesRoutes(
     return reply.send(toJsonSafe(paged(rows, page, pageSize)));
   });
 
+  app.get("/api/cases/:caseId/versions/:versionId", async (req, reply) => {
+    const { caseId, versionId } = caseVersionIdParamSchema.parse(req.params);
+    const row = await deps.casesService.getCaseVersion(caseId, versionId);
+    return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.post("/api/cases/:caseId/versions/:versionId/restore", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { caseId, versionId } = caseVersionIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = restoreCaseVersionSchema.parse(req.body ?? {});
+    const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
+    const restored = await deps.casesService.restoreCaseVersion(caseId, versionId, body.expectedVersion ?? ifMatchVersion);
+    if (restored.projectId) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: restored.projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: restored.id,
+        eventType: "case.version_restored",
+        title: "Test case version restored",
+        body: restored.title,
+        payload: { versionId: versionId.toString() }
+      });
+    }
+    return reply.send(toJsonSafe(ok(restored)));
+  });
+
   app.patch("/api/cases/:caseId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
     const body = updateCaseSchema.parse(req.body);
     const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
     const customValues = await validateCaseCustomValues(
@@ -192,23 +237,41 @@ export async function registerCasesRoutes(
       throw e;
     });
     if (customValues && "code" in customValues) return reply.code(400).send(customValues);
-    return reply.send(
-      toJsonSafe(
-        ok(
-          await deps.casesService.updateCase(caseId, {
-            ...body,
-            customValues,
-            expectedVersion: body.expectedVersion ?? ifMatchVersion
-          })
-        )
-      )
-    );
+    const updated = await deps.casesService.updateCase(caseId, {
+      ...body,
+      customValues,
+      expectedVersion: body.expectedVersion ?? ifMatchVersion
+    });
+    if (updated.projectId) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: updated.projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: updated.id,
+        eventType: "case.updated",
+        title: "Test case updated",
+        body: updated.title
+      });
+    }
+    return reply.send(toJsonSafe(ok(updated)));
   });
 
   app.delete("/api/cases/:caseId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const projectId = deps.prisma ? await projectIdForCase(deps.prisma, caseId) : null;
     await deps.casesService.deleteCase(caseId);
+    if (projectId) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: caseId,
+        eventType: "case.deleted",
+        title: "Test case deleted"
+      });
+    }
     return reply.status(204).send();
   });
 

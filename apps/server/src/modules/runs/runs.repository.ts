@@ -3,6 +3,8 @@ import { testStatuses, type TestStatus } from "../../domain/status.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
+type ResultCustomValues = Record<string, string | number | boolean | null>;
+
 function mapCatalogCaseToTestCase(
   c: { id: bigint; sectionId: bigint; title: string; priority?: string | null; caseType?: string | null },
   projectId: bigint,
@@ -60,6 +62,7 @@ export type Tx = {
       elapsed?: string;
       version?: string;
       defects: string[];
+      customValues?: ResultCustomValues;
       source: "manual" | "automation" | "api";
       createdAt: Date;
     }>
@@ -99,6 +102,7 @@ export interface RunsRepository {
       elapsed?: string;
       version?: string;
       defects: string[];
+      customValues?: ResultCustomValues;
       source: "manual" | "automation" | "api";
       createdAt: Date;
     }>
@@ -141,6 +145,7 @@ type ResultRow = {
   elapsed?: string;
   version?: string;
   defects: string[];
+  customValues?: ResultCustomValues;
   source: "manual" | "automation" | "api";
   metadata?: Record<string, unknown>;
   createdAt: Date;
@@ -280,6 +285,7 @@ export class InMemoryRunsRepository implements RunsRepository {
           elapsed: input.elapsed,
           version: input.version,
           defects: input.defects ?? [],
+          customValues: input.customValues ?? {},
           source: input.source ?? "manual",
           metadata: input.metadata,
           createdAt: new Date()

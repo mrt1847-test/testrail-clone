@@ -28,6 +28,10 @@ type ResultHistoryListProps = {
   onDeleteDefect: (defectLinkId: string) => void;
 };
 
+function customValueEntries(item: TestResultHistoryItem) {
+  return Object.entries(item.customValues ?? {}).filter(([, value]) => value !== null && value !== "");
+}
+
 export function ResultHistoryList({
   history,
   isHistoryLoading,
@@ -64,42 +68,50 @@ export function ResultHistoryList({
         <p className="text-xs font-medium text-slate-600">Result history</p>
         <div className="mt-2 max-h-64 space-y-2 overflow-auto">
           {isHistoryLoading ? (
-            <p className="text-xs text-slate-500">Loading history…</p>
+            <p className="text-xs text-slate-500">Loading history...</p>
           ) : history.length === 0 ? (
             <p className="text-xs text-slate-500">No results yet.</p>
           ) : (
-            history.map((item) => (
-              <div
-                key={item.id}
-                role="button"
-                tabIndex={0}
-                className={
-                  selectedResultId === item.id
-                    ? "cursor-pointer rounded border border-slate-400 bg-slate-50 p-2"
-                    : "cursor-pointer rounded border border-slate-200 p-2"
-                }
-                onClick={() => onSelectResult(item.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelectResult(item.id);
+            history.map((item) => {
+              const values = customValueEntries(item);
+              return (
+                <div
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  className={
+                    selectedResultId === item.id
+                      ? "cursor-pointer rounded border border-slate-400 bg-slate-50 p-2"
+                      : "cursor-pointer rounded border border-slate-200 p-2"
                   }
-                }}
-              >
-                <p className="text-xs font-medium text-slate-800">
-                  {item.status} · {new Date(item.createdAt).toLocaleString()}
-                </p>
-                {item.comment ? <p className="text-xs text-slate-700">{item.comment}</p> : null}
-                <p className="text-[11px] text-slate-500">
-                  source={item.source}
-                  {item.elapsed ? ` · elapsed=${item.elapsed}` : ""}
-                  {item.version ? ` · version=${item.version}` : ""}
-                </p>
-                {item.defects.length > 0 ? (
-                  <p className="text-[11px] text-slate-500">defects: {item.defects.join(", ")}</p>
-                ) : null}
-              </div>
-            ))
+                  onClick={() => onSelectResult(item.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectResult(item.id);
+                    }
+                  }}
+                >
+                  <p className="text-xs font-medium text-slate-800">
+                    {item.status} - {new Date(item.createdAt).toLocaleString()}
+                  </p>
+                  {item.comment ? <p className="text-xs text-slate-700">{item.comment}</p> : null}
+                  <p className="text-[11px] text-slate-500">
+                    source={item.source}
+                    {item.elapsed ? ` - elapsed=${item.elapsed}` : ""}
+                    {item.version ? ` - version=${item.version}` : ""}
+                  </p>
+                  {values.length > 0 ? (
+                    <p className="text-[11px] text-slate-500">
+                      fields: {values.map(([key, value]) => `${key}=${String(value)}`).join(", ")}
+                    </p>
+                  ) : null}
+                  {item.defects.length > 0 ? (
+                    <p className="text-[11px] text-slate-500">defects: {item.defects.join(", ")}</p>
+                  ) : null}
+                </div>
+              );
+            })
           )}
         </div>
       </div>
@@ -109,7 +121,7 @@ export function ResultHistoryList({
         {!selectedResultId ? (
           <p className="mt-1 text-xs text-slate-500">Select a history item to inspect per-step results.</p>
         ) : isStepsLoading ? (
-          <p className="mt-1 text-xs text-slate-500">Loading step results…</p>
+          <p className="mt-1 text-xs text-slate-500">Loading step results...</p>
         ) : steps.length === 0 ? (
           <p className="mt-1 text-xs text-slate-500">No step results for this result.</p>
         ) : (
@@ -117,7 +129,7 @@ export function ResultHistoryList({
             {steps.map((step) => (
               <div key={step.id} className="rounded border border-slate-100 p-2">
                 <p className="text-[11px] font-medium text-slate-700">
-                  Step {step.stepOrder} · {step.status}
+                  Step {step.stepOrder} - {step.status}
                 </p>
                 {step.actualResult ? <p className="text-[11px] text-slate-600">{step.actualResult}</p> : null}
                 {step.comment ? <p className="text-[11px] text-slate-500">{step.comment}</p> : null}
@@ -149,19 +161,19 @@ export function ResultHistoryList({
                   setSelectedAttachmentFile(null);
                 }}
               >
-                {isAddingAttachment ? "Uploading…" : "Upload"}
+                {isAddingAttachment ? "Uploading..." : "Upload"}
               </button>
             </div>
             <div className="mt-2 max-h-32 space-y-1 overflow-auto">
               {isAttachmentsLoading ? (
-                <p className="text-xs text-slate-500">Loading attachments…</p>
+                <p className="text-xs text-slate-500">Loading attachments...</p>
               ) : attachments.length === 0 ? (
                 <p className="text-xs text-slate-500">No attachments yet.</p>
               ) : (
                 attachments.map((item) => (
                   <div key={item.id} className="rounded border border-slate-100 px-2 py-1 text-[11px] text-slate-600">
                     <p>
-                      {item.fileName} · {item.contentType ?? "unknown"} · {item.storagePath}
+                      {item.fileName} - {item.contentType ?? "unknown"} - {item.storagePath}
                     </p>
                     <div className="mt-1 flex gap-1">
                       <button
@@ -231,7 +243,7 @@ export function ResultHistoryList({
                   setDefectUrl("");
                 }}
               >
-                {isAddingDefect ? "Adding…" : "Add"}
+                {isAddingDefect ? "Adding..." : "Add"}
               </button>
               <button
                 type="button"
@@ -246,13 +258,13 @@ export function ResultHistoryList({
                   })
                 }
               >
-                {isPushingDefect ? "Pushing…" : "Push"}
+                {isPushingDefect ? "Pushing..." : "Push"}
               </button>
             </div>
             {pushedDefectMessage ? <p className="mt-2 text-[11px] text-emerald-700">{pushedDefectMessage}</p> : null}
             <div className="mt-2 max-h-32 space-y-1 overflow-auto">
               {isDefectsLoading ? (
-                <p className="text-xs text-slate-500">Loading defect links…</p>
+                <p className="text-xs text-slate-500">Loading defect links...</p>
               ) : defects.length === 0 ? (
                 <p className="text-xs text-slate-500">No defect links yet.</p>
               ) : (
@@ -260,7 +272,7 @@ export function ResultHistoryList({
                   <div key={item.id} className="rounded border border-slate-100 px-2 py-1 text-[11px] text-slate-600">
                     <p>
                       {item.defectKey}
-                      {item.url ? ` · ${item.url}` : ""}
+                      {item.url ? ` - ${item.url}` : ""}
                     </p>
                     <button
                       type="button"

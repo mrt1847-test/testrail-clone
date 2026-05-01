@@ -33,6 +33,9 @@ model User {
   createdDefectLinks ResultDefectLink[] @relation("ResultDefectLinkCreator")
   createdProjects Project[]       @relation("ProjectCreatedBy")
   updatedProjects Project[]       @relation("ProjectUpdatedBy")
+  activityEvents  ActivityEvent[] @relation("ActivityActor")
+  notifications   Notification[]
+  notificationPreferences NotificationPreference[]
 }
 
 model Project {
@@ -64,6 +67,11 @@ model Project {
   caseTemplates CaseTemplate[]
   apiTokens    ApiToken[]
   auditLogs    AuditLog[]
+  activityEvents ActivityEvent[]
+  notifications Notification[]
+  notificationPreferences NotificationPreference[]
+  webhookSubscriptions WebhookSubscription[]
+  webhookDeliveryAttempts WebhookDeliveryAttempt[]
   importJobs   ImportJob[]
   exportJobs   ExportJob[]
 
@@ -363,6 +371,7 @@ model TestResult {
   elapsed        String?
   version        String?
   defects        String[]
+  customValues   Json       @default("{}")
   source         String     @default("manual")
   metadata       Json?
   createdBy      BigInt?
@@ -557,11 +566,119 @@ model AuditLog {
   @@index([actorUserId])
 }
 
+model ActivityEvent {
+  id          BigInt   @id @default(autoincrement())
+  projectId   BigInt
+  actorUserId BigInt?
+  entityType  String
+  entityId    String
+  eventType   String
+  title       String
+  body        String?
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorUser User?   @relation("ActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  notifications Notification[]
+  webhookDeliveryAttempts WebhookDeliveryAttempt[]
+
+  @@index([projectId, createdAt])
+  @@index([projectId, entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model WebhookSubscription {
+  id        BigInt   @id @default(autoincrement())
+  projectId BigInt
+  event     String
+  targetUrl String
+  secret    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  createdBy BigInt?
+  updatedBy BigInt?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveryAttempts WebhookDeliveryAttempt[]
+
+  @@index([projectId, isActive, event])
+  @@index([projectId, deletedAt])
+}
+
+model WebhookDeliveryAttempt {
+  id              BigInt    @id @default(autoincrement())
+  projectId       BigInt
+  webhookId       BigInt
+  activityEventId BigInt?
+  event           String
+  targetUrl       String
+  payload         Json
+  signature       String
+  status          String    @default("pending")
+  attemptNo       Int       @default(1)
+  responseStatus  Int?
+  responseBody    String?
+  error           String?
+  nextRetryAt     DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  webhook       WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  activityEvent ActivityEvent?      @relation(fields: [activityEventId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status, createdAt])
+  @@index([webhookId, createdAt])
+  @@index([activityEventId])
+}
+
+model NotificationPreference {
+  id                  BigInt   @id @default(autoincrement())
+  userId              BigInt
+  projectId           BigInt
+  assignmentEnabled   Boolean  @default(true)
+  failedResultEnabled Boolean  @default(true)
+  mentionEnabled      Boolean  @default(true)
+  digestEnabled       Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+}
+
+model Notification {
+  id              BigInt    @id @default(autoincrement())
+  userId          BigInt
+  projectId       BigInt
+  activityEventId BigInt?
+  type            String
+  title           String
+  body            String?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activityEvent ActivityEvent? @relation(fields: [activityEventId], references: [id], onDelete: SetNull)
+
+  @@index([userId, projectId, readAt, createdAt])
+  @@index([projectId, createdAt])
+  @@index([activityEventId])
+}
+
 model CustomField {
   id           BigInt    @id @default(autoincrement())
   projectId    BigInt
   name         String
   systemName   String
+  scope        String    @default("case")
   fieldType    String
   options      Json?
   isRequired   Boolean   @default(false)
@@ -576,6 +693,7 @@ model CustomField {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, systemName])
+  @@index([projectId, scope, isActive, displayOrder])
   @@index([projectId, isActive, displayOrder])
   @@index([projectId, deletedAt])
 }

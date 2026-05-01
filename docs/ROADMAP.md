@@ -2,13 +2,13 @@
 
 This is the single current execution roadmap. Product requirements live in [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) and its linked spec documents.
 
-TestRail parity is not complete. The canonical gap checklist is [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md).
+TestRail parity is not complete. The parity checklist that previously lived in `TESTRail_GAP_ANALYSIS.md` is now integrated into this roadmap.
 
-Near-term main workflow completion is planned in [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md).
+Immediate implementation work is tracked in [NEXT_ACTIONS.md](./NEXT_ACTIONS.md).
 
 ## Current Status Snapshot
 
-Date: 2026-04-28
+Date: 2026-05-01
 
 Completed or mostly completed:
 - Project, suite, section, case, and case-step CRUD.
@@ -56,22 +56,106 @@ Completed or mostly completed:
 - Project case template CRUD API, DB persistence, audit logging, and settings UI baseline.
 - Audit log query UI with server-side filters and pagination baseline.
 - Case custom field value persistence, case detail form rendering, and version snapshot inclusion baseline.
+- Activity event, notification, and notification preference persistence baseline.
+- Project activity feed API/UI baseline.
+- Notification inbox API/UI baseline with unread count and preference toggles.
+- Result entry elapsed parser/normalizer, defect key chips, and field-level custom result validation messaging.
 
 Partially complete:
-- Result evidence storage is metadata-first; object storage signed URL flow is still needed.
-- Defect links exist, but provider integrations and push/create actions are still needed.
+- Result evidence has metadata and signed URL API/UI baseline; production object storage configuration and preview polish remain.
+- Defect links and URL-template push baseline exist; provider-native create/update integrations remain.
 - Case optimistic locking moved to `lockVersion` + `expectedVersion`/`If-Match` baseline.
 - Reports baseline exists, but advanced traceability/coverage refinement is still pending.
 - Plan matrix semantics and rollup depth still need refinement, but Plan detail now consumes matrix/rollup APIs as a baseline.
 - Import/export exists as API/UI baseline; report export has a job/download baseline, while larger async file lifecycle is still pending.
+- Activity/notifications baseline exists, but event coverage, targeting, and delivery jobs are still shallow.
 
 Not yet complete:
-- Activity feed and notification delivery.
-- Webhook event delivery model.
+- Notification delivery jobs such as email/digest.
+- Webhook event delivery model beyond settings/subscription baseline.
 - Custom field value persistence on results; case custom value import/export and advanced validation remain.
 - Full users/groups/roles/permission administration.
 - Saved/scheduled reports and broader report catalog.
 - Expanded TestRail-compatible `/api/v2` adapter across the official API categories.
+
+## TestRail Parity Snapshot
+
+| Area | Current status | Remaining gap |
+| --- | --- | --- |
+| Projects | Mostly complete | Project archive/read-only mode, global default access, and project-level admin model. |
+| Suites/sections/cases | Mostly complete | Case version compare/restore baseline is done; remaining gaps are rich case filters, saved views, bulk operations, and import/export depth for custom values. |
+| Case history | Partial | Compare/restore detail UI and restore path. |
+| Case fields/types/priorities/templates | Partial | Case/result field scopes are baseline done; remaining gaps are broader field types, priorities/types APIs, exports, and richer validation UX. |
+| Runs/tests/results | Mostly complete | Reopen policy, richer filters, time tracking, comments/mentions, and full custom result fields. |
+| Assignments/to-dos | Partial | Notification-driven assignment workflow and richer workload/task views. |
+| Milestones | Partial | Sub-milestones, forecasts, milestone summary reports, and richer dashboards. |
+| Plans/configurations | Partial | Full plan-entry semantics, assigned users, include/exclude depth, combination editing, and plan report parity. |
+| Reports | Partial | Saved/scheduled reports, report access/history, richer report catalog, and cross-project reports. |
+| Requirements/traceability | Partial | Requirement import/sync, external provider integration, and advanced matrix UI. |
+| Attachments/evidence | Partial | Production object storage lifecycle, preview UX, retention, cleanup, and upload progress/resume. |
+| Defects/integrations | Partial | Provider-native Jira/GitHub/Azure create/sync, validation, status sync, and richer defect reports. |
+| Automation | Partial | Mapping UI, token scopes/expiration UI, retry queues, CI examples, and broader API compatibility. |
+| Import/export | Partial | XML/JSON, mapping wizard depth, async file lifecycle, attachments import/export, and TestRail-compatible shapes. |
+| Users/roles/permissions | Partial | Global users, groups, custom roles/permissions, default project access, and user APIs parity. |
+| Audit logs | Partial | Full audit event coverage, export, retention, admin audit, and access controls. |
+| Activity/notifications | Partial | Event coverage, richer targeting, email/digest preferences, and delivery jobs. |
+| Webhooks | Partial | Persisted model, event taxonomy, signing, retries, delivery logs, and disable-on-failure behavior. |
+| TestRail `/api/v2` adapter | Partial | Core cases/runs/tests/results only; many official categories remain missing. |
+
+## Missing `/api/v2` Compatibility Categories
+
+Current adapter baseline:
+
+- cases
+- runs
+- tests
+- add result for case
+- bulk results for cases
+
+Missing or incomplete categories:
+
+- attachments
+- BDDs
+- case fields
+- case types
+- configurations
+- datasets
+- groups
+- labels
+- milestones
+- plans
+- priorities
+- projects
+- reports and cross-project reports
+- result fields
+- roles
+- sections
+- shared steps
+- statuses
+- suites
+- templates
+- users
+- variables
+
+Compatibility priority should be driven by migration and automation needs:
+
+1. Projects, suites, sections, milestones, plans, configurations.
+2. Case fields, result fields, case types, priorities, statuses, templates.
+3. Attachments, reports, users, roles.
+4. Labels, groups, shared steps, datasets, variables, BDDs.
+
+## Highest-Value Parity Gaps
+
+- P0: activity events, notification inbox/preferences, and unread state.
+- P0: persisted webhook subscriptions, event taxonomy, signed delivery, retries, and logs.
+- P1: custom fields as actual case/result data with scopes, validation, filtering, sorting, and export support.
+- P1: full admin model with users, groups, global roles, permission matrix, default project access, and project-level overrides.
+- P1: reporting depth with saved reports, scheduled/email reports, history/downloads, milestone/project/plan reports, and access controls.
+- P1: plan/configuration depth with richer plan entry editing, assigned users, include/exclude cases, combination management, reports, and `/api/v2` compatibility.
+- P2: import/export expansion for XML/JSON, mapping wizard, large file lifecycle, attachments, and TestRail-compatible export fields.
+- P2: evidence storage hardening for object storage, authorization, retention, cleanup, preview, and retry UX.
+- P2: provider-native defect integrations for Jira/GitHub/Azure creation, status sync, remote error handling, and field mapping.
+- P2: case authoring depth for bulk actions, saved filters/views, shared steps, labels, deleted case restore, and permanent delete semantics.
 
 ## Delivery Phases From Here
 
@@ -202,7 +286,7 @@ Scope:
 - Expanded `/api/v2` compatibility for projects, suites, sections, milestones, plans, configurations, customization metadata, reports, users, and roles.
 
 Exit criteria:
-- [TESTRail_GAP_ANALYSIS.md](./TESTRail_GAP_ANALYSIS.md) P0/P1 gaps are either implemented or intentionally deferred with product sign-off.
+- P0/P1 parity gaps in this roadmap are either implemented or intentionally deferred with product sign-off.
 - TestRail migration and automation clients can cover projects, cases, runs, plans, configurations, results, and core metadata without manual reshaping.
 - Team collaboration workflows have visible activity, actionable notifications, and auditable webhook delivery logs.
 
@@ -219,7 +303,7 @@ Scope:
 - Webhook delivery model after activity events exist.
 
 Execution source:
-- [CORE_FEATURE_COMPLETION_PLAN.md](./CORE_FEATURE_COMPLETION_PLAN.md)
+- [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
 
 Exit criteria:
 - Test case management, execution/result entry, and result reporting can be used end-to-end from UI without hidden API-only behavior.
@@ -232,4 +316,4 @@ Exit criteria:
 2. Prefer DB-backed, paginated, indexed workflows over client-only expansion.
 3. Fix execution bottlenecks before advanced administration.
 4. If implementation conflicts with specs, update [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [API_SPEC.md](./API_SPEC.md), [DOMAIN_MODEL.md](./DOMAIN_MODEL.md), [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md), or [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md) first.
-5. Keep old roadmap files as redirects only; this file is the current delivery source.
+5. Keep immediate implementation batches in [NEXT_ACTIONS.md](./NEXT_ACTIONS.md); this file remains the phase-level delivery source.

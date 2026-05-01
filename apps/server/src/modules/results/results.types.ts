@@ -6,6 +6,7 @@ export type ResultInput = {
   elapsed?: string;
   version?: string;
   defects?: string[];
+  customValues?: Record<string, string | number | boolean | null>;
   source?: "manual" | "automation" | "api";
   metadata?: Record<string, unknown>;
   stepResults?: Array<{

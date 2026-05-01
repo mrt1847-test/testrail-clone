@@ -113,6 +113,7 @@ export async function addRunResult(input: {
   elapsed?: string;
   version?: string;
   defects?: string[];
+  customValues?: Record<string, string | number | boolean | null>;
   stepResults?: Array<{ stepOrder: number; status: "passed" | "failed" | "blocked" | "retest" | "untested"; actualResult?: string; comment?: string }>;
 }) {
   return apiFetch(`/api/runs/${input.runId}/results`, {
@@ -124,6 +125,7 @@ export async function addRunResult(input: {
       elapsed: input.elapsed,
       version: input.version,
       defects: input.defects,
+      customValues: input.customValues,
       stepResults: input.stepResults
     }
   });
@@ -217,6 +219,7 @@ type ApiResultHistory = {
   version?: string;
   source: "manual" | "automation" | "api";
   defects?: string[];
+  customValues?: Record<string, string | number | boolean | null>;
   createdAt: string;
 };
 
@@ -230,6 +233,7 @@ export async function fetchTestResults(testId: string): Promise<TestResultHistor
     version: row.version,
     source: row.source,
     defects: row.defects ?? [],
+    customValues: row.customValues ?? {},
     createdAt: row.createdAt
   }));
 }
@@ -438,6 +442,7 @@ export type ResultExplorerRow = {
   source: string;
   createdAt: string;
   comment?: string | null;
+  customValues?: Record<string, string | number | boolean | null>;
 };
 
 export async function fetchProjectResultExplorer(input: {

@@ -31,6 +31,48 @@ export class CasesService {
     if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
     return this.repo.listCaseVersions(caseId);
   }
+
+  async getCaseVersion(caseId: bigint, versionId: bigint) {
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    const version = await this.repo.getCaseVersion(caseId, versionId);
+    if (!version) throw new AppError("NOT_FOUND", `case version ${versionId.toString()} not found`, 404);
+    return version;
+  }
+
+  async restoreCaseVersion(caseId: bigint, versionId: bigint, expectedVersion?: number) {
+    const version = await this.getCaseVersion(caseId, versionId);
+    const updated = await this.repo.updateCase(
+      caseId,
+      {
+        title: version.title,
+        priority: version.priority,
+        caseType: version.caseType,
+        preconditions: version.preconditions,
+        customValues: version.customValuesSnapshot ?? {}
+      },
+      expectedVersion
+    );
+    if (updated === "conflict") {
+      throw new AppError("CONFLICT", "case has been modified by another user", 409);
+    }
+    if (!updated) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+
+    const currentSteps = await this.repo.listCaseSteps(caseId);
+    for (const step of currentSteps) {
+      await this.repo.deleteCaseStep(step.id);
+    }
+    for (const step of version.stepsSnapshot.sort((a, b) => a.stepOrder - b.stepOrder)) {
+      await this.repo.createCaseStep({
+        caseId,
+        stepOrder: step.stepOrder,
+        content: step.content,
+        expectedResult: step.expectedResult ?? null
+      });
+    }
+    await this.repo.createCaseVersionSnapshot(caseId, `case_version_restored:${version.versionNo}`);
+    return this.getCase(caseId);
+  }
   async updateCase(
     caseId: bigint,
     patch: {

@@ -18,6 +18,7 @@ type FieldForm = {
   name: string;
   systemName: string;
   fieldType: CustomFieldRow["fieldType"];
+  scope: CustomFieldRow["scope"];
   optionsText: string;
   isRequired: boolean;
   isActive: boolean;
@@ -28,6 +29,7 @@ const emptyForm: FieldForm = {
   name: "",
   systemName: "",
   fieldType: "text",
+  scope: "case",
   optionsText: "",
   isRequired: false,
   isActive: true,
@@ -48,6 +50,7 @@ function formFromField(row: CustomFieldRow): FieldForm {
     name: row.name,
     systemName: row.systemName,
     fieldType: row.fieldType,
+    scope: row.scope,
     optionsText: row.options.join("\n"),
     isRequired: row.isRequired,
     isActive: row.isActive,
@@ -61,6 +64,7 @@ function payloadFromForm(form: FieldForm): Omit<CustomFieldRow, "id"> {
     name: form.name.trim(),
     systemName: toSystemName(form.systemName || form.name),
     fieldType: form.fieldType,
+    scope: form.scope,
     options,
     isRequired: form.isRequired,
     isActive: form.isActive,
@@ -115,7 +119,7 @@ export function CustomFieldsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Custom Fields</h1>
-          <p className="text-sm text-slate-600">Project-specific case fields available to future templates and forms.</p>
+          <p className="text-sm text-slate-600">Project-specific fields for case authoring and result entry.</p>
         </div>
         {form.id ? (
           <button
@@ -174,6 +178,19 @@ export function CustomFieldsPage() {
             <option value="text">Text</option>
             <option value="number">Number</option>
             <option value="select">Select</option>
+          </select>
+        </label>
+        <label>
+          <span className="text-xs font-medium uppercase text-slate-500">Scope</span>
+          <select
+            value={form.scope}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, scope: event.target.value as CustomFieldRow["scope"] }))
+            }
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="case">Case</option>
+            <option value="result">Result</option>
           </select>
         </label>
         <label>
@@ -236,6 +253,7 @@ export function CustomFieldsPage() {
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">System name</th>
                 <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Scope</th>
                 <th className="px-4 py-3">Rules</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -246,6 +264,7 @@ export function CustomFieldsPage() {
                   <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
                   <td className="px-4 py-3 text-slate-600">{row.systemName}</td>
                   <td className="px-4 py-3 text-slate-600">{row.fieldType}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.scope}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {[row.isRequired ? "required" : "optional", row.isActive ? "active" : "inactive"].join(", ")}
                   </td>
