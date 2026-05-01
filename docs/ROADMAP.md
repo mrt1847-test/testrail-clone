@@ -4,6 +4,8 @@ This is the single current execution roadmap. Product requirements live in [PROD
 
 TestRail parity is not complete. The parity checklist that previously lived in `TESTRail_GAP_ANALYSIS.md` is now integrated into this roadmap.
 
+Feature-by-feature implementation status is tracked in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md).
+
 Immediate implementation work is tracked in [NEXT_ACTIONS.md](./NEXT_ACTIONS.md).
 
 ## Current Status Snapshot
@@ -12,7 +14,7 @@ Date: 2026-05-01
 
 Completed or mostly completed:
 - Project, suite, section, case, and case-step CRUD.
-- Run creation with include-all and selected-case flows.
+- Run creation with include-all and flat selected-case flows only; section-level include/exclude and post-creation run composition are still missing.
 - Test instance snapshots during run creation.
 - Manual result entry, result history, run summary, and close-run workflow.
 - Auth/current-user/login/logout baseline.
@@ -59,9 +61,14 @@ Completed or mostly completed:
 - Activity event, notification, and notification preference persistence baseline.
 - Project activity feed API/UI baseline.
 - Notification inbox API/UI baseline with unread count and preference toggles.
-- Result entry elapsed parser/normalizer, defect key chips, and field-level custom result validation messaging.
+- Result entry elapsed parser/normalizer, timer controls, defect key chips, case-step-aware multi-step result editing, field-level custom result validation messaging, and focused result-entry component split.
+- Result custom value CSV export columns for run result exports and result explorer report exports.
+- Result explorer custom value exact-match filters via `custom_{systemName}` API params and web controls.
+- Boolean custom field type for case/result definitions, validation, forms, import parsing, exports, and result explorer filtering.
+- Run detail selected test, filter, search, and page state persisted in URL query params.
 
 Partially complete:
+- Run composition is partial: creation can include all suite cases, all-with-case-exclusions, or an explicit flat case list, but section-level include/exclude and add/remove cases after run creation are still missing.
 - Result evidence has metadata and signed URL API/UI baseline; production object storage configuration and preview polish remain.
 - Defect links and URL-template push baseline exist; provider-native create/update integrations remain.
 - Case optimistic locking moved to `lockVersion` + `expectedVersion`/`If-Match` baseline.
@@ -73,7 +80,7 @@ Partially complete:
 Not yet complete:
 - Notification delivery jobs such as email/digest.
 - Webhook event delivery model beyond settings/subscription baseline.
-- Custom field value persistence on results; case custom value import/export and advanced validation remain.
+- Advanced custom field validation and richer field semantics beyond the current case/result value baselines.
 - Full users/groups/roles/permission administration.
 - Saved/scheduled reports and broader report catalog.
 - Expanded TestRail-compatible `/api/v2` adapter across the official API categories.
@@ -83,10 +90,10 @@ Not yet complete:
 | Area | Current status | Remaining gap |
 | --- | --- | --- |
 | Projects | Mostly complete | Project archive/read-only mode, global default access, and project-level admin model. |
-| Suites/sections/cases | Mostly complete | Case version compare/restore baseline is done; remaining gaps are rich case filters, saved views, bulk operations, and import/export depth for custom values. |
+| Suites/sections/cases | Mostly complete | Case version compare/restore and bulk delete baselines are done; remaining gaps are rich case filters, saved views, bulk move/update/archive depth, and import/export depth for custom values. |
 | Case history | Partial | Compare/restore detail UI and restore path. |
-| Case fields/types/priorities/templates | Partial | Case/result field scopes are baseline done; remaining gaps are broader field types, priorities/types APIs, exports, and richer validation UX. |
-| Runs/tests/results | Mostly complete | Reopen policy, richer filters, time tracking, comments/mentions, and full custom result fields. |
+| Case fields/types/priorities/templates | Partial | Case/result field scopes and case custom value import/export baselines are done; remaining gaps are broader field types, priorities/types APIs, list/report presentation depth, and richer validation UX. |
+| Runs/tests/results | Partial | Run creation has include-all, include-all-with-case-exclusions, and flat selected-case baselines, but still lacks section-level include/exclude, post-creation add/remove cases, reopen policy, richer filters, time tracking, comments/mentions, and full custom result fields. |
 | Assignments/to-dos | Partial | Notification-driven assignment workflow and richer workload/task views. |
 | Milestones | Partial | Sub-milestones, forecasts, milestone summary reports, and richer dashboards. |
 | Plans/configurations | Partial | Full plan-entry semantics, assigned users, include/exclude depth, combination editing, and plan report parity. |
@@ -146,16 +153,20 @@ Compatibility priority should be driven by migration and automation needs:
 
 ## Highest-Value Parity Gaps
 
-- P0: activity events, notification inbox/preferences, and unread state.
-- P0: persisted webhook subscriptions, event taxonomy, signed delivery, retries, and logs.
+- P0: run case selection and composition, including section-level include/exclude and add/remove cases after run creation.
+- P0: execution workspace depth, including stable run header/summary/filter/table components, result history pagination, close/reopen warnings, and scoped invalidation.
+- P0: case repository productivity, including bulk move/update/archive, saved views, and rich case filters.
+- P0: report drilldown pages for run summary, results, traceability, coverage gap, and defect coverage.
+- P0: activity events and notifications across the core case/run/result/assignment/defect/report workflows.
 - P1: custom fields as actual case/result data with scopes, validation, filtering, sorting, and export support.
+- P1: persisted webhook subscriptions, event taxonomy, signed delivery, retries, logs, and manual test-send.
 - P1: full admin model with users, groups, global roles, permission matrix, default project access, and project-level overrides.
 - P1: reporting depth with saved reports, scheduled/email reports, history/downloads, milestone/project/plan reports, and access controls.
 - P1: plan/configuration depth with richer plan entry editing, assigned users, include/exclude cases, combination management, reports, and `/api/v2` compatibility.
 - P2: import/export expansion for XML/JSON, mapping wizard, large file lifecycle, attachments, and TestRail-compatible export fields.
 - P2: evidence storage hardening for object storage, authorization, retention, cleanup, preview, and retry UX.
 - P2: provider-native defect integrations for Jira/GitHub/Azure creation, status sync, remote error handling, and field mapping.
-- P2: case authoring depth for bulk actions, saved filters/views, shared steps, labels, deleted case restore, and permanent delete semantics.
+- P2: case authoring depth for bulk move/update/archive actions, saved filters/views, shared steps, labels, deleted case restore, and permanent delete semantics.
 
 ## Delivery Phases From Here
 
@@ -164,6 +175,10 @@ Compatibility priority should be driven by migration and automation needs:
 Goal: make the current run/result workflow dependable under real team usage.
 
 Scope:
+- Section-level include/exclude during run creation.
+- Include-all-with-exclusions for large suites.
+- Add/remove cases after run creation with closed-run restrictions and existing-result safeguards.
+- Grouped case selection UX by section with selected/excluded counts.
 - Server-side pagination and filtering for run instance lists.
 - Project-wide result explorer with server-side pagination/filtering.
 - Consistent result-entry cache invalidation.
@@ -280,7 +295,7 @@ Goal: close the highest-value TestRail parity gaps after the core workflow and a
 Scope:
 - Activity feed and notification delivery.
 - Webhook subscriptions, event taxonomy, signed delivery, retry logs.
-- Custom field value persistence on results, plus case custom value import/export and advanced validation.
+- Custom field value depth beyond current case/result baselines, including richer validation UX, list/report presentation, and broader field types.
 - Saved and scheduled reports with report history/downloads.
 - Users, groups, global roles, permission matrix, and project-level administration.
 - Expanded `/api/v2` compatibility for projects, suites, sections, milestones, plans, configurations, customization metadata, reports, users, and roles.

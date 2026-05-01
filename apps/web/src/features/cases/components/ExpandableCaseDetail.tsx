@@ -6,7 +6,7 @@ import type { CaseStep, CaseVersion, TestCase } from "../types";
 type CaseCustomFieldDefinition = {
   systemName: string;
   name: string;
-  fieldType: "text" | "number" | "select";
+  fieldType: "text" | "number" | "select" | "boolean";
   options: string[];
   isRequired: boolean;
   isActive: boolean;
@@ -252,6 +252,27 @@ export function ExpandableCaseDetail({
                                 {option}
                               </option>
                             ))}
+                          </select>
+                        </label>
+                      );
+                    }
+                    if (field.fieldType === "boolean") {
+                      return (
+                        <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
+                          {field.name}
+                          <select
+                            className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                            value={typeof value === "boolean" ? String(value) : ""}
+                            onChange={(e) =>
+                              setCustomValue(
+                                field.systemName,
+                                e.target.value === "" ? null : e.target.value === "true"
+                              )
+                            }
+                          >
+                            <option value="">-</option>
+                            <option value="true">True</option>
+                            <option value="false">False</option>
                           </select>
                         </label>
                       );

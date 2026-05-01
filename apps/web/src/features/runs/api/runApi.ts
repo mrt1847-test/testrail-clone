@@ -183,6 +183,7 @@ export type CreateRunInput = {
   name: string;
   includeAll: boolean;
   caseIds?: string[];
+  excludedCaseIds?: string[];
   milestoneId?: string | null;
   environment?: string;
 };
@@ -195,6 +196,7 @@ export async function createRun(input: CreateRunInput): Promise<RunSummary> {
       name: input.name,
       includeAll: input.includeAll,
       caseIds: input.caseIds,
+      excludedCaseIds: input.excludedCaseIds,
       milestoneId: input.milestoneId ?? undefined,
       environment: input.environment
     }
@@ -457,6 +459,7 @@ export async function fetchProjectResultExplorer(input: {
   createdFrom?: string;
   createdTo?: string;
   q?: string;
+  customFilters?: Record<string, string>;
 }): Promise<{ items: ResultExplorerRow[]; page: number; pageSize: number; total: number; totalPages: number }> {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
@@ -469,6 +472,9 @@ export async function fetchProjectResultExplorer(input: {
   if (input.createdFrom?.trim()) params.set("createdFrom", input.createdFrom.trim());
   if (input.createdTo?.trim()) params.set("createdTo", input.createdTo.trim());
   if (input.q?.trim()) params.set("q", input.q.trim());
+  for (const [systemName, value] of Object.entries(input.customFilters ?? {})) {
+    if (value.trim()) params.set(`custom_${systemName}`, value.trim());
+  }
   const res = await apiFetch<
     Ok<{ items: ResultExplorerRow[]; page: number; pageSize: number; total: number; totalPages: number }>
   >(`/api/projects/${input.projectId}/reports/results-explorer?${params.toString()}`);

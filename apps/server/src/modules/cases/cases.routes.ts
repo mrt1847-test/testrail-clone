@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
@@ -10,6 +10,7 @@ import { recordActivityEvent } from "../activity/activity.service.js";
 import {
   caseIdParamSchema,
   caseVersionIdParamSchema,
+  bulkDeleteCasesSchema,
   createCaseSchema,
   createCaseStepSchema,
   listCasesQuerySchema,
@@ -43,80 +44,6 @@ function asCustomValues(value: unknown): CustomValues | undefined {
     }
   }
   return out;
-}
-
-function fieldOptions(value: Prisma.JsonValue | null): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-async function projectIdForSection(prisma: PrismaClient, sectionId: bigint) {
-  const row = await prisma.section.findFirst({
-    where: { id: sectionId, deletedAt: null },
-    select: { suite: { select: { projectId: true } } }
-  });
-  return row?.suite.projectId ?? null;
-}
-
-async function projectIdForCase(prisma: PrismaClient, caseId: bigint) {
-  const row = await prisma.testCase.findFirst({
-    where: { id: caseId, deletedAt: null },
-    select: { projectId: true }
-  });
-  return row?.projectId ?? null;
-}
-
-async function validateCaseCustomValues(prisma: PrismaClient | undefined, projectId: bigint | null, values: CustomValues | undefined) {
-  if (!prisma || !projectId || values === undefined) return values;
-  const fields = await prisma.customField.findMany({
-    where: { projectId, scope: "case", deletedAt: null, isActive: true },
-    orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
-  });
-  const known = new Map(fields.map((field) => [field.systemName, field]));
-  const sanitized: CustomValues = {};
-  for (const [key, value] of Object.entries(values)) {
-    const field = known.get(key);
-    if (!field) {
-      throw new Error(`UNKNOWN_CUSTOM_FIELD:${key}`);
-    }
-    if (value == null || value === "") {
-      if (field.isRequired) throw new Error(`REQUIRED_CUSTOM_FIELD:${key}`);
-      sanitized[key] = null;
-      continue;
-    }
-    if (field.fieldType === "number") {
-      const numberValue = typeof value === "number" ? value : Number(value);
-      if (!Number.isFinite(numberValue)) throw new Error(`INVALID_CUSTOM_FIELD_NUMBER:${key}`);
-      sanitized[key] = numberValue;
-      continue;
-    }
-    if (field.fieldType === "select") {
-      const stringValue = String(value);
-      if (!fieldOptions(field.options).includes(stringValue)) throw new Error(`INVALID_CUSTOM_FIELD_OPTION:${key}`);
-      sanitized[key] = stringValue;
-      continue;
-    }
-    sanitized[key] = String(value);
-  }
-  for (const field of fields) {
-    if (field.isRequired && (sanitized[field.systemName] == null || sanitized[field.systemName] === "")) {
-      throw new Error(`REQUIRED_CUSTOM_FIELD:${field.systemName}`);
-    }
-  }
-  return sanitized;
-}
-
-function customFieldErrorResponse(error: unknown) {
-  if (!(error instanceof Error)) return null;
-  const [code, field] = error.message.split(":");
-  if (!field) return null;
-  const messages: Record<string, string> = {
-    UNKNOWN_CUSTOM_FIELD: `unknown custom field ${field}`,
-    REQUIRED_CUSTOM_FIELD: `custom field ${field} is required`,
-    INVALID_CUSTOM_FIELD_NUMBER: `custom field ${field} must be a number`,
-    INVALID_CUSTOM_FIELD_OPTION: `custom field ${field} has an invalid option`
-  };
-  if (!messages[code]) return null;
-  return { code, message: messages[code], field };
 }
 
 export async function registerCasesRoutes(
@@ -156,9 +83,9 @@ export async function registerCasesRoutes(
     });
     try {
       const user = await getAuthenticatedUser(req, deps);
-      const customValues = await validateCaseCustomValues(
+      const customValues = await deps.casesService.validateCaseCustomValues(
         deps.prisma,
-        deps.prisma ? await projectIdForSection(deps.prisma, sectionId) : null,
+        await deps.casesService.projectIdForSection(deps.prisma, sectionId),
         asCustomValues(body.customValues)
       );
       const created = await deps.casesService.createCase({ ...body, customValues });
@@ -175,7 +102,7 @@ export async function registerCasesRoutes(
       }
       return reply.send(toJsonSafe(ok(created)));
     } catch (e) {
-      const customFieldError = customFieldErrorResponse(e);
+      const customFieldError = deps.casesService.customFieldErrorResponse(e);
       if (customFieldError) return reply.code(400).send(customFieldError);
       throw e;
     }
@@ -184,6 +111,36 @@ export async function registerCasesRoutes(
   app.get("/api/cases/:caseId", async (req, reply) => {
     const { caseId } = caseIdParamSchema.parse(req.params);
     return reply.send(toJsonSafe(ok(await deps.casesService.getCase(caseId))));
+  });
+
+  app.post("/api/projects/:projectId/cases/bulk-delete", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = bulkDeleteCasesSchema.parse(req.body ?? {});
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedBulkDelete(projectId, body.caseIds);
+    const result = await deps.casesService.bulkDeleteCases(scopedIds);
+    const items = [
+      ...result.items,
+      ...outOfScope.map((caseId) => ({ caseId, success: false, error: "NOT_FOUND" }))
+    ];
+    const deleted = items.filter((item) => item.success).length;
+    const failed = items.filter((item) => !item.success).length;
+
+    if (deleted > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: "bulk-delete",
+        eventType: "case.bulk_deleted",
+        title: "Test cases bulk deleted",
+        body: `${deleted} test case${deleted === 1 ? "" : "s"} deleted`,
+        payload: { caseIds: items.filter((item) => item.success).map((item) => item.caseId.toString()) }
+      });
+    }
+
+    return reply.send(toJsonSafe(ok({ requested: body.caseIds.length, deleted, failed, items })));
   });
 
   app.get("/api/cases/:caseId/versions", async (req, reply) => {
@@ -227,12 +184,12 @@ export async function registerCasesRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const body = updateCaseSchema.parse(req.body);
     const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
-    const customValues = await validateCaseCustomValues(
+    const customValues = await deps.casesService.validateCaseCustomValues(
       deps.prisma,
-      deps.prisma ? await projectIdForCase(deps.prisma, caseId) : null,
+      await deps.casesService.projectIdForCase(deps.prisma, caseId),
       asCustomValues(body.customValues)
     ).catch((e) => {
-      const customFieldError = customFieldErrorResponse(e);
+      const customFieldError = deps.casesService.customFieldErrorResponse(e);
       if (customFieldError) return customFieldError;
       throw e;
     });
@@ -260,7 +217,7 @@ export async function registerCasesRoutes(
     await requireProjectMutationRole(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
-    const projectId = deps.prisma ? await projectIdForCase(deps.prisma, caseId) : null;
+    const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
     await deps.casesService.deleteCase(caseId);
     if (projectId) {
       await recordActivityEvent(deps.prisma, {

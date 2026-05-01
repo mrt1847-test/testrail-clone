@@ -45,5 +45,6 @@ export type CreateRunWithInstancesInput = {
   name: string;
   includeAll: boolean;
   caseIds?: bigint[];
+  excludedCaseIds?: bigint[];
   environment?: string | null;
 };

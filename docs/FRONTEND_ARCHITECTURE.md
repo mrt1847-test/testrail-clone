@@ -1,6 +1,6 @@
 # Frontend Architecture
 
-Last aligned: 2026-04-30
+Last aligned: 2026-05-02
 
 ## Overview
 
@@ -33,7 +33,7 @@ apps/web/src/
     runs/
 ```
 
-`features/projects` currently contains several project-scoped screens that may later be split into narrower feature folders such as `automation`, `reports`, `settings`, `plans`, and `milestones`.
+`features/projects` keeps project-scoped screens, and PR6 also split broad project API surfaces into domain-focused modules (`advancedApi`, `settingsApi`, `automationApi`, `planningApi`, `importExportApi`) to reduce single-file API growth.
 
 ## Data Flow
 
@@ -42,6 +42,17 @@ apps/web/src/
 - Hooks own query keys, loading/error states, invalidation, and mutation orchestration.
 - Backend services own domain decisions such as permissions, run/result invariants, versioning, and bulk validation.
 - Shared `apiFetch` is the fetch compatibility layer until `packages/api-client` becomes the primary typed client.
+
+## PR6 Refactor Status
+
+- Completed:
+  - `advancedApi` responsibilities were split into narrower domain API files to improve ownership and reduce coupling.
+  - Run detail execution flow was decomposed: URL state, query composition, and bulk actions moved to dedicated hooks; result entry moved into focused UI components.
+  - Result entry responsibilities are now separated across elapsed timer, defect keys, custom fields, and step-result editing components.
+- Remaining debt:
+  - continue extracting reusable run detail presentation blocks (header, summary bar, filter bar, instance table) for daily execution at scale.
+  - tighten query-key ownership and mutation invalidation boundaries around run detail/result workflows.
+  - keep reducing oversized page orchestration components where feature growth is still concentrated.
 
 ## Query Policy
 
@@ -70,9 +81,10 @@ apps/web/src/
 - Run detail loads run metadata, instances, selected result history, evidence, and defects as separate concerns.
 - Result writes are append-only and update only the active run/test context.
 - Closed runs reject result writes.
+- Run detail orchestration increasingly lives in hooks and focused components rather than a single page-level component.
 
 ## Refactor Targets
 
 - Split oversized page components when they block feature work.
 - Introduce shared `StatusBadge`, `DataTable`, `FilterBar`, and form primitives when repeated UI behavior stabilizes.
-- Move broad project-scoped API functions out of `features/projects/api/advancedApi.ts` into narrower modules over time.
+- Continue narrowing remaining broad project API surfaces and converge on domain-first API ownership.

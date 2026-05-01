@@ -1,6 +1,6 @@
 # Architecture
 
-Last aligned: 2026-04-30
+Last aligned: 2026-05-02
 
 ## System Overview
 - This project is a web service based on:
@@ -77,6 +77,15 @@ moduleName/
   moduleName.test.ts
 ```
 
+### Structural Refactors (PR6)
+- Completed:
+  - `reports` and `importExport` now share extracted report-metrics logic instead of duplicating metric composition per route.
+  - `settings.routes` was split into domain route modules (`customFields`, `statuses`, `members`, `templates`, `webhooks`, `audit`) while preserving one project settings surface.
+  - `cases` route files moved further toward route-service separation by reducing route-level business logic and consolidating shared behavior in services/helpers.
+- Remaining debt:
+  - Continue migrating remaining route-level Prisma access behind service/repository boundaries in legacy baseline modules.
+  - Keep converging route files on a consistent composition pattern (validation -> service call -> response mapping only).
+
 ## Layer Responsibilities
 
 ### routes
@@ -84,7 +93,7 @@ moduleName/
 - Invoke request/response schema validation.
 - Call service layer.
 - Target rule: call service layer rather than Prisma directly.
-- Current note: several newer baseline modules still call Prisma in route files; move them behind services/repositories when the workflow stabilizes.
+- Current note: PR6 improved the route-service boundary in refactored domains, but several baseline modules still call Prisma in route files; continue moving them behind services/repositories.
 
 ### schemas
 - Define request/response validation.

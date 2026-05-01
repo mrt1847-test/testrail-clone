@@ -178,6 +178,7 @@ export function CustomFieldsPage() {
             <option value="text">Text</option>
             <option value="number">Number</option>
             <option value="select">Select</option>
+            <option value="boolean">Boolean</option>
           </select>
         </label>
         <label>

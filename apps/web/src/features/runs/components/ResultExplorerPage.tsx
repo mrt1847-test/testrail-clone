@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { fetchCustomFields } from "../../projects/api/settingsApi";
 import { fetchProjectResultExplorer } from "../api/runApi";
 
 export function ResultExplorerPage() {
@@ -17,11 +18,21 @@ export function ResultExplorerPage() {
   const [testId, setTestId] = useState("");
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
+  const [customFilters, setCustomFilters] = useState<Record<string, string>>({});
   const pageSize = 50;
+  const customFilterKey = useMemo(() => JSON.stringify(customFilters), [customFilters]);
   const queryKey = useMemo(
-    () => ["result-explorer", projectId, runId ?? "", page, pageSize, status, source, query, caseId, testId, createdFrom, createdTo],
-    [projectId, runId, page, pageSize, status, source, query, caseId, testId, createdFrom, createdTo]
+    () => ["result-explorer", projectId, runId ?? "", page, pageSize, status, source, query, caseId, testId, createdFrom, createdTo, customFilterKey],
+    [projectId, runId, page, pageSize, status, source, query, caseId, testId, createdFrom, createdTo, customFilterKey]
   );
+  const customFieldsQuery = useQuery({
+    queryKey: ["custom-fields", projectId, "result"],
+    queryFn: () => fetchCustomFields(projectId, "result"),
+    enabled: Boolean(projectId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
+  });
+  const activeResultFields = (customFieldsQuery.data ?? []).filter((field) => field.isActive);
   const explorerQuery = useQuery({
     queryKey,
     queryFn: () =>
@@ -36,7 +47,8 @@ export function ResultExplorerPage() {
         source,
         createdFrom,
         createdTo,
-        q: query
+        q: query,
+        customFilters
       }),
     enabled: Boolean(projectId),
     refetchInterval: false,
@@ -127,6 +139,52 @@ export function ResultExplorerPage() {
               setPage(1);
             }}
           />
+          {activeResultFields.map((field) =>
+            field.fieldType === "select" ? (
+              <select
+                key={field.systemName}
+                className="rounded border border-slate-300 px-2 py-1"
+                value={customFilters[field.systemName] ?? ""}
+                onChange={(e) => {
+                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
+                  setPage(1);
+                }}
+              >
+                <option value="">{field.name}</option>
+                {field.options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : field.fieldType === "boolean" ? (
+              <select
+                key={field.systemName}
+                className="rounded border border-slate-300 px-2 py-1"
+                value={customFilters[field.systemName] ?? ""}
+                onChange={(e) => {
+                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
+                  setPage(1);
+                }}
+              >
+                <option value="">{field.name}</option>
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </select>
+            ) : (
+              <input
+                key={field.systemName}
+                className="w-32 rounded border border-slate-300 px-2 py-1"
+                placeholder={field.name}
+                type={field.fieldType === "number" ? "number" : "text"}
+                value={customFilters[field.systemName] ?? ""}
+                onChange={(e) => {
+                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
+                  setPage(1);
+                }}
+              />
+            )
+          )}
         </div>
 
         {explorerQuery.isLoading ? (

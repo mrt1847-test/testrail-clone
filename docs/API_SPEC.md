@@ -109,9 +109,30 @@
 - `GET /api/cases/{caseId}`
 - `PATCH /api/cases/{caseId}`
 - `DELETE /api/cases/{caseId}`
+- `POST /api/projects/{projectId}/cases/bulk-delete`
 - `POST /api/cases/{caseId}/steps`
 - `PATCH /api/case-steps/{stepId}`
 - `DELETE /api/case-steps/{stepId}`
+
+Bulk delete baseline:
+- `POST /api/projects/{projectId}/cases/bulk-delete`
+- Body: `{ "caseIds": [1, 2, 3] }`
+- The server only deletes cases that belong to the project and returns per-case result rows:
+
+```json
+{
+  "data": {
+    "requested": 3,
+    "deleted": 2,
+    "failed": 1,
+    "items": [
+      { "caseId": "1", "success": true, "error": null },
+      { "caseId": "2", "success": true, "error": null },
+      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
+    ]
+  }
+}
+```
 
 Case optimistic locking (phase 2 baseline):
 - `PATCH /api/cases/{caseId}` accepts either:
@@ -176,8 +197,36 @@ Current baseline:
 - `GET /api/projects/{projectId}/runs/{runId}`
 - `GET /api/projects/{projectId}/runs/{runId}/instances`
 - `PATCH /api/runs/{runId}`
+- planned: `POST /api/runs/{runId}/cases`
+- planned: `DELETE /api/runs/{runId}/cases/{caseId}`
+- planned: `POST /api/runs/{runId}/cases/bulk`
 - `POST /api/runs/{runId}/close`
 - `POST /api/runs/{runId}/rerun`
+
+Run composition baseline and gap:
+- Current baseline supports `POST /api/projects/{projectId}/runs` with either:
+  - `includeAll: true` to include all cases in a suite, or
+  - `includeAll: false` plus `caseIds` for a flat explicit case selection.
+- Missing P0 behavior:
+  - section-level include/exclude during run creation,
+  - include-all-with-exclusions for large suites,
+  - add/remove cases after run creation,
+  - safeguards for closed runs and cases that already have results,
+  - per-case add/remove feedback for bulk composition changes.
+
+Planned run creation body shape:
+
+```json
+{
+  "suiteId": "1",
+  "name": "Regression",
+  "selectionMode": "include_all_except",
+  "includedSectionIds": ["10", "11"],
+  "excludedSectionIds": ["12"],
+  "includedCaseIds": ["101", "102"],
+  "excludedCaseIds": ["199"]
+}
+```
 
 Run query parameters:
 - `GET /api/projects/{projectId}/runs`
@@ -405,7 +454,7 @@ Custom field shape:
 ```
 
 Rules:
-- `fieldType` is currently `text`, `number`, or `select`.
+- `fieldType` is currently `text`, `number`, `select`, or `boolean`.
 - `systemName` is project-unique and normalized to lowercase snake_case.
 - Deletes are soft deletes in DB-backed mode and create audit log entries.
 
@@ -594,6 +643,16 @@ Current baseline:
 - `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
 - Keep top-level required fields explicit; use metadata for optional provider-specific fields.
 
+## Result Explorer
+- `GET /api/projects/{projectId}/reports/results-explorer`
+
+Query filters:
+- `runId`, `caseId`, `testId`
+- `status`, `source`
+- `createdFrom`, `createdTo`
+- `q`
+- `custom_{systemName}` for active result custom field exact-match filtering.
+
 ## Traceability / Coverage
 - `GET /api/projects/{projectId}/requirements`
 - `POST /api/projects/{projectId}/requirements`
@@ -659,6 +718,7 @@ CSV case import baseline:
 - Returns row-level validation errors.
 - Does not partially import invalid rows unless `atomic=false` is explicitly provided.
 - Case export and run result export return `text/csv` and create completed export job records.
+- Case and result custom values are exported as `custom_{systemName}` columns where active custom fields exist; result custom columns are included in run result CSV exports and `results_explorer` report CSV exports.
 - Report export supports `run_summary`, `results_explorer`, `traceability`, `coverage_gap`, and `defect_coverage` as CSV.
 - `POST /reports/export` creates an export job and returns a download URL; the baseline generates CSV on download and marks the job completed.
 - `GET /reports/export` is a compatibility shortcut that immediately returns CSV and records a completed export job.

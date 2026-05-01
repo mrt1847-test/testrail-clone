@@ -19,6 +19,20 @@ describe("phase1 services", () => {
     expect(created.instances.length).toBeGreaterThan(0);
   });
 
+  it("createRunWithInstances supports include-all with exclusions", async () => {
+    const repo = new InMemoryRunsRepository();
+    const runService = new RunsService(repo);
+    const created = await runService.createRunWithInstances({
+      projectId: 1n,
+      suiteId: 1n,
+      name: "Regression without cart case",
+      includeAll: true,
+      excludedCaseIds: [101n]
+    });
+    expect(created.instances.some((instance) => instance.caseId === 101n)).toBe(false);
+    expect(created.instances.length).toBeGreaterThan(0);
+  });
+
   it("addResultForCaseInRun updates summary counts", async () => {
     const repo = new InMemoryRunsRepository();
     const runService = new RunsService(repo);

@@ -7,7 +7,7 @@ export class RunsService {
   constructor(private readonly repo: RunsRepository) {}
 
   async createRunWithInstances(input: CreateRunWithInstancesInput) {
-    assertRunCreationInput(input.includeAll, input.caseIds);
+    assertRunCreationInput(input.includeAll, input.caseIds, input.excludedCaseIds);
 
     return this.repo.transaction(async (tx) => {
       const run = await tx.createRun({
@@ -23,6 +23,7 @@ export class RunsService {
         projectId: input.projectId,
         suiteId: input.suiteId,
         caseIds: input.caseIds,
+        excludedCaseIds: input.excludedCaseIds,
         includeAll: input.includeAll
       });
 

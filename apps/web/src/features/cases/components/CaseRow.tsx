@@ -5,7 +5,7 @@ import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 type CaseCustomFieldDefinition = {
   systemName: string;
   name: string;
-  fieldType: "text" | "number" | "select";
+  fieldType: "text" | "number" | "select" | "boolean";
   options: string[];
   isRequired: boolean;
   isActive: boolean;
@@ -18,6 +18,8 @@ type CaseRowProps = {
   detail: TestCase | null;
   versions?: CaseVersion[];
   customFields?: CaseCustomFieldDefinition[];
+  isSelected?: boolean;
+  onSelectChange?: (checked: boolean) => void;
   onToggle: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -47,6 +49,8 @@ export function CaseRow({
   detail,
   versions,
   customFields,
+  isSelected = false,
+  onSelectChange,
   onToggle,
   onEdit,
   onCloseDetail,
@@ -63,20 +67,29 @@ export function CaseRow({
 }: CaseRowProps) {
   return (
     <article className="border-b border-slate-100 last:border-0">
-      <button
-        type="button"
-        aria-expanded={isExpanded}
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left text-sm hover:bg-slate-50"
-      >
-        <span className="min-w-0 truncate">
-          <span className="font-mono text-xs text-slate-500">{item.caseCode}</span>{" "}
-          <span className="text-slate-900">{item.title}</span>
-        </span>
-        <span className="shrink-0 text-xs text-slate-500">
-          {item.type} / {item.priority} / {item.automationStatus} {isExpanded ? "-" : "+"}
-        </span>
-      </button>
+      <div className="flex items-center gap-2 bg-white pl-3 hover:bg-slate-50">
+        <input
+          type="checkbox"
+          aria-label={`Select ${item.caseCode}`}
+          checked={isSelected}
+          onChange={(e) => onSelectChange?.(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+        />
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 px-1 py-3 pr-4 text-left text-sm"
+        >
+          <span className="min-w-0 truncate">
+            <span className="font-mono text-xs text-slate-500">{item.caseCode}</span>{" "}
+            <span className="text-slate-900">{item.title}</span>
+          </span>
+          <span className="shrink-0 text-xs text-slate-500">
+            {item.type} / {item.priority} / {item.automationStatus} {isExpanded ? "-" : "+"}
+          </span>
+        </button>
+      </div>
       {isExpanded ? (
         <ExpandableCaseDetail
           data={detail ?? item}

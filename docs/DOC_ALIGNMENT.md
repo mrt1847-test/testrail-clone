@@ -1,6 +1,6 @@
 # Documentation Alignment
 
-Last aligned: 2026-04-30
+Last aligned: 2026-05-02
 
 This document defines which docs are canonical and where future updates should go.
 
@@ -8,6 +8,7 @@ This document defines which docs are canonical and where future updates should g
 
 - Documentation index: [README.md](./README.md)
 - Product specification entry point: [PRODUCT_SPEC.md](./PRODUCT_SPEC.md)
+- Feature implementation checklist: [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md)
 - Current execution roadmap: [ROADMAP.md](./ROADMAP.md)
 - Immediate implementation queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
 - Domain terms and invariants: [DOMAIN_MODEL.md](./DOMAIN_MODEL.md)
@@ -27,6 +28,7 @@ Put product requirements in spec documents:
 - Storage structure, indexes, and consistency policy go in `DATABASE_SCHEMA.md`.
 - Screen-level actions, required APIs, loading/empty/error states go in `SCREEN_INVENTORY.md`.
 - Overall product capability expectations go in `PRODUCT_SPEC.md`.
+- Feature status checkboxes go in `FEATURE_CHECKLIST.md`.
 - TestRail parity gaps and missing feature categories go in `ROADMAP.md`.
 - Immediate implementation batches go in `NEXT_ACTIONS.md`.
 
@@ -34,6 +36,7 @@ Put delivery order in roadmap documents:
 
 - Current phases, progress, and next implementation priorities go in `ROADMAP.md`.
 - File-level implementation details should be captured in the issue/PR or `NEXT_ACTIONS.md` for active work only.
+- When implementation status changes, update `FEATURE_CHECKLIST.md` first, then reflect priority/order changes in `ROADMAP.md` and `NEXT_ACTIONS.md`.
 
 If a roadmap item conflicts with a spec, update the spec first and then adjust the roadmap.
 

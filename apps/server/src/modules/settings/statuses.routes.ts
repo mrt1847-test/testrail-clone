@@ -1,0 +1,223 @@
+import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
+
+import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { ok, paged } from "../../common/utils/http.js";
+import { toJsonSafe } from "../../common/utils/serialize.js";
+import { projectIdParamSchema } from "../projects/projects.schema.js";
+import {
+  customStatuses,
+  customStatusCreateSchema,
+  customStatusUpdateSchema,
+  customStatusIdParamSchema,
+  type CustomStatusRow,
+  normalizeSystemName,
+  statusToResponse,
+  statusAuditChanges,
+  defaultStatusRows,
+  type SettingsRouteDeps
+} from "./settings.shared.js";
+
+export async function registerStatusesRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
+  app.get("/api/projects/:projectId/settings/statuses", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.customStatus.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+      });
+      const items = rows.length > 0 ? rows.map(statusToResponse) : defaultStatusRows(projectId).map(statusToResponse);
+      return reply.send(toJsonSafe(paged(items, 1, 100)));
+    }
+    const rows = customStatuses.filter((item) => item.projectId === projectId);
+    return reply.send(toJsonSafe(paged(rows.length > 0 ? rows : defaultStatusRows(projectId), 1, 100)));
+  });
+
+  app.post("/api/projects/:projectId/settings/statuses", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = customStatusCreateSchema.parse(req.body);
+    const systemName = normalizeSystemName(body.systemName ?? body.name);
+    if (!systemName) {
+      return reply.code(400).send({ code: "INVALID_CUSTOM_STATUS", message: "systemName must contain a letter or number" });
+    }
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const created = await tx.customStatus.create({
+            data: {
+              projectId,
+              name: body.name,
+              systemName,
+              canonicalStatus: body.canonicalStatus,
+              color: body.color,
+              isSystem: false,
+              isActive: body.isActive,
+              displayOrder: body.displayOrder,
+              createdBy: actor.id,
+              updatedBy: actor.id
+            }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.custom_status.created",
+              entityType: "custom_status",
+              entityId: created.id.toString(),
+              changes: statusAuditChanges(statusToResponse(created))
+            }
+          });
+          return created;
+        });
+        return reply.send(toJsonSafe(ok(statusToResponse(row))));
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("Unique constraint")) {
+          return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
+        }
+        throw e;
+      }
+    }
+    if (customStatuses.some((item) => item.projectId === projectId && item.systemName === systemName)) {
+      return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
+    }
+    const row: CustomStatusRow = {
+      id: BigInt(Date.now()),
+      projectId,
+      name: body.name,
+      systemName,
+      canonicalStatus: body.canonicalStatus,
+      color: body.color,
+      isSystem: false,
+      isActive: body.isActive,
+      displayOrder: body.displayOrder
+    };
+    customStatuses.push(row);
+    return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.patch("/api/projects/:projectId/settings/statuses/:statusId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, statusId } = customStatusIdParamSchema.parse(req.params);
+    const body = customStatusUpdateSchema.parse(req.body);
+    const nextSystemName = body.systemName !== undefined ? normalizeSystemName(body.systemName) : undefined;
+    if (body.systemName !== undefined && !nextSystemName) {
+      return reply.code(400).send({ code: "INVALID_CUSTOM_STATUS", message: "systemName must contain a letter or number" });
+    }
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const existing = await tx.customStatus.findFirst({
+            where: { id: statusId, projectId, deletedAt: null },
+            select: { id: true }
+          });
+          if (!existing) {
+            throw new Error("CUSTOM_STATUS_NOT_FOUND");
+          }
+          const updated = await tx.customStatus.update({
+            where: { id: existing.id },
+            data: {
+              ...(body.name !== undefined ? { name: body.name } : {}),
+              ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
+              ...(body.canonicalStatus !== undefined ? { canonicalStatus: body.canonicalStatus } : {}),
+              ...(body.color !== undefined ? { color: body.color } : {}),
+              ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+              ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
+              updatedBy: actor.id
+            }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.custom_status.updated",
+              entityType: "custom_status",
+              entityId: updated.id.toString(),
+              changes: statusAuditChanges(statusToResponse(updated))
+            }
+          });
+          return updated;
+        });
+        return reply.send(toJsonSafe(ok(statusToResponse(row))));
+      } catch (e) {
+        if (e instanceof Error && e.message === "CUSTOM_STATUS_NOT_FOUND") {
+          return reply.code(404).send({ code: "NOT_FOUND", message: "custom status not found" });
+        }
+        if (e instanceof Error && e.message.includes("Unique constraint")) {
+          return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
+        }
+        throw e;
+      }
+    }
+    const row = customStatuses.find((item) => item.projectId === projectId && item.id === statusId);
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "custom status not found" });
+    if (
+      nextSystemName &&
+      customStatuses.some((item) => item.projectId === projectId && item.id !== statusId && item.systemName === nextSystemName)
+    ) {
+      return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
+    }
+    Object.assign(row, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
+      ...(body.canonicalStatus !== undefined ? { canonicalStatus: body.canonicalStatus } : {}),
+      ...(body.color !== undefined ? { color: body.color } : {}),
+      ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {})
+    });
+    return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.delete("/api/projects/:projectId/settings/statuses/:statusId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, statusId } = customStatusIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const actor = await getAuthenticatedUser(req, deps);
+      try {
+        await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const existing = await tx.customStatus.findFirst({
+            where: { id: statusId, projectId, deletedAt: null },
+            select: { id: true, isSystem: true }
+          });
+          if (!existing) {
+            throw new Error("CUSTOM_STATUS_NOT_FOUND");
+          }
+          if (existing.isSystem) {
+            throw new Error("SYSTEM_STATUS_PROTECTED");
+          }
+          const row = await tx.customStatus.update({
+            where: { id: existing.id },
+            data: { deletedAt: new Date(), isActive: false, updatedBy: actor.id }
+          });
+          await tx.auditLog.create({
+            data: {
+              projectId,
+              actorUserId: actor.id,
+              action: "settings.custom_status.deleted",
+              entityType: "custom_status",
+              entityId: row.id.toString()
+            }
+          });
+        });
+      } catch (e) {
+        if (e instanceof Error && e.message === "CUSTOM_STATUS_NOT_FOUND") {
+          return reply.code(404).send({ code: "NOT_FOUND", message: "custom status not found" });
+        }
+        if (e instanceof Error && e.message === "SYSTEM_STATUS_PROTECTED") {
+          return reply.code(409).send({ code: "SYSTEM_STATUS_PROTECTED", message: "system statuses cannot be deleted" });
+        }
+        throw e;
+      }
+      return reply.code(204).send();
+    }
+    const index = customStatuses.findIndex((item) => item.projectId === projectId && item.id === statusId);
+    if (index === -1) return reply.code(404).send({ code: "NOT_FOUND", message: "custom status not found" });
+    if (customStatuses[index]?.isSystem) {
+      return reply.code(409).send({ code: "SYSTEM_STATUS_PROTECTED", message: "system statuses cannot be deleted" });
+    }
+    customStatuses.splice(index, 1);
+    return reply.code(204).send();
+  });
+}

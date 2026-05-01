@@ -7,7 +7,7 @@ import { apiFetch } from "../../../shared/api/http";
 import type { Paged } from "../../../shared/api/types";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { fetchMilestones } from "../../projects/api/advancedApi";
+import { fetchMilestones } from "../../projects/api/planningApi";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 
 export function RunCreatePage() {
@@ -19,6 +19,7 @@ export function RunCreatePage() {
   const [environment, setEnvironment] = useState("");
   const [includeAll, setIncludeAll] = useState(true);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
+  const [excludedCaseIds, setExcludedCaseIds] = useState<string[]>([]);
   const mutation = useCreateRunMutation(projectId);
   const suitesQuery = useQuery({
     queryKey: ["run-create-suites", projectId],
@@ -52,6 +53,7 @@ export function RunCreatePage() {
         name: name.trim(),
         includeAll,
         caseIds: includeAll ? undefined : selectedCaseIds,
+        excludedCaseIds: includeAll ? excludedCaseIds : undefined,
         milestoneId: milestoneId || null,
         environment: environment.trim() || undefined
       },
@@ -98,6 +100,7 @@ export function RunCreatePage() {
             onChange={(e) => {
               setSuiteId(e.target.value);
               setSelectedCaseIds([]);
+              setExcludedCaseIds([]);
             }}
           >
             <option value="">Select suite</option>
@@ -133,9 +136,51 @@ export function RunCreatePage() {
           />
         </label>
         <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={includeAll} onChange={(e) => setIncludeAll(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={includeAll}
+            onChange={(e) => {
+              const nextIncludeAll = e.target.checked;
+              setIncludeAll(nextIncludeAll);
+              if (nextIncludeAll) {
+                setSelectedCaseIds([]);
+              } else {
+                setExcludedCaseIds([]);
+              }
+            }}
+          />
           Include all cases in suite
         </label>
+        {includeAll ? (
+          <div className="rounded border border-slate-200 p-3">
+            <p className="text-xs font-medium text-slate-600">Exclude cases (optional)</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Leave unchecked to include all cases in this suite.
+            </p>
+            <div className="mt-2 max-h-48 space-y-1 overflow-auto">
+              {!suiteId ? (
+                <p className="text-xs text-slate-500">Select a suite first.</p>
+              ) : null}
+              {cases.map((c) => {
+                const id = String(c.id);
+                return (
+                  <label key={id} className="flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={excludedCaseIds.includes(id)}
+                      onChange={(e) => {
+                        setExcludedCaseIds((prev) =>
+                          e.target.checked ? [...prev, id] : prev.filter((value) => value !== id)
+                        );
+                      }}
+                    />
+                    {c.title}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         {!includeAll ? (
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs font-medium text-slate-600">Select cases</p>

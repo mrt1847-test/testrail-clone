@@ -1,12 +1,13 @@
 # Documentation Index
 
-Last aligned: 2026-04-30
+Last aligned: 2026-05-02
 
 This folder keeps the current product, architecture, API, and delivery documents for the TestRail-like test management app.
 
 ## Canonical Documents
 
 - [PRODUCT_SPEC.md](./PRODUCT_SPEC.md): product capability baseline and spec entry point.
+- [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md): implemented, partial, and planned feature checklist.
 - [ROADMAP.md](./ROADMAP.md): current delivery status and phased roadmap.
 - [NEXT_ACTIONS.md](./NEXT_ACTIONS.md): immediate implementation queue.
 - [DOMAIN_MODEL.md](./DOMAIN_MODEL.md): domain terms, relationships, and invariants.
@@ -31,6 +32,7 @@ Removed as obsolete or duplicate:
 ## Maintenance Rules
 
 - Update specs first when product behavior changes.
+- Update [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) whenever a feature is implemented, downgraded, or newly discovered as missing.
 - Update [ROADMAP.md](./ROADMAP.md) when delivery status changes.
 - Update [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) before starting the next implementation batch.
 - Keep one canonical source per topic; do not recreate phase plans that duplicate roadmap, route, or screen inventory content.

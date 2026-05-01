@@ -7,7 +7,8 @@ export const createRunSchema = z.object({
   name: z.string().min(1),
   environment: z.string().trim().min(1).max(120).optional(),
   includeAll: z.boolean().default(true),
-  caseIds: z.array(z.coerce.bigint()).optional()
+  caseIds: z.array(z.coerce.bigint()).optional(),
+  excludedCaseIds: z.array(z.coerce.bigint()).optional()
 });
 
 export const createProjectRunSchema = createRunSchema.omit({ projectId: true });

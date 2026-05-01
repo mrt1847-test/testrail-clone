@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
+  bulkDeleteCases,
   createCase,
   createCaseStep,
   deleteCase,
@@ -16,7 +18,7 @@ import {
 } from "../api/catalogApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
-import { fetchCustomFields } from "../../projects/api/advancedApi";
+import { fetchCustomFields } from "../../projects/api/settingsApi";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { caseKeys } from "../hooks/useCases";
@@ -47,6 +49,23 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   });
   const [addTitle, setAddTitle] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteMessage, setBulkDeleteMessage] = useState<string | null>(null);
+  const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
+  const selectedVisibleCaseIds = useMemo(
+    () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
+    [selectedCaseIds, visibleCaseIds]
+  );
+  const allVisibleSelected = visibleCaseIds.length > 0 && selectedVisibleCaseIds.length === visibleCaseIds.length;
+
+  useEffect(() => {
+    setSelectedCaseIds((current) => {
+      const visible = new Set(visibleCaseIds);
+      const next = new Set(Array.from(current).filter((caseId) => visible.has(caseId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleCaseIds]);
 
   const invalidateCases = () => {
     void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
@@ -106,6 +125,22 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     }
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (caseIds: number[]) => bulkDeleteCases(projectId, caseIds),
+    onSuccess: (result) => {
+      invalidateCases();
+      setExpandedCase(null);
+      const deletedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
+      setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !deletedIds.has(caseId))));
+      setBulkDeleteMessage(
+        result.failed > 0
+          ? `Deleted ${result.deleted}; ${result.failed} could not be deleted.`
+          : `Deleted ${result.deleted} selected case${result.deleted === 1 ? "" : "s"}.`
+      );
+      setBulkDeleteOpen(false);
+    }
+  });
+
   const invalidateCaseDetail = (caseId: number) => {
     void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(caseId) });
     void qc.invalidateQueries({ queryKey: ["case-versions", caseId] });
@@ -145,6 +180,28 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
 
   const stepsBusy =
     createStepMutation.isPending || updateStepMutation.isPending || deleteStepMutation.isPending;
+
+  const toggleCaseSelection = (caseId: number, checked: boolean) => {
+    setBulkDeleteMessage(null);
+    setSelectedCaseIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(caseId);
+      else next.delete(caseId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    setBulkDeleteMessage(null);
+    setSelectedCaseIds((current) => {
+      const next = new Set(current);
+      for (const caseId of visibleCaseIds) {
+        if (checked) next.add(caseId);
+        else next.delete(caseId);
+      }
+      return next;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -198,6 +255,31 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
           </div>
         </div>
       ) : null}
+      {cases.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={(e) => toggleAllVisible(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            Select visible
+          </label>
+          <div className="flex items-center gap-2 text-sm">
+            {bulkDeleteMessage ? <span className="text-slate-600">{bulkDeleteMessage}</span> : null}
+            <span className="text-slate-600">{selectedVisibleCaseIds.length} selected</span>
+            <button
+              type="button"
+              disabled={selectedVisibleCaseIds.length === 0 || bulkDeleteMutation.isPending}
+              onClick={() => setBulkDeleteOpen(true)}
+              className="rounded-md border border-red-200 bg-white px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Delete selected
+            </button>
+          </div>
+        </div>
+      ) : null}
       {cases.length === 0 ? (
         <div className="p-6">
           <EmptyState
@@ -228,6 +310,8 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                 detail={caseDetail}
                 versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
                 customFields={customFields}
+                isSelected={selectedCaseIds.has(item.id)}
+                onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
                 onToggle={() => setExpandedCase(isExpanded ? null : item.id)}
                 onEdit={() => setExpandedCase(item.id, "edit")}
                 onCloseDetail={() => setExpandedCase(null)}
@@ -267,6 +351,20 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title="Delete selected test cases?"
+        description={
+          <span>
+            {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will be deleted from this project.
+          </span>
+        }
+        variant="danger"
+        confirmLabel={bulkDeleteMutation.isPending ? "Deleting..." : "Delete selected"}
+        confirmDisabled={bulkDeleteMutation.isPending || selectedVisibleCaseIds.length === 0}
+        onCancel={() => setBulkDeleteOpen(false)}
+        onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedVisibleCaseIds)}
+      />
     </div>
   );
 }

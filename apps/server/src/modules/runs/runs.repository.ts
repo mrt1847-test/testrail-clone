@@ -37,6 +37,7 @@ export type Tx = {
     projectId: bigint;
     suiteId: bigint;
     caseIds?: bigint[];
+    excludedCaseIds?: bigint[];
     includeAll: boolean;
   }): Promise<TestCase[]>;
   createInstances(instances: Omit<TestInstance, "id" | "status">[]): Promise<TestInstance[]>;
@@ -248,14 +249,18 @@ export class InMemoryRunsRepository implements RunsRepository {
         this.runs.push(run);
         return run;
       },
-      getCasesForRun: async ({ projectId, suiteId, caseIds, includeAll }) => {
+      getCasesForRun: async ({ projectId, suiteId, caseIds, excludedCaseIds, includeAll }) => {
         const base = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
-        let selected = includeAll ? base : base.filter((c) => caseIds?.includes(c.id));
+        let selected = includeAll
+          ? base.filter((c) => !excludedCaseIds?.includes(c.id))
+          : base.filter((c) => caseIds?.includes(c.id));
         if (selected.length === 0 && this.catalog) {
           const rows = await this.catalog.listCasesForSuite(projectId, suiteId);
           selected = rows.map((c) => mapCatalogCaseToTestCase(c, projectId, suiteId));
           if (!includeAll && caseIds?.length) {
             selected = selected.filter((c) => caseIds.includes(c.id));
+          } else if (includeAll && excludedCaseIds?.length) {
+            selected = selected.filter((c) => !excludedCaseIds.includes(c.id));
           }
         }
         return selected;

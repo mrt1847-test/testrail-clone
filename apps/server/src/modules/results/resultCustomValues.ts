@@ -50,6 +50,22 @@ export async function validateResultCustomValues(
       sanitized[key] = stringValue;
       continue;
     }
+    if (field.fieldType === "boolean") {
+      if (typeof value === "boolean") {
+        sanitized[key] = value;
+        continue;
+      }
+      const stringValue = String(value).trim().toLowerCase();
+      if (["true", "1", "yes", "y"].includes(stringValue)) {
+        sanitized[key] = true;
+        continue;
+      }
+      if (["false", "0", "no", "n"].includes(stringValue)) {
+        sanitized[key] = false;
+        continue;
+      }
+      throw new Error(`INVALID_RESULT_CUSTOM_FIELD_BOOLEAN:${key}`);
+    }
     sanitized[key] = String(value);
   }
   for (const field of fields) {
@@ -68,7 +84,8 @@ export function resultCustomFieldErrorResponse(error: unknown) {
     UNKNOWN_RESULT_CUSTOM_FIELD: `unknown result custom field ${field}`,
     REQUIRED_RESULT_CUSTOM_FIELD: `result custom field ${field} is required`,
     INVALID_RESULT_CUSTOM_FIELD_NUMBER: `result custom field ${field} must be a number`,
-    INVALID_RESULT_CUSTOM_FIELD_OPTION: `result custom field ${field} has an invalid option`
+    INVALID_RESULT_CUSTOM_FIELD_OPTION: `result custom field ${field} has an invalid option`,
+    INVALID_RESULT_CUSTOM_FIELD_BOOLEAN: `result custom field ${field} must be true or false`
   };
   if (!messages[code]) return null;
   return { code, message: messages[code], field };

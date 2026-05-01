@@ -29,7 +29,9 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         where: {
           projectId: input.projectId,
           suiteId: input.suiteId,
-          ...(input.includeAll ? {} : { id: { in: input.caseIds ?? [] } })
+          ...(input.includeAll
+            ? { ...(input.excludedCaseIds?.length ? { id: { notIn: input.excludedCaseIds } } : {}) }
+            : { id: { in: input.caseIds ?? [] } })
         }
       });
       return rows as TestCase[];

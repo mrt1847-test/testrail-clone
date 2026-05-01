@@ -1,5 +1,13 @@
 import { AppError } from "../../common/errors/appError.js";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
+
+type ScalarCustomValue = string | number | boolean | null;
+type CustomValues = Record<string, ScalarCustomValue>;
+
+function fieldOptions(value: Prisma.JsonValue | null): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
 
 export class CasesService {
   constructor(private readonly repo: ProjectsRepository) {}
@@ -98,6 +106,108 @@ export class CasesService {
   async deleteCase(caseId: bigint) {
     const deleted = await this.repo.deleteCase(caseId);
     if (!deleted) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+  }
+
+  async bulkDeleteCases(caseIds: bigint[]) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const caseId of uniqueCaseIds) {
+      const deleted = await this.repo.deleteCase(caseId);
+      items.push({
+        caseId,
+        success: deleted,
+        error: deleted ? null : "NOT_FOUND"
+      });
+    }
+
+    return {
+      requested: caseIds.length,
+      deleted: items.filter((item) => item.success).length,
+      failed: items.filter((item) => !item.success).length,
+      items
+    };
+  }
+
+  async resolveProjectScopedBulkDelete(projectId: bigint, caseIds: bigint[]) {
+    const projectCases = await this.listCases({ projectId });
+    const projectCaseIds = new Set(projectCases.map((row) => row.id.toString()));
+    return {
+      scopedIds: caseIds.filter((caseId) => projectCaseIds.has(caseId.toString())),
+      outOfScope: caseIds.filter((caseId) => !projectCaseIds.has(caseId.toString()))
+    };
+  }
+
+  async projectIdForSection(prisma: PrismaClient | undefined, sectionId: bigint) {
+    if (!prisma) return null;
+    const row = await prisma.section.findFirst({
+      where: { id: sectionId, deletedAt: null },
+      select: { suite: { select: { projectId: true } } }
+    });
+    return row?.suite.projectId ?? null;
+  }
+
+  async projectIdForCase(prisma: PrismaClient | undefined, caseId: bigint) {
+    if (!prisma) return null;
+    const row = await prisma.testCase.findFirst({
+      where: { id: caseId, deletedAt: null },
+      select: { projectId: true }
+    });
+    return row?.projectId ?? null;
+  }
+
+  async validateCaseCustomValues(prisma: PrismaClient | undefined, projectId: bigint | null, values: CustomValues | undefined) {
+    if (!prisma || !projectId || values === undefined) return values;
+    const fields = await prisma.customField.findMany({
+      where: { projectId, scope: "case", deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+    const known = new Map(fields.map((field) => [field.systemName, field]));
+    const sanitized: CustomValues = {};
+    for (const [key, value] of Object.entries(values)) {
+      const field = known.get(key);
+      if (!field) {
+        throw new Error(`UNKNOWN_CUSTOM_FIELD:${key}`);
+      }
+      if (value == null || value === "") {
+        if (field.isRequired) throw new Error(`REQUIRED_CUSTOM_FIELD:${key}`);
+        sanitized[key] = null;
+        continue;
+      }
+      if (field.fieldType === "number") {
+        const numberValue = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(numberValue)) throw new Error(`INVALID_CUSTOM_FIELD_NUMBER:${key}`);
+        sanitized[key] = numberValue;
+        continue;
+      }
+      if (field.fieldType === "select") {
+        const stringValue = String(value);
+        if (!fieldOptions(field.options).includes(stringValue)) throw new Error(`INVALID_CUSTOM_FIELD_OPTION:${key}`);
+        sanitized[key] = stringValue;
+        continue;
+      }
+      sanitized[key] = String(value);
+    }
+    for (const field of fields) {
+      if (field.isRequired && (sanitized[field.systemName] == null || sanitized[field.systemName] === "")) {
+        throw new Error(`REQUIRED_CUSTOM_FIELD:${field.systemName}`);
+      }
+    }
+    return sanitized;
+  }
+
+  customFieldErrorResponse(error: unknown) {
+    if (!(error instanceof Error)) return null;
+    const [code, field] = error.message.split(":");
+    if (!field) return null;
+    const messages: Record<string, string> = {
+      UNKNOWN_CUSTOM_FIELD: `unknown custom field ${field}`,
+      REQUIRED_CUSTOM_FIELD: `custom field ${field} is required`,
+      INVALID_CUSTOM_FIELD_NUMBER: `custom field ${field} must be a number`,
+      INVALID_CUSTOM_FIELD_OPTION: `custom field ${field} has an invalid option`
+    };
+    if (!messages[code]) return null;
+    return { code, message: messages[code], field };
   }
 
   async createCaseStep(caseId: bigint, input: { content: string; expectedResult?: string | null }) {

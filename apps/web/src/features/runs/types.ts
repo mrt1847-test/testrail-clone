@@ -12,6 +12,7 @@ export type RunSummary = {
 
 export type TestInstanceRow = {
   id: string;
+  caseId: string;
   caseCode: string;
   title: string;
   status: string;

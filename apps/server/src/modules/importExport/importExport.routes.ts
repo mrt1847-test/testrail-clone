@@ -9,6 +9,12 @@ import { ok } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import {
+  latestByCreatedAt,
+  toCoverageStatus,
+  toRunSummaryMetrics,
+  toUniqueDefectKeys
+} from "../reports/reportMetrics.service.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 
 type CsvRow = Record<string, string>;
@@ -141,6 +147,11 @@ function customColumnName(systemName: string) {
   return `custom_${systemName}`;
 }
 
+function customValueFromJson(value: Prisma.JsonValue | null, systemName: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  return (value as Record<string, unknown>)[systemName] ?? "";
+}
+
 function fieldOptions(value: Prisma.JsonValue | null): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
@@ -178,6 +189,13 @@ function parseCustomFieldValue(
       return undefined;
     }
   }
+  if (field.fieldType === "boolean") {
+    const normalized = rawValue.trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(normalized)) return true;
+    if (["false", "0", "no", "n"].includes(normalized)) return false;
+    issues.push({ row: rowNumber, field: fieldName, code: "INVALID_BOOLEAN", message: `${fieldName} must be true or false` });
+    return undefined;
+  }
   return rawValue;
 }
 
@@ -209,18 +227,15 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
       include: { instances: { where: { deletedAt: null }, select: { status: true } } }
     });
     const rows = runs.map((run) => {
-      const total = run.instances.length;
-      const untested = run.instances.filter((item) => item.status === "untested").length;
-      const passed = run.instances.filter((item) => item.status === "passed").length;
-      const failed = run.instances.filter((item) => item.status === "failed").length;
+      const metrics = toRunSummaryMetrics(run.instances.map((item) => item.status));
       return {
         run_id: run.id,
         name: run.name,
         status: run.status,
-        total,
-        passed,
-        failed,
-        progress: total === 0 ? 0 : Math.round(((total - untested) / total) * 100)
+        total: metrics.total,
+        passed: metrics.passed,
+        failed: metrics.failed,
+        progress: metrics.progress
       };
     });
     return {
@@ -231,6 +246,12 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
   }
 
   if (input.reportType === "results_explorer") {
+    const customFields = await prisma.customField.findMany({
+      where: { projectId, scope: "result", deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { systemName: true }
+    });
+    const customHeaders = customFields.map((field) => customColumnName(field.systemName));
     const where: Prisma.TestResultWhereInput = {
       ...(input.status ? { status: input.status } : {}),
       ...(input.source ? { source: input.source } : {}),
@@ -266,7 +287,7 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
     return {
       fileName: `project-${projectId.toString()}-results-explorer.csv`,
       csv: toCsv(
-        ["result_id", "run_id", "run_name", "test_id", "case_id", "title", "status", "source", "comment", "defects", "created_at"],
+        ["result_id", "run_id", "run_name", "test_id", "case_id", "title", "status", "source", "comment", "defects", ...customHeaders, "created_at"],
         rows.map((row) => ({
           result_id: row.id,
           run_id: row.instance.runId,
@@ -278,6 +299,9 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
           source: row.source,
           comment: row.comment,
           defects: [...row.defects, ...row.defectLinks.map((link) => link.defectKey)].join("|"),
+          ...Object.fromEntries(
+            customFields.map((field) => [customColumnName(field.systemName), customValueFromJson(row.customValues, field.systemName)])
+          ),
           created_at: row.createdAt.toISOString()
         }))
       ),
@@ -317,10 +341,12 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
   if (input.reportType === "traceability") {
     const rows = requirements.flatMap((reqRow) =>
       reqRow.caseLinks.map((link) => {
-        const latest = link.testCase.instances
-          .map((inst) => ({ runId: inst.run.id, runName: inst.run.name, testId: inst.id, result: inst.results[0] }))
-          .filter((row) => row.result)
-          .sort((a, b) => +b.result!.createdAt - +a.result!.createdAt)[0];
+        const latest = latestByCreatedAt(
+          link.testCase.instances
+            .map((inst) => ({ runId: inst.run.id, runName: inst.run.name, testId: inst.id, result: inst.results[0] }))
+            .filter((row) => row.result)
+            .map((row) => ({ ...row, createdAt: row.result!.createdAt }))
+        );
         return {
           requirement_id: reqRow.id,
           requirement_key: reqRow.key,
@@ -348,20 +374,14 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
 
   if (input.reportType === "coverage_gap") {
     const rows = requirements.map((reqRow) => {
-      const latestStatuses = reqRow.caseLinks.map((link) => {
-        const latest = link.testCase.instances
-          .map((inst) => inst.results[0])
-          .filter(Boolean)
-          .sort((a, b) => +b!.createdAt - +a!.createdAt)[0];
-        return latest?.status ?? "untested";
-      });
-      const hasAtRisk = latestStatuses.some((status) => status === "failed" || status === "blocked" || status === "retest");
-      const hasTested = latestStatuses.some((status) => status === "passed");
+      const latestStatuses = reqRow.caseLinks.map(
+        (link) => latestByCreatedAt(link.testCase.instances.map((inst) => inst.results[0]))?.status ?? "untested"
+      );
       return {
         requirement_id: reqRow.id,
         requirement_key: reqRow.key,
         requirement_title: reqRow.title,
-        coverage_status: reqRow.caseLinks.length === 0 ? "uncovered" : hasAtRisk ? "at_risk" : hasTested ? "covered" : "untested",
+        coverage_status: toCoverageStatus(latestStatuses, reqRow.caseLinks.length),
         linked_case_count: reqRow.caseLinks.length,
         latest_statuses: latestStatuses.join("|")
       };
@@ -376,24 +396,22 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
   const rows = requirements.map((reqRow) => {
     const latestResults = reqRow.caseLinks
       .map((link) => {
-        const latest = link.testCase.instances
-          .map((inst) => inst.results[0])
-          .filter(Boolean)
-          .sort((a, b) => +b!.createdAt - +a!.createdAt)[0];
-        return latest ?? null;
+        return latestByCreatedAt(link.testCase.instances.map((inst) => inst.results[0])) ?? null;
       })
       .filter(Boolean);
-    const atRiskResults = latestResults.filter((result) => result.status === "failed" || result.status === "blocked" || result.status === "retest");
-    const defectKeys = Array.from(new Set(atRiskResults.flatMap((result) => result.defectLinks.map((d) => d.defectKey).filter(Boolean))));
+    const defectKeys = toUniqueDefectKeys(latestResults);
+    const atRiskResultCount = latestResults.filter((result) =>
+      result.status === "failed" || result.status === "blocked" || result.status === "retest"
+    ).length;
     return {
       requirement_id: reqRow.id,
       requirement_key: reqRow.key,
       requirement_title: reqRow.title,
       linked_case_count: reqRow.caseLinks.length,
-      at_risk_result_count: atRiskResults.length,
+      at_risk_result_count: atRiskResultCount,
       linked_defect_count: defectKeys.length,
       defect_keys: defectKeys.join("|"),
-      defect_coverage: atRiskResults.length === 0 ? "not_applicable" : defectKeys.length > 0 ? "linked" : "unlinked"
+      defect_coverage: atRiskResultCount === 0 ? "not_applicable" : defectKeys.length > 0 ? "linked" : "unlinked"
     };
   });
   return {
@@ -480,38 +498,51 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
   return { issues, normalized };
 }
 
-export async function registerImportExportRoutes(
-  app: FastifyInstance,
-  deps: { prisma?: PrismaClient; authService: AuthService }
-) {
-  app.post("/api/projects/:projectId/cases/import/csv", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
-    const user = await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const body = caseImportSchema.parse(req.body ?? {});
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case import requires prisma mode", 501);
+class ImportExportService {
+  constructor(private readonly prisma?: PrismaClient) {}
 
-    const rows = parseCsv(body.csv);
-    const { issues, normalized } = await validateImportRows(deps.prisma, projectId, rows, body.sectionId);
-    const summary = { totalRows: rows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
+  getPrisma() {
+    if (!this.prisma) throw new AppError("NOT_IMPLEMENTED", "feature requires prisma mode", 501);
+    return this.prisma;
+  }
 
-    if (body.dryRun || (body.atomic && issues.length > 0)) {
-      const job = await deps.prisma.importJob.create({
-        data: {
-          projectId,
-          type: "cases_csv",
-          status: issues.length > 0 ? "failed" : "completed",
-          dryRun: body.dryRun,
-          summary: summary as Prisma.InputJsonValue,
-          errors: issues as Prisma.InputJsonValue,
-          createdBy: user.id
-        }
-      });
-      const status = !body.dryRun && body.atomic && issues.length > 0 ? 400 : 200;
-      return reply.status(status).send(toJsonSafe(ok({ job, summary, issues })));
-    }
+  async createCaseImportJob(input: {
+    projectId: bigint;
+    userId: bigint;
+    dryRun: boolean;
+    summary: Prisma.InputJsonValue;
+    issues: Prisma.InputJsonValue;
+    status: "failed" | "completed" | "completed_with_errors";
+  }) {
+    const prisma = this.getPrisma();
+    return prisma.importJob.create({
+      data: {
+        projectId: input.projectId,
+        type: "cases_csv",
+        status: input.status,
+        dryRun: input.dryRun,
+        summary: input.summary,
+        errors: input.issues,
+        createdBy: input.userId
+      }
+    });
+  }
 
-    const imported = await deps.prisma.$transaction(async (tx) => {
+  async importValidatedCases(projectId: bigint, userId: bigint, normalized: Array<{
+    sectionId: bigint;
+    title: string;
+    preconditions?: string;
+    priority?: string;
+    caseType?: string;
+    refs?: string;
+    labels: string[];
+    automationKey?: string;
+    externalId?: string;
+    customValues: Record<string, ScalarCustomValue>;
+    steps: Array<{ content: string; expectedResult?: string | null }>;
+  }>) {
+    const prisma = this.getPrisma();
+    return prisma.$transaction(async (tx) => {
       const created = [];
       for (const item of normalized) {
         const section = await tx.section.findUnique({
@@ -533,8 +564,8 @@ export async function registerImportExportRoutes(
             automationKey: item.automationKey,
             externalId: item.externalId,
             customValues: item.customValues,
-            createdBy: user.id,
-            updatedBy: user.id,
+            createdBy: userId,
+            updatedBy: userId,
             steps: {
               create: item.steps.map((step, index) => ({
                 stepOrder: index + 1,
@@ -561,80 +592,46 @@ export async function registerImportExportRoutes(
       }
       return created;
     });
+  }
 
-    summary.imported = imported.length;
-    const job = await deps.prisma.importJob.create({
-      data: {
-        projectId,
-        type: "cases_csv",
-        status: issues.length > 0 ? "completed_with_errors" : "completed",
-        dryRun: false,
-        summary: summary as Prisma.InputJsonValue,
-        errors: issues as Prisma.InputJsonValue,
-        createdBy: user.id
-      }
-    });
-    return reply.send(toJsonSafe(ok({ job, summary, issues })));
-  });
-
-  app.get("/api/projects/:projectId/import-jobs", async (req, reply) => {
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+  async listImportJobs(projectId: bigint, page: number, pageSize: number) {
+    const prisma = this.getPrisma();
     const where = { projectId };
-    const [rows, total] = await deps.prisma.$transaction([
-      deps.prisma.importJob.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
-      deps.prisma.importJob.count({ where })
+    const [rows, total] = await prisma.$transaction([
+      prisma.importJob.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.importJob.count({ where })
     ]);
-    return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
-  });
+    return { rows, total };
+  }
 
-  app.get("/api/projects/:projectId/export-jobs", async (req, reply) => {
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+  async listExportJobs(projectId: bigint, page: number, pageSize: number) {
+    const prisma = this.getPrisma();
     const where = { projectId };
-    const [rows, total] = await deps.prisma.$transaction([
-      deps.prisma.exportJob.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
-      deps.prisma.exportJob.count({ where })
+    const [rows, total] = await prisma.$transaction([
+      prisma.exportJob.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.exportJob.count({ where })
     ]);
-    return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
-  });
+    return { rows, total };
+  }
 
-  app.post("/api/projects/:projectId/reports/export", async (req, reply) => {
-    const user = await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const body = reportExportSchema.parse(req.body ?? {});
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
-
-    const job = await deps.prisma.exportJob.create({
+  async createReportExportJob(projectId: bigint, userId: bigint, body: z.infer<typeof reportExportSchema>) {
+    const prisma = this.getPrisma();
+    return prisma.exportJob.create({
       data: {
         projectId,
         type: `report_${body.reportType}_csv`,
         filters: normalizeReportFilters(body) as Prisma.InputJsonValue,
         status: "pending",
         summary: { format: body.format, maxRows: body.maxRows } as Prisma.InputJsonValue,
-        createdBy: user.id
+        createdBy: userId
       }
     });
-    return reply.status(202).send(
-      toJsonSafe(
-        ok({
-          job,
-          downloadUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}/download`
-        })
-      )
-    );
-  });
+  }
 
-  app.get("/api/projects/:projectId/reports/export", async (req, reply) => {
-    const user = await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const query = reportExportSchema.parse(req.query ?? {});
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
-
-    const exported = await buildReportExport(deps.prisma, projectId, query);
-    const job = await deps.prisma.exportJob.create({
+  async buildAdHocReportExport(projectId: bigint, userId: bigint, query: z.infer<typeof reportExportSchema>) {
+    const prisma = this.getPrisma();
+    const exported = await buildReportExport(prisma, projectId, query);
+    const job = await prisma.exportJob.create({
       data: {
         projectId,
         type: `report_${query.reportType}_csv`,
@@ -645,30 +642,22 @@ export async function registerImportExportRoutes(
           fileName: exported.fileName,
           contentType: "text/csv"
         } as Prisma.InputJsonValue,
-        createdBy: user.id
+        createdBy: userId
       }
     });
-    reply.header("content-type", "text/csv; charset=utf-8");
-    reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
-    reply.header("x-export-job-id", job.id.toString());
-    return reply.send(exported.csv);
-  });
+    return { exported, job };
+  }
 
-  app.get("/api/projects/:projectId/export-jobs/:jobId/download", async (req, reply) => {
-    await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const { jobId } = exportJobIdParamSchema.parse(req.params);
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "export job download requires prisma mode", 501);
-
-    const job = await deps.prisma.exportJob.findFirst({ where: { id: jobId, projectId } });
+  async buildReportExportFromJob(projectId: bigint, jobId: bigint) {
+    const prisma = this.getPrisma();
+    const job = await prisma.exportJob.findFirst({ where: { id: jobId, projectId } });
     if (!job) throw new AppError("NOT_FOUND", `export job ${jobId.toString()} not found`, 404);
     if (!job.type.startsWith("report_")) {
       throw new AppError("VALIDATION_ERROR", "only report export jobs can be downloaded by job id", 400);
     }
-
     const filters = parseReportFilters(job.filters);
-    const exported = await buildReportExport(deps.prisma, projectId, filters);
-    await deps.prisma.exportJob.update({
+    const exported = await buildReportExport(prisma, projectId, filters);
+    await prisma.exportJob.update({
       where: { id: job.id },
       data: {
         status: "completed",
@@ -679,21 +668,17 @@ export async function registerImportExportRoutes(
         } as Prisma.InputJsonValue
       }
     });
-    reply.header("content-type", "text/csv; charset=utf-8");
-    reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
-    return reply.send(exported.csv);
-  });
+    return exported;
+  }
 
-  app.get("/api/projects/:projectId/cases/export/csv", async (req, reply) => {
-    const user = await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case export requires prisma mode", 501);
-    const rows = await deps.prisma.testCase.findMany({
+  async exportCasesCsv(projectId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const rows = await prisma.testCase.findMany({
       where: { projectId, deletedAt: null },
       orderBy: { id: "asc" },
       include: { steps: { where: { deletedAt: null }, orderBy: { stepOrder: "asc" } } }
     });
-    const customFields = await deps.prisma.customField.findMany({
+    const customFields = await prisma.customField.findMany({
       where: { projectId, scope: "case", deletedAt: null, isActive: true },
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       select: { systemName: true }
@@ -737,34 +722,35 @@ export async function registerImportExportRoutes(
         steps: row.steps.map((step) => `${step.content}${step.expectedResult ? `=>${step.expectedResult}` : ""}`).join("|")
       }))
     );
-    await deps.prisma.exportJob.create({
+    await prisma.exportJob.create({
       data: {
         projectId,
         type: "cases_csv",
         status: "completed",
         summary: { totalRows: rows.length } as Prisma.InputJsonValue,
-        createdBy: user.id
+        createdBy: userId
       }
     });
-    reply.header("content-type", "text/csv; charset=utf-8");
-    reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases.csv"`);
-    return reply.send(csv);
-  });
+    return csv;
+  }
 
-  app.get("/api/projects/:projectId/runs/:runId/results/export/csv", async (req, reply) => {
-    const user = await getAuthenticatedUser(req, deps);
-    const { projectId } = projectIdParamSchema.parse(req.params);
-    const { runId } = runIdParamSchema.parse(req.params);
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "result export requires prisma mode", 501);
-    const run = await deps.prisma.testRun.findFirst({ where: { id: runId, projectId, deletedAt: null } });
+  async exportRunResultsCsv(projectId: bigint, runId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const run = await prisma.testRun.findFirst({ where: { id: runId, projectId, deletedAt: null } });
     if (!run) throw new AppError("NOT_FOUND", `run ${runId.toString()} not found`, 404);
-    const rows = await deps.prisma.testResult.findMany({
+    const rows = await prisma.testResult.findMany({
       where: { instance: { runId } },
       orderBy: { createdAt: "desc" },
       include: { instance: true, defectLinks: { where: { deletedAt: null } } }
     });
+    const customFields = await prisma.customField.findMany({
+      where: { projectId, scope: "result", deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { systemName: true }
+    });
+    const customHeaders = customFields.map((field) => customColumnName(field.systemName));
     const csv = toCsv(
-      ["result_id", "test_id", "case_id", "status", "comment", "elapsed", "version", "source", "defects", "created_at"],
+      ["result_id", "test_id", "case_id", "status", "comment", "elapsed", "version", "source", "defects", ...customHeaders, "created_at"],
       rows.map((row) => ({
         result_id: row.id,
         test_id: row.testInstanceId,
@@ -775,19 +761,140 @@ export async function registerImportExportRoutes(
         version: row.version,
         source: row.source,
         defects: [...row.defects, ...row.defectLinks.map((link) => link.defectKey)].join("|"),
+        ...Object.fromEntries(
+          customFields.map((field) => [customColumnName(field.systemName), customValueFromJson(row.customValues, field.systemName)])
+        ),
         created_at: row.createdAt.toISOString()
       }))
     );
-    await deps.prisma.exportJob.create({
+    await prisma.exportJob.create({
       data: {
         projectId,
         type: "run_results_csv",
         filters: { runId: runId.toString() } as Prisma.InputJsonValue,
         status: "completed",
         summary: { totalRows: rows.length } as Prisma.InputJsonValue,
-        createdBy: user.id
+        createdBy: userId
       }
     });
+    return csv;
+  }
+}
+
+export async function registerImportExportRoutes(
+  app: FastifyInstance,
+  deps: { prisma?: PrismaClient; authService: AuthService }
+) {
+  const importExportService = new ImportExportService(deps.prisma);
+  app.post("/api/projects/:projectId/cases/import/csv", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = caseImportSchema.parse(req.body ?? {});
+    const prisma = importExportService.getPrisma();
+
+    const rows = parseCsv(body.csv);
+    const { issues, normalized } = await validateImportRows(prisma, projectId, rows, body.sectionId);
+    const summary = { totalRows: rows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
+
+    if (body.dryRun || (body.atomic && issues.length > 0)) {
+      const job = await importExportService.createCaseImportJob({
+        projectId,
+        userId: user.id,
+        dryRun: body.dryRun,
+        summary: summary as Prisma.InputJsonValue,
+        issues: issues as Prisma.InputJsonValue,
+        status: issues.length > 0 ? "failed" : "completed"
+      });
+      const status = !body.dryRun && body.atomic && issues.length > 0 ? 400 : 200;
+      return reply.status(status).send(toJsonSafe(ok({ job, summary, issues })));
+    }
+
+    const imported = await importExportService.importValidatedCases(projectId, user.id, normalized);
+
+    summary.imported = imported.length;
+    const job = await importExportService.createCaseImportJob({
+      projectId,
+      userId: user.id,
+      dryRun: false,
+      summary: summary as Prisma.InputJsonValue,
+      issues: issues as Prisma.InputJsonValue,
+      status: issues.length > 0 ? "completed_with_errors" : "completed"
+    });
+    return reply.send(toJsonSafe(ok({ job, summary, issues })));
+  });
+
+  app.get("/api/projects/:projectId/import-jobs", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+    const { rows, total } = await importExportService.listImportJobs(projectId, page, pageSize);
+    return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
+  });
+
+  app.get("/api/projects/:projectId/export-jobs", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+    const { rows, total } = await importExportService.listExportJobs(projectId, page, pageSize);
+    return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
+  });
+
+  app.post("/api/projects/:projectId/reports/export", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = reportExportSchema.parse(req.body ?? {});
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
+    const job = await importExportService.createReportExportJob(projectId, user.id, body);
+    return reply.status(202).send(
+      toJsonSafe(
+        ok({
+          job,
+          downloadUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}/download`
+        })
+      )
+    );
+  });
+
+  app.get("/api/projects/:projectId/reports/export", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = reportExportSchema.parse(req.query ?? {});
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
+    const { exported, job } = await importExportService.buildAdHocReportExport(projectId, user.id, query);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
+    reply.header("x-export-job-id", job.id.toString());
+    return reply.send(exported.csv);
+  });
+
+  app.get("/api/projects/:projectId/export-jobs/:jobId/download", async (req, reply) => {
+    await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { jobId } = exportJobIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "export job download requires prisma mode", 501);
+    const exported = await importExportService.buildReportExportFromJob(projectId, jobId);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
+    return reply.send(exported.csv);
+  });
+
+  app.get("/api/projects/:projectId/cases/export/csv", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case export requires prisma mode", 501);
+    const csv = await importExportService.exportCasesCsv(projectId, user.id);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases.csv"`);
+    return reply.send(csv);
+  });
+
+  app.get("/api/projects/:projectId/runs/:runId/results/export/csv", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "result export requires prisma mode", 501);
+    const csv = await importExportService.exportRunResultsCsv(projectId, runId, user.id);
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="run-${runId.toString()}-results.csv"`);
     return reply.send(csv);

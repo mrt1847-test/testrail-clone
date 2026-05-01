@@ -49,6 +49,10 @@ export const updateCaseSchema = z.object({
   expectedVersion: z.coerce.number().int().positive().optional()
 });
 
+export const bulkDeleteCasesSchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1).max(200)
+});
+
 export const stepIdParamSchema = z.object({
   stepId: z.coerce.bigint()
 });

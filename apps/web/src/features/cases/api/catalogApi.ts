@@ -181,6 +181,21 @@ export async function deleteCase(caseId: number): Promise<void> {
   await apiFetch<void>(`/api/cases/${caseId}`, { method: "DELETE" });
 }
 
+export type BulkDeleteCasesResult = {
+  requested: number;
+  deleted: number;
+  failed: number;
+  items: Array<{ caseId: string; success: boolean; error: string | null }>;
+};
+
+export async function bulkDeleteCases(projectId: string, caseIds: number[]): Promise<BulkDeleteCasesResult> {
+  const res = await apiFetch<Ok<BulkDeleteCasesResult>>(`/api/projects/${projectId}/cases/bulk-delete`, {
+    method: "POST",
+    body: { caseIds }
+  });
+  return res.data;
+}
+
 export async function createCaseStep(
   caseId: number,
   input: { content: string; expectedResult?: string | null }
