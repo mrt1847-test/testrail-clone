@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { ok } from "../../common/utils/http.js";
+import { toJsonSafe } from "../../common/utils/serialize.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
@@ -391,7 +392,7 @@ export async function registerReportsRoutes(
     const activeRuns = runs.filter((run) => run.status === "open").length;
     const overview = await reportsQueryService.getOverview(projectId);
     if (overview) {
-      return reply.send(ok(overview));
+      return reply.send(toJsonSafe(ok(overview)));
     }
     return reply.send(
       ok({
@@ -436,19 +437,19 @@ export async function registerReportsRoutes(
       { date: toIsoDate(1), failed: failureCount },
       { date: toIsoDate(0), failed: failureCount }
     ];
-    return reply.send(ok({ points }));
+    return reply.send(toJsonSafe(ok({ points })));
   });
 
   app.get("/api/projects/:projectId/reports/automation-coverage", async (req, reply) => {
     projectIdParamSchema.parse(req.params);
-    return reply.send(ok({ pct: 0 }));
+    return reply.send(toJsonSafe(ok({ pct: 0 })));
   });
 
   app.get("/api/projects/:projectId/reports/recent-failures", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const prismaItems = await reportsQueryService.listRecentFailures(projectId);
     if (prismaItems) {
-      return reply.send(ok({ items: prismaItems }));
+      return reply.send(toJsonSafe(ok({ items: prismaItems })));
     }
     const runs = await deps.repo.listRunsByProject(projectId);
     const items: ReportActivityItem[] = [];
@@ -468,14 +469,14 @@ export async function registerReportsRoutes(
         }
       }
     }
-    return reply.send(ok({ items: items.slice(0, 10) }));
+    return reply.send(toJsonSafe(ok({ items: items.slice(0, 10) })));
   });
 
   app.get("/api/projects/:projectId/reports/recent-results", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const prismaItems = await reportsQueryService.listRecentResults(projectId);
     if (prismaItems) {
-      return reply.send(ok({ items: prismaItems }));
+      return reply.send(toJsonSafe(ok({ items: prismaItems })));
     }
     const runs = await deps.repo.listRunsByProject(projectId);
     const items: ReportActivityItem[] = [];
@@ -493,7 +494,7 @@ export async function registerReportsRoutes(
         });
       }
     }
-    return reply.send(ok({ items: items.slice(0, 20) }));
+    return reply.send(toJsonSafe(ok({ items: items.slice(0, 20) })));
   });
 
   app.get("/api/projects/:projectId/reports/results-explorer", async (req, reply) => {
@@ -515,13 +516,13 @@ export async function registerReportsRoutes(
     });
     if (prismaExplorer) {
       return reply.send(
-        ok({
+        toJsonSafe(ok({
           items: prismaExplorer.items,
           page,
           pageSize,
           total: prismaExplorer.total,
           totalPages: Math.max(1, Math.ceil(prismaExplorer.total / pageSize))
-        })
+        }))
       );
     }
 
@@ -589,13 +590,13 @@ export async function registerReportsRoutes(
     const start = (page - 1) * pageSize;
     const items = allItems.slice(start, start + pageSize);
     return reply.send(
-      ok({
+      toJsonSafe(ok({
         items,
         page,
         pageSize,
         total,
         totalPages: Math.max(1, Math.ceil(total / pageSize))
-      })
+      }))
     );
   });
 
@@ -616,24 +617,24 @@ export async function registerReportsRoutes(
         progress: metrics.progress
       });
     }
-    return reply.send(ok({ items }));
+    return reply.send(toJsonSafe(ok({ items })));
   });
 
   app.get("/api/projects/:projectId/reports/traceability", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await reportsQueryService.listTraceability(projectId);
-    return reply.send(ok({ items: items ?? [] }));
+    return reply.send(toJsonSafe(ok({ items: items ?? [] })));
   });
 
   app.get("/api/projects/:projectId/reports/coverage-gap", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await reportsQueryService.listCoverageGap(projectId);
-    return reply.send(ok({ items: items ?? [] }));
+    return reply.send(toJsonSafe(ok({ items: items ?? [] })));
   });
 
   app.get("/api/projects/:projectId/reports/defect-coverage", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await reportsQueryService.listDefectCoverage(projectId);
-    return reply.send(ok({ items: items ?? [] }));
+    return reply.send(toJsonSafe(ok({ items: items ?? [] })));
   });
 }

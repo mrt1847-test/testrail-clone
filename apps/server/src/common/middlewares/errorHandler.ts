@@ -26,6 +26,9 @@ export function handleRouteError(error: unknown, _req: FastifyRequest, reply: Fa
     });
   }
 
+  // eslint-disable-next-line no-console
+  console.error(`Unhandled route error: ${_req.method} ${_req.url}`, error);
+
   return reply.status(500).send({
     error: {
       code: "INTERNAL_ERROR",

@@ -1,5 +1,5 @@
 import { buildApp } from "./app.js";
-import { env } from "./config/env.js";
+import { describeDatabaseUrl, env } from "./config/env.js";
 import { getPrismaClient } from "./db/prisma.js";
 import { startWebhookDeliveryWorker } from "./modules/settings/webhookDelivery.worker.js";
 
@@ -12,6 +12,8 @@ if (!env.useInMemoryRepository) {
 
 // eslint-disable-next-line no-console
 console.log(`Starting server on port ${env.port}`);
+// eslint-disable-next-line no-console
+console.log(`Database connection: ${describeDatabaseUrl(env.databaseUrl)}`);
 
 app.listen({ port: env.port, host: "0.0.0.0" }).then(() => {
   // eslint-disable-next-line no-console
