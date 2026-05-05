@@ -135,6 +135,14 @@ export class ResultsService {
     return this.repo.listResultsForTestInstance(testId);
   }
 
+  async listResultsForTestInstancePage(testId: bigint, page: number, pageSize: number) {
+    const instance = await this.repo.transaction(async (tx) => tx.getTestInstanceById(testId));
+    if (!instance) {
+      throw new AppError("TEST_NOT_FOUND", `test instance ${testId.toString()} not found`);
+    }
+    return this.repo.listResultsForTestInstancePage(testId, page, pageSize);
+  }
+
   async listResultStepsByResultId(resultId: bigint) {
     return this.repo.listResultStepsByResultId(resultId);
   }

@@ -39,11 +39,56 @@ const caseSelect = {
   title: true,
   priority: true,
   caseType: true,
+  estimate: true,
+  refs: true,
+  labels: true,
+  automationKey: true,
+  externalId: true,
   preconditions: true,
   customValues: true,
   lockVersion: true,
-  updatedAt: true
+  updatedAt: true,
+  archivedAt: true
 } satisfies Prisma.TestCaseSelect;
+
+function caseStateWhere(state: "active" | "archived" | "all" = "active"): Prisma.TestCaseWhereInput {
+  if (state === "archived") {
+    return { archivedAt: { not: null } };
+  }
+  if (state === "all") {
+    return {};
+  }
+  return { archivedAt: null };
+}
+
+function normalizeSearchTerm(value: string | undefined) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function caseMatchesSearch(
+  row: Pick<
+    CaseRow,
+    "id" | "title" | "refs" | "labels" | "automationKey" | "externalId" | "customValues"
+  >,
+  q: string | undefined
+) {
+  const needle = normalizeSearchTerm(q);
+  if (!needle) return true;
+  const customValues = Object.values(row.customValues ?? {})
+    .filter((value) => value != null && String(value).trim().length > 0)
+    .map((value) => String(value).toLowerCase());
+  const haystacks = [
+    row.title,
+    row.refs ?? "",
+    row.automationKey ?? "",
+    row.externalId ?? "",
+    `c${row.id.toString()}`,
+    ...(row.labels ?? []),
+    ...customValues
+  ].map((value) => value.toLowerCase());
+  return haystacks.some((value) => value.includes(needle));
+}
 
 function mapCaseRow(row: {
   id: bigint;
@@ -52,10 +97,16 @@ function mapCaseRow(row: {
   title: string;
   priority: string | null;
   caseType: string | null;
+  estimate: string | null;
+  refs: string | null;
+  labels: string[];
+  automationKey: string | null;
+  externalId: string | null;
   preconditions: string | null;
   customValues: Prisma.JsonValue;
   lockVersion: number;
   updatedAt: Date;
+  archivedAt: Date | null;
 }): CaseRow {
   return {
     id: row.id,
@@ -64,10 +115,16 @@ function mapCaseRow(row: {
     title: row.title,
     priority: row.priority,
     caseType: row.caseType,
+    estimate: row.estimate,
+    refs: row.refs,
+    labels: row.labels,
+    automationKey: row.automationKey,
+    externalId: row.externalId,
     preconditions: row.preconditions,
     customValues: jsonObject(row.customValues),
     lockVersion: row.lockVersion,
-    updatedAt: row.updatedAt
+    updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt
   };
 }
 
@@ -263,28 +320,44 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     });
   }
 
-  async listCasesForSuite(projectId: bigint, suiteId: bigint): Promise<CaseRow[]> {
+  async listCasesForSuite(projectId: bigint, suiteId: bigint, state: "active" | "archived" | "all" = "active"): Promise<CaseRow[]> {
     const rows = await this.prisma.testCase.findMany({
-      where: { projectId, suiteId, deletedAt: null },
+      where: { projectId, suiteId, deletedAt: null, ...caseStateWhere(state) },
       orderBy: { id: "asc" },
       select: caseSelect
     });
     return rows.map(mapCaseRow);
   }
 
-  async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]> {
+  async listCases(params: {
+    projectId?: bigint;
+    suiteId?: bigint;
+    sectionId?: bigint;
+    q?: string;
+    priority?: string;
+    caseType?: string;
+    automation?: "manual" | "automated";
+    state?: "active" | "archived" | "all";
+  }): Promise<CaseRow[]> {
     const rows = await this.prisma.testCase.findMany({
       where: {
         deletedAt: null,
+        ...caseStateWhere(params.state),
         ...(params.projectId !== undefined ? { projectId: params.projectId } : {}),
         ...(params.suiteId !== undefined ? { suiteId: params.suiteId } : {}),
         ...(params.sectionId !== undefined ? { sectionId: params.sectionId } : {}),
-        ...(params.q ? { title: { contains: params.q, mode: "insensitive" } } : {})
+        ...(params.priority ? { priority: { equals: params.priority, mode: "insensitive" } } : {}),
+        ...(params.caseType ? { caseType: { equals: params.caseType, mode: "insensitive" } } : {}),
+        ...(params.automation === "automated"
+          ? { automationKey: { not: null } }
+          : params.automation === "manual"
+            ? { automationKey: null }
+            : {})
       },
       orderBy: { id: "asc" },
       select: caseSelect
     });
-    return rows.map(mapCaseRow);
+    return rows.map(mapCaseRow).filter((row) => caseMatchesSearch(row, params.q));
   }
 
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow> {
@@ -310,6 +383,11 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         title: input.title,
         priority: input.priority,
         caseType: input.caseType,
+        estimate: input.estimate,
+        refs: input.refs,
+        labels: input.labels ?? [],
+        automationKey: input.automationKey,
+        externalId: input.externalId,
         ...(input.preconditions !== undefined && input.preconditions !== null
           ? { preconditions: input.preconditions }
           : {}),
@@ -546,7 +624,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
 
   async updateCase(
     caseId: bigint,
-    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion" | "archivedAt">>,
     expectedVersion?: number
   ): Promise<CaseRow | "conflict" | null> {
     const found = await this.getCase(caseId);
@@ -580,6 +658,42 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
         ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
         ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
+        lockVersion: { increment: 1 }
+      },
+      select: caseSelect
+    });
+    return mapCaseRow(row);
+  }
+
+  async setCaseArchived(caseId: bigint, archived: boolean): Promise<CaseRow | "already_archived" | "already_active" | null> {
+    const found = await this.getCase(caseId);
+    if (!found) return null;
+    if (archived && found.archivedAt) return "already_archived";
+    if (!archived && !found.archivedAt) return "already_active";
+    const row = await this.prisma.testCase.update({
+      where: { id: caseId },
+      data: {
+        archivedAt: archived ? new Date() : null,
+        lockVersion: { increment: 1 }
+      },
+      select: caseSelect
+    });
+    return mapCaseRow(row);
+  }
+
+  async moveCase(caseId: bigint, targetSectionId: bigint): Promise<CaseRow | null> {
+    const found = await this.getCase(caseId);
+    if (!found) return null;
+    const targetSection = await this.prisma.section.findFirst({
+      where: { id: targetSectionId, deletedAt: null },
+      select: { suiteId: true }
+    });
+    if (!targetSection) return null;
+    const row = await this.prisma.testCase.update({
+      where: { id: caseId },
+      data: {
+        suiteId: targetSection.suiteId,
+        sectionId: targetSectionId,
         lockVersion: { increment: 1 }
       },
       select: caseSelect

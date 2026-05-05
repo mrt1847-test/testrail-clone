@@ -25,10 +25,16 @@ export type CaseRow = {
   title: string;
   priority?: string | null;
   caseType?: string | null;
+  estimate?: string | null;
+  refs?: string | null;
+  labels?: string[];
+  automationKey?: string | null;
+  externalId?: string | null;
   preconditions?: string | null;
   customValues?: Record<string, string | number | boolean | null>;
   lockVersion: number;
   updatedAt: Date;
+  archivedAt?: Date | null;
 };
 
 export type CaseStepRow = {
@@ -74,8 +80,17 @@ export interface ProjectsRepository {
   deleteSection(sectionId: bigint): Promise<boolean>;
   getSection(sectionId: bigint): Promise<SectionRow | null>;
 
-  listCasesForSuite(projectId: bigint, suiteId: bigint): Promise<CaseRow[]>;
-  listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }): Promise<CaseRow[]>;
+  listCasesForSuite(projectId: bigint, suiteId: bigint, state?: "active" | "archived" | "all"): Promise<CaseRow[]>;
+  listCases(params: {
+    projectId?: bigint;
+    suiteId?: bigint;
+    sectionId?: bigint;
+    q?: string;
+    priority?: string;
+    caseType?: string;
+    automation?: "manual" | "automated";
+    state?: "active" | "archived" | "all";
+  }): Promise<CaseRow[]>;
   createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow>;
   getCase(caseId: bigint): Promise<CaseRow | null>;
   listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
@@ -95,9 +110,11 @@ export interface ProjectsRepository {
   deleteCaseStep(stepId: bigint): Promise<boolean>;
   updateCase(
     caseId: bigint,
-    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion" | "archivedAt">>,
     expectedVersion?: number
   ): Promise<CaseRow | "conflict" | null>;
+  setCaseArchived(caseId: bigint, archived: boolean): Promise<CaseRow | "already_archived" | "already_active" | null>;
+  moveCase(caseId: bigint, targetSectionId: bigint): Promise<CaseRow | null>;
   deleteCase(caseId: bigint): Promise<boolean>;
 }
 export class ProjectsRepository {}

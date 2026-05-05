@@ -16,6 +16,7 @@ import {
   toUniqueDefectKeys
 } from "../reports/reportMetrics.service.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 type CsvRow = Record<string, string>;
 type ImportIssue = { row: number; field?: string; code: string; message: string };
@@ -309,14 +310,15 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
     };
   }
 
-  const requirements = await prisma.requirement.findMany({
-    where: { projectId, deletedAt: null },
-    orderBy: { id: "asc" },
-    take: input.maxRows,
-    include: {
-      caseLinks: {
-        include: {
-          testCase: {
+    const requirements = await prisma.requirement.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: { id: "asc" },
+      take: input.maxRows,
+      include: {
+        caseLinks: {
+          where: { testCase: { deletedAt: null, archivedAt: null } },
+          include: {
+            testCase: {
             select: {
               id: true,
               title: true,
@@ -674,7 +676,7 @@ class ImportExportService {
   async exportCasesCsv(projectId: bigint, userId: bigint) {
     const prisma = this.getPrisma();
     const rows = await prisma.testCase.findMany({
-      where: { projectId, deletedAt: null },
+      where: { projectId, archivedAt: null, deletedAt: null },
       orderBy: { id: "asc" },
       include: { steps: { where: { deletedAt: null }, orderBy: { stepOrder: "asc" } } }
     });
@@ -807,6 +809,22 @@ export async function registerImportExportRoutes(
         status: issues.length > 0 ? "failed" : "completed"
       });
       const status = !body.dryRun && body.atomic && issues.length > 0 ? 400 : 200;
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "import",
+        entityId: job.id,
+        eventType: "import.cases_csv_validated",
+        title: "Case CSV import validated",
+        body: `valid ${normalized.length} · invalid ${issues.length}`,
+        payload: {
+          dryRun: body.dryRun,
+          atomic: body.atomic,
+          totalRows: rows.length,
+          validRows: normalized.length,
+          invalidRows: issues.length
+        }
+      });
       return reply.status(status).send(toJsonSafe(ok({ job, summary, issues })));
     }
 
@@ -820,6 +838,20 @@ export async function registerImportExportRoutes(
       summary: summary as Prisma.InputJsonValue,
       issues: issues as Prisma.InputJsonValue,
       status: issues.length > 0 ? "completed_with_errors" : "completed"
+    });
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "import",
+      entityId: job.id,
+      eventType: "import.cases_csv_committed",
+      title: "Case CSV import completed",
+      body: `imported ${imported.length} · invalid ${issues.length}`,
+      payload: {
+        imported: imported.length,
+        invalidRows: issues.length,
+        totalRows: rows.length
+      }
     });
     return reply.send(toJsonSafe(ok({ job, summary, issues })));
   });
@@ -846,6 +878,20 @@ export async function registerImportExportRoutes(
     const body = reportExportSchema.parse(req.body ?? {});
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
     const job = await importExportService.createReportExportJob(projectId, user.id, body);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "report",
+      entityId: job.id,
+      eventType: "report.export_requested",
+      title: "Report export requested",
+      body: body.reportType,
+      payload: {
+        reportType: body.reportType,
+        format: body.format,
+        jobId: job.id.toString()
+      }
+    });
     return reply.status(202).send(
       toJsonSafe(
         ok({
@@ -862,6 +908,22 @@ export async function registerImportExportRoutes(
     const query = reportExportSchema.parse(req.query ?? {});
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "report export requires prisma mode", 501);
     const { exported, job } = await importExportService.buildAdHocReportExport(projectId, user.id, query);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "report",
+      entityId: job.id,
+      eventType: "report.export_completed",
+      title: "Report export completed",
+      body: query.reportType,
+      payload: {
+        reportType: query.reportType,
+        format: query.format,
+        totalRows: exported.totalRows,
+        fileName: exported.fileName,
+        jobId: job.id.toString()
+      }
+    });
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
     reply.header("x-export-job-id", job.id.toString());
@@ -869,11 +931,30 @@ export async function registerImportExportRoutes(
   });
 
   app.get("/api/projects/:projectId/export-jobs/:jobId/download", async (req, reply) => {
-    await getAuthenticatedUser(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { jobId } = exportJobIdParamSchema.parse(req.params);
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "export job download requires prisma mode", 501);
     const exported = await importExportService.buildReportExportFromJob(projectId, jobId);
+    const reportType = String(exported.fileName).includes("run-summary")
+      ? "run_summary"
+      : String(exported.fileName).includes("traceability")
+        ? "traceability"
+        : String(exported.fileName).includes("coverage-gap")
+          ? "coverage_gap"
+          : String(exported.fileName).includes("defect-coverage")
+            ? "defect_coverage"
+            : "results_explorer";
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "report",
+      entityId: jobId,
+      eventType: "report.export_downloaded",
+      title: "Report export downloaded",
+      body: reportType,
+      payload: { reportType, jobId: jobId.toString(), fileName: exported.fileName, totalRows: exported.totalRows }
+    });
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
     return reply.send(exported.csv);

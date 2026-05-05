@@ -184,6 +184,8 @@ export type CreateRunInput = {
   includeAll: boolean;
   caseIds?: string[];
   excludedCaseIds?: string[];
+  includedSectionIds?: string[];
+  excludedSectionIds?: string[];
   milestoneId?: string | null;
   environment?: string;
 };
@@ -197,6 +199,8 @@ export async function createRun(input: CreateRunInput): Promise<RunSummary> {
       includeAll: input.includeAll,
       caseIds: input.caseIds,
       excludedCaseIds: input.excludedCaseIds,
+      includedSectionIds: input.includedSectionIds,
+      excludedSectionIds: input.excludedSectionIds,
       milestoneId: input.milestoneId ?? undefined,
       environment: input.environment
     }
@@ -225,9 +229,8 @@ type ApiResultHistory = {
   createdAt: string;
 };
 
-export async function fetchTestResults(testId: string): Promise<TestResultHistoryItem[]> {
-  const rows = await apiFetch<ApiResultHistory[]>(`/api/tests/${testId}/results`);
-  return rows.map((row) => ({
+function mapApiResultHistory(row: ApiResultHistory): TestResultHistoryItem {
+  return {
     id: String(row.id),
     status: row.status,
     comment: row.comment,
@@ -237,7 +240,56 @@ export async function fetchTestResults(testId: string): Promise<TestResultHistor
     defects: row.defects ?? [],
     customValues: row.customValues ?? {},
     createdAt: row.createdAt
-  }));
+  };
+}
+
+export async function fetchTestResultsPage(
+  testId: string,
+  page: number,
+  pageSize: number
+): Promise<{
+  items: TestResultHistoryItem[];
+  total: number;
+  totalPages: number;
+  page: number;
+  pageSize: number;
+}> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  const res = await apiFetch<
+    Ok<{
+      items: ApiResultHistory[];
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    }>
+  >(`/api/tests/${testId}/results?${params}`);
+  const d = res.data;
+  return {
+    items: d.items.map(mapApiResultHistory),
+    total: d.total,
+    totalPages: d.totalPages,
+    page: d.page,
+    pageSize: d.pageSize
+  };
+}
+
+export async function reopenRun(runId: string) {
+  return apiFetch<Ok<ApiRun>>(`/api/runs/${runId}/reopen`, { method: "POST" });
+}
+
+export async function addCasesToRun(runId: string, caseIds: string[]) {
+  return apiFetch<Ok<{ run: ApiRun; added: ApiInstance[]; skipped: number }>>(`/api/runs/${runId}/tests`, {
+    method: "POST",
+    body: { caseIds }
+  });
+}
+
+export async function removeTestFromRun(runId: string, testId: string, confirmDataLoss?: boolean) {
+  return apiFetch<Ok<{ removed: boolean; hadResults: boolean }>>(`/api/runs/${runId}/remove-test`, {
+    method: "POST",
+    body: { testId, confirmDataLoss }
+  });
 }
 
 type ApiResultStep = {

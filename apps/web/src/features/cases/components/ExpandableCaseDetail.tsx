@@ -2,20 +2,17 @@ import { useEffect, useState } from "react";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import type { CaseStep, CaseVersion, TestCase } from "../types";
-
-type CaseCustomFieldDefinition = {
-  systemName: string;
-  name: string;
-  fieldType: "text" | "number" | "select" | "boolean";
-  options: string[];
-  isRequired: boolean;
-  isActive: boolean;
-};
+import {
+  CaseAuthoringForm,
+  type CaseAuthoringCustomFieldDefinition,
+  type CaseAuthoringTemplateDefinition
+} from "./CaseAuthoringForm";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
   versions: CaseVersion[];
-  customFields?: CaseCustomFieldDefinition[];
+  customFields?: CaseAuthoringCustomFieldDefinition[];
+  caseTemplates?: CaseAuthoringTemplateDefinition[];
   mode: "view" | "edit";
   onEdit: () => void;
   onClose: () => void;
@@ -27,6 +24,7 @@ type ExpandableCaseDetailProps = {
   onDelete: () => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
+  submitError?: string | null;
   isDeleting?: boolean;
   isRestoring?: boolean;
   onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
@@ -52,6 +50,7 @@ export function ExpandableCaseDetail({
   data,
   versions,
   customFields = [],
+  caseTemplates = [],
   mode,
   onEdit,
   onClose,
@@ -59,6 +58,7 @@ export function ExpandableCaseDetail({
   onDelete,
   onRestoreVersion,
   isSaving = false,
+  submitError = null,
   isDeleting = false,
   isRestoring = false,
   onCreateStep,
@@ -116,211 +116,124 @@ export function ExpandableCaseDetail({
     }
   }
 
-  function setCustomValue(systemName: string, value: string | number | boolean | null) {
-    setCustomValues((prev) => ({ ...prev, [systemName]: value }));
-  }
-
   return (
     <div className="border-t border-slate-100 bg-slate-50 px-4 py-4">
       <h4 className="text-sm font-semibold text-slate-900">
         {data.caseCode} {data.title}
       </h4>
+      {data.archivedAt ? (
+        <p className="mt-1 text-xs font-medium text-amber-700">
+          Archived on {new Date(data.archivedAt).toLocaleString()}
+        </p>
+      ) : null}
 
       {mode === "edit" ? (
-        <div className="mt-3 grid gap-3">
-          <label className="grid gap-1 text-sm text-slate-700">
-            Title
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-            />
-          </label>
-
-          <label className="grid gap-1 text-sm text-slate-700">
-            Preconditions
-            <textarea
-              value={preconditions}
-              onChange={(e) => setPreconditions(e.target.value)}
-              className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-            />
-          </label>
-
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-800">Steps</span>
-              <button
-                type="button"
-                disabled={isStepsBusy || !onCreateStep}
-                className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                onClick={() => void onCreateStep?.({ content: "New step", expected: "" })}
-              >
-                {isStepsBusy ? "Saving..." : "Add step"}
-              </button>
-            </div>
-
-            {localSteps.length === 0 ? (
-              <p className="text-xs text-slate-500">No steps yet.</p>
-            ) : (
-              <ol className="list-decimal space-y-3 pl-5 text-sm">
-                {localSteps.map((step, index) => (
-                  <li key={step.id ?? `local-${index}`} className="grid gap-2 rounded-md border border-slate-200 bg-white p-2">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={isStepsBusy || step.id == null || index === 0}
-                        className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
-                        onClick={() => step.id != null && moveStep(step.id, "up")}
+        <div className="mt-3">
+          <CaseAuthoringForm
+            valueKey={`${data.id}:${data.lockVersion}:${mode}`}
+            initialTitle={title}
+            initialPreconditions={preconditions}
+            initialCustomValues={customValues}
+            customFields={customFields}
+            templates={caseTemplates}
+            submitLabel={isSaving ? "Saving..." : "Save"}
+            isSubmitting={isSaving}
+            submitError={submitError}
+            stepsSection={
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-800">Steps</span>
+                  <button
+                    type="button"
+                    disabled={isStepsBusy || !onCreateStep}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => void onCreateStep?.({ content: "New step", expected: "" })}
+                  >
+                    {isStepsBusy ? "Saving..." : "Add step"}
+                  </button>
+                </div>
+                {localSteps.length === 0 ? (
+                  <p className="text-xs text-slate-500">No steps yet.</p>
+                ) : (
+                  <ol className="list-decimal space-y-3 pl-5 text-sm">
+                    {localSteps.map((step, index) => (
+                      <li
+                        key={step.id ?? `local-${index}`}
+                        className="grid gap-2 rounded-md border border-slate-200 bg-white p-2"
                       >
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isStepsBusy || step.id == null || index === localSteps.length - 1}
-                        className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
-                        onClick={() => step.id != null && moveStep(step.id, "down")}
-                      >
-                        Down
-                      </button>
-                      {step.id != null ? (
-                        <button
-                          type="button"
-                          disabled={isStepsBusy}
-                          className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800"
-                          onClick={() => setStepDeleteId(step.id!)}
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <label className="grid gap-0.5 text-xs text-slate-600">
-                      Action
-                      <textarea
-                        value={step.description}
-                        disabled={isStepsBusy}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setLocalSteps((prev) =>
-                            prev.map((s, i) => (i === index ? { ...s, description: value } : s))
-                          );
-                        }}
-                        onBlur={() => persistStepIfChanged(step, index)}
-                        className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                      />
-                    </label>
-
-                    <label className="grid gap-0.5 text-xs text-slate-600">
-                      Expected
-                      <textarea
-                        value={step.expected}
-                        disabled={isStepsBusy}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, expected: value } : s)));
-                        }}
-                        onBlur={() => persistStepIfChanged(step, index)}
-                        className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                      />
-                    </label>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-
-          {customFields.filter((field) => field.isActive).length > 0 ? (
-            <div className="grid gap-2 rounded-md border border-slate-200 bg-white p-3">
-              <p className="text-sm font-medium text-slate-800">Custom fields</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {customFields
-                  .filter((field) => field.isActive)
-                  .map((field) => {
-                    const value = customValues[field.systemName];
-                    if (field.fieldType === "select") {
-                      return (
-                        <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
-                          {field.name}
-                          <select
-                            className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                            value={typeof value === "string" ? value : ""}
-                            onChange={(e) => setCustomValue(field.systemName, e.target.value || null)}
+                        <div className="flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={isStepsBusy || step.id == null || index === 0}
+                            className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
+                            onClick={() => step.id != null && moveStep(step.id, "up")}
                           >
-                            <option value="">-</option>
-                            {field.options.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      );
-                    }
-                    if (field.fieldType === "boolean") {
-                      return (
-                        <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
-                          {field.name}
-                          <select
-                            className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                            value={typeof value === "boolean" ? String(value) : ""}
-                            onChange={(e) =>
-                              setCustomValue(
-                                field.systemName,
-                                e.target.value === "" ? null : e.target.value === "true"
-                              )
-                            }
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isStepsBusy || step.id == null || index === localSteps.length - 1}
+                            className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
+                            onClick={() => step.id != null && moveStep(step.id, "down")}
                           >
-                            <option value="">-</option>
-                            <option value="true">True</option>
-                            <option value="false">False</option>
-                          </select>
-                        </label>
-                      );
-                    }
-                    return (
-                      <label key={field.systemName} className="grid gap-1 text-xs text-slate-600">
-                        {field.name}
-                        <input
-                          type={field.fieldType === "number" ? "number" : "text"}
-                          className="rounded border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                          value={value == null ? "" : String(value)}
-                          onChange={(e) =>
-                            setCustomValue(
-                              field.systemName,
-                              field.fieldType === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value || null
-                            )
-                          }
-                        />
-                      </label>
-                    );
-                  })}
-              </div>
-            </div>
-          ) : null}
+                            Down
+                          </button>
+                          {step.id != null ? (
+                            <button
+                              type="button"
+                              disabled={isStepsBusy}
+                              className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800"
+                              onClick={() => setStepDeleteId(step.id!)}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={isSaving || !title.trim()}
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
-              onClick={() =>
-                void onSave({
-                  title: title.trim(),
-                  preconditions: preconditions.trim(),
-                  customValues
-                })
-              }
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-          </div>
+                        <label className="grid gap-0.5 text-xs text-slate-600">
+                          Action
+                          <textarea
+                            value={step.description}
+                            disabled={isStepsBusy}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setLocalSteps((prev) =>
+                                prev.map((s, i) => (i === index ? { ...s, description: value } : s))
+                              );
+                            }}
+                            onBlur={() => persistStepIfChanged(step, index)}
+                            className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                          />
+                        </label>
+
+                        <label className="grid gap-0.5 text-xs text-slate-600">
+                          Expected
+                          <textarea
+                            value={step.expected}
+                            disabled={isStepsBusy}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, expected: value } : s)));
+                            }}
+                            onBlur={() => persistStepIfChanged(step, index)}
+                            className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                          />
+                        </label>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </>
+            }
+            onSubmit={async (input) => {
+              await onSave({
+                title: input.title,
+                preconditions: input.preconditions,
+                customValues: input.customValues
+              });
+            }}
+            onCancel={onClose}
+          />
         </div>
       ) : (
         <>
@@ -331,6 +244,9 @@ export function ExpandableCaseDetail({
           <p className="text-sm text-slate-700">
             <span className="font-medium">References:</span> {data.references || "-"} /{" "}
             <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
+          </p>
+          <p className="text-sm text-slate-700">
+            <span className="font-medium">Labels:</span> {data.labels.length > 0 ? data.labels.join(", ") : "-"}
           </p>
           <p className="text-sm text-slate-700">
             <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}

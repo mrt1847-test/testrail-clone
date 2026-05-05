@@ -110,9 +110,22 @@
 - `PATCH /api/cases/{caseId}`
 - `DELETE /api/cases/{caseId}`
 - `POST /api/projects/{projectId}/cases/bulk-delete`
+- `POST /api/projects/{projectId}/cases/bulk-move`
+- `POST /api/projects/{projectId}/cases/bulk-update`
+- `POST /api/projects/{projectId}/cases/bulk-archive`
 - `POST /api/cases/{caseId}/steps`
 - `PATCH /api/case-steps/{stepId}`
 - `DELETE /api/case-steps/{stepId}`
+
+Case list query baseline:
+- `GET /api/projects/{projectId}/cases`
+  - `sectionId`
+  - `q` searches case code/title, refs, automation key, external id, labels, and custom field values
+  - `priority`
+  - `caseType`
+  - `automation` (`manual` or `automated`)
+  - `state` (`active` default, `archived` to view archived cases)
+  - `page`, `pageSize`
 
 Bulk delete baseline:
 - `POST /api/projects/{projectId}/cases/bulk-delete`
@@ -125,6 +138,73 @@ Bulk delete baseline:
     "requested": 3,
     "deleted": 2,
     "failed": 1,
+    "items": [
+      { "caseId": "1", "success": true, "error": null },
+      { "caseId": "2", "success": true, "error": null },
+      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
+    ]
+  }
+}
+```
+
+Bulk move baseline:
+- `POST /api/projects/{projectId}/cases/bulk-move`
+- Body: `{ "caseIds": [1, 2, 3], "targetSectionId": 10 }`
+- The server validates that the target section belongs to the same project, only moves project-scoped cases, and returns per-case result rows:
+
+```json
+{
+  "data": {
+    "requested": 3,
+    "moved": 2,
+    "failed": 1,
+    "targetSectionId": "10",
+    "items": [
+      { "caseId": "1", "success": true, "error": null },
+      { "caseId": "2", "success": true, "error": null },
+      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
+    ]
+  }
+}
+```
+
+Bulk update baseline:
+- `POST /api/projects/{projectId}/cases/bulk-update`
+- Body: `{ "caseIds": [1, 2, 3], "patch": { "priority": "low", "caseType": "integration" } }`
+- Current baseline supports shared updates for `priority` and `caseType` across project-scoped selected cases and returns per-case result rows:
+
+```json
+{
+  "data": {
+    "requested": 3,
+    "updated": 2,
+    "failed": 1,
+    "patch": {
+      "priority": "low",
+      "caseType": "integration"
+    },
+    "items": [
+      { "caseId": "1", "success": true, "error": null },
+      { "caseId": "2", "success": true, "error": null },
+      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
+    ]
+  }
+}
+```
+
+Bulk archive baseline:
+- `POST /api/projects/{projectId}/cases/bulk-archive`
+- Body: `{ "caseIds": [1, 2, 3], "archived": true }`
+- Use `archived: false` to restore archived cases back into the active repository baseline.
+- Archived cases are hidden from default case lists and suite-based run composition, but remain addressable by direct case detail/version APIs.
+
+```json
+{
+  "data": {
+    "requested": 3,
+    "changed": 2,
+    "failed": 1,
+    "archived": true,
     "items": [
       { "caseId": "1", "success": true, "error": null },
       { "caseId": "2", "success": true, "error": null },
@@ -147,6 +227,7 @@ Case optimistic locking (phase 2 baseline):
 
 Semantics (case steps):
 - `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept `customValues` as an object keyed by custom field `systemName`.
+- Case create/update validate `customValues` against the project's active case custom field definitions; create rejects missing required active fields, and create/update reject unknown fields or invalid option/number values.
 - `GET /api/cases/{caseId}` and case list responses include `customValues`; current baseline stores scalar values (`string`, `number`, `boolean`, or `null`).
 - `GET /api/cases/{caseId}` includes an ordered `steps` array. Each step exposes `id`, `stepOrder`, `content`, and `expectedResult` (nullable). Soft-deleted steps are omitted.
 - `POST /api/cases/{caseId}/steps`: body requires `content`; `expectedResult` is optional (nullable). The server assigns the next `stepOrder` within the case (clients do not choose the insert position via this endpoint).
@@ -197,34 +278,28 @@ Current baseline:
 - `GET /api/projects/{projectId}/runs/{runId}`
 - `GET /api/projects/{projectId}/runs/{runId}/instances`
 - `PATCH /api/runs/{runId}`
-- planned: `POST /api/runs/{runId}/cases`
-- planned: `DELETE /api/runs/{runId}/cases/{caseId}`
-- planned: `POST /api/runs/{runId}/cases/bulk`
 - `POST /api/runs/{runId}/close`
+- `POST /api/runs/{runId}/reopen`
 - `POST /api/runs/{runId}/rerun`
+- `POST /api/runs/{runId}/tests` (body: `{ "caseIds": ["101","102"] }`, open run only; `409 RUN_CLOSED` when closed)
+- `POST /api/runs/{runId}/remove-test` (body: `{ "testId": "…", "confirmDataLoss"?: true }`; without `confirmDataLoss`, tests with result history return `409 TEST_HAS_RESULTS`)
 
-Run composition baseline and gap:
-- Current baseline supports `POST /api/projects/{projectId}/runs` with either:
-  - `includeAll: true` to include all cases in a suite, or
-  - `includeAll: false` plus `caseIds` for a flat explicit case selection.
-- Missing P0 behavior:
-  - section-level include/exclude during run creation,
-  - include-all-with-exclusions for large suites,
-  - add/remove cases after run creation,
-  - safeguards for closed runs and cases that already have results,
-  - per-case add/remove feedback for bulk composition changes.
+Run composition baseline:
+- `POST /api/projects/{projectId}/runs` accepts:
+  - `includeAll: true` — all cases in `suiteId`, optional `excludedCaseIds`, optional `excludedSectionIds` (section subtree roots), optional `includedSectionIds` (restrict to subtrees).
+  - `includeAll: false` — required `caseIds`, optional `includedSectionIds` (intersect selection with subtrees).
+- Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
 
-Planned run creation body shape:
+Example run creation body:
 
 ```json
 {
   "suiteId": "1",
   "name": "Regression",
-  "selectionMode": "include_all_except",
+  "includeAll": true,
+  "excludedCaseIds": ["199"],
   "includedSectionIds": ["10", "11"],
-  "excludedSectionIds": ["12"],
-  "includedCaseIds": ["101", "102"],
-  "excludedCaseIds": ["199"]
+  "excludedSectionIds": ["12"]
 }
 ```
 
@@ -256,6 +331,7 @@ Run close semantics:
 
 ## Results
 - `GET /api/tests/{testId}/results`
+  - Query: `page`, `pageSize` (default page 1, pageSize 20). Response: `{ "data": { "items": [...], "page", "pageSize", "total", "totalPages" } }` (`Ok` envelope).
 - `POST /api/tests/{testId}/results`
 - `POST /api/runs/{runId}/results`
 - `POST /api/runs/{runId}/results/by-case`
@@ -438,6 +514,17 @@ Permission baseline:
 - `DELETE /api/projects/{projectId}/settings/templates/{templateId}`
 - `GET /api/projects/{projectId}/settings/audit-logs`
 - `GET /api/projects/{projectId}/settings/audit-log-filters`
+- `GET /api/projects/{projectId}/settings/webhooks`
+- `POST /api/projects/{projectId}/settings/webhooks`
+- `PATCH /api/projects/{projectId}/settings/webhooks/{webhookId}`
+- `DELETE /api/projects/{projectId}/settings/webhooks/{webhookId}`
+- `GET /api/projects/{projectId}/settings/webhook-events`
+- `GET /api/projects/{projectId}/settings/webhook-attempts`
+- `POST /api/projects/{projectId}/settings/webhook-attempts/{attemptId}/retry`
+- `POST /api/projects/{projectId}/settings/webhooks/{webhookId}/test-send` (DB mode only; synchronous probe, records `webhook_delivery_attempt`)
+
+Webhook delivery (DB-backed server process):
+- When `USE_IN_MEMORY_REPOSITORY` is not enabled, a background interval processes `webhook_delivery_attempt` rows in `pending` state (respecting `nextRetryAt`), POSTs JSON to `targetUrl` with `X-Webhook-Signature` and `X-Webhook-Event`, and stores HTTP status/body or error with exponential backoff up to a capped attempt count.
 
 Custom field shape:
 ```json
@@ -617,6 +704,7 @@ CI metadata fields (for automation endpoints and optionally run/result metadata)
 - `testId` always maps to `test_instances.id`.
 
 ## TestRail-like Adapter
+- `GET /api/v2/get_projects`
 - `GET /api/v2/get_case/{case_id}`
 - `GET /api/v2/get_cases/{project_id}`
 - `POST /api/v2/add_case/{section_id}`

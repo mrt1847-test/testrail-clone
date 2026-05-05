@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
+import { paginationQuerySchema } from "../../common/types/pagination.js";
+import { ok } from "../../common/utils/http.js";
 import type { ResultsService } from "./results.service.js";
 import { resultIdParamSchema, resultSchema, testIdParamSchema } from "./results.schema.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
@@ -135,8 +137,19 @@ export async function registerResultsRoutes(
 
   app.get("/api/tests/:testId/results", async (req, reply) => {
     const params = testIdParamSchema.parse(req.params);
-    const results = await deps.resultsService.listResultsForTestInstance(params.testId);
-    return reply.send(toJsonSafe(results));
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    const { items, total } = await deps.resultsService.listResultsForTestInstancePage(params.testId, page, pageSize);
+    return reply.send(
+      toJsonSafe(
+        ok({
+          items,
+          page,
+          pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / pageSize))
+        })
+      )
+    );
   });
 
   app.get("/api/results/:resultId/steps", async (req, reply) => {

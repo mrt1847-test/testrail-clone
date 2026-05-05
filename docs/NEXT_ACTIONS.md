@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-02
+Last aligned: 2026-05-05
 
 This is the current implementation queue after reviewing the docs and codebase. It now includes the actionable workflow items that previously lived in `CORE_FEATURE_COMPLETION_PLAN.md`.
 
@@ -45,61 +45,37 @@ The implementation order should follow the daily TestRail workflow:
 
 ## Immediate Priority
 
-1. Run case selection and run composition
-   - Current baseline: run creation supports all cases, all cases with explicit excluded `caseIds`, or an explicit flat `caseIds` selection.
-   - Missing P0: section-level include/exclude during run creation.
-   - Missing P0: add/remove cases after run creation with clear rules for closed runs and existing results.
-   - Missing P0: grouped selection UX by section, selected/excluded counts, and validation before creating the run.
-   - Follow-up: record run composition changes in activity/audit logs and expose source links back to sections/cases.
+1. Case repository productivity
+   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state), list metadata/custom-value chips, and template-aware required-field authoring validation exist.
+   - Remaining P1: deeper list filters/columns beyond the current saved `q`/priority/type/automation/archive-state view baseline.
 
-2. Run execution workspace
-   - Current baseline: run detail can list/filter/page instances, select tests via URL state, enter results, attach evidence, link defects, and close runs.
-   - Baseline done: decomposition into focused hooks/components (`useRunUrlState`, `useRunDetailQueries`, `useRunBulkActions`, result-entry subcomponents) reduced `RunDetailPage` coupling.
-   - Missing P0: componentized run header, summary bar, filter bar, and stable test table for large daily execution.
-   - Missing P0: result history pagination per selected test.
-   - Missing P0: clearer close/reopen policy and warnings.
-   - Missing P0: scoped cache invalidation after result and assignment changes.
-
-3. Case repository productivity
-   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, and bulk delete exist.
-   - Missing P0: bulk move/update/archive beyond delete.
-   - Missing P0: saved case filters/views and richer list filters.
-   - Missing P1: required-field UI validation, case list custom-value presentation, and template-aware form ordering.
-
-4. Report detail pages and risk review
-   - Current baseline: run summary, result explorer, traceability, coverage gap, and defect coverage APIs/exports exist.
-   - Missing P0: drilldown pages with filters, summary strips, table/chart bodies, export actions, and source links.
-   - Missing P1: milestone and plan summary reports.
-
-5. Activity events and notification inbox
+2. Activity events and notification inbox
    - Baseline done: `ActivityEvent`, `Notification`, and `NotificationPreference` persistence.
    - Baseline done: activity writer helper, project activity API, notification inbox API, preferences API.
    - Baseline done: UI routes for Activity and Notifications, plus shell/settings entry points.
+   - Baseline done: report export and case import/export workflows now emit activity events with drilldown payloads.
    - Missing P0: broader event coverage for case, run composition, execution, reporting, assignment, and defect workflows.
    - Missing P0: richer notification targeting and activity drilldown links.
-   - Follow-up: email/digest delivery jobs.
+   - Missing P0: email/digest notification delivery jobs.
 
-6. Result custom field values
-   - Baseline done: `CustomField.scope` separates case and result fields.
-   - Baseline done: `TestResult.customValues` persists validated result values for manual/API/bulk result entry.
-   - Baseline done: `ResultEntryPanel`, result history, and result explorer render result custom values.
-   - Baseline done: `ResultEntryPanel` normalizes elapsed input, includes timer controls, uses defect key chips, supports case-step-aware multi-step result editing, shows field-level validation messaging, and is split into focused subcomponents.
-   - Baseline done: result custom values are included as `custom_{systemName}` columns in run result and result explorer CSV exports.
-   - Baseline done: result explorer supports active result custom field exact-match filters via `custom_{systemName}` query params and UI controls.
-   - Baseline done: boolean custom field type definition, validation, case/result form rendering, import parsing, and result explorer filtering.
-   - Follow-up: add richer field types beyond boolean and broader result form/reporting quality improvements.
+3. Report detail pages and risk review polish
+   - Baseline done: nested report routes/pages for run summary, results explorer, traceability, coverage gap, and defect coverage.
+   - Baseline done: report APIs and CSV export jobs.
+   - Missing P1: standard filter bars, summary strips, chart/table composition, and drilldown/source-link consistency.
+   - Missing P1: milestone and plan summary reports.
 
-7. Case version compare and restore UI
-   - Baseline done: `GET /api/cases/:caseId/versions/:versionId`.
-   - Baseline done: expanded case detail shows version timeline and field/step comparison.
-   - Baseline done: restore flow uses optimistic locking and creates a new version snapshot.
-   - Follow-up: richer visual diffs, restore conflict messaging, attachment snapshot context, and dedicated version detail drawer.
+4. Run composition and execution UX hardening
+   - Baseline done: section-level include/exclude during run creation.
+   - Baseline done: add/remove cases after run creation with closed-run restrictions and existing-result safeguards.
+   - Baseline done: result history pagination, scoped cache invalidation, and reopen policy baseline.
+   - Baseline done: run create/add/remove activity payloads now include run/test/case references for drilldown linking.
+   - Baseline done: grouped section-tree selection UX in run create with subtree case counts and scope validation feedback.
+   - Missing P1: run header/summary/filter/table split for large daily execution.
+   - Follow-up: add richer activity/audit coverage and source links for composition changes.
 
-8. Webhook delivery model
-   - Baseline done: persisted webhook subscriptions with event filters and secrets.
-   - Baseline done: activity events enqueue signed webhook delivery attempts.
-   - Baseline done: settings UI can create, toggle, delete, inspect attempts, and mark attempts for retry.
-   - Follow-up: background HTTP delivery worker, exponential backoff, response capture, manual test-send, and richer audit filters.
+5. Compatibility and migration depth (`/api/v2`)
+   - Baseline done: core case/run/test/result automation endpoints plus `GET /api/v2/get_projects`.
+   - Missing P1/P2: projects/suites/sections/milestones/plans/configurations and customization/admin/report categories.
 
 ## Workflow Completion Backlog
 
@@ -111,9 +87,13 @@ The implementation order should follow the daily TestRail workflow:
 
 - Bulk case operations and saved views
   - Baseline done: multi-select case list UX with project-scoped bulk delete.
+  - Baseline done: bulk move can reassign selected cases to another section with per-case API feedback.
+  - Baseline done: bulk update can apply shared priority/type changes to selected cases with per-case API feedback.
+  - Baseline done: bulk archive can hide selected cases from the active repository/run composition baseline, and archived views can bulk-restore them with per-case API feedback.
   - Baseline done: bulk delete returns per-case success/failure feedback and records a bulk activity event.
-  - Remaining work: bulk move, archive/restore semantics, field updates, labels/refs/custom field changes, richer partial-failure UI, and saved filters/views.
-  - Add saved case filters/views per user/project.
+  - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state filters per user/project and re-apply them from the case toolbar.
+  - Baseline done: case list search/filtering covers title, refs, automation key, labels, and visible custom values; collapsed rows show metadata/custom-value chips for faster scanning.
+  - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and deeper list filters/columns.
 
 - Case step images and rich authoring
   - Extend attachment usage to cases and case steps.
@@ -121,14 +101,16 @@ The implementation order should follow the daily TestRail workflow:
   - Preserve enough attachment context in version snapshots for historical authored content.
 
 - Case custom values follow-up
-  - Case custom value persistence, form rendering, version snapshot inclusion, CSV import/export columns, and active-field import validation are baseline done.
-  - Remaining work: required-field UI validation, optional list columns/chips, and template-aware form ordering.
+  - Case custom value persistence, form rendering, version snapshot inclusion, CSV import/export columns, active-field import validation, required-field UI validation, and template-aware authoring order are baseline done.
+  - Remaining work: deeper optional list columns/presentation beyond the current collapsed-row chip baseline.
 
 ### Test Execution
 
 - Run case selection and composition
-  - Current baseline: create run from all cases in a suite, all-with-case-exclusions, or from a flat manually selected case list.
-  - Remaining work: section-level include/exclude, add/remove cases after run creation, closed-run restrictions, existing-result safeguards, grouped section UI, and composition activity/audit events.
+  - Current baseline: create run from all cases in a suite, all-with-case-exclusions, flat selected cases, and optional section subtree include/exclude.
+  - Baseline done: add/remove cases after run creation, closed-run restrictions, and existing-result safeguards.
+  - Baseline done: grouped section UI and selection feedback in run create.
+  - Remaining work: richer composition activity/audit events and cross-screen source-link wiring.
 
 - Result custom field values
   - Result-scoped field definitions, storage, validation, result history display, and result explorer display are baseline done.
@@ -148,10 +130,12 @@ The implementation order should follow the daily TestRail workflow:
 
 - Run detail workspace
   - Baseline done: query/url/bulk-action concerns were split into dedicated hooks and result entry is decomposed into focused subcomponents.
+  - Baseline done: result history pagination per selected test.
+  - Baseline done: close/reopen endpoint+UI policy baseline.
+  - Baseline done: scoped cache invalidation after key run/result mutations.
   - Add `RunHeader`, `RunSummaryBar`, `TestInstanceFilterBar`, and `TestInstanceTable`.
   - Selected test, filter, search, and page state in URL query params are baseline done.
-  - Add result history pagination per selected test.
-  - Improve bulk result entry, close/reopen warnings, and scoped cache invalidation.
+  - Improve bulk result entry feedback and large-run table ergonomics.
 
 - Assignment and to-do workflow
   - Expand `assigned-to-me` filters by project, run, status, due date, and milestone where available.
@@ -160,8 +144,8 @@ The implementation order should follow the daily TestRail workflow:
 ### Reporting And Traceability
 
 - Report detail pages
-  - Add routes for run summary, results, traceability, coverage gap, and defect coverage reports.
-  - Add filter bars, summary strips, table/chart bodies, export actions, and drilldown links.
+  - Baseline done: routes/pages for run summary, results, traceability, coverage gap, and defect coverage reports.
+  - Add standardized filter bars, summary strips, table/chart bodies, export actions, and drilldown links.
   - Baseline done: shared report metrics extraction is reused by report/import-export routes to reduce duplication.
   - Move report API calls into narrower report modules over time.
 
@@ -202,53 +186,37 @@ The implementation order should follow the daily TestRail workflow:
 
 ## Recommended Implementation Batches
 
-1. Run case selection and composition
-   - Section-grouped run creation UI.
-   - Include/exclude model for cases and sections.
-   - Existing run add/remove cases API/UI with closed-run and result-history safeguards.
-
-2. Run execution workspace
-   - Run header, summary bar, filter bar, and test instance table components.
-   - Result history pagination and scoped cache invalidation.
-   - Close/reopen policy and warnings.
-
-3. Case repository productivity
+1. Case repository productivity
    - Bulk move/update/archive.
    - Saved filters/views.
    - Rich case filters and case list columns.
 
-4. Report detail pages
-   - Report routes, filter bars, exports, and drilldown links.
+2. Activity and notifications
+   - Expand event coverage for case/run/result/assignment/defect/report workflows.
+   - Add notification targeting, drilldown links, and email/digest jobs.
 
-5. Activity and notifications
-   - Baseline done: activity event persistence and writer helpers.
-   - Baseline done: project activity API.
-   - Baseline done: notification preferences, inbox, and unread indicator.
-   - Remaining: broader event coverage, richer targeting, drilldown links, and delivery jobs.
+3. Run composition and execution UX hardening
+   - Section-grouped run creation UX with selected/excluded counts and validation.
+   - Run header, summary bar, filter bar, and test instance table components.
+   - Execution table ergonomics for large runs.
 
-6. Result custom values and result form quality
-   - Baseline done: result custom field storage/rendering.
-   - Baseline done: result custom value CSV export columns.
-   - Baseline done: result explorer custom value filters.
-   - Baseline done: boolean custom field type.
-   - Baseline done: elapsed parser/normalizer.
-   - Baseline done: elapsed timer controls.
-   - Baseline done: defect key chips, case-step-aware multi-step result editor, and field-level validation messaging.
-   - Baseline done: `ResultEntryPanel` component split.
-   - Remaining: richer field types beyond boolean and advanced reporting/filtering semantics.
+4. Reporting polish and operations
+   - Standard filter bars/summary strips and consistent drilldown/source links.
+   - Milestone/plan summary reports.
+   - Saved report definitions and report history/download UX.
 
-7. Case version UI
-   - Baseline done: version detail/compare API.
-   - Baseline done: restore API.
-   - Baseline done: timeline/basic diff UI and conflict-safe restore.
+5. Result custom value depth
+   - Richer field types beyond boolean.
+   - Advanced reporting/filter semantics and list/report presentation improvements.
 
-8. Webhook delivery model
-   - Baseline done: persisted subscriptions.
-   - Baseline done: event taxonomy.
-   - Baseline done: signed delivery attempts, retry state, and settings UI.
-   - Remaining: delivery worker, exponential backoff, response capture, test-send, and richer audit filters.
+6. Webhook and delivery hardening
+   - Disable-on-failure policy and richer webhook/audit filters.
+   - Non-DB mode delivery strategy.
 
-9. Case step images and evidence hardening
+7. `/api/v2` compatibility expansion
+   - Extend by migration impact priority (projects/suites/sections/milestones/plans/configurations first).
+
+8. Case step images and evidence hardening
    - Case/case-step attachment routes.
    - Upload, preview, open, delete, and version reference strategy.
 

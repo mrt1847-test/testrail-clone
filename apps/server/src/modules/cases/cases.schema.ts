@@ -36,7 +36,11 @@ export const listCasesQuerySchema = z.object({
   projectId: z.coerce.bigint().optional(),
   suiteId: z.coerce.bigint().optional(),
   sectionId: z.coerce.bigint().optional(),
-  q: z.string().optional()
+  q: z.string().optional(),
+  priority: z.string().optional(),
+  caseType: z.string().optional(),
+  automation: z.enum(["manual", "automated"]).optional(),
+  state: z.enum(["active", "archived"]).optional()
 });
 
 export const updateCaseSchema = z.object({
@@ -51,6 +55,28 @@ export const updateCaseSchema = z.object({
 
 export const bulkDeleteCasesSchema = z.object({
   caseIds: z.array(z.coerce.bigint()).min(1).max(200)
+});
+
+export const bulkMoveCasesSchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1).max(200),
+  targetSectionId: z.coerce.bigint()
+});
+
+export const bulkUpdateCasesSchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1).max(200),
+  patch: z
+    .object({
+      priority: z.string().optional(),
+      caseType: z.string().optional()
+    })
+    .refine((value) => value.priority !== undefined || value.caseType !== undefined, {
+      message: "at least one patch field is required"
+    })
+});
+
+export const bulkArchiveCasesSchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1).max(200),
+  archived: z.boolean().default(true)
 });
 
 export const stepIdParamSchema = z.object({

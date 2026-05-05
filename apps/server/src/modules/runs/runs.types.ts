@@ -16,6 +16,7 @@ export type TestCase = {
   id: bigint;
   projectId: bigint;
   suiteId: bigint;
+  sectionId?: bigint;
   title: string;
   priority: string | null;
   caseType: string | null;
@@ -46,5 +47,7 @@ export type CreateRunWithInstancesInput = {
   includeAll: boolean;
   caseIds?: bigint[];
   excludedCaseIds?: bigint[];
+  includedSectionIds?: bigint[];
+  excludedSectionIds?: bigint[];
   environment?: string | null;
 };

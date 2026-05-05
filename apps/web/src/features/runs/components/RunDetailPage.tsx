@@ -13,6 +13,9 @@ import {
   useAddResultDefectMutation,
   useAddRunResultMutation,
   useCloseRunMutation,
+  useReopenRunMutation,
+  useAddCasesToRunMutation,
+  useRemoveTestFromRunMutation,
   useDeleteAttachmentMutation,
   useDeleteResultDefectMutation,
   useOpenAttachmentDownloadMutation,
@@ -36,6 +39,9 @@ export function RunDetailPage() {
   const [assigneeInput, setAssigneeInput] = useState("");
   const [instanceAssignees, setInstanceAssignees] = useState<Record<string, string>>({});
   const [closeRunDialogOpen, setCloseRunDialogOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 15;
+  const [addCasesInput, setAddCasesInput] = useState("");
   const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
   const [rerunSelectedStatuses, setRerunSelectedStatuses] = useState<Array<"failed" | "blocked" | "retest">>(["failed"]);
   const instancePageSize = 50;
@@ -48,7 +54,7 @@ export function RunDetailPage() {
   const { statusFilter, setStatusFilter, assigneeFilter, setAssigneeFilter, searchText, setSearchText, instancePage, setInstancePage } =
     urlState;
 
-  const queries = useRunDetailQueries({
+  const queries =   useRunDetailQueries({
     projectId,
     runId,
     selectedCaseId,
@@ -56,6 +62,8 @@ export function RunDetailPage() {
     selectedResultId,
     instancePage,
     pageSize: instancePageSize,
+    historyPage,
+    historyPageSize,
     statusFilter,
     assigneeFilter,
     searchText
@@ -78,6 +86,9 @@ export function RunDetailPage() {
 
   const addResultMutation = useAddRunResultMutation(projectId, runId);
   const closeRunMutation = useCloseRunMutation(projectId, runId);
+  const reopenRunMutation = useReopenRunMutation(projectId, runId);
+  const addCasesMutation = useAddCasesToRunMutation(projectId, runId);
+  const removeTestMutation = useRemoveTestFromRunMutation(projectId, runId);
   const assigneeMutation = useUpdateRunAssigneeMutation(projectId, runId);
   const testAssigneeMutation = useUpdateTestAssigneeMutation(projectId, runId);
   const rerunMutation = useRerunMutation(projectId, runId);
@@ -100,6 +111,7 @@ export function RunDetailPage() {
 
   useEffect(() => {
     setSelectedResultId(null);
+    setHistoryPage(1);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -252,7 +264,11 @@ export function RunDetailPage() {
                 }}
               />
               <ResultHistoryList
-                history={historyQuery.data ?? []}
+                history={historyQuery.data?.items ?? []}
+                historyTotal={historyQuery.data?.total ?? 0}
+                historyPage={historyPage}
+                historyTotalPages={historyQuery.data?.totalPages ?? 1}
+                onHistoryPageChange={setHistoryPage}
                 isHistoryLoading={historyQuery.isLoading}
                 selectedResultId={selectedResultId}
                 onSelectResult={setSelectedResultId}
@@ -278,6 +294,58 @@ export function RunDetailPage() {
                 onPushDefect={(input) => void pushDefectMutation.mutateAsync(input)}
                 onDeleteDefect={(defectLinkId) => void deleteDefectMutation.mutateAsync(defectLinkId)}
               />
+              {run.status === "open" ? (
+                <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
+                  <p className="font-medium text-slate-700">Run composition</p>
+                  <p className="mt-1 text-slate-500">케이스 ID를 쉼표로 구분해 오픈 런에 추가합니다.</p>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1"
+                      placeholder="예: 101, 102"
+                      value={addCasesInput}
+                      onChange={(e) => setAddCasesInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
+                      disabled={addCasesMutation.isPending}
+                      onClick={() => {
+                        const ids = addCasesInput
+                          .split(/[,\s]+/)
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        if (ids.length === 0) return;
+                        void addCasesMutation.mutateAsync(ids).then(() => setAddCasesInput(""));
+                      }}
+                    >
+                      {addCasesMutation.isPending ? "Adding…" : "Add cases"}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 text-rose-700 underline disabled:opacity-50"
+                    disabled={!selected || removeTestMutation.isPending}
+                    onClick={() => {
+                      if (!selected) return;
+                      void removeTestMutation.mutateAsync({ testId: selected.id });
+                    }}
+                  >
+                    Remove selected test (no results)
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 block text-rose-800 underline disabled:opacity-50"
+                    disabled={!selected || removeTestMutation.isPending}
+                    onClick={() => {
+                      if (!selected) return;
+                      if (!window.confirm("이 테스트의 모든 결과 이력이 삭제됩니다. 계속할까요?")) return;
+                      void removeTestMutation.mutateAsync({ testId: selected.id, confirmDataLoss: true });
+                    }}
+                  >
+                    Remove selected test (delete results)
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="mt-3 text-sm text-slate-500">Select a test instance to enter results.</p>
@@ -302,6 +370,9 @@ export function RunDetailPage() {
             canCloseRun={run.status !== "closed"}
             isCloseRunPending={closeRunMutation.isPending}
             onOpenCloseRunDialog={() => setCloseRunDialogOpen(true)}
+            canReopenRun={run.status === "closed"}
+            isReopenRunPending={reopenRunMutation.isPending}
+            onReopenRun={() => void reopenRunMutation.mutateAsync()}
           />
         </aside>
       </div>

@@ -4,6 +4,10 @@ import type { ResultAttachmentItem, ResultDefectLinkItem, TestResultHistoryItem,
 
 type ResultHistoryListProps = {
   history: TestResultHistoryItem[];
+  historyTotal?: number;
+  historyPage?: number;
+  historyTotalPages?: number;
+  onHistoryPageChange?: (page: number) => void;
   isHistoryLoading: boolean;
   selectedResultId: string | null;
   onSelectResult: (resultId: string) => void;
@@ -34,6 +38,10 @@ function customValueEntries(item: TestResultHistoryItem) {
 
 export function ResultHistoryList({
   history,
+  historyTotal = 0,
+  historyPage = 1,
+  historyTotalPages = 1,
+  onHistoryPageChange,
   isHistoryLoading,
   selectedResultId,
   onSelectResult,
@@ -65,7 +73,32 @@ export function ResultHistoryList({
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-medium text-slate-600">Result history</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-slate-600">Result history</p>
+          {onHistoryPageChange && historyTotal > 0 ? (
+            <div className="flex items-center gap-1 text-[11px] text-slate-600">
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-40"
+                disabled={historyPage <= 1}
+                onClick={() => onHistoryPageChange(Math.max(1, historyPage - 1))}
+              >
+                Prev
+              </button>
+              <span>
+                {historyPage}/{historyTotalPages} ({historyTotal})
+              </span>
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-1.5 py-0.5 disabled:opacity-40"
+                disabled={historyPage >= historyTotalPages}
+                onClick={() => onHistoryPageChange(Math.min(historyTotalPages, historyPage + 1))}
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="mt-2 max-h-64 space-y-2 overflow-auto">
           {isHistoryLoading ? (
             <p className="text-xs text-slate-500">Loading history...</p>

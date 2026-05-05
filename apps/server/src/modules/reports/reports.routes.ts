@@ -67,7 +67,7 @@ class ReportsQueryService {
   async getOverview(projectId: bigint) {
     if (!this.prisma) return null;
     const [totalCases, activeRuns, recentFailures, mappedCases] = await Promise.all([
-      this.prisma.testCase.count({ where: { projectId, deletedAt: null } }),
+      this.prisma.testCase.count({ where: { projectId, archivedAt: null, deletedAt: null } }),
       this.prisma.testRun.count({ where: { projectId, status: "open", deletedAt: null } }),
       this.prisma.testResult.count({
         where: {
@@ -76,7 +76,7 @@ class ReportsQueryService {
         }
       }),
       this.prisma.testCase.count({
-        where: { projectId, deletedAt: null, automationKey: { not: null } }
+        where: { projectId, archivedAt: null, deletedAt: null, automationKey: { not: null } }
       })
     ]);
     const automationCoveragePct = totalCases === 0 ? 0 : Math.round((mappedCases / totalCases) * 100);
@@ -214,6 +214,7 @@ class ReportsQueryService {
       orderBy: { id: "asc" },
       include: {
         caseLinks: {
+          where: { testCase: { deletedAt: null, archivedAt: null } },
           include: {
             testCase: {
               select: {
@@ -269,6 +270,7 @@ class ReportsQueryService {
       orderBy: { id: "asc" },
       include: {
         caseLinks: {
+          where: { testCase: { deletedAt: null, archivedAt: null } },
           include: {
             testCase: {
               select: {
@@ -322,6 +324,7 @@ class ReportsQueryService {
       orderBy: { id: "asc" },
       include: {
         caseLinks: {
+          where: { testCase: { deletedAt: null, archivedAt: null } },
           include: {
             testCase: {
               select: {

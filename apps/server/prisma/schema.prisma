@@ -158,6 +158,7 @@ model TestCase {
   lockVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
   deletedAt      DateTime?
   createdBy      BigInt?
   updatedBy      BigInt?
@@ -175,6 +176,7 @@ model TestCase {
   @@index([projectId])
   @@index([sectionId])
   @@index([projectId, sectionId, deletedAt])
+  @@index([projectId, archivedAt, deletedAt])
   @@index([automationKey])
   @@index([externalId])
 }

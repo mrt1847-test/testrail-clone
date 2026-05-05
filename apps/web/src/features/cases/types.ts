@@ -1,5 +1,17 @@
 export type CasePriority = "Low" | "Medium" | "High";
 export type CaseType = "Functional" | "Integration" | "Regression";
+export type CaseFilterPriority = "" | "low" | "medium" | "high";
+export type CaseFilterType = "" | "functional" | "integration" | "regression";
+export type CaseFilterAutomation = "" | "manual" | "automated";
+export type CaseFilterState = "active" | "archived";
+
+export type CaseListFilters = {
+  q: string;
+  priority: CaseFilterPriority;
+  caseType: CaseFilterType;
+  automation: CaseFilterAutomation;
+  state: CaseFilterState;
+};
 
 export type CaseStep = {
   id?: number;
@@ -26,6 +38,7 @@ export interface TestCase {
   sectionId: number;
   lockVersion: number;
   updatedAt: string;
+  archivedAt: string | null;
 }
 
 export type CaseVersion = {
@@ -46,4 +59,11 @@ export interface SectionNode {
   id: number;
   name: string;
 }
+
+export type SavedCaseView = {
+  id: string;
+  name: string;
+  sectionId: number | null;
+  filters: CaseListFilters;
+};
 

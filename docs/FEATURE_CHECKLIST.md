@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-02
+Last aligned: 2026-05-05
 
 This is the working checklist for implemented and planned product capabilities. It is intentionally stricter than the roadmap: if a workflow is only partially usable, it stays open until the missing user-facing pieces are complete.
 
@@ -26,24 +26,23 @@ Legend:
 - "부분 구현"은 `[ ]`로 유지하고, 누락된 사용자 동작(예: drilldown, background worker, safeguards)을 명시한다.
 - 우선순위는 기술 난이도보다 "일일 운영 차단 여부"를 우선한다.
 
-## 현재 구현 점검 요약 (2026-05-02)
+## 현재 구현 점검 요약 (2026-05-04)
 
 검토 결과:
-- 구현 반영 정확도: 현재 체크리스트의 `[x]` 항목은 최근 구조 리팩터와 구현 상태(설정/리포트/가져오기내보내기/실행결과 분리)와 대체로 일치한다.
-- TestRail-like 핵심 적정성: 도메인 범위(프로젝트/케이스/런/결과/리포트/요구사항/마일스톤/플랜/첨부/결함/자동화/알림)는 충분히 정리되어 있다.
-- 가장 큰 공백: "런 구성 심화", "리포트 상세 드릴다운", "활동/알림 전달 파이프라인", "웹훅 실제 전송 워커"가 아직 P0 미완료로 남아 있다.
-- 우선순위 방향성: 현재 문서의 P0/P1/P2 구분은 대체로 적절하며, 실사용 차단 항목이 먼저 오도록 재확인되었다.
+- 2026-05-04 배치: 런 생성 섹션 스코프, 오픈 런 케이스 추가·제거(결과 보존 플래그), 런 재개, 결과 이력 페이징, 리포트 서브라우트, DB 모드 웹훅 전송 워커·test-send, `/api/v2/get_projects`가 반영되었다.
+- 남은 우선 과제: 섹션 그룹 선택 UX, 대규모 실행 화면 분해, 활동/알림 이벤트·이메일 전달, `/api/v2` 비핵심 카테고리 확장 등은 아래 미체크 항목과 Top 10을 따른다.
+- 문서 운영 규칙은 [DOC_MAINTENANCE.md](./DOC_MAINTENANCE.md), 파일 기반 감사 스냅샷은 [FILE_BASED_AUDIT_2026-05-04.md](./FILE_BASED_AUDIT_2026-05-04.md)를 참고한다.
 
 ## 미구현 우선순위 재정렬 (실행 기준 Top 10)
 
 아래 순서는 "테스트 팀이 매일 쓰는 흐름" 기준의 권장 구현 순서다.
 
-1. P0 Run composition 완성: 섹션 include/exclude, include-all-with-exclusions, 생성 후 케이스 추가/제거, 기존 결과 보호.
-2. P0 Run execution 안정화: 대규모 실행용 헤더/요약/필터/테이블 분리, 결과 이력 페이징, 범위 제한 캐시 무효화.
+1. P0 Run composition 완성: ~~섹션 API·생성 후 add/remove·결과 보호~~ (2026-05-04 기준선 완료) → 남음: 섹션 트리 그룹 선택 UX·벌크 피드백.
+2. P0 Run execution 안정화: ~~결과 이력 페이징·일부 캐시 무효화~~ (2026-05-04) → 남음: 대규모 실행용 헤더/요약/필터/테이블 분리.
 3. P0 Case repository 생산성: bulk move/update/archive, 저장된 필터/뷰, 실무 필터 강화.
-4. P0 Report drilldown 페이지: run summary/results/traceability/coverage/defect 리포트의 화면형 상세.
+4. P0 Report drilldown 페이지: ~~서브라우트·테이블형 상세~~ (2026-05-04) → 남음: 통일 필터 바·차트/요약 스트립 고도화.
 5. P0 Activity/Notification 전달력: 핵심 이벤트 커버리지 + 대상자 라우팅 + drilldown 링크.
-6. P0 Webhook delivery worker: 백그라운드 HTTP 전송, 재시도(backoff), 응답 기록, test-send.
+6. P0 Webhook delivery worker: ~~백그라운드 전송·backoff·응답 기록·test-send~~ (2026-05-04, DB 모드).
 7. P1 Result custom field 확장: boolean 이후 타입/검증/필터 고도화.
 8. P1 첨부/증거 운영 강화: 객체 스토리지 수명주기, 업로드 진행률/재시도, 미리보기.
 9. P1 리포트 운영성: 저장/스케줄/히스토리, 마일스톤/플랜 리포트.
@@ -82,12 +81,15 @@ Use this order when choosing the next implementation batch:
 - [x] Case version timeline and basic compare/restore UI baseline.
 - [x] Optimistic locking baseline via `lockVersion`, `expectedVersion`, and `If-Match`.
 - [x] Bulk case delete baseline with multi-select list UX and per-case API feedback.
+- [x] Bulk case move baseline with section reassignment, multi-select list UX, and per-case API feedback.
+- [x] Bulk case field update baseline with shared priority/type changes and per-case API feedback.
+- [x] Saved case filters/views baseline with reusable per-user/project section + query/priority/type/automation/archive-state views.
 - [x] Case custom value CSV import/export columns and active-field import validation baseline.
-- [ ] P0 Bulk case move/update/archive beyond delete.
-- [ ] P0 Saved case filters/views.
-- [ ] P1 Rich case filters and optional list columns/chips.
-- [ ] P1 Case custom value list columns/chips.
-- [ ] P1 Required-field UI validation and template-aware form ordering.
+- [x] P0 Bulk case archive semantics with active-vs-archived repository views, archived run-composition exclusion, and bulk restore feedback.
+- [x] P1 Rich case filter baseline with saved `q`/priority/type/automation/archive-state views and faster collapsed-row metadata chips.
+- [x] P1 Case custom value list chip baseline for visible custom values in collapsed rows.
+- [ ] P1 Deeper case list filters and optional list columns.
+- [x] P1 Required-field UI validation and template-aware case authoring form ordering.
 - [ ] P1 Rich visual diffs for case version comparison.
 - [ ] P1 Restore conflict messaging in UI.
 - [ ] P1 Attachment context in case version snapshots.
@@ -112,17 +114,17 @@ Use this order when choosing the next implementation batch:
 - [x] Run detail selected test, status filter, assignee filter, search, and page state in URL query params.
 - [x] Rerun by selected statuses baseline.
 - [x] Bulk manual result entry API baseline.
-- [ ] P0 Section-level include/exclude during run creation.
+- [x] Section-level include/exclude during run creation (suite subtree roots via `includedSectionIds` / `excludedSectionIds`; run create + Run create UI).
 - [x] Include-all-with-case-exclusions baseline for large suites.
-- [ ] P0 Add cases to an existing open run.
-- [ ] P0 Remove cases from an existing open run.
-- [ ] P0 Existing-result safeguards when removing cases from a run.
-- [ ] P0 Closed-run restrictions for composition changes.
+- [x] P0 Add cases to an existing open run.
+- [x] P0 Remove cases from an existing open run.
+- [x] P0 Existing-result safeguards when removing cases from a run (`confirmDataLoss` + CASCADE delete of results on confirm).
+- [x] P0 Closed-run restrictions for composition changes (API returns `RUN_CLOSED` for mutations).
 - [ ] P0 Grouped run creation selection UX by section with selected/excluded counts.
 - [ ] P1 Run header/summary/filter/table component split.
-- [ ] P1 Result history pagination per selected test.
-- [ ] P1 Scoped cache invalidation after run/result mutations.
-- [ ] P1 Reopen policy.
+- [x] P1 Result history pagination per selected test.
+- [x] P1 Scoped cache invalidation after run/result mutations (results query prefix + bulk result predicate invalidation).
+- [x] P1 Reopen policy (reopen endpoint + UI; closed run cannot accept new composition/results).
 - [ ] P1 Time tracking beyond elapsed entry.
 - [ ] P1 Comments/mentions on execution workflow.
 
@@ -176,7 +178,7 @@ Use this order when choosing the next implementation batch:
 - [x] Result explorer page baseline with filters and source run links.
 - [x] Traceability, coverage gap, and defect coverage CSV export baseline.
 - [x] Report export job/download baseline.
-- [ ] P0 Report detail pages for run summary, results, traceability, coverage gap, and defect coverage.
+- [x] P0 Report detail pages for run summary, results, traceability, coverage gap, and defect coverage (nested routes under `/projects/:id/reports/*`).
 - [ ] P1 Standard report filter bars, summary strips, chart/table bodies, and drilldown links.
 - [ ] P1 Saved report definitions.
 - [ ] P1 Scheduled/email reports.
@@ -232,7 +234,7 @@ Use this order when choosing the next implementation batch:
 - [x] Automation upload history/detail and failed-item retry baseline.
 - [x] Automation mapping summary/list API baseline.
 - [x] Bulk automation result API baseline.
-- [x] TestRail-compatible `/api/v2` baseline for core cases, runs, tests, add result for case, and bulk results for cases.
+- [x] TestRail-compatible `/api/v2` baseline for core cases, runs, tests, add result for case, bulk results for cases, and `GET /api/v2/get_projects`.
 - [ ] P1 Token scopes and expiration enforcement.
 - [ ] P1 Clearer token creation UX.
 - [ ] P1 Automation mapping UI and mapping health beyond the API/list baseline.
@@ -271,9 +273,9 @@ Use this order when choosing the next implementation batch:
 - [ ] P0 Broader activity event coverage across all major mutations.
 - [ ] P0 Notification targeting and activity drilldown links.
 - [ ] P0 Email/digest notification delivery jobs.
-- [ ] P0 Webhook background HTTP delivery worker.
-- [ ] P0 Webhook exponential backoff and response capture.
-- [ ] P0 Manual webhook test-send.
+- [x] P0 Webhook background HTTP delivery worker (DB-backed server; in-memory 모드에서는 미기동).
+- [x] P0 Webhook exponential backoff and response capture.
+- [x] P0 Manual webhook test-send.
 - [ ] P1 Richer webhook and audit filters.
 - [ ] P1 Disable-on-failure policy.
 - [ ] P1 Full audit event coverage, export, retention, and admin audit.

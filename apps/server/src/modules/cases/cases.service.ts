@@ -1,6 +1,7 @@
 import { AppError } from "../../common/errors/appError.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
+import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
 
 type ScalarCustomValue = string | number | boolean | null;
 type CustomValues = Record<string, ScalarCustomValue>;
@@ -12,7 +13,16 @@ function fieldOptions(value: Prisma.JsonValue | null): string[] {
 export class CasesService {
   constructor(private readonly repo: ProjectsRepository) {}
 
-  async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }) {
+  async listCases(params: {
+    projectId?: bigint;
+    suiteId?: bigint;
+    sectionId?: bigint;
+    q?: string;
+    priority?: string;
+    caseType?: string;
+    automation?: "manual" | "automated";
+    state?: "active" | "archived" | "all";
+  }) {
     return this.repo.listCases(params);
   }
 
@@ -129,8 +139,88 @@ export class CasesService {
     };
   }
 
-  async resolveProjectScopedBulkDelete(projectId: bigint, caseIds: bigint[]) {
-    const projectCases = await this.listCases({ projectId });
+  async bulkMoveCases(caseIds: bigint[], targetSectionId: bigint) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const caseId of uniqueCaseIds) {
+      const moved = await this.repo.moveCase(caseId, targetSectionId);
+      items.push({
+        caseId,
+        success: moved != null,
+        error: moved ? null : "NOT_FOUND"
+      });
+    }
+
+    return {
+      requested: caseIds.length,
+      moved: items.filter((item) => item.success).length,
+      failed: items.filter((item) => !item.success).length,
+      items
+    };
+  }
+
+  async bulkUpdateCases(
+    caseIds: bigint[],
+    patch: {
+      priority?: string;
+      caseType?: string;
+    }
+  ) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const caseId of uniqueCaseIds) {
+      const updated = await this.repo.updateCase(caseId, patch);
+      items.push({
+        caseId,
+        success: updated !== null && updated !== "conflict",
+        error: updated === "conflict" ? "CONFLICT" : updated ? null : "NOT_FOUND"
+      });
+      if (updated && updated !== "conflict") {
+        await this.repo.createCaseVersionSnapshot(caseId, "case_bulk_updated");
+      }
+    }
+
+    return {
+      requested: caseIds.length,
+      updated: items.filter((item) => item.success).length,
+      failed: items.filter((item) => !item.success).length,
+      items
+    };
+  }
+
+  async bulkArchiveCases(caseIds: bigint[], archived: boolean) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const caseId of uniqueCaseIds) {
+      const updated = await this.repo.setCaseArchived(caseId, archived);
+      items.push({
+        caseId,
+        success: updated !== null && updated !== "already_archived" && updated !== "already_active",
+        error:
+          updated === "already_archived"
+            ? "ALREADY_ARCHIVED"
+            : updated === "already_active"
+              ? "ALREADY_ACTIVE"
+              : updated
+                ? null
+                : "NOT_FOUND"
+      });
+    }
+
+    return {
+      requested: caseIds.length,
+      changed: items.filter((item) => item.success).length,
+      failed: items.filter((item) => !item.success).length,
+      archived,
+      items
+    };
+  }
+
+  async resolveProjectScopedCaseIds(projectId: bigint, caseIds: bigint[]) {
+    const projectCases = await this.listCases({ projectId, state: "all" });
     const projectCaseIds = new Set(projectCases.map((row) => row.id.toString()));
     return {
       scopedIds: caseIds.filter((caseId) => projectCaseIds.has(caseId.toString())),
@@ -138,8 +228,23 @@ export class CasesService {
     };
   }
 
+  async assertProjectScopedSection(projectId: bigint, sectionId: bigint) {
+    const section = await this.repo.getSection(sectionId);
+    if (!section) throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found`, 404);
+    const suite = await this.repo.getSuite(section.suiteId);
+    if (!suite || suite.projectId !== projectId) {
+      throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found in project`, 404);
+    }
+    return section;
+  }
+
   async projectIdForSection(prisma: PrismaClient | undefined, sectionId: bigint) {
-    if (!prisma) return null;
+    if (!prisma) {
+      const section = await this.repo.getSection(sectionId);
+      if (!section) return null;
+      const suite = await this.repo.getSuite(section.suiteId);
+      return suite?.projectId ?? null;
+    }
     const row = await prisma.section.findFirst({
       where: { id: sectionId, deletedAt: null },
       select: { suite: { select: { projectId: true } } }
@@ -148,7 +253,10 @@ export class CasesService {
   }
 
   async projectIdForCase(prisma: PrismaClient | undefined, caseId: bigint) {
-    if (!prisma) return null;
+    if (!prisma) {
+      const row = await this.repo.getCase(caseId);
+      return row?.projectId ?? null;
+    }
     const row = await prisma.testCase.findFirst({
       where: { id: caseId, deletedAt: null },
       select: { projectId: true }
@@ -157,11 +265,15 @@ export class CasesService {
   }
 
   async validateCaseCustomValues(prisma: PrismaClient | undefined, projectId: bigint | null, values: CustomValues | undefined) {
-    if (!prisma || !projectId || values === undefined) return values;
-    const fields = await prisma.customField.findMany({
-      where: { projectId, scope: "case", deletedAt: null, isActive: true },
-      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
-    });
+    if (!projectId || values === undefined) return values;
+    const fields = prisma
+      ? await prisma.customField.findMany({
+          where: { projectId, scope: "case", deletedAt: null, isActive: true },
+          orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+        })
+      : inMemoryCustomFields
+          .filter((field) => field.projectId === projectId && field.scope === "case" && field.isActive)
+          .sort((left, right) => left.displayOrder - right.displayOrder || Number(left.id - right.id));
     const known = new Map(fields.map((field) => [field.systemName, field]));
     const sanitized: CustomValues = {};
     for (const [key, value] of Object.entries(values)) {
@@ -229,7 +341,7 @@ export class CasesService {
     stepId: bigint,
     patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
   ) {
-    const allCases = await this.repo.listCases({});
+    const allCases = await this.repo.listCases({ state: "all" });
     let parentCaseId: bigint | null = null;
     for (const c of allCases) {
       const steps = await this.repo.listCaseSteps(c.id);
@@ -247,7 +359,7 @@ export class CasesService {
   }
 
   async deleteCaseStep(stepId: bigint) {
-    const allCases = await this.repo.listCases({});
+    const allCases = await this.repo.listCases({ state: "all" });
     let parentCaseId: bigint | null = null;
     for (const c of allCases) {
       const steps = await this.repo.listCaseSteps(c.id);

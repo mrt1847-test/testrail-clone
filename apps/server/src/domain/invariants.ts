@@ -1,7 +1,12 @@
 import { AppError } from "../common/errors/appError.js";
 import type { TestCase, TestInstance } from "../modules/runs/runs.types.js";
 
-export function assertRunCreationInput(includeAll: boolean, caseIds?: bigint[], excludedCaseIds?: bigint[]) {
+export function assertRunCreationInput(
+  includeAll: boolean,
+  caseIds?: bigint[],
+  excludedCaseIds?: bigint[],
+  excludedSectionIds?: bigint[]
+) {
   if (!includeAll && (!caseIds || caseIds.length === 0)) {
     throw new AppError("VALIDATION_ERROR", "caseIds is required when includeAll is false");
   }
@@ -10,6 +15,9 @@ export function assertRunCreationInput(includeAll: boolean, caseIds?: bigint[], 
   }
   if (!includeAll && excludedCaseIds && excludedCaseIds.length > 0) {
     throw new AppError("VALIDATION_ERROR", "excludedCaseIds is only allowed when includeAll is true");
+  }
+  if (!includeAll && excludedSectionIds && excludedSectionIds.length > 0) {
+    throw new AppError("VALIDATION_ERROR", "excludedSectionIds is only allowed when includeAll is true");
   }
 }
 

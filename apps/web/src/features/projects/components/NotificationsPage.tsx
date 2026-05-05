@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
@@ -22,6 +22,34 @@ const preferenceLabels: Array<{ key: PreferenceKey; label: string }> = [
   { key: "mentionEnabled", label: "Mentions" },
   { key: "digestEnabled", label: "Digest" }
 ];
+
+function getNotificationHref(
+  projectId: string,
+  activity: {
+    entityType: string;
+    entityId: string;
+    payload?: Record<string, unknown> | null;
+  } | null
+) {
+  if (!activity) return null;
+  const payload = activity.payload ?? {};
+  const asString = (value: unknown) => (typeof value === "string" ? value : null);
+  const runId = asString(payload.runId);
+  const caseId = asString(payload.caseId);
+  const reportType = asString(payload.reportType);
+  if (runId) return `/projects/${projectId}/runs/${runId}`;
+  if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
+  if (activity.entityType === "run") return `/projects/${projectId}/runs/${activity.entityId}`;
+  if (activity.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(activity.entityId)}`;
+  if (activity.entityType === "report") {
+    if (reportType === "run_summary") return `/projects/${projectId}/reports/runs`;
+    if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;
+    if (reportType === "coverage_gap") return `/projects/${projectId}/reports/coverage`;
+    if (reportType === "defect_coverage") return `/projects/${projectId}/reports/defects`;
+    return `/projects/${projectId}/reports/explorer`;
+  }
+  return null;
+}
 
 export function NotificationsPage() {
   const { projectId = "" } = useParams();
@@ -116,6 +144,14 @@ export function NotificationsPage() {
                     <p className="mt-1 text-xs text-slate-500">
                       {row.type} - {new Date(row.createdAt).toLocaleString()}
                     </p>
+                    {getNotificationHref(projectId, row.activity) ? (
+                      <Link
+                        to={getNotificationHref(projectId, row.activity)!}
+                        className="mt-1 inline-flex text-xs font-medium text-slate-700 underline"
+                      >
+                        Open source
+                      </Link>
+                    ) : null}
                   </div>
                   {!row.readAt ? (
                     <button

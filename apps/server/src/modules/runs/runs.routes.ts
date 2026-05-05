@@ -13,7 +13,9 @@ import { resultCustomFieldErrorResponse, validateResultCustomValues } from "../r
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsService } from "./runs.service.js";
 import {
+  addCasesToRunBodySchema,
   createProjectRunSchema,
+  removeTestFromRunBodySchema,
   rerunSchema,
   runInstancesQuerySchema,
   runIdParamSchema,
@@ -111,7 +113,16 @@ export async function registerRunsRoutes(
       entityId: created.run.id,
       eventType: "run.created",
       title: "Test run created",
-      body: created.run.name
+      body: created.run.name,
+      payload: {
+        runId: created.run.id.toString(),
+        suiteId: created.run.suiteId.toString(),
+        includeAll: body.includeAll,
+        caseIds: (body.caseIds ?? []).map((id) => id.toString()),
+        excludedCaseIds: (body.excludedCaseIds ?? []).map((id) => id.toString()),
+        includedSectionIds: (body.includedSectionIds ?? []).map((id) => id.toString()),
+        excludedSectionIds: (body.excludedSectionIds ?? []).map((id) => id.toString())
+      }
     });
     return reply.send(toJsonSafe(created));
   });
@@ -244,6 +255,77 @@ export async function registerRunsRoutes(
       body: closed.name
     });
     return reply.send(toJsonSafe(ok(closed)));
+  });
+
+  app.post("/api/runs/:runId/reopen", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const reopened = await deps.runsService.reopenRun(runId);
+    await recordActivityEvent(deps.prisma, {
+      projectId: reopened.projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: reopened.id,
+      eventType: "run.reopened",
+      title: "Test run reopened",
+      body: reopened.name
+    });
+    return reply.send(toJsonSafe(ok(reopened)));
+  });
+
+  app.post("/api/runs/:runId/tests", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = addCasesToRunBodySchema.parse(req.body ?? {});
+    const out = await deps.runsService.addCasesToOpenRun(runId, body.caseIds);
+    const projectId = out.run.projectId;
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: out.run.id,
+      eventType: "run.tests_added",
+      title: "Tests added to run",
+      body: `${out.added.length} instance(s)`,
+      payload: {
+        runId: out.run.id.toString(),
+        caseIds: body.caseIds.map((id) => id.toString()),
+        addedTestIds: out.added.map((row) => row.id.toString()),
+        addedCaseIds: out.added.map((row) => row.caseId.toString()),
+        skipped: out.skipped
+      }
+    });
+    return reply.send(toJsonSafe(ok(out)));
+  });
+
+  app.post("/api/runs/:runId/remove-test", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = removeTestFromRunBodySchema.parse(req.body ?? {});
+    const projectId = await projectIdForRun(deps.repo, runId);
+    if (!projectId) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const out = await deps.runsService.removeTestFromOpenRun(runId, body.testId, body.confirmDataLoss === true);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: runId,
+      eventType: "run.test_removed",
+      title: "Test removed from run",
+      body: out.titleSnapshot,
+      payload: {
+        runId: runId.toString(),
+        testId: body.testId.toString(),
+        caseId: out.caseId.toString(),
+        hadResults: out.hadResults
+      }
+    });
+    return reply.send(toJsonSafe(ok(out)));
   });
 
   app.get("/api/runs/:runId/summary", async (req, reply) => {

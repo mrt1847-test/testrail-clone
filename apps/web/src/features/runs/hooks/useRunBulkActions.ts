@@ -41,7 +41,10 @@ export function useRunBulkActions(input: Input) {
         qc.invalidateQueries({ queryKey: ["runs", projectId, "instances", runId] }),
         qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) }),
         qc.invalidateQueries({ queryKey: reportKeys.all(projectId) }),
-        qc.invalidateQueries({ queryKey: ["result-explorer", projectId] })
+        qc.invalidateQueries({ queryKey: ["result-explorer", projectId] }),
+        qc.invalidateQueries({
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "test-results"
+        })
       ]);
       setBulkComment("");
       setSelectedTestIds([]);

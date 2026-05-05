@@ -1,12 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ComponentProps } from "react";
 
+import { useAuth } from "../../auth/context/AuthContext";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
+  bulkArchiveCases,
   bulkDeleteCases,
+  bulkMoveCases,
+  bulkUpdateCases,
   createCase,
   createCaseStep,
   deleteCase,
@@ -18,27 +22,61 @@ import {
 } from "../api/catalogApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
-import { fetchCustomFields } from "../../projects/api/settingsApi";
+import { fetchCaseTemplates, fetchCustomFields } from "../../projects/api/settingsApi";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { useCaseDetail } from "../hooks/useCaseDetail";
+import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
 import { caseKeys } from "../hooks/useCases";
 import { useCases } from "../hooks/useCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { sectionKeys } from "../hooks/useSections";
+import type { SectionNode } from "../types";
+import { CaseAuthoringForm } from "./CaseAuthoringForm";
 import { CaseListToolbar } from "./CaseListToolbar";
 import { CaseRow } from "./CaseRow";
 
 type CaseListPaneProps = {
   projectId: string;
+  sections: SectionNode[];
 };
 
-export function CaseListPane({ projectId }: CaseListPaneProps) {
+function extractApiErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback;
+  try {
+    const parsed = JSON.parse(error.message) as
+      | { message?: string; error?: { message?: string } }
+      | undefined;
+    return parsed?.error?.message ?? parsed?.message ?? error.message;
+  } catch {
+    return error.message || fallback;
+  }
+}
+
+export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
+  type BulkPriorityValue = "" | "low" | "medium" | "high";
+  type BulkCaseTypeValue = "" | "functional" | "integration" | "regression";
+
   const qc = useQueryClient();
-  const { selectedSectionId, expandedCaseId, mode, setExpandedCase } = useExpandedCase();
-  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId);
+  const { user } = useAuth();
+  const {
+    selectedSectionId,
+    expandedCaseId,
+    mode,
+    caseFilters,
+    setExpandedCase,
+    setCaseFilters,
+    clearCaseFilters,
+    applySavedView
+  } = useExpandedCase();
+  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, caseFilters);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
     queryFn: () => fetchCustomFields(projectId, "case"),
+    enabled: Boolean(projectId)
+  });
+  const { data: caseTemplates = [] } = useQuery({
+    queryKey: ["case-templates", projectId],
+    queryFn: () => fetchCaseTemplates(projectId),
     enabled: Boolean(projectId)
   });
   const { data: caseDetailRemote } = useCaseDetail(expandedCaseId);
@@ -47,17 +85,75 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     queryFn: () => fetchCaseVersions(expandedCaseId!),
     enabled: expandedCaseId != null
   });
-  const [addTitle, setAddTitle] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [createFormVersion, setCreateFormVersion] = useState(0);
+  const [createFormError, setCreateFormError] = useState<string | null>(null);
+  const [editFormError, setEditFormError] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState(caseFilters.q);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkUpdatePriority, setBulkUpdatePriority] = useState<BulkPriorityValue>("");
+  const [bulkUpdateCaseType, setBulkUpdateCaseType] = useState<BulkCaseTypeValue>("");
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkMoveTargetId, setBulkMoveTargetId] = useState<number | null>(null);
+  const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [bulkDeleteMessage, setBulkDeleteMessage] = useState<string | null>(null);
+  const [bulkActionMessage, setBulkActionMessage] = useState<string | null>(null);
+  const [saveViewOpen, setSaveViewOpen] = useState(false);
+  const [saveViewName, setSaveViewName] = useState("");
+  const deferredSearch = useDeferredValue(searchDraft);
+  const currentView = useMemo(
+    () => ({
+      sectionId: selectedSectionId,
+      filters: caseFilters
+    }),
+    [caseFilters, selectedSectionId]
+  );
+  const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(projectId, user?.id, currentView);
   const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
   const selectedVisibleCaseIds = useMemo(
     () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
     [selectedCaseIds, visibleCaseIds]
   );
   const allVisibleSelected = visibleCaseIds.length > 0 && selectedVisibleCaseIds.length === visibleCaseIds.length;
+  const activeFilterCount = useMemo(
+    () =>
+      [
+        caseFilters.q.trim().length > 0,
+        caseFilters.priority !== "",
+        caseFilters.caseType !== "",
+        caseFilters.automation !== "",
+        caseFilters.state !== "active"
+      ].filter(Boolean).length,
+    [caseFilters]
+  );
+  const moveTargets = useMemo(
+    () => sections.filter((section) => section.id !== selectedSectionId),
+    [sections, selectedSectionId]
+  );
+  const hasBulkUpdatePatch = bulkUpdatePriority !== "" || bulkUpdateCaseType !== "";
+  const bulkArchiveMode = caseFilters.state === "archived" ? "restore" : "archive";
+
+  useEffect(() => {
+    setSearchDraft(caseFilters.q);
+  }, [caseFilters.q]);
+
+  useEffect(() => {
+    if (!showAdd && createFormError != null) {
+      setCreateFormError(null);
+    }
+  }, [createFormError, showAdd]);
+
+  useEffect(() => {
+    setEditFormError(null);
+  }, [expandedCaseId, mode]);
+
+  useEffect(() => {
+    const normalized = deferredSearch.trim();
+    if (normalized !== caseFilters.q) {
+      setCaseFilters({ q: normalized });
+    }
+  }, [caseFilters.q, deferredSearch, setCaseFilters]);
 
   useEffect(() => {
     setSelectedCaseIds((current) => {
@@ -66,6 +162,13 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
       return next.size === current.size ? current : next;
     });
   }, [visibleCaseIds]);
+
+  useEffect(() => {
+    setBulkMoveTargetId((current) => {
+      if (current != null && moveTargets.some((section) => section.id === current)) return current;
+      return moveTargets[0]?.id ?? null;
+    });
+  }, [moveTargets]);
 
   const invalidateCases = () => {
     void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
@@ -82,11 +185,24 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   };
 
   const createCaseMutation = useMutation({
-    mutationFn: (title: string) => createCase(selectedSectionId!, { title }),
+    mutationFn: (input: {
+      title: string;
+      preconditions: string;
+      customValues: Record<string, string | number | boolean | null>;
+    }) =>
+      createCase(selectedSectionId!, {
+        title: input.title,
+        preconditions: input.preconditions,
+        customValues: input.customValues
+      }),
     onSuccess: () => {
       invalidateCases();
-      setAddTitle("");
       setShowAdd(false);
+      setCreateFormError(null);
+      setCreateFormVersion((current) => current + 1);
+    },
+    onError: (error) => {
+      setCreateFormError(extractApiErrorMessage(error, "Could not create case."));
     }
   });
 
@@ -103,9 +219,13 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
         preconditions: input.preconditions,
         customValues: input.customValues,
         expectedVersion: input.expectedVersion
-      }),
+    }),
     onSuccess: (_, vars) => {
+      setEditFormError(null);
       invalidateAfterCaseEdit(vars.caseId);
+    },
+    onError: (error) => {
+      setEditFormError(extractApiErrorMessage(error, "Could not save case changes."));
     }
   });
 
@@ -132,12 +252,63 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
       setExpandedCase(null);
       const deletedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
       setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !deletedIds.has(caseId))));
-      setBulkDeleteMessage(
+      setBulkActionMessage(
         result.failed > 0
           ? `Deleted ${result.deleted}; ${result.failed} could not be deleted.`
           : `Deleted ${result.deleted} selected case${result.deleted === 1 ? "" : "s"}.`
       );
       setBulkDeleteOpen(false);
+    }
+  });
+
+  const bulkMoveMutation = useMutation({
+    mutationFn: (input: { caseIds: number[]; targetSectionId: number }) =>
+      bulkMoveCases(projectId, input.caseIds, input.targetSectionId),
+    onSuccess: (result) => {
+      invalidateCases();
+      setExpandedCase(null);
+      const movedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
+      setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !movedIds.has(caseId))));
+      setBulkActionMessage(
+        result.failed > 0
+          ? `Moved ${result.moved}; ${result.failed} could not be moved.`
+          : `Moved ${result.moved} selected case${result.moved === 1 ? "" : "s"}.`
+      );
+      setBulkMoveOpen(false);
+    }
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: (input: { caseIds: number[]; patch: { priority?: string; caseType?: string } }) =>
+      bulkUpdateCases(projectId, input.caseIds, input.patch),
+    onSuccess: (result) => {
+      invalidateCases();
+      setExpandedCase(null);
+      setBulkActionMessage(
+        result.failed > 0
+          ? `Updated ${result.updated}; ${result.failed} could not be updated.`
+          : `Updated ${result.updated} selected case${result.updated === 1 ? "" : "s"}.`
+      );
+      setBulkUpdateOpen(false);
+      setBulkUpdatePriority("");
+      setBulkUpdateCaseType("");
+    }
+  });
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: (input: { caseIds: number[]; archived: boolean }) =>
+      bulkArchiveCases(projectId, input.caseIds, input.archived),
+    onSuccess: (result) => {
+      invalidateCases();
+      setExpandedCase(null);
+      const changedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
+      setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !changedIds.has(caseId))));
+      setBulkActionMessage(
+        result.failed > 0
+          ? `${result.archived ? "Archived" : "Restored"} ${result.changed}; ${result.failed} could not be changed.`
+          : `${result.archived ? "Archived" : "Restored"} ${result.changed} selected case${result.changed === 1 ? "" : "s"}.`
+      );
+      setBulkArchiveOpen(false);
     }
   });
 
@@ -182,7 +353,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     createStepMutation.isPending || updateStepMutation.isPending || deleteStepMutation.isPending;
 
   const toggleCaseSelection = (caseId: number, checked: boolean) => {
-    setBulkDeleteMessage(null);
+    setBulkActionMessage(null);
     setSelectedCaseIds((current) => {
       const next = new Set(current);
       if (checked) next.add(caseId);
@@ -192,7 +363,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   };
 
   const toggleAllVisible = (checked: boolean) => {
-    setBulkDeleteMessage(null);
+    setBulkActionMessage(null);
     setSelectedCaseIds((current) => {
       const next = new Set(current);
       for (const caseId of visibleCaseIds) {
@@ -203,10 +374,77 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
     });
   };
 
+  const toolbarProps = {
+    searchValue: searchDraft,
+    onSearchChange: setSearchDraft,
+    priorityValue: caseFilters.priority,
+    onPriorityChange: (value: "low" | "medium" | "high" | "") => setCaseFilters({ priority: value }),
+    caseTypeValue: caseFilters.caseType,
+    onCaseTypeChange: (value: "functional" | "integration" | "regression" | "") =>
+      setCaseFilters({ caseType: value }),
+    automationValue: caseFilters.automation,
+    onAutomationChange: (value: "manual" | "automated" | "") => setCaseFilters({ automation: value }),
+    stateValue: caseFilters.state,
+    onStateChange: (value: "active" | "archived") => setCaseFilters({ state: value }),
+    activeFilterCount,
+    onClearFilters: () => {
+      setSearchDraft("");
+      clearCaseFilters();
+    },
+    savedViews,
+    matchedSavedViewId: matchedSavedView?.id ?? "",
+    onSavedViewSelect: (viewId: string) => {
+      const view = savedViews.find((item) => item.id === viewId);
+      if (!view) return;
+      applySavedView({ sectionId: view.sectionId, filters: view.filters });
+      setSaveViewOpen(false);
+      setSaveViewName("");
+    },
+    saveViewOpen,
+    saveViewName,
+    onSaveViewNameChange: setSaveViewName,
+    onToggleSaveView: () => {
+      if (saveViewOpen) {
+        setSaveViewOpen(false);
+        setSaveViewName("");
+        return;
+      }
+      setSaveViewName(matchedSavedView?.name ?? "");
+      setSaveViewOpen(true);
+    },
+    onSaveView: () => {
+      const nextView = saveView(saveViewName);
+      if (!nextView) return;
+      setSaveViewOpen(false);
+      setSaveViewName("");
+    },
+    onCancelSaveView: () => {
+      setSaveViewOpen(false);
+      setSaveViewName("");
+    },
+    onDeleteSavedView: () => {
+      if (!matchedSavedView) return;
+      deleteView(matchedSavedView.id);
+      setSaveViewOpen(false);
+      setSaveViewName("");
+    },
+    onAddCase: () => {
+      setBulkActionMessage(null);
+      setCreateFormError(null);
+      setShowAdd((current) => {
+        const next = !current;
+        if (next) {
+          setCreateFormVersion((value) => value + 1);
+        }
+        return next;
+      });
+    }
+  } satisfies ComponentProps<typeof CaseListToolbar>;
+
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <CaseListToolbar onAddCase={() => setShowAdd((v) => !v)} />
+        <CaseListToolbar {...toolbarProps} />
         <LoadingState message="Loading cases…" />
       </div>
     );
@@ -215,7 +453,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
   if (isError) {
     return (
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <CaseListToolbar onAddCase={() => setShowAdd((v) => !v)} />
+        <CaseListToolbar {...toolbarProps} />
         <p className="text-sm text-red-700">케이스 목록을 불러오지 못했습니다.</p>
         <button
           type="button"
@@ -230,29 +468,34 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <CaseListToolbar onAddCase={() => setShowAdd((v) => !v)} />
+      <CaseListToolbar {...toolbarProps} />
       {showAdd ? (
         <div className="border-b border-slate-100 bg-slate-50 px-3 py-3">
-          <p className="text-xs font-medium text-slate-600">New case</p>
-          <div className="mt-2 flex gap-2">
-            <input
-              className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
-              placeholder="Title"
-              value={addTitle}
-              onChange={(e) => setAddTitle(e.target.value)}
-            />
-            <button
-              type="button"
-              disabled={!addTitle.trim() || createCaseMutation.isPending}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              onClick={() => void createCaseMutation.mutateAsync(addTitle.trim())}
-            >
-              {createCaseMutation.isPending ? "Creating…" : "Create"}
-            </button>
-            <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setShowAdd(false)}>
-              Cancel
-            </button>
-          </div>
+          <p className="mb-2 text-xs font-medium text-slate-600">New case</p>
+          <CaseAuthoringForm
+            valueKey={`create:${selectedSectionId ?? "none"}:${createFormVersion}`}
+            initialTitle=""
+            initialPreconditions=""
+            initialCustomValues={{}}
+            customFields={customFields}
+            templates={caseTemplates}
+            submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
+            isSubmitting={createCaseMutation.isPending}
+            submitError={createFormError}
+            onSubmit={async (input) => {
+              setCreateFormError(null);
+              await createCaseMutation.mutateAsync({
+                title: input.title,
+                preconditions: input.preconditions,
+                customValues: input.customValues
+              });
+            }}
+            onCancel={() => {
+              setShowAdd(false);
+              setCreateFormError(null);
+              setCreateFormVersion((current) => current + 1);
+            }}
+          />
         </div>
       ) : null}
       {cases.length > 0 ? (
@@ -267,8 +510,34 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
             Select visible
           </label>
           <div className="flex items-center gap-2 text-sm">
-            {bulkDeleteMessage ? <span className="text-slate-600">{bulkDeleteMessage}</span> : null}
+            {bulkActionMessage ? <span className="text-slate-600">{bulkActionMessage}</span> : null}
             <span className="text-slate-600">{selectedVisibleCaseIds.length} selected</span>
+            <button
+              type="button"
+              disabled={selectedVisibleCaseIds.length === 0 || bulkUpdateMutation.isPending}
+              onClick={() => setBulkUpdateOpen(true)}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Update selected
+            </button>
+            <button
+              type="button"
+              disabled={
+                selectedVisibleCaseIds.length === 0 || moveTargets.length === 0 || bulkMoveMutation.isPending
+              }
+              onClick={() => setBulkMoveOpen(true)}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Move selected
+            </button>
+            <button
+              type="button"
+              disabled={selectedVisibleCaseIds.length === 0 || bulkArchiveMutation.isPending}
+              onClick={() => setBulkArchiveOpen(true)}
+              className="rounded-md border border-amber-200 bg-white px-3 py-1.5 font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {bulkArchiveMode === "archive" ? "Archive selected" : "Restore selected"}
+            </button>
             <button
               type="button"
               disabled={selectedVisibleCaseIds.length === 0 || bulkDeleteMutation.isPending}
@@ -283,16 +552,45 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
       {cases.length === 0 ? (
         <div className="p-6">
           <EmptyState
-            title="No test cases in this section"
-            description="Add a case or pick another section."
+            title={
+              activeFilterCount > 0
+                ? "No cases match the current filters"
+                : caseFilters.state === "archived"
+                  ? "No archived test cases in this section"
+                  : "No test cases in this section"
+            }
+            description={
+              activeFilterCount > 0
+                ? "Try clearing filters, switching sections, or saving a different view."
+                : caseFilters.state === "archived"
+                  ? "Archive cases from the active list or switch sections."
+                  : "Add a case or pick another section."
+            }
             action={
-              <button
-                type="button"
-                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white"
-                onClick={() => setShowAdd(true)}
-              >
-                Add case
-              </button>
+              activeFilterCount > 0 ? (
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+                  onClick={() => {
+                    setSearchDraft("");
+                    clearCaseFilters();
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white"
+                  onClick={() => {
+                    setCreateFormError(null);
+                    setCreateFormVersion((current) => current + 1);
+                    setShowAdd(true);
+                  }}
+                >
+                  Add case
+                </button>
+              )
             }
           />
         </div>
@@ -310,6 +608,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                 detail={caseDetail}
                 versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
                 customFields={customFields}
+                caseTemplates={caseTemplates}
                 isSelected={selectedCaseIds.has(item.id)}
                 onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
                 onToggle={() => setExpandedCase(isExpanded ? null : item.id)}
@@ -334,6 +633,7 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
                   });
                 }}
                 isSaving={updateCaseMutation.isPending}
+                submitError={editFormError}
                 isDeleting={deleteCaseMutation.isPending}
                 isRestoring={restoreVersionMutation.isPending}
                 onCreateStep={async (input) => {
@@ -351,6 +651,134 @@ export function CaseListPane({ projectId }: CaseListPaneProps) {
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={bulkUpdateOpen}
+        title="Update selected test cases?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Apply shared field changes to {selectedVisibleCaseIds.length} selected test case
+              {selectedVisibleCaseIds.length === 1 ? "" : "s"}.
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Priority
+              </span>
+              <select
+                value={bulkUpdatePriority}
+                onChange={(e) => setBulkUpdatePriority(e.target.value as BulkPriorityValue)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="">Keep current priority</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Type
+              </span>
+              <select
+                value={bulkUpdateCaseType}
+                onChange={(e) => setBulkUpdateCaseType(e.target.value as BulkCaseTypeValue)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="">Keep current type</option>
+                <option value="functional">Functional</option>
+                <option value="integration">Integration</option>
+                <option value="regression">Regression</option>
+              </select>
+            </label>
+          </div>
+        }
+        confirmLabel={bulkUpdateMutation.isPending ? "Updating..." : "Update selected"}
+        confirmDisabled={
+          bulkUpdateMutation.isPending || selectedVisibleCaseIds.length === 0 || !hasBulkUpdatePatch
+        }
+        onCancel={() => {
+          setBulkUpdateOpen(false);
+          setBulkUpdatePriority("");
+          setBulkUpdateCaseType("");
+        }}
+        onConfirm={() => {
+          const patch: { priority?: string; caseType?: string } = {};
+          if (bulkUpdatePriority) patch.priority = bulkUpdatePriority;
+          if (bulkUpdateCaseType) patch.caseType = bulkUpdateCaseType;
+          void bulkUpdateMutation.mutateAsync({
+            caseIds: selectedVisibleCaseIds,
+            patch
+          });
+        }}
+      />
+      <ConfirmDialog
+        open={bulkMoveOpen}
+        title="Move selected test cases?"
+        description={
+          <div className="space-y-3">
+            <p>
+              {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will
+              be moved to another section.
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Target section
+              </span>
+              <select
+                value={bulkMoveTargetId ?? ""}
+                onChange={(e) => setBulkMoveTargetId(Number(e.target.value))}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                {moveTargets.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        }
+        confirmLabel={bulkMoveMutation.isPending ? "Moving..." : "Move selected"}
+        confirmDisabled={
+          bulkMoveMutation.isPending || selectedVisibleCaseIds.length === 0 || bulkMoveTargetId == null
+        }
+        onCancel={() => setBulkMoveOpen(false)}
+        onConfirm={() => {
+          if (bulkMoveTargetId != null) {
+            void bulkMoveMutation.mutateAsync({
+              caseIds: selectedVisibleCaseIds,
+              targetSectionId: bulkMoveTargetId
+            });
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={bulkArchiveOpen}
+        title={bulkArchiveMode === "archive" ? "Archive selected test cases?" : "Restore selected test cases?"}
+        description={
+          <span>
+            {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will be{" "}
+            {bulkArchiveMode === "archive" ? "hidden from the active repository list and run composition" : "returned to the active repository list"}.
+          </span>
+        }
+        confirmLabel={
+          bulkArchiveMutation.isPending
+            ? bulkArchiveMode === "archive"
+              ? "Archiving..."
+              : "Restoring..."
+            : bulkArchiveMode === "archive"
+              ? "Archive selected"
+              : "Restore selected"
+        }
+        confirmDisabled={bulkArchiveMutation.isPending || selectedVisibleCaseIds.length === 0}
+        onCancel={() => setBulkArchiveOpen(false)}
+        onConfirm={() =>
+          void bulkArchiveMutation.mutateAsync({
+            caseIds: selectedVisibleCaseIds,
+            archived: bulkArchiveMode === "archive"
+          })
+        }
+      />
       <ConfirmDialog
         open={bulkDeleteOpen}
         title="Delete selected test cases?"

@@ -20,6 +20,9 @@ type Props = {
   canCloseRun: boolean;
   isCloseRunPending: boolean;
   onOpenCloseRunDialog: () => void;
+  canReopenRun: boolean;
+  isReopenRunPending: boolean;
+  onReopenRun: () => void;
 };
 
 export function RunActionsPanel(props: Props) {
@@ -41,7 +44,10 @@ export function RunActionsPanel(props: Props) {
     onOpenRerunDialog,
     canCloseRun,
     isCloseRunPending,
-    onOpenCloseRunDialog
+    onOpenCloseRunDialog,
+    canReopenRun,
+    isReopenRunPending,
+    onReopenRun
   } = props;
 
   return (
@@ -97,7 +103,7 @@ export function RunActionsPanel(props: Props) {
           </button>
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button className="rounded border border-slate-300 px-2 py-1 text-xs" disabled={isRerunPending} onClick={onOpenRerunDialog}>
           Rerun…
         </button>
@@ -108,6 +114,14 @@ export function RunActionsPanel(props: Props) {
           onClick={onOpenCloseRunDialog}
         >
           Close run
+        </button>
+        <button
+          type="button"
+          className="rounded border border-emerald-700 px-2 py-1 text-xs text-emerald-800 disabled:opacity-50"
+          disabled={!canReopenRun || isReopenRunPending}
+          onClick={onReopenRun}
+        >
+          {isReopenRunPending ? "Reopening…" : "Reopen run"}
         </button>
       </div>
     </div>

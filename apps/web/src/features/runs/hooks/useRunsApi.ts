@@ -17,13 +17,16 @@ import {
   fetchRuns,
   fetchAssignedToMe,
   fetchAttachmentDownloadUrl,
-  fetchTestResults,
+  fetchTestResultsPage,
   pushResultDefect,
   rerunRun,
   updateTestAssignee,
   updateRunAssignee,
   uploadResultAttachmentViaPresign,
-  deleteAttachment
+  deleteAttachment,
+  reopenRun,
+  addCasesToRun,
+  removeTestFromRun
 } from "../api/runApi";
 import type { RunDetailDto } from "../types";
 
@@ -41,7 +44,9 @@ export const runKeys = {
     assignee: string,
     search: string
   ) => [...runKeys.all(projectId), "instances", runId, page, pageSize, status, assignee, search] as const,
-  results: (testId: string) => ["test-results", testId] as const,
+  resultsPrefix: (testId: string) => ["test-results", testId] as const,
+  resultsPage: (testId: string, page: number, pageSize: number) =>
+    ["test-results", testId, page, pageSize] as const,
   resultSteps: (resultId: string) => ["result-steps", resultId] as const,
   resultAttachments: (resultId: string) => ["result-attachments", resultId] as const,
   resultDefects: (resultId: string) => ["result-defects", resultId] as const,
@@ -110,10 +115,10 @@ export function useCreateRunMutation(projectId: string | undefined) {
   });
 }
 
-export function useTestResultsQuery(testId: string | undefined) {
+export function useTestResultsQuery(testId: string | undefined, page: number, pageSize: number) {
   return useQuery({
-    queryKey: runKeys.results(testId ?? ""),
-    queryFn: () => fetchTestResults(testId!),
+    queryKey: runKeys.resultsPage(testId ?? "", page, pageSize),
+    queryFn: () => fetchTestResultsPage(testId!, page, pageSize),
     enabled: Boolean(testId)
   });
 }
@@ -165,7 +170,7 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
-      void qc.invalidateQueries({ queryKey: runKeys.results(vars.testId) });
+      void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["result-explorer", projectId] });
@@ -183,6 +188,49 @@ export function useCloseRunMutation(projectId: string | undefined, runId: string
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+    }
+  });
+}
+
+export function useReopenRunMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => reopenRun(runId!),
+    onSuccess: () => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+    }
+  });
+}
+
+export function useAddCasesToRunMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (caseIds: string[]) => addCasesToRun(runId!, caseIds),
+    onSuccess: () => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+    }
+  });
+}
+
+export function useRemoveTestFromRunMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { testId: string; confirmDataLoss?: boolean }) =>
+      removeTestFromRun(runId!, input.testId, input.confirmDataLoss),
+    onSuccess: (_, vars) => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
   });

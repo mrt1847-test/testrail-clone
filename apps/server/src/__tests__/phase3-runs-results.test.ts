@@ -119,13 +119,15 @@ describe("phase3 runs/results flow", () => {
 
     const historyRes = await app.inject({
       method: "GET",
-      url: `/api/tests/${testId}/results`
+      url: `/api/tests/${testId}/results?page=1&pageSize=20`
     });
     expect(historyRes.statusCode).toBe(200);
-    const history = historyRes.json() as Array<{ testInstanceId: string; status: string }>;
-    expect(history.length).toBe(1);
-    expect(history[0].testInstanceId).toBe(testId);
-    expect(history[0].status).toBe("passed");
+    const historyPayload = historyRes.json() as {
+      data: { items: Array<{ testInstanceId: string; status: string }> };
+    };
+    expect(historyPayload.data.items.length).toBe(1);
+    expect(historyPayload.data.items[0].testInstanceId).toBe(testId);
+    expect(historyPayload.data.items[0].status).toBe("passed");
 
     const assignTestRes = await app.inject({
       method: "PATCH",
@@ -272,6 +274,87 @@ describe("phase3 runs/results flow", () => {
     expect(payload.data.instances.map((row) => row.titleSnapshot)).toEqual(
       expect.arrayContaining(["IA case 1", "IA case 2"])
     );
+  });
+
+  it("excludes archived cases from include-all run creation", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Archive Exclusion Project" }
+    });
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/suites`,
+      headers,
+      payload: { name: "Archive Exclusion Suite" }
+    });
+    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Archive Exclusion Section" }
+    });
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+    const firstCaseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Visible active case", priority: "medium", caseType: "functional" }
+    });
+    const firstCaseId = (firstCaseRes.json() as { data: { id: string } }).data.id;
+
+    const secondCaseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Archived suite case", priority: "high", caseType: "regression" }
+    });
+    const secondCaseId = (secondCaseRes.json() as { data: { id: string } }).data.id;
+
+    const archiveRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/cases/bulk-archive`,
+      headers,
+      payload: { caseIds: [secondCaseId], archived: true }
+    });
+    expect(archiveRes.statusCode).toBe(200);
+
+    const runRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      headers,
+      payload: { suiteId, name: "Archive exclusion run", includeAll: true }
+    });
+    expect(runRes.statusCode).toBe(200);
+    const runId = (runRes.json() as { run: { id: string } }).run.id;
+
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/runs/${runId}`
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const payload = detailRes.json() as {
+      data: {
+        instances: Array<{ caseId: string; titleSnapshot: string }>;
+      };
+    };
+    expect(payload.data.instances).toHaveLength(1);
+    expect(payload.data.instances[0].caseId).toBe(firstCaseId);
+    expect(payload.data.instances[0].caseId).not.toBe(secondCaseId);
   });
 
   it("supports auth login -> me -> logout", async () => {

@@ -1,12 +1,23 @@
+import { AppError } from "../../common/errors/appError.js";
 import type { ResultInput } from "../results/results.types.js";
 import { testStatuses, type TestStatus } from "../../domain/status.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
+import { expandSectionSubtreeIdsPure } from "./sectionScope.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
 type ResultCustomValues = Record<string, string | number | boolean | null>;
 
 function mapCatalogCaseToTestCase(
-  c: { id: bigint; sectionId: bigint; title: string; priority?: string | null; caseType?: string | null },
+  c: {
+    id: bigint;
+    sectionId: bigint;
+    title: string;
+    priority?: string | null;
+    caseType?: string | null;
+    estimate?: string | null;
+    automationKey?: string | null;
+    externalId?: string | null;
+  },
   projectId: bigint,
   suiteId: bigint
 ): TestCase {
@@ -14,12 +25,13 @@ function mapCatalogCaseToTestCase(
     id: c.id,
     projectId,
     suiteId,
+    sectionId: c.sectionId,
     title: c.title,
     priority: c.priority ?? null,
     caseType: c.caseType ?? null,
-    estimate: null,
-    automationKey: null,
-    externalId: null
+    estimate: c.estimate ?? null,
+    automationKey: c.automationKey ?? null,
+    externalId: c.externalId ?? null
   };
 }
 
@@ -39,7 +51,11 @@ export type Tx = {
     caseIds?: bigint[];
     excludedCaseIds?: bigint[];
     includeAll: boolean;
+    includedSectionIds?: bigint[];
+    excludedSectionIds?: bigint[];
   }): Promise<TestCase[]>;
+  countResultsForTestInstance(testInstanceId: bigint): Promise<number>;
+  hardDeleteTestInstance(testInstanceId: bigint): Promise<void>;
   createInstances(instances: Omit<TestInstance, "id" | "status">[]): Promise<TestInstance[]>;
   getRunById(runId: bigint): Promise<TestRun | null>;
   getInstancesByRunId(runId: bigint): Promise<Array<Pick<TestInstance, "status">>>;
@@ -108,6 +124,25 @@ export interface RunsRepository {
       createdAt: Date;
     }>
   >;
+  listResultsForTestInstancePage(
+    testId: bigint,
+    page: number,
+    pageSize: number
+  ): Promise<{
+    items: Array<{
+      id: bigint;
+      testInstanceId: bigint;
+      status: TestStatus;
+      comment?: string;
+      elapsed?: string;
+      version?: string;
+      defects: string[];
+      customValues?: ResultCustomValues;
+      source: "manual" | "automation" | "api";
+      createdAt: Date;
+    }>;
+    total: number;
+  }>;
   listResultStepsByResultId(resultId: bigint): Promise<
     Array<{
       id: bigint;
@@ -120,6 +155,7 @@ export interface RunsRepository {
     }>
   >;
   closeRun(runId: bigint): Promise<TestRun | null>;
+  reopenRun(runId: bigint): Promise<TestRun | null>;
   updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null>;
   updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null>;
   listAssignedTests(input: {
@@ -174,6 +210,7 @@ export class InMemoryRunsRepository implements RunsRepository {
       id: 101n,
       projectId: 1n,
       suiteId: 1n,
+      sectionId: 1n,
       title: "Add product to cart",
       priority: "high",
       caseType: "functional",
@@ -185,6 +222,7 @@ export class InMemoryRunsRepository implements RunsRepository {
       id: 102n,
       projectId: 1n,
       suiteId: 1n,
+      sectionId: 1n,
       title: "Checkout returns 200",
       priority: "high",
       caseType: "functional",
@@ -249,11 +287,41 @@ export class InMemoryRunsRepository implements RunsRepository {
         this.runs.push(run);
         return run;
       },
-      getCasesForRun: async ({ projectId, suiteId, caseIds, excludedCaseIds, includeAll }) => {
+      getCasesForRun: async (input) => {
+        const { projectId, suiteId, caseIds, excludedCaseIds, includeAll, includedSectionIds, excludedSectionIds } = input;
+        let sectionRows: Array<{ id: bigint; parentSectionId: bigint | null }> = [];
+        if (this.catalog && (includedSectionIds?.length || excludedSectionIds?.length)) {
+          const sec = await this.catalog.listSectionsBySuite(suiteId);
+          sectionRows = sec.map((s) => ({ id: s.id, parentSectionId: s.parentSectionId ?? null }));
+        } else if (!this.catalog && (includedSectionIds?.length || excludedSectionIds?.length)) {
+          const baseSec = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
+          const ids = new Set(baseSec.map((c) => c.sectionId).filter((x): x is bigint => typeof x === "bigint"));
+          sectionRows = [...ids].map((id) => ({ id, parentSectionId: null }));
+        }
+        if (includedSectionIds?.length || excludedSectionIds?.length) {
+          const merged = [...(includedSectionIds ?? []), ...(excludedSectionIds ?? [])];
+          for (const id of merged) {
+            if (!sectionRows.some((s) => s.id === id)) {
+              throw new AppError("VALIDATION_ERROR", "includedSectionIds or excludedSectionIds must belong to the run suite", 400);
+            }
+          }
+        }
+        const allowed = includedSectionIds?.length
+          ? new Set(expandSectionSubtreeIdsPure(sectionRows, includedSectionIds))
+          : null;
+        const excludedSet = excludedSectionIds?.length
+          ? new Set(expandSectionSubtreeIdsPure(sectionRows, excludedSectionIds))
+          : null;
+        const filterBySection = (c: TestCase) => {
+          const sid = c.sectionId;
+          if (allowed && (sid == null || !allowed.has(sid))) return false;
+          if (excludedSet && sid != null && excludedSet.has(sid)) return false;
+          return true;
+        };
         const base = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
         let selected = includeAll
-          ? base.filter((c) => !excludedCaseIds?.includes(c.id))
-          : base.filter((c) => caseIds?.includes(c.id));
+          ? base.filter((c) => !excludedCaseIds?.includes(c.id)).filter(filterBySection)
+          : base.filter((c) => caseIds?.includes(c.id)).filter(filterBySection);
         if (selected.length === 0 && this.catalog) {
           const rows = await this.catalog.listCasesForSuite(projectId, suiteId);
           selected = rows.map((c) => mapCatalogCaseToTestCase(c, projectId, suiteId));
@@ -262,8 +330,20 @@ export class InMemoryRunsRepository implements RunsRepository {
           } else if (includeAll && excludedCaseIds?.length) {
             selected = selected.filter((c) => !excludedCaseIds.includes(c.id));
           }
+          selected = selected.filter(filterBySection);
         }
         return selected;
+      },
+      countResultsForTestInstance: async (testInstanceId) => {
+        return this.results.filter((r) => r.testInstanceId === testInstanceId).length;
+      },
+      hardDeleteTestInstance: async (testInstanceId) => {
+        const idx = this.instances.findIndex((i) => i.id === testInstanceId);
+        if (idx === -1) return;
+        this.instances.splice(idx, 1);
+        const resultIds = this.results.filter((r) => r.testInstanceId === testInstanceId).map((r) => r.id);
+        this.results = this.results.filter((r) => r.testInstanceId !== testInstanceId);
+        this.resultSteps = this.resultSteps.filter((s) => !resultIds.includes(s.resultId));
       },
       createInstances: async (instancesInput) => {
         const created = instancesInput.map((i) => ({
@@ -354,10 +434,26 @@ export class InMemoryRunsRepository implements RunsRepository {
       .sort((a, b) => (a.id < b.id ? 1 : -1));
   }
 
+  async listResultsForTestInstancePage(testId: bigint, page: number, pageSize: number) {
+    const sorted = this.results
+      .filter((row) => row.testInstanceId === testId)
+      .sort((a, b) => (a.id < b.id ? 1 : -1));
+    const total = sorted.length;
+    const start = (page - 1) * pageSize;
+    return { items: sorted.slice(start, start + pageSize), total };
+  }
+
   async closeRun(runId: bigint): Promise<TestRun | null> {
     const run = this.runs.find((item) => item.id === runId);
     if (!run) return null;
     run.status = "closed";
+    return run;
+  }
+
+  async reopenRun(runId: bigint): Promise<TestRun | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    if (!run) return null;
+    run.status = "open";
     return run;
   }
 

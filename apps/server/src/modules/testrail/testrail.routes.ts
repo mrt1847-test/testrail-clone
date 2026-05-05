@@ -145,6 +145,19 @@ export async function registerTestRailRoutes(
     prisma?: PrismaClient;
   }
 ) {
+  app.get("/api/v2/get_projects", async (_req, reply) => {
+    const rows = await deps.catalog.listProjects();
+    return reply.send(
+      toJsonSafe(
+        rows.map((p) => ({
+          id: Number(p.id),
+          name: p.name,
+          is_completed: false
+        }))
+      )
+    );
+  });
+
   app.get("/api/v2/get_case/:caseId", async (req, reply) => {
     const { caseId } = caseIdParamSchema.parse(req.params);
     const row = await deps.casesService.getCase(caseId);

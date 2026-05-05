@@ -8,7 +8,11 @@ export const createRunSchema = z.object({
   environment: z.string().trim().min(1).max(120).optional(),
   includeAll: z.boolean().default(true),
   caseIds: z.array(z.coerce.bigint()).optional(),
-  excludedCaseIds: z.array(z.coerce.bigint()).optional()
+  excludedCaseIds: z.array(z.coerce.bigint()).optional(),
+  /** 섹션 루트 ID(하위 섹션 포함). includeAll이면 스위트 내 해당 트리만, false면 caseIds와 교집합 */
+  includedSectionIds: z.array(z.coerce.bigint()).optional(),
+  /** includeAll일 때 제외할 섹션 서브트리 루트 */
+  excludedSectionIds: z.array(z.coerce.bigint()).optional()
 });
 
 export const createProjectRunSchema = createRunSchema.omit({ projectId: true });
@@ -44,4 +48,14 @@ export const runInstancesQuerySchema = z.object({
     .optional(),
   q: z.string().trim().min(1).optional(),
   includeInstances: z.coerce.boolean().optional()
+});
+
+export const addCasesToRunBodySchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1)
+});
+
+export const removeTestFromRunBodySchema = z.object({
+  testId: z.coerce.bigint(),
+  /** 결과가 있는 인스턴스 제거 시 true여야 함(결과 행은 DB CASCADE로 함께 삭제됨) */
+  confirmDataLoss: z.boolean().optional()
 });

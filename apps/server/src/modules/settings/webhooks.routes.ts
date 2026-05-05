@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 
@@ -228,5 +230,69 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
     row.status = "pending";
     row.attemptNo += 1;
     return reply.send(toJsonSafe(ok(webhookAttemptToResponse(row))));
+  });
+
+  app.post("/api/projects/:projectId/settings/webhooks/:webhookId/test-send", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId, webhookId } = webhookIdParamSchema.parse(req.params);
+    if (!deps.prisma) {
+      return reply.code(501).send({ code: "NOT_AVAILABLE", message: "test-send requires database mode" });
+    }
+    const row = await deps.prisma.webhookSubscription.findFirst({
+      where: { id: webhookId, projectId, deletedAt: null, isActive: true }
+    });
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+    const payload = { event: "webhook.test", message: "ping", sentAt: new Date().toISOString() };
+    const body = JSON.stringify(payload);
+    const signature = `sha256=${createHmac("sha256", row.secret).update(body).digest("hex")}`;
+    const created = await deps.prisma.webhookDeliveryAttempt.create({
+      data: {
+        projectId,
+        webhookId: row.id,
+        activityEventId: null,
+        event: "webhook.test",
+        targetUrl: row.targetUrl,
+        payload: payload as Prisma.InputJsonValue,
+        signature,
+        status: "pending"
+      }
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25_000);
+    try {
+      const res = await fetch(row.targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Signature": signature,
+          "X-Webhook-Event": "webhook.test"
+        },
+        body,
+        signal: controller.signal
+      });
+      const text = await res.text();
+      const preview = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+      await deps.prisma.webhookDeliveryAttempt.update({
+        where: { id: created.id },
+        data: {
+          status: res.ok ? "delivered" : "failed",
+          responseStatus: res.status,
+          responseBody: text.length > 4000 ? `${text.slice(0, 4000)}…` : text,
+          deliveredAt: res.ok ? new Date() : null,
+          error: res.ok ? null : `http ${String(res.status)}`,
+          updatedAt: new Date()
+        }
+      });
+      return reply.send(toJsonSafe(ok({ ok: res.ok, status: res.status, bodyPreview: preview, attemptId: created.id.toString() })));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "request failed";
+      await deps.prisma.webhookDeliveryAttempt.update({
+        where: { id: created.id },
+        data: { status: "failed", error: msg, updatedAt: new Date() }
+      });
+      return reply.send(toJsonSafe(ok({ ok: false, error: msg, attemptId: created.id.toString() })));
+    } finally {
+      clearTimeout(timeout);
+    }
   });
 }

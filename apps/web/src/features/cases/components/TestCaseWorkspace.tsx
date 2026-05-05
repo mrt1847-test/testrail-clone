@@ -48,7 +48,7 @@ export function TestCaseWorkspace() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-      <CaseListPane projectId={projectId} />
+      <CaseListPane projectId={projectId} sections={sections} />
       <SectionTreePane
         suiteId={suiteId}
         sections={sections}

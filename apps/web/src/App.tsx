@@ -9,7 +9,13 @@ import { ProjectLayout } from "./features/projects/components/ProjectLayout";
 import { ProjectListPage } from "./features/projects/components/ProjectListPage";
 import { ProjectOverviewPage } from "./features/projects/components/ProjectOverviewPage";
 import { ProjectSettingsPage } from "./features/projects/components/ProjectSettingsPage";
-import { ReportsPage } from "./features/projects/components/ReportsPage";
+import { ReportCoverageGapPage } from "./features/projects/components/reports/ReportCoverageGapPage";
+import { ReportDefectCoveragePage } from "./features/projects/components/reports/ReportDefectCoveragePage";
+import { ReportResultsExplorerPage } from "./features/projects/components/reports/ReportResultsExplorerPage";
+import { ReportRunSummaryPage } from "./features/projects/components/reports/ReportRunSummaryPage";
+import { ReportTraceabilityPage } from "./features/projects/components/reports/ReportTraceabilityPage";
+import { ReportsLayout } from "./features/projects/components/reports/ReportsLayout";
+import { ReportsOverviewPage } from "./features/projects/components/reports/ReportsOverviewPage";
 import { BulkUploadDetailPage } from "./features/projects/components/BulkUploadDetailPage";
 import { AuditLogsPage } from "./features/projects/components/AuditLogsPage";
 import { CaseTemplatesPage } from "./features/projects/components/CaseTemplatesPage";
@@ -47,7 +53,14 @@ export function App() {
           <Route path="runs/:runId/results" element={<ResultExplorerPage />} />
           <Route path="my-tests" element={<MyTestsPage />} />
           <Route path="results" element={<ResultExplorerPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports" element={<ReportsLayout />}>
+            <Route index element={<ReportsOverviewPage />} />
+            <Route path="runs" element={<ReportRunSummaryPage />} />
+            <Route path="traceability" element={<ReportTraceabilityPage />} />
+            <Route path="coverage" element={<ReportCoverageGapPage />} />
+            <Route path="defects" element={<ReportDefectCoveragePage />} />
+            <Route path="explorer" element={<ReportResultsExplorerPage />} />
+          </Route>
           <Route path="activity" element={<ActivityPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="automation" element={<AutomationPage />} />

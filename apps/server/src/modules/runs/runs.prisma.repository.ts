@@ -1,6 +1,7 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 
 import type { ResultInput } from "../results/results.types.js";
+import { assertSectionsBelongToSuite, expandSectionSubtreeIds } from "./sectionScope.js";
 import type { RunsRepository, Tx } from "./runs.repository.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
@@ -25,16 +26,37 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
       return row as TestRun;
     },
     async getCasesForRun(input) {
-      const rows = await tx.testCase.findMany({
-        where: {
-          projectId: input.projectId,
-          suiteId: input.suiteId,
-          ...(input.includeAll
-            ? { ...(input.excludedCaseIds?.length ? { id: { notIn: input.excludedCaseIds } } : {}) }
-            : { id: { in: input.caseIds ?? [] } })
-        }
-      });
+      const mergedRoots = [...(input.includedSectionIds ?? []), ...(input.excludedSectionIds ?? [])];
+      if (mergedRoots.length > 0) {
+        await assertSectionsBelongToSuite(tx, input.suiteId, mergedRoots);
+      }
+      let allowedSectionIds: bigint[] | undefined;
+      if (input.includedSectionIds?.length) {
+        allowedSectionIds = await expandSectionSubtreeIds(tx, input.suiteId, input.includedSectionIds);
+      }
+      let excludedSectionIds: bigint[] | undefined;
+      if (input.excludedSectionIds?.length) {
+        excludedSectionIds = await expandSectionSubtreeIds(tx, input.suiteId, input.excludedSectionIds);
+      }
+      const baseWhere: Prisma.TestCaseWhereInput = {
+        projectId: input.projectId,
+        suiteId: input.suiteId,
+        archivedAt: null,
+        deletedAt: null,
+        ...(input.includeAll
+          ? { ...(input.excludedCaseIds?.length ? { id: { notIn: input.excludedCaseIds } } : {}) }
+          : { id: { in: input.caseIds ?? [] } }),
+        ...(allowedSectionIds?.length ? { sectionId: { in: allowedSectionIds } } : {}),
+        ...(excludedSectionIds?.length ? { sectionId: { notIn: excludedSectionIds } } : {})
+      };
+      const rows = await tx.testCase.findMany({ where: baseWhere });
       return rows as TestCase[];
+    },
+    async countResultsForTestInstance(testInstanceId) {
+      return tx.testResult.count({ where: { testInstanceId } });
+    },
+    async hardDeleteTestInstance(testInstanceId) {
+      await tx.testInstance.delete({ where: { id: testInstanceId } });
     },
     async createInstances(instances) {
       if (instances.length === 0) return [];
@@ -447,6 +469,57 @@ export class PrismaRunsRepository implements RunsRepository {
       source: row.source as "manual" | "automation" | "api",
       createdAt: row.createdAt
     }));
+  }
+
+  async listResultsForTestInstancePage(testId: bigint, page: number, pageSize: number) {
+    const where = { testInstanceId: testId };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.testResult.findMany({
+        where,
+        orderBy: { id: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      }),
+      this.prisma.testResult.count({ where })
+    ]);
+    const items = rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      testInstanceId: row.testInstanceId,
+      status: mapStatus(row.status),
+      comment: row.comment ?? undefined,
+      elapsed: row.elapsed ?? undefined,
+      version: row.version ?? undefined,
+      defects: row.defects,
+      customValues:
+        row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+          ? (row.customValues as Record<string, string | number | boolean | null>)
+          : {},
+      source: row.source as "manual" | "automation" | "api",
+      createdAt: row.createdAt
+    }));
+    return { items, total };
+  }
+
+  async reopenRun(runId: bigint): Promise<TestRun | null> {
+    const row = await this.prisma.testRun.findFirst({
+      where: { id: runId, deletedAt: null }
+    });
+    if (!row) return null;
+    const updated = await this.prisma.testRun.update({
+      where: { id: runId },
+      data: { status: "open", closedAt: null }
+    });
+    return {
+      id: updated.id,
+      projectId: updated.projectId,
+      suiteId: updated.suiteId,
+      milestoneId: updated.milestoneId ?? null,
+      name: updated.name,
+      includeAll: updated.includeAll,
+      status: "open",
+      assignedTo: updated.assignedTo ?? null,
+      environment: updated.environment ?? null
+    };
   }
 
   async listResultStepsByResultId(resultId: bigint) {

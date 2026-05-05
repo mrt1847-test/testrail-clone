@@ -12,6 +12,7 @@ import {
   fetchWebhookEvents,
   fetchWebhooks,
   retryWebhookAttempt,
+  testSendWebhook,
   updateWebhook
 } from "../api/advancedApi";
 
@@ -81,6 +82,15 @@ export function WebhooksPage() {
     mutationFn: (id: string) => retryWebhookAttempt(projectId, id),
     onSuccess: refresh,
     onError: (e) => setError(e instanceof Error ? e.message : "Could not retry webhook attempt")
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: (id: string) => testSendWebhook(projectId, id),
+    onSuccess: async () => {
+      setError(null);
+      await refresh();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Test send failed")
   });
 
   if (isLoading) return <LoadingState message="Loading webhooks..." />;
@@ -157,6 +167,14 @@ export function WebhooksPage() {
                   <td className="px-3 py-2 font-mono text-xs text-slate-500">{row.secretPrefix ?? "-"}</td>
                   <td className="px-3 py-2">{row.isActive ? "active" : "inactive"}</td>
                   <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      disabled={!row.isActive || testSendMutation.isPending}
+                      className="mr-3 text-sm font-medium text-indigo-700 underline disabled:opacity-50"
+                      onClick={() => testSendMutation.mutate(row.id)}
+                    >
+                      Test send
+                    </button>
                     <button
                       type="button"
                       disabled={updateMutation.isPending}

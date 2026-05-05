@@ -1,11 +1,41 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchProjectActivity } from "../api/advancedApi";
+
+function getActivityHref(
+  projectId: string,
+  row: {
+    entityType: string;
+    entityId: string;
+    payload?: Record<string, unknown> | null;
+  }
+) {
+  const payload = row.payload ?? {};
+  const asString = (value: unknown) => (typeof value === "string" ? value : null);
+  const runId = asString(payload.runId);
+  const testId = asString(payload.testId);
+  const caseId = asString(payload.caseId);
+  const reportType = asString(payload.reportType);
+
+  if (runId) return `/projects/${projectId}/runs/${runId}`;
+  if (testId && runId) return `/projects/${projectId}/runs/${runId}?testId=${encodeURIComponent(testId)}`;
+  if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
+  if (row.entityType === "run") return `/projects/${projectId}/runs/${row.entityId}`;
+  if (row.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(row.entityId)}`;
+  if (row.entityType === "report") {
+    if (reportType === "run_summary") return `/projects/${projectId}/reports/runs`;
+    if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;
+    if (reportType === "coverage_gap") return `/projects/${projectId}/reports/coverage`;
+    if (reportType === "defect_coverage") return `/projects/${projectId}/reports/defects`;
+    return `/projects/${projectId}/reports/explorer`;
+  }
+  return null;
+}
 
 export function ActivityPage() {
   const { projectId = "" } = useParams();
@@ -43,6 +73,14 @@ export function ActivityPage() {
                       {row.eventType} - {row.entityType}:{row.entityId}
                       {row.actor ? ` - ${row.actor.email}` : ""}
                     </p>
+                    {getActivityHref(projectId, row) ? (
+                      <Link
+                        to={getActivityHref(projectId, row)!}
+                        className="mt-1 inline-flex text-xs font-medium text-slate-700 underline"
+                      >
+                        Open source
+                      </Link>
+                    ) : null}
                   </div>
                   <time className="text-xs text-slate-500">{new Date(row.createdAt).toLocaleString()}</time>
                 </div>

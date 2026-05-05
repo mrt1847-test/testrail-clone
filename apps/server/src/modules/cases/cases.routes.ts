@@ -8,9 +8,12 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import { CasesService } from "./cases.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
+  bulkArchiveCasesSchema,
   caseIdParamSchema,
   caseVersionIdParamSchema,
   bulkDeleteCasesSchema,
+  bulkMoveCasesSchema,
+  bulkUpdateCasesSchema,
   createCaseSchema,
   createCaseStepSchema,
   listCasesQuerySchema,
@@ -58,15 +61,28 @@ export async function registerCasesRoutes(
       projectId,
       suiteId: rawQuery.suiteId,
       sectionId: rawQuery.sectionId,
-      q: rawQuery.q
+      q: rawQuery.q,
+      priority: rawQuery.priority,
+      caseType: rawQuery.caseType,
+      automation: rawQuery.automation,
+      state: rawQuery.state
     });
     return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
   });
 
   app.get("/api/sections/:sectionId/cases", async (req, reply) => {
     const { sectionId } = sectionIdParamSchema.parse(req.params);
-    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    return reply.send(toJsonSafe(paged(await deps.casesService.listCases({ sectionId }), page, pageSize)));
+    const rawQuery = (req.query ?? {}) as Record<string, unknown>;
+    const { page, pageSize } = paginationQuerySchema.parse(rawQuery);
+    const query = listCasesQuerySchema.parse({
+      sectionId,
+      q: rawQuery.q,
+      priority: rawQuery.priority,
+      caseType: rawQuery.caseType,
+      automation: rawQuery.automation,
+      state: rawQuery.state
+    });
+    return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
   });
 
   app.post("/api/sections/:sectionId/cases", async (req, reply) => {
@@ -86,7 +102,7 @@ export async function registerCasesRoutes(
       const customValues = await deps.casesService.validateCaseCustomValues(
         deps.prisma,
         await deps.casesService.projectIdForSection(deps.prisma, sectionId),
-        asCustomValues(body.customValues)
+        asCustomValues(body.customValues) ?? {}
       );
       const created = await deps.casesService.createCase({ ...body, customValues });
       if (created.projectId) {
@@ -118,7 +134,7 @@ export async function registerCasesRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkDeleteCasesSchema.parse(req.body ?? {});
-    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedBulkDelete(projectId, body.caseIds);
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
     const result = await deps.casesService.bulkDeleteCases(scopedIds);
     const items = [
       ...result.items,
@@ -141,6 +157,110 @@ export async function registerCasesRoutes(
     }
 
     return reply.send(toJsonSafe(ok({ requested: body.caseIds.length, deleted, failed, items })));
+  });
+
+  app.post("/api/projects/:projectId/cases/bulk-move", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = bulkMoveCasesSchema.parse(req.body ?? {});
+    await deps.casesService.assertProjectScopedSection(projectId, body.targetSectionId);
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
+    const result = await deps.casesService.bulkMoveCases(scopedIds, body.targetSectionId);
+    const items = [
+      ...result.items,
+      ...outOfScope.map((caseId) => ({ caseId, success: false, error: "NOT_FOUND" }))
+    ];
+    const moved = items.filter((item) => item.success).length;
+    const failed = items.filter((item) => !item.success).length;
+
+    if (moved > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: "bulk-move",
+        eventType: "case.bulk_moved",
+        title: "Test cases bulk moved",
+        body: `${moved} test case${moved === 1 ? "" : "s"} moved`,
+        payload: {
+          targetSectionId: body.targetSectionId.toString(),
+          caseIds: items.filter((item) => item.success).map((item) => item.caseId.toString())
+        }
+      });
+    }
+
+    return reply.send(
+      toJsonSafe(ok({ requested: body.caseIds.length, moved, failed, targetSectionId: body.targetSectionId, items }))
+    );
+  });
+
+  app.post("/api/projects/:projectId/cases/bulk-update", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = bulkUpdateCasesSchema.parse(req.body ?? {});
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
+    const result = await deps.casesService.bulkUpdateCases(scopedIds, body.patch);
+    const items = [
+      ...result.items,
+      ...outOfScope.map((caseId) => ({ caseId, success: false, error: "NOT_FOUND" }))
+    ];
+    const updated = items.filter((item) => item.success).length;
+    const failed = items.filter((item) => !item.success).length;
+
+    if (updated > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: "bulk-update",
+        eventType: "case.bulk_updated",
+        title: "Test cases bulk updated",
+        body: `${updated} test case${updated === 1 ? "" : "s"} updated`,
+        payload: {
+          patch: body.patch,
+          caseIds: items.filter((item) => item.success).map((item) => item.caseId.toString())
+        }
+      });
+    }
+
+    return reply.send(toJsonSafe(ok({ requested: body.caseIds.length, updated, failed, patch: body.patch, items })));
+  });
+
+  app.post("/api/projects/:projectId/cases/bulk-archive", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = bulkArchiveCasesSchema.parse(req.body ?? {});
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
+    const result = await deps.casesService.bulkArchiveCases(scopedIds, body.archived);
+    const items = [
+      ...result.items,
+      ...outOfScope.map((caseId) => ({ caseId, success: false, error: "NOT_FOUND" }))
+    ];
+    const changed = items.filter((item) => item.success).length;
+    const failed = items.filter((item) => !item.success).length;
+
+    if (changed > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: body.archived ? "bulk-archive" : "bulk-restore",
+        eventType: body.archived ? "case.bulk_archived" : "case.bulk_restored",
+        title: body.archived ? "Test cases bulk archived" : "Test cases bulk restored",
+        body: `${changed} test case${changed === 1 ? "" : "s"} ${body.archived ? "archived" : "restored"}`,
+        payload: {
+          archived: body.archived,
+          caseIds: items.filter((item) => item.success).map((item) => item.caseId.toString())
+        }
+      });
+    }
+
+    return reply.send(
+      toJsonSafe(ok({ requested: body.caseIds.length, changed, failed, archived: body.archived, items }))
+    );
   });
 
   app.get("/api/cases/:caseId/versions", async (req, reply) => {

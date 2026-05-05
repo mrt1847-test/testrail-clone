@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -20,6 +20,8 @@ export function RunCreatePage() {
   const [includeAll, setIncludeAll] = useState(true);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [excludedCaseIds, setExcludedCaseIds] = useState<string[]>([]);
+  const [includedSectionIds, setIncludedSectionIds] = useState<string[]>([]);
+  const [excludedSectionIds, setExcludedSectionIds] = useState<string[]>([]);
   const mutation = useCreateRunMutation(projectId);
   const suitesQuery = useQuery({
     queryKey: ["run-create-suites", projectId],
@@ -29,7 +31,7 @@ export function RunCreatePage() {
   const casesQuery = useQuery({
     queryKey: ["run-create-cases", projectId, suiteId],
     queryFn: async () =>
-      apiFetch<Paged<{ id: string; title: string }>>(
+      apiFetch<Paged<{ id: string; title: string; sectionId?: string }>>(
         `/api/projects/${projectId}/cases?page=1&pageSize=200${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
       ),
     enabled: Boolean(projectId && suiteId)
@@ -39,10 +41,148 @@ export function RunCreatePage() {
     queryFn: () => fetchMilestones(projectId),
     enabled: Boolean(projectId)
   });
+  const sectionsQuery = useQuery({
+    queryKey: ["run-create-sections", suiteId],
+    queryFn: async () =>
+      apiFetch<Paged<{ id: string; name: string; parentSectionId?: string | null }>>(
+        `/api/suites/${suiteId}/sections?page=1&pageSize=500`
+      ),
+    enabled: Boolean(suiteId)
+  });
 
   const suites = suitesQuery.data?.data ?? [];
   const cases = casesQuery.data?.data ?? [];
+  const sections = sectionsQuery.data?.data ?? [];
   const milestones = milestonesQuery.data ?? [];
+  const sectionDepth = useMemo(() => {
+    const parentById = new Map<string, string | null>();
+    for (const section of sections) {
+      parentById.set(String(section.id), section.parentSectionId ? String(section.parentSectionId) : null);
+    }
+    const memo = new Map<string, number>();
+    const getDepth = (id: string): number => {
+      if (memo.has(id)) return memo.get(id)!;
+      const parent = parentById.get(id);
+      const depth = parent ? Math.min(6, getDepth(parent) + 1) : 0;
+      memo.set(id, depth);
+      return depth;
+    };
+    for (const section of sections) getDepth(String(section.id));
+    return memo;
+  }, [sections]);
+  const descendantIdsBySectionId = useMemo(() => {
+    const childrenByParent = new Map<string, string[]>();
+    for (const section of sections) {
+      const parent = section.parentSectionId ? String(section.parentSectionId) : "__root__";
+      const id = String(section.id);
+      const rows = childrenByParent.get(parent) ?? [];
+      rows.push(id);
+      childrenByParent.set(parent, rows);
+    }
+    const memo = new Map<string, Set<string>>();
+    const walk = (id: string): Set<string> => {
+      if (memo.has(id)) return memo.get(id)!;
+      const out = new Set<string>([id]);
+      const children = childrenByParent.get(id) ?? [];
+      for (const childId of children) {
+        for (const nestedId of walk(childId)) out.add(nestedId);
+      }
+      memo.set(id, out);
+      return out;
+    };
+    for (const section of sections) walk(String(section.id));
+    return memo;
+  }, [sections]);
+  const directCaseCountBySectionId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of cases) {
+      if (!row.sectionId) continue;
+      const key = String(row.sectionId);
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [cases]);
+  const subtreeCaseCountBySectionId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const section of sections) {
+      const sid = String(section.id);
+      let count = 0;
+      const descendants = descendantIdsBySectionId.get(sid) ?? new Set<string>([sid]);
+      for (const childId of descendants) count += directCaseCountBySectionId.get(childId) ?? 0;
+      map.set(sid, count);
+    }
+    return map;
+  }, [descendantIdsBySectionId, directCaseCountBySectionId, sections]);
+  const includedSet = useMemo(() => new Set(includedSectionIds), [includedSectionIds]);
+  const excludedSet = useMemo(() => new Set(excludedSectionIds), [excludedSectionIds]);
+  const selectedCaseIdSet = useMemo(() => new Set(selectedCaseIds), [selectedCaseIds]);
+  const includedScopedCaseIds = useMemo(() => {
+    if (includedSectionIds.length === 0) return new Set<string>(cases.map((row) => String(row.id)));
+    const allowedSectionIds = new Set<string>();
+    for (const sid of includedSectionIds) {
+      const descendants = descendantIdsBySectionId.get(sid);
+      if (!descendants) continue;
+      for (const childId of descendants) allowedSectionIds.add(childId);
+    }
+    const out = new Set<string>();
+    for (const row of cases) {
+      if (row.sectionId && allowedSectionIds.has(String(row.sectionId))) out.add(String(row.id));
+    }
+    return out;
+  }, [cases, descendantIdsBySectionId, includedSectionIds]);
+  const selectedCaseCountInScope = useMemo(() => {
+    if (includeAll) return 0;
+    let count = 0;
+    for (const cid of selectedCaseIds) {
+      if (includedScopedCaseIds.has(cid)) count += 1;
+    }
+    return count;
+  }, [includeAll, includedScopedCaseIds, selectedCaseIds]);
+  const sectionOverlapCount = useMemo(() => {
+    let count = 0;
+    for (const sid of includedSet) {
+      if (excludedSet.has(sid)) count += 1;
+    }
+    return count;
+  }, [excludedSet, includedSet]);
+  const runScopeSummary = useMemo(() => {
+    if (includeAll) {
+      return `${cases.length} cases in suite · include roots ${includedSectionIds.length} · exclude roots ${excludedSectionIds.length} · excluded cases ${excludedCaseIds.length}`;
+    }
+    return `${selectedCaseIds.length} selected · ${selectedCaseCountInScope} in section scope`;
+  }, [
+    cases.length,
+    excludedCaseIds.length,
+    excludedSectionIds.length,
+    includeAll,
+    includedSectionIds.length,
+    selectedCaseCountInScope,
+    selectedCaseIds.length
+  ]);
+  const selectionValidationMessage = useMemo(() => {
+    if (!suiteId) return "Select a suite first.";
+    if (!includeAll && selectedCaseIds.length === 0) return "Select at least one case.";
+    if (!includeAll && includedSectionIds.length > 0 && selectedCaseCountInScope === 0) {
+      return "Selected cases do not intersect with included section scope.";
+    }
+    if (includeAll && sectionOverlapCount > 0) {
+      return "Some section roots are selected in both include and exclude scope.";
+    }
+    return null;
+  }, [
+    includeAll,
+    includedSectionIds.length,
+    sectionOverlapCount,
+    selectedCaseCountInScope,
+    selectedCaseIds.length,
+    suiteId
+  ]);
+  const isSubmitDisabled =
+    !name.trim() ||
+    !suiteId ||
+    mutation.isPending ||
+    (!includeAll && selectedCaseIds.length === 0) ||
+    (!includeAll && includedSectionIds.length > 0 && selectedCaseCountInScope === 0);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -54,6 +194,8 @@ export function RunCreatePage() {
         includeAll,
         caseIds: includeAll ? undefined : selectedCaseIds,
         excludedCaseIds: includeAll ? excludedCaseIds : undefined,
+        includedSectionIds: includedSectionIds.length > 0 ? includedSectionIds : undefined,
+        excludedSectionIds: includeAll && excludedSectionIds.length > 0 ? excludedSectionIds : undefined,
         milestoneId: milestoneId || null,
         environment: environment.trim() || undefined
       },
@@ -101,6 +243,8 @@ export function RunCreatePage() {
               setSuiteId(e.target.value);
               setSelectedCaseIds([]);
               setExcludedCaseIds([]);
+              setIncludedSectionIds([]);
+              setExcludedSectionIds([]);
             }}
           >
             <option value="">Select suite</option>
@@ -146,11 +290,84 @@ export function RunCreatePage() {
                 setSelectedCaseIds([]);
               } else {
                 setExcludedCaseIds([]);
+                setExcludedSectionIds([]);
               }
             }}
           />
           Include all cases in suite
         </label>
+        {suiteId ? (
+          <div className="rounded border border-slate-200 p-3">
+            <p className="text-xs font-medium text-slate-600">Section scope (optional)</p>
+            <p className="mt-1 text-xs text-slate-500">
+              선택한 섹션 루트와 하위 섹션에 속한 케이스만 포함합니다. 개별 케이스 선택 모드에서는 선택 케이스와의 교집합이 됩니다.
+            </p>
+            {sectionsQuery.isLoading ? (
+              <p className="mt-2 text-xs text-slate-500">Loading sections…</p>
+            ) : sectionsQuery.isError ? (
+              <p className="mt-2 text-xs text-rose-600">Could not load sections.</p>
+            ) : sections.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">No sections in this suite.</p>
+            ) : (
+              <div className="mt-2 max-h-36 space-y-1 overflow-auto">
+                {sections.map((sec) => {
+                  const sid = String(sec.id);
+                  const depth = sectionDepth.get(sid) ?? 0;
+                  const caseCount = subtreeCaseCountBySectionId.get(sid) ?? 0;
+                  return (
+                    <label key={sid} className="flex items-center gap-2 text-xs text-slate-700" style={{ paddingLeft: `${depth * 12}px` }}>
+                      <input
+                        type="checkbox"
+                        checked={includedSectionIds.includes(sid)}
+                        onChange={(e) =>
+                          setIncludedSectionIds((prev) =>
+                            e.target.checked ? [...prev, sid] : prev.filter((x) => x !== sid)
+                          )
+                        }
+                      />
+                      <span className="truncate">{sec.name}</span>
+                      <span className="text-[11px] text-slate-400">({caseCount})</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {includeAll ? (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <p className="text-xs font-medium text-slate-600">Exclude section subtrees (optional)</p>
+                <p className="mt-1 text-xs text-slate-500">include-all 모드에서만 적용됩니다.</p>
+                {sections.length > 0 ? (
+                  <div className="mt-2 max-h-36 space-y-1 overflow-auto">
+                    {sections.map((sec) => {
+                      const sid = String(sec.id);
+                      const depth = sectionDepth.get(sid) ?? 0;
+                      const caseCount = subtreeCaseCountBySectionId.get(sid) ?? 0;
+                      return (
+                        <label
+                          key={`ex-${sid}`}
+                          className="flex items-center gap-2 text-xs text-slate-700"
+                          style={{ paddingLeft: `${depth * 12}px` }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={excludedSectionIds.includes(sid)}
+                            onChange={(e) =>
+                              setExcludedSectionIds((prev) =>
+                                e.target.checked ? [...prev, sid] : prev.filter((x) => x !== sid)
+                              )
+                            }
+                          />
+                          <span className="truncate">{sec.name}</span>
+                          <span className="text-[11px] text-slate-400">({caseCount})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {includeAll ? (
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs font-medium text-slate-600">Exclude cases (optional)</p>
@@ -190,8 +407,16 @@ export function RunCreatePage() {
               ) : null}
               {cases.map((c) => {
                 const id = String(c.id);
+                const outOfScope =
+                  includedSectionIds.length > 0 &&
+                  c.sectionId &&
+                  !includedScopedCaseIds.has(id) &&
+                  selectedCaseIdSet.has(id);
                 return (
-                  <label key={id} className="flex items-center gap-2 text-xs text-slate-700">
+                  <label
+                    key={id}
+                    className={`flex items-center gap-2 text-xs ${outOfScope ? "text-amber-700" : "text-slate-700"}`}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedCaseIds.includes(id)}
@@ -208,6 +433,10 @@ export function RunCreatePage() {
             </div>
           </div>
         ) : null}
+        <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Scope summary: {runScopeSummary}
+          {selectionValidationMessage ? <p className="mt-1 text-amber-700">{selectionValidationMessage}</p> : null}
+        </div>
         {mutation.isError ? <ErrorState title="Could not create run" /> : null}
         <div className="flex gap-2">
           <button
@@ -219,7 +448,7 @@ export function RunCreatePage() {
           </button>
           <button
             type="submit"
-            disabled={!name.trim() || !suiteId || mutation.isPending || (!includeAll && selectedCaseIds.length === 0)}
+            disabled={isSubmitDisabled}
             className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
           >
             {mutation.isPending ? "Creating…" : "Create run"}

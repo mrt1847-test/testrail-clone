@@ -137,7 +137,16 @@ export type NotificationRow = {
   body: string | null;
   readAt: string | null;
   createdAt: string;
-  activity: { id: string; entityType: string; entityId: string; eventType: string } | null;
+  activity: {
+    id: string;
+    entityType: string;
+    entityId: string;
+    eventType: string;
+    title?: string;
+    body?: string | null;
+    payload?: Record<string, unknown> | null;
+    createdAt?: string;
+  } | null;
 };
 
 export type NotificationResult = {
@@ -338,6 +347,16 @@ export async function retryWebhookAttempt(projectId: string, attemptId: string):
     webhookId: String(res.data.webhookId),
     activityEventId: res.data.activityEventId ? String(res.data.activityEventId) : null
   };
+}
+
+export async function testSendWebhook(
+  projectId: string,
+  webhookId: string
+): Promise<{ ok: boolean; status?: number; bodyPreview?: string; error?: string; attemptId: string }> {
+  const res = await apiFetch<
+    Ok<{ ok: boolean; status?: number; bodyPreview?: string; error?: string; attemptId: string }>
+  >(`/api/projects/${projectId}/settings/webhooks/${webhookId}/test-send`, { method: "POST" });
+  return res.data;
 }
 
 export async function fetchAuditLogs(projectId: string, query: AuditLogQuery = {}): Promise<AuditLogResult> {

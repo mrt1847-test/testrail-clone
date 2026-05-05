@@ -30,6 +30,29 @@ describe("phase2 CRUD flow", () => {
     expect(projectRes.statusCode).toBe(200);
     const project = projectRes.json() as { data: { id: string } };
 
+    const riskFieldRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/custom-fields`,
+      headers: mutationHeaders,
+      payload: {
+        name: "Risk",
+        fieldType: "select",
+        options: ["High", "Medium", "Low"]
+      }
+    });
+    expect(riskFieldRes.statusCode).toBe(200);
+
+    const automationCandidateFieldRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/custom-fields`,
+      headers: mutationHeaders,
+      payload: {
+        name: "Automation Candidate",
+        fieldType: "boolean"
+      }
+    });
+    expect(automationCandidateFieldRes.statusCode).toBe(200);
+
     const suiteRes = await app.inject({
       method: "POST",
       url: `/api/projects/${project.data.id}/suites`,
@@ -142,6 +165,72 @@ describe("phase2 CRUD flow", () => {
     expect(listRes.statusCode).toBe(200);
     const list = listRes.json() as { data: Array<{ name: string }> };
     expect(list.data.some((field) => field.name === "Product Risk")).toBe(true);
+  });
+
+  it("rejects case creation when required custom fields are missing", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const mutationHeaders = { authorization: `Bearer ${token}` };
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: mutationHeaders,
+      payload: { name: "Required case field project" }
+    });
+    const project = projectRes.json() as { data: { id: string } };
+
+    const fieldRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/custom-fields`,
+      headers: mutationHeaders,
+      payload: {
+        name: "Risk",
+        fieldType: "select",
+        options: ["High", "Medium", "Low"],
+        isRequired: true
+      }
+    });
+    expect(fieldRes.statusCode).toBe(200);
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/suites`,
+      headers: mutationHeaders,
+      payload: { name: "Required field suite" }
+    });
+    const suite = suiteRes.json() as { data: { id: string } };
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suite.data.id}/sections`,
+      headers: mutationHeaders,
+      payload: { name: "Required field section" }
+    });
+    const section = sectionRes.json() as { data: { id: string } };
+
+    const missingFieldRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${section.data.id}/cases`,
+      headers: mutationHeaders,
+      payload: { title: "Missing risk" }
+    });
+    expect(missingFieldRes.statusCode).toBe(400);
+    expect(missingFieldRes.json()).toMatchObject({
+      code: "REQUIRED_CUSTOM_FIELD",
+      field: "risk"
+    });
+
+    const validCaseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${section.data.id}/cases`,
+      headers: mutationHeaders,
+      payload: { title: "Has risk", customValues: { risk: "High" } }
+    });
+    expect(validCaseRes.statusCode).toBe(200);
   });
 
   it("creates and updates project custom statuses", async () => {

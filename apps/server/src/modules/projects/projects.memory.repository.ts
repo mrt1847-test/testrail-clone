@@ -10,6 +10,29 @@ import type {
 
 type StoredCaseStep = CaseStepRow & { caseId: bigint };
 
+function normalizeSearchTerm(value: string | undefined) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function caseMatchesSearch(row: CaseRow, q: string | undefined) {
+  const needle = normalizeSearchTerm(q);
+  if (!needle) return true;
+  const customValues = Object.values(row.customValues ?? {})
+    .filter((value) => value != null && String(value).trim().length > 0)
+    .map((value) => String(value).toLowerCase());
+  const haystacks = [
+    row.title,
+    row.refs ?? "",
+    row.automationKey ?? "",
+    row.externalId ?? "",
+    `c${row.id.toString()}`,
+    ...(row.labels ?? []),
+    ...customValues
+  ].map((value) => value.toLowerCase());
+  return haystacks.some((value) => value.includes(needle));
+}
+
 export class ProjectsMemoryRepository implements ProjectsRepository {
   private projectSeq = 1n;
   private suiteSeq = 1n;
@@ -98,14 +121,28 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   }
 
   /** 스위트에 속한 섹션들의 케이스만 반환 (런 생성 시 카탈로그와 정합) */
-  async listCasesForSuite(projectId: bigint, suiteId: bigint) {
+  async listCasesForSuite(projectId: bigint, suiteId: bigint, state: "active" | "archived" | "all" = "active") {
     const suite = await this.getSuite(suiteId);
     if (!suite || suite.projectId !== projectId) return [];
     const sectionIds = new Set(this.sections.filter((s) => s.suiteId === suiteId).map((s) => s.id));
-    return this.cases.filter((c) => sectionIds.has(c.sectionId));
+    return this.cases.filter((c) => {
+      if (!sectionIds.has(c.sectionId)) return false;
+      if (state === "archived") return c.archivedAt != null;
+      if (state === "all") return true;
+      return c.archivedAt == null;
+    });
   }
 
-  async listCases(params: { projectId?: bigint; suiteId?: bigint; sectionId?: bigint; q?: string }) {
+  async listCases(params: {
+    projectId?: bigint;
+    suiteId?: bigint;
+    sectionId?: bigint;
+    q?: string;
+    priority?: string;
+    caseType?: string;
+    automation?: "manual" | "automated";
+    state?: "active" | "archived" | "all";
+  }) {
     const suiteIds = params.projectId
       ? this.suites.filter((s) => s.projectId === params.projectId).map((s) => s.id)
       : null;
@@ -120,12 +157,25 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
         if (!section || section.suiteId !== params.suiteId) return false;
       }
       if (sectionIdsByProject && !sectionIdsByProject.includes(c.sectionId)) return false;
-      if (params.q && !c.title.toLowerCase().includes(params.q.toLowerCase())) return false;
+      if ((params.state ?? "active") === "archived" && c.archivedAt == null) return false;
+      if ((params.state ?? "active") === "active" && c.archivedAt != null) return false;
+      if (params.priority && (c.priority ?? "").toLowerCase() !== params.priority.toLowerCase()) return false;
+      if (params.caseType && (c.caseType ?? "").toLowerCase() !== params.caseType.toLowerCase()) return false;
+      if (params.automation === "automated" && !c.automationKey) return false;
+      if (params.automation === "manual" && c.automationKey) return false;
+      if (!caseMatchesSearch(c, params.q)) return false;
       return true;
     });
   }
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">) {
-    const row: CaseRow = { id: this.caseSeq++, ...input, lockVersion: 1, updatedAt: new Date() };
+    const row: CaseRow = {
+      id: this.caseSeq++,
+      ...input,
+      labels: input.labels ?? [],
+      lockVersion: 1,
+      updatedAt: new Date(),
+      archivedAt: input.archivedAt ?? null
+    };
     this.cases.push(row);
     return row;
   }
@@ -252,13 +302,32 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
 
   async updateCase(
     caseId: bigint,
-    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion">>,
+    patch: Partial<Omit<CaseRow, "id" | "sectionId" | "updatedAt" | "lockVersion" | "archivedAt">>,
     expectedVersion?: number
   ) {
     const row = this.cases.find((c) => c.id === caseId);
     if (!row) return null;
     if (expectedVersion !== undefined && row.lockVersion !== expectedVersion) return "conflict";
     Object.assign(row, patch);
+    row.lockVersion += 1;
+    row.updatedAt = new Date();
+    return row;
+  }
+  async setCaseArchived(caseId: bigint, archived: boolean) {
+    const row = this.cases.find((c) => c.id === caseId);
+    if (!row) return null;
+    if (archived && row.archivedAt != null) return "already_archived";
+    if (!archived && row.archivedAt == null) return "already_active";
+    row.archivedAt = archived ? new Date() : null;
+    row.lockVersion += 1;
+    row.updatedAt = new Date();
+    return row;
+  }
+  async moveCase(caseId: bigint, targetSectionId: bigint) {
+    const row = this.cases.find((c) => c.id === caseId);
+    const targetSection = this.sections.find((section) => section.id === targetSectionId);
+    if (!row || !targetSection) return null;
+    row.sectionId = targetSectionId;
     row.lockVersion += 1;
     row.updatedAt = new Date();
     return row;

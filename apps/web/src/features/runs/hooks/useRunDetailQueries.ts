@@ -22,6 +22,8 @@ type Input = {
   selectedResultId: string | null;
   instancePage: number;
   pageSize: number;
+  historyPage: number;
+  historyPageSize: number;
   statusFilter: string;
   assigneeFilter: string;
   searchText: string;
@@ -36,6 +38,8 @@ export function useRunDetailQueries(input: Input) {
     selectedResultId,
     instancePage,
     pageSize,
+    historyPage,
+    historyPageSize,
     statusFilter,
     assigneeFilter,
     searchText
@@ -75,7 +79,7 @@ export function useRunDetailQueries(input: Input) {
     [runInstancesQuery.data?.data]
   );
   const selectedCaseDetail = useCaseDetail(selectedCaseId);
-  const historyQuery = useTestResultsQuery(selectedTestId);
+  const historyQuery = useTestResultsQuery(selectedTestId, historyPage, historyPageSize);
   const stepsQuery = useResultStepsQuery(selectedResultId ?? undefined);
   const attachmentsQuery = useResultAttachmentsQuery(selectedResultId ?? undefined);
   const defectsQuery = useResultDefectsQuery(selectedResultId ?? undefined);

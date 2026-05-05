@@ -136,7 +136,11 @@ export async function registerActivityRoutes(
                 id: item.activityEvent.id,
                 entityType: item.activityEvent.entityType,
                 entityId: item.activityEvent.entityId,
-                eventType: item.activityEvent.eventType
+                eventType: item.activityEvent.eventType,
+                title: item.activityEvent.title,
+                body: item.activityEvent.body,
+                payload: item.activityEvent.payload,
+                createdAt: item.activityEvent.createdAt
               }
             : null
         })),
