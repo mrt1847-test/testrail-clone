@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { fetchMe, login as loginApi, logout as logoutApi } from "../api/authApi";
-import { getAccessToken } from "../../../shared/api/http";
+import { getAccessToken, setAccessToken } from "../../../shared/api/http";
 
 type AuthUser = {
   id: string;
@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(me.user);
         setMemberships(me.memberships);
       } catch {
+        setAccessToken(null);
         setUser(null);
         setMemberships([]);
       } finally {

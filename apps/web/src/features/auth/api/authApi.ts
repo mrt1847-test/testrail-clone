@@ -37,6 +37,9 @@ export async function fetchMe() {
 }
 
 export async function logout() {
-  await apiFetch<void>("/api/auth/logout", { method: "POST" });
-  setAccessToken(null);
+  try {
+    await apiFetch<void>("/api/auth/logout", { method: "POST" });
+  } finally {
+    setAccessToken(null);
+  }
 }
