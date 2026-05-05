@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CaseListFilters, SavedCaseView } from "../types";
+import { defaultCaseListColumns } from "./useExpandedCase";
+import type { CaseListColumn, CaseListFilters, SavedCaseView } from "../types";
 
 type CurrentCaseView = {
   sectionId: number | null;
   filters: CaseListFilters;
+  columns: CaseListColumn[];
 };
+
+const allowedColumns = new Set<CaseListColumn>([
+  "type",
+  "priority",
+  "automation",
+  "estimate",
+  "refs",
+  "labels",
+  "customValues"
+]);
 
 function isPriority(value: unknown): value is CaseListFilters["priority"] {
   return value === "" || value === "low" || value === "medium" || value === "high";
@@ -23,6 +35,16 @@ function isState(value: unknown): value is CaseListFilters["state"] {
   return value === "active" || value === "archived";
 }
 
+function isPresence(value: unknown): value is CaseListFilters["refs"] {
+  return value === "" || value === "with" || value === "without";
+}
+
+function normalizeColumns(value: unknown): CaseListColumn[] {
+  if (!Array.isArray(value)) return defaultCaseListColumns;
+  const columns = value.filter((item): item is CaseListColumn => allowedColumns.has(item as CaseListColumn));
+  return columns.length > 0 ? Array.from(new Set(columns)) : defaultCaseListColumns;
+}
+
 function normalizeSavedView(value: unknown): SavedCaseView | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -38,8 +60,12 @@ function normalizeSavedView(value: unknown): SavedCaseView | null {
       priority: isPriority(filterRow.priority) ? filterRow.priority : "",
       caseType: isCaseType(filterRow.caseType) ? filterRow.caseType : "",
       automation: isAutomation(filterRow.automation) ? filterRow.automation : "",
+      refs: isPresence(filterRow.refs) ? filterRow.refs : "",
+      labels: isPresence(filterRow.labels) ? filterRow.labels : "",
+      estimate: isPresence(filterRow.estimate) ? filterRow.estimate : "",
       state: isState(filterRow.state) ? filterRow.state : "active"
-    }
+    },
+    columns: normalizeColumns(row.columns)
   };
 }
 
@@ -50,7 +76,11 @@ function sameView(left: CurrentCaseView, right: CurrentCaseView) {
     left.filters.priority === right.filters.priority &&
     left.filters.caseType === right.filters.caseType &&
     left.filters.automation === right.filters.automation &&
-    left.filters.state === right.filters.state
+    left.filters.refs === right.filters.refs &&
+    left.filters.labels === right.filters.labels &&
+    left.filters.estimate === right.filters.estimate &&
+    left.filters.state === right.filters.state &&
+    left.columns.join(",") === right.columns.join(",")
   );
 }
 
@@ -104,7 +134,8 @@ export function useCaseSavedViews(projectId: string, userId: string | null | und
           currentView,
           {
             sectionId: view.sectionId,
-            filters: view.filters
+            filters: view.filters,
+            columns: view.columns
           }
         )
       ) ?? null,
@@ -120,7 +151,8 @@ export function useCaseSavedViews(projectId: string, userId: string | null | und
         id: existing?.id ?? nextViewId(),
         name: normalizedName,
         sectionId: currentView.sectionId,
-        filters: currentView.filters
+        filters: currentView.filters,
+        columns: currentView.columns
       };
       setSavedViews((current) => {
         const others = current.filter((view) => view.id !== nextView.id);

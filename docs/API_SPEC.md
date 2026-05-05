@@ -124,6 +124,9 @@ Case list query baseline:
   - `priority`
   - `caseType`
   - `automation` (`manual` or `automated`)
+  - `refs` (`with` or `without`)
+  - `labels` (`with` or `without`)
+  - `estimate` (`with` or `without`)
   - `state` (`active` default, `archived` to view archived cases)
   - `page`, `pageSize`
 

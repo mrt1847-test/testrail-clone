@@ -17,6 +17,7 @@ import {
   defaultStatusRows,
   type SettingsRouteDeps
 } from "./settings.shared.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 export async function registerStatusesRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/statuses", async (req, reply) => {
@@ -70,6 +71,16 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
             }
           });
           return created;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_status",
+          entityId: row.id,
+          eventType: "settings.custom_status.created",
+          title: "Custom status created",
+          body: row.name,
+          payload: { systemName: row.systemName, canonicalStatus: row.canonicalStatus }
         });
         return reply.send(toJsonSafe(ok(statusToResponse(row))));
       } catch (e) {
@@ -140,6 +151,16 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
           });
           return updated;
         });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_status",
+          entityId: row.id,
+          eventType: "settings.custom_status.updated",
+          title: "Custom status updated",
+          body: row.name,
+          payload: { systemName: row.systemName, canonicalStatus: row.canonicalStatus }
+        });
         return reply.send(toJsonSafe(ok(statusToResponse(row))));
       } catch (e) {
         if (e instanceof Error && e.message === "CUSTOM_STATUS_NOT_FOUND") {
@@ -176,10 +197,10 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       try {
-        await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const deleted = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const existing = await tx.customStatus.findFirst({
             where: { id: statusId, projectId, deletedAt: null },
-            select: { id: true, isSystem: true }
+            select: { id: true, isSystem: true, name: true, systemName: true, canonicalStatus: true }
           });
           if (!existing) {
             throw new Error("CUSTOM_STATUS_NOT_FOUND");
@@ -200,6 +221,17 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
               entityId: row.id.toString()
             }
           });
+          return existing;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_status",
+          entityId: deleted.id,
+          eventType: "settings.custom_status.deleted",
+          title: "Custom status deleted",
+          body: deleted.name,
+          payload: { systemName: deleted.systemName, canonicalStatus: deleted.canonicalStatus }
         });
       } catch (e) {
         if (e instanceof Error && e.message === "CUSTOM_STATUS_NOT_FOUND") {

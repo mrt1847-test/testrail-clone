@@ -22,8 +22,8 @@ function getActivityHref(
   const caseId = asString(payload.caseId);
   const reportType = asString(payload.reportType);
 
-  if (runId) return `/projects/${projectId}/runs/${runId}`;
   if (testId && runId) return `/projects/${projectId}/runs/${runId}?testId=${encodeURIComponent(testId)}`;
+  if (runId) return `/projects/${projectId}/runs/${runId}`;
   if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
   if (row.entityType === "run") return `/projects/${projectId}/runs/${row.entityId}`;
   if (row.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(row.entityId)}`;

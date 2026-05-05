@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const customValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+const presenceFilterSchema = z.enum(["with", "without"]);
 
 export const createCaseSchema = z.object({
   sectionId: z.coerce.bigint(),
@@ -40,6 +41,9 @@ export const listCasesQuerySchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   automation: z.enum(["manual", "automated"]).optional(),
+  refs: presenceFilterSchema.optional(),
+  labels: presenceFilterSchema.optional(),
+  estimate: presenceFilterSchema.optional(),
   state: z.enum(["active", "archived"]).optional()
 });
 

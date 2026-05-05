@@ -63,8 +63,10 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     expandedCaseId,
     mode,
     caseFilters,
+    caseColumns,
     setExpandedCase,
     setCaseFilters,
+    setCaseColumns,
     clearCaseFilters,
     applySavedView
   } = useExpandedCase();
@@ -105,9 +107,10 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   const currentView = useMemo(
     () => ({
       sectionId: selectedSectionId,
-      filters: caseFilters
+      filters: caseFilters,
+      columns: caseColumns
     }),
-    [caseFilters, selectedSectionId]
+    [caseColumns, caseFilters, selectedSectionId]
   );
   const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(projectId, user?.id, currentView);
   const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
@@ -123,6 +126,9 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
         caseFilters.priority !== "",
         caseFilters.caseType !== "",
         caseFilters.automation !== "",
+        caseFilters.refs !== "",
+        caseFilters.labels !== "",
+        caseFilters.estimate !== "",
         caseFilters.state !== "active"
       ].filter(Boolean).length,
     [caseFilters]
@@ -384,8 +390,16 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
       setCaseFilters({ caseType: value }),
     automationValue: caseFilters.automation,
     onAutomationChange: (value: "manual" | "automated" | "") => setCaseFilters({ automation: value }),
+    refsValue: caseFilters.refs,
+    onRefsChange: (value: "with" | "without" | "") => setCaseFilters({ refs: value }),
+    labelsValue: caseFilters.labels,
+    onLabelsChange: (value: "with" | "without" | "") => setCaseFilters({ labels: value }),
+    estimateValue: caseFilters.estimate,
+    onEstimateChange: (value: "with" | "without" | "") => setCaseFilters({ estimate: value }),
     stateValue: caseFilters.state,
     onStateChange: (value: "active" | "archived") => setCaseFilters({ state: value }),
+    columnsValue: caseColumns,
+    onColumnsChange: setCaseColumns,
     activeFilterCount,
     onClearFilters: () => {
       setSearchDraft("");
@@ -396,7 +410,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     onSavedViewSelect: (viewId: string) => {
       const view = savedViews.find((item) => item.id === viewId);
       if (!view) return;
-      applySavedView({ sectionId: view.sectionId, filters: view.filters });
+      applySavedView({ sectionId: view.sectionId, filters: view.filters, columns: view.columns });
       setSaveViewOpen(false);
       setSaveViewName("");
     },
@@ -609,6 +623,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
                 versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
                 customFields={customFields}
                 caseTemplates={caseTemplates}
+                visibleColumns={caseColumns}
                 isSelected={selectedCaseIds.has(item.id)}
                 onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
                 onToggle={() => setExpandedCase(isExpanded ? null : item.id)}

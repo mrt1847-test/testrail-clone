@@ -65,6 +65,9 @@ export async function registerCasesRoutes(
       priority: rawQuery.priority,
       caseType: rawQuery.caseType,
       automation: rawQuery.automation,
+      refs: rawQuery.refs,
+      labels: rawQuery.labels,
+      estimate: rawQuery.estimate,
       state: rawQuery.state
     });
     return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
@@ -80,6 +83,9 @@ export async function registerCasesRoutes(
       priority: rawQuery.priority,
       caseType: rawQuery.caseType,
       automation: rawQuery.automation,
+      refs: rawQuery.refs,
+      labels: rawQuery.labels,
+      estimate: rawQuery.estimate,
       state: rawQuery.state
     });
     return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));

@@ -144,6 +144,9 @@ export async function fetchCasesForSection(
   if (filters.priority) params.set("priority", filters.priority);
   if (filters.caseType) params.set("caseType", filters.caseType);
   if (filters.automation) params.set("automation", filters.automation);
+  if (filters.refs) params.set("refs", filters.refs);
+  if (filters.labels) params.set("labels", filters.labels);
+  if (filters.estimate) params.set("estimate", filters.estimate);
   if (filters.state === "archived") params.set("state", filters.state);
 
   const res = await apiFetch<Paged<ApiCase>>(`/api/projects/${projectId}/cases?${params.toString()}`);

@@ -1,4 +1,4 @@
-import type { CaseVersion, TestCase } from "../types";
+import type { CaseListColumn, CaseVersion, TestCase } from "../types";
 
 import type {
   CaseAuthoringCustomFieldDefinition,
@@ -14,6 +14,7 @@ type CaseRowProps = {
   versions?: CaseVersion[];
   customFields?: CaseAuthoringCustomFieldDefinition[];
   caseTemplates?: CaseAuthoringTemplateDefinition[];
+  visibleColumns: CaseListColumn[];
   isSelected?: boolean;
   onSelectChange?: (checked: boolean) => void;
   onToggle: () => void;
@@ -47,6 +48,7 @@ export function CaseRow({
   versions,
   customFields,
   caseTemplates,
+  visibleColumns,
   isSelected = false,
   onSelectChange,
   onToggle,
@@ -64,6 +66,7 @@ export function CaseRow({
   onDeleteStep,
   isStepsBusy
 }: CaseRowProps) {
+  const visibleColumnSet = new Set(visibleColumns);
   const activeCustomFields = (customFields ?? []).filter((field) => field.isActive);
   const visibleCustomValueChips = activeCustomFields
     .map((field) => {
@@ -77,10 +80,16 @@ export function CaseRow({
   const visibleLabels = item.labels.slice(0, 3);
   const hiddenLabelCount = Math.max(0, item.labels.length - visibleLabels.length);
   const hasMetaLine =
-    item.references.trim().length > 0 ||
-    item.automationKey.trim().length > 0 ||
-    visibleLabels.length > 0 ||
-    visibleCustomValueChips.length > 0;
+    (visibleColumnSet.has("refs") && item.references.trim().length > 0) ||
+    (visibleColumnSet.has("automation") && item.automationKey.trim().length > 0) ||
+    (visibleColumnSet.has("labels") && visibleLabels.length > 0) ||
+    (visibleColumnSet.has("customValues") && visibleCustomValueChips.length > 0);
+  const summaryParts = [
+    visibleColumnSet.has("type") ? item.type : null,
+    visibleColumnSet.has("priority") ? item.priority : null,
+    visibleColumnSet.has("automation") ? item.automationStatus : null,
+    visibleColumnSet.has("estimate") && item.estimate !== "-" ? item.estimate : null
+  ].filter((part): part is string => part != null);
 
   return (
     <article className="border-b border-slate-100 last:border-0">
@@ -110,28 +119,28 @@ export function CaseRow({
             </span>
             {hasMetaLine ? (
               <span className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
-                {item.references.trim().length > 0 ? (
+                {visibleColumnSet.has("refs") && item.references.trim().length > 0 ? (
                   <span className="rounded-full bg-slate-100 px-2 py-0.5">Refs: {item.references}</span>
                 ) : null}
-                {item.automationKey.trim().length > 0 ? (
+                {visibleColumnSet.has("automation") && item.automationKey.trim().length > 0 ? (
                   <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
                     Auto: {item.automationKey}
                   </span>
                 ) : null}
-                {visibleLabels.map((label) => (
+                {visibleColumnSet.has("labels") ? visibleLabels.map((label) => (
                   <span key={label} className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">
                     {label}
                   </span>
-                ))}
-                {hiddenLabelCount > 0 ? (
+                )) : null}
+                {visibleColumnSet.has("labels") && hiddenLabelCount > 0 ? (
                   <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">+{hiddenLabelCount} labels</span>
                 ) : null}
-                {visibleCustomValueChips.map((chip) => (
+                {visibleColumnSet.has("customValues") ? visibleCustomValueChips.map((chip) => (
                   <span key={chip.key} className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
                     {chip.label}: {chip.value}
                   </span>
-                ))}
-                {hiddenCustomValueCount > 0 ? (
+                )) : null}
+                {visibleColumnSet.has("customValues") && hiddenCustomValueCount > 0 ? (
                   <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
                     +{hiddenCustomValueCount} fields
                   </span>
@@ -139,9 +148,8 @@ export function CaseRow({
               </span>
             ) : null}
           </span>
-          <span className="shrink-0 text-xs text-slate-500">
-            {item.type} / {item.priority} / {item.automationStatus}
-            {item.estimate !== "-" ? ` / ${item.estimate}` : ""} {isExpanded ? "-" : "+"}
+          <span className="shrink-0 text-right text-xs text-slate-500">
+            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode} {isExpanded ? "-" : "+"}
           </span>
         </button>
       </div>

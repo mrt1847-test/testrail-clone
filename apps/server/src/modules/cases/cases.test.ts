@@ -164,5 +164,18 @@ describe("cases service", () => {
     await expect(service.listCases({ projectId: project.id, q: "AUTO-100" })).resolves.toMatchObject([
       { id: enrichedCase.id }
     ]);
+    await expect(service.listCases({ projectId: project.id, refs: "with" })).resolves.toMatchObject([
+      { id: enrichedCase.id }
+    ]);
+    await expect(service.listCases({ projectId: project.id, labels: "with" })).resolves.toMatchObject([
+      { id: enrichedCase.id }
+    ]);
+    await expect(service.listCases({ projectId: project.id, estimate: "with" })).resolves.toMatchObject([
+      { id: enrichedCase.id }
+    ]);
+    await expect(service.listCases({ projectId: project.id, refs: "without" })).resolves.toMatchObject([
+      { id: firstCase.id },
+      { id: secondCase.id }
+    ]);
   });
 });

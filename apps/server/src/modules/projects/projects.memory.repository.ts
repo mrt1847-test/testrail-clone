@@ -1,5 +1,6 @@
 import type {
   CaseRow,
+  CasePresenceFilter,
   CaseStepRow,
   CaseVersionRow,
   ProjectRow,
@@ -31,6 +32,20 @@ function caseMatchesSearch(row: CaseRow, q: string | undefined) {
     ...customValues
   ].map((value) => value.toLowerCase());
   return haystacks.some((value) => value.includes(needle));
+}
+
+function hasText(value: string | null | undefined) {
+  return value != null && value.trim().length > 0;
+}
+
+function hasLabels(value: string[] | undefined) {
+  return (value ?? []).some((label) => label.trim().length > 0);
+}
+
+function matchesPresence(hasValue: boolean, filter: CasePresenceFilter | undefined) {
+  if (filter === "with") return hasValue;
+  if (filter === "without") return !hasValue;
+  return true;
 }
 
 export class ProjectsMemoryRepository implements ProjectsRepository {
@@ -141,6 +156,9 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     priority?: string;
     caseType?: string;
     automation?: "manual" | "automated";
+    refs?: CasePresenceFilter;
+    labels?: CasePresenceFilter;
+    estimate?: CasePresenceFilter;
     state?: "active" | "archived" | "all";
   }) {
     const suiteIds = params.projectId
@@ -163,6 +181,9 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       if (params.caseType && (c.caseType ?? "").toLowerCase() !== params.caseType.toLowerCase()) return false;
       if (params.automation === "automated" && !c.automationKey) return false;
       if (params.automation === "manual" && c.automationKey) return false;
+      if (!matchesPresence(hasText(c.refs), params.refs)) return false;
+      if (!matchesPresence(hasLabels(c.labels), params.labels)) return false;
+      if (!matchesPresence(hasText(c.estimate), params.estimate)) return false;
       if (!caseMatchesSearch(c, params.q)) return false;
       return true;
     });

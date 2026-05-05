@@ -37,6 +37,8 @@ export type CaseRow = {
   archivedAt?: Date | null;
 };
 
+export type CasePresenceFilter = "with" | "without";
+
 export type CaseStepRow = {
   id: bigint;
   stepOrder: number;
@@ -89,6 +91,9 @@ export interface ProjectsRepository {
     priority?: string;
     caseType?: string;
     automation?: "manual" | "automated";
+    refs?: CasePresenceFilter;
+    labels?: CasePresenceFilter;
+    estimate?: CasePresenceFilter;
     state?: "active" | "archived" | "all";
   }): Promise<CaseRow[]>;
   createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow>;

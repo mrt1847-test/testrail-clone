@@ -2,6 +2,7 @@ import type { PrismaClient, Prisma } from "@prisma/client";
 
 import type {
   CaseRow,
+  CasePresenceFilter,
   CaseStepRow,
   CaseVersionRow,
   ProjectRow,
@@ -88,6 +89,31 @@ function caseMatchesSearch(
     ...customValues
   ].map((value) => value.toLowerCase());
   return haystacks.some((value) => value.includes(needle));
+}
+
+function hasText(value: string | null | undefined) {
+  return value != null && value.trim().length > 0;
+}
+
+function hasLabels(value: string[] | undefined) {
+  return (value ?? []).some((label) => label.trim().length > 0);
+}
+
+function matchesPresence(hasValue: boolean, filter: CasePresenceFilter | undefined) {
+  if (filter === "with") return hasValue;
+  if (filter === "without") return !hasValue;
+  return true;
+}
+
+function caseMatchesPresence(
+  row: Pick<CaseRow, "refs" | "labels" | "estimate">,
+  params: { refs?: CasePresenceFilter; labels?: CasePresenceFilter; estimate?: CasePresenceFilter }
+) {
+  return (
+    matchesPresence(hasText(row.refs), params.refs) &&
+    matchesPresence(hasLabels(row.labels), params.labels) &&
+    matchesPresence(hasText(row.estimate), params.estimate)
+  );
 }
 
 function mapCaseRow(row: {
@@ -337,6 +363,9 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     priority?: string;
     caseType?: string;
     automation?: "manual" | "automated";
+    refs?: CasePresenceFilter;
+    labels?: CasePresenceFilter;
+    estimate?: CasePresenceFilter;
     state?: "active" | "archived" | "all";
   }): Promise<CaseRow[]> {
     const rows = await this.prisma.testCase.findMany({
@@ -357,7 +386,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       orderBy: { id: "asc" },
       select: caseSelect
     });
-    return rows.map(mapCaseRow).filter((row) => caseMatchesSearch(row, params.q));
+    return rows
+      .map(mapCaseRow)
+      .filter((row) => caseMatchesPresence(row, params))
+      .filter((row) => caseMatchesSearch(row, params.q));
   }
 
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow> {

@@ -14,6 +14,9 @@ export const caseKeys = {
       filters.priority,
       filters.caseType,
       filters.automation,
+      filters.refs,
+      filters.labels,
+      filters.estimate,
       filters.state
     ] as const
 };

@@ -10,6 +10,7 @@ import type { AuthService } from "../auth/auth.service.js";
 import { createProjectSchema, projectIdParamSchema, updateProjectSchema } from "./projects.schema.js";
 import { ProjectsService } from "./projects.service.js";
 import type { PrismaClient } from "@prisma/client";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 export async function registerProjectsRoutes(
   app: FastifyInstance,
@@ -36,9 +37,17 @@ export async function registerProjectsRoutes(
   app.post("/api/projects", async (req, reply) => {
     const user = await getAuthenticatedUser(req, deps);
     const body = createProjectSchema.parse(req.body);
-    return reply.send(
-      toJsonSafe(ok(await deps.projectsService.createProject({ ...body, ownerUserId: user.id })))
-    );
+    const created = await deps.projectsService.createProject({ ...body, ownerUserId: user.id });
+    await recordActivityEvent(deps.prisma, {
+      projectId: created.id,
+      actorUserId: user.id,
+      entityType: "project",
+      entityId: created.id,
+      eventType: "project.created",
+      title: "Project created",
+      body: created.name
+    });
+    return reply.send(toJsonSafe(ok(created)));
   });
 
   app.get("/api/projects/:projectId", async (req, reply) => {
@@ -58,15 +67,37 @@ export async function registerProjectsRoutes(
 
   app.patch("/api/projects/:projectId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = updateProjectSchema.parse(req.body);
-    return reply.send(toJsonSafe(ok(await deps.projectsService.updateProject(projectId, body))));
+    const updated = await deps.projectsService.updateProject(projectId, body);
+    await recordActivityEvent(deps.prisma, {
+      projectId: updated.id,
+      actorUserId: user.id,
+      entityType: "project",
+      entityId: updated.id,
+      eventType: "project.updated",
+      title: "Project updated",
+      body: updated.name
+    });
+    return reply.send(toJsonSafe(ok(updated)));
   });
 
   app.delete("/api/projects/:projectId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
+    const project = await deps.projectsService.getProject(projectId);
     await deps.projectsService.deleteProject(projectId);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "project",
+      entityId: projectId,
+      eventType: "project.deleted",
+      title: "Project deleted",
+      body: project.name
+    });
     return reply.status(204).send();
   });
 }

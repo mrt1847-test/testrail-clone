@@ -21,6 +21,9 @@ export class CasesService {
     priority?: string;
     caseType?: string;
     automation?: "manual" | "automated";
+    refs?: "with" | "without";
+    labels?: "with" | "without";
+    estimate?: "with" | "without";
     state?: "active" | "archived" | "all";
   }) {
     return this.repo.listCases(params);

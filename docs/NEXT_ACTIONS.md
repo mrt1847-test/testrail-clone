@@ -46,14 +46,17 @@ The implementation order should follow the daily TestRail workflow:
 ## Immediate Priority
 
 1. Case repository productivity
-   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state), list metadata/custom-value chips, and template-aware required-field authoring validation exist.
-   - Remaining P1: deeper list filters/columns beyond the current saved `q`/priority/type/automation/archive-state view baseline.
+   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, and template-aware required-field authoring validation exist.
+   - Remaining P1: richer visual diffs, stale restore conflict messaging, and dedicated version detail surfaces.
 
 2. Activity events and notification inbox
    - Baseline done: `ActivityEvent`, `Notification`, and `NotificationPreference` persistence.
    - Baseline done: activity writer helper, project activity API, notification inbox API, preferences API.
    - Baseline done: UI routes for Activity and Notifications, plus shell/settings entry points.
    - Baseline done: report export and case import/export workflows now emit activity events with drilldown payloads.
+   - Baseline done: assignment/failed-result notifications route to explicit assignee targets when payload includes assignee context.
+   - Baseline done: project create/update/delete mutations now emit project-level activity events.
+   - Baseline done: settings mutations (custom fields/statuses/templates/members) now emit activity events on create/update/delete lifecycle.
    - Missing P0: broader event coverage for case, run composition, execution, reporting, assignment, and defect workflows.
    - Missing P0: richer notification targeting and activity drilldown links.
    - Missing P0: email/digest notification delivery jobs.
@@ -91,9 +94,9 @@ The implementation order should follow the daily TestRail workflow:
   - Baseline done: bulk update can apply shared priority/type changes to selected cases with per-case API feedback.
   - Baseline done: bulk archive can hide selected cases from the active repository/run composition baseline, and archived views can bulk-restore them with per-case API feedback.
   - Baseline done: bulk delete returns per-case success/failure feedback and records a bulk activity event.
-  - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state filters per user/project and re-apply them from the case toolbar.
+  - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state/refs/labels/estimate filters and selected list columns per user/project, then re-apply them from the case toolbar.
   - Baseline done: case list search/filtering covers title, refs, automation key, labels, and visible custom values; collapsed rows show metadata/custom-value chips for faster scanning.
-  - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and deeper list filters/columns.
+  - Remaining work: deeper field updates, labels/refs/custom field edits, and richer partial-failure UI.
 
 - Case step images and rich authoring
   - Extend attachment usage to cases and case steps.
@@ -102,7 +105,7 @@ The implementation order should follow the daily TestRail workflow:
 
 - Case custom values follow-up
   - Case custom value persistence, form rendering, version snapshot inclusion, CSV import/export columns, active-field import validation, required-field UI validation, and template-aware authoring order are baseline done.
-  - Remaining work: deeper optional list columns/presentation beyond the current collapsed-row chip baseline.
+  - Remaining work: deeper custom-value table presentation beyond current optional list visibility and collapsed-row chip baselines.
 
 ### Test Execution
 

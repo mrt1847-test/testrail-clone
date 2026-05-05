@@ -4,12 +4,17 @@ export type CaseFilterPriority = "" | "low" | "medium" | "high";
 export type CaseFilterType = "" | "functional" | "integration" | "regression";
 export type CaseFilterAutomation = "" | "manual" | "automated";
 export type CaseFilterState = "active" | "archived";
+export type CasePresenceFilter = "" | "with" | "without";
+export type CaseListColumn = "type" | "priority" | "automation" | "estimate" | "refs" | "labels" | "customValues";
 
 export type CaseListFilters = {
   q: string;
   priority: CaseFilterPriority;
   caseType: CaseFilterType;
   automation: CaseFilterAutomation;
+  refs: CasePresenceFilter;
+  labels: CasePresenceFilter;
+  estimate: CasePresenceFilter;
   state: CaseFilterState;
 };
 
@@ -65,5 +70,6 @@ export type SavedCaseView = {
   name: string;
   sectionId: number | null;
   filters: CaseListFilters;
+  columns: CaseListColumn[];
 };
 

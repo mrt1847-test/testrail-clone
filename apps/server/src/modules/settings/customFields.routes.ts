@@ -16,6 +16,7 @@ import {
   fieldAuditChanges,
   type SettingsRouteDeps
 } from "./settings.shared.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
@@ -73,6 +74,16 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
             }
           });
           return created;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_field",
+          entityId: row.id,
+          eventType: "settings.custom_field.created",
+          title: "Custom field created",
+          body: row.name,
+          payload: { scope: row.scope, systemName: row.systemName, fieldType: row.fieldType }
         });
         return reply.send(toJsonSafe(ok(fieldToResponse(row))));
       } catch (e) {
@@ -148,6 +159,16 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
           });
           return updated;
         });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_field",
+          entityId: row.id,
+          eventType: "settings.custom_field.updated",
+          title: "Custom field updated",
+          body: row.name,
+          payload: { scope: row.scope, systemName: row.systemName, fieldType: row.fieldType }
+        });
         return reply.send(toJsonSafe(ok(fieldToResponse(row))));
       } catch (e) {
         if (e instanceof Error && e.message === "CUSTOM_FIELD_NOT_FOUND") {
@@ -186,10 +207,10 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       try {
-        await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const deleted = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const existing = await tx.customField.findFirst({
             where: { id: fieldId, projectId, deletedAt: null },
-            select: { id: true }
+            select: { id: true, name: true, scope: true, systemName: true, fieldType: true }
           });
           if (!existing) {
             throw new Error("CUSTOM_FIELD_NOT_FOUND");
@@ -207,6 +228,17 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
               entityId: row.id.toString()
             }
           });
+          return existing;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "custom_field",
+          entityId: deleted.id,
+          eventType: "settings.custom_field.deleted",
+          title: "Custom field deleted",
+          body: deleted.name,
+          payload: { scope: deleted.scope, systemName: deleted.systemName, fieldType: deleted.fieldType }
         });
       } catch (e) {
         if (e instanceof Error && e.message === "CUSTOM_FIELD_NOT_FOUND") {

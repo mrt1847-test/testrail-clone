@@ -15,6 +15,7 @@ import {
   templateAuditChanges,
   type SettingsRouteDeps
 } from "./settings.shared.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 export async function registerTemplatesRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/templates", async (req, reply) => {
@@ -67,6 +68,16 @@ export async function registerTemplatesRoutes(app: FastifyInstance, deps: Settin
             }
           });
           return created;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "case_template",
+          entityId: row.id,
+          eventType: "settings.case_template.created",
+          title: "Case template created",
+          body: row.name,
+          payload: { isDefault: row.isDefault, isActive: row.isActive }
         });
         return reply.send(toJsonSafe(ok(templateToResponse(row))));
       } catch (e) {
@@ -143,6 +154,16 @@ export async function registerTemplatesRoutes(app: FastifyInstance, deps: Settin
           });
           return updated;
         });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "case_template",
+          entityId: row.id,
+          eventType: "settings.case_template.updated",
+          title: "Case template updated",
+          body: row.name,
+          payload: { isDefault: row.isDefault, isActive: row.isActive }
+        });
         return reply.send(toJsonSafe(ok(templateToResponse(row))));
       } catch (e) {
         if (e instanceof Error && e.message === "CASE_TEMPLATE_NOT_FOUND") {
@@ -181,10 +202,10 @@ export async function registerTemplatesRoutes(app: FastifyInstance, deps: Settin
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       try {
-        await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const deleted = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const existing = await tx.caseTemplate.findFirst({
             where: { id: templateId, projectId, deletedAt: null },
-            select: { id: true }
+            select: { id: true, name: true, isDefault: true, isActive: true }
           });
           if (!existing) {
             throw new Error("CASE_TEMPLATE_NOT_FOUND");
@@ -202,6 +223,17 @@ export async function registerTemplatesRoutes(app: FastifyInstance, deps: Settin
               entityId: row.id.toString()
             }
           });
+          return existing;
+        });
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: actor.id,
+          entityType: "case_template",
+          entityId: deleted.id,
+          eventType: "settings.case_template.deleted",
+          title: "Case template deleted",
+          body: deleted.name,
+          payload: { isDefault: deleted.isDefault, isActive: deleted.isActive }
         });
       } catch (e) {
         if (e instanceof Error && e.message === "CASE_TEMPLATE_NOT_FOUND") {

@@ -3,11 +3,24 @@ import { useSearchParams } from "react-router-dom";
 
 import type {
   CaseFilterAutomation,
+  CasePresenceFilter,
   CaseFilterPriority,
+  CaseListColumn,
   CaseFilterState,
   CaseFilterType,
   CaseListFilters
 } from "../types";
+
+export const defaultCaseListColumns: CaseListColumn[] = ["type", "priority", "automation", "estimate"];
+const allowedCaseListColumns = new Set<CaseListColumn>([
+  "type",
+  "priority",
+  "automation",
+  "estimate",
+  "refs",
+  "labels",
+  "customValues"
+]);
 
 function parsePriority(value: string | null): CaseFilterPriority {
   if (value === "low" || value === "medium" || value === "high") return value;
@@ -27,6 +40,30 @@ function parseAutomation(value: string | null): CaseFilterAutomation {
 function parseState(value: string | null): CaseFilterState {
   if (value === "archived") return "archived";
   return "active";
+}
+
+function parsePresence(value: string | null): CasePresenceFilter {
+  if (value === "with" || value === "without") return value;
+  return "";
+}
+
+function parseColumns(value: string | null): CaseListColumn[] {
+  const columns =
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter((item): item is CaseListColumn => allowedCaseListColumns.has(item as CaseListColumn)) ?? [];
+  return columns.length > 0 ? Array.from(new Set(columns)) : defaultCaseListColumns;
+}
+
+function writeColumns(next: URLSearchParams, columns: CaseListColumn[]) {
+  const normalized = Array.from(new Set(columns.filter((column) => allowedCaseListColumns.has(column))));
+  const effective = normalized.length > 0 ? normalized : defaultCaseListColumns;
+  if (effective.join(",") === defaultCaseListColumns.join(",")) {
+    next.delete("columns");
+    return;
+  }
+  next.set("columns", effective.join(","));
 }
 
 export function useExpandedCase() {
@@ -54,10 +91,14 @@ export function useExpandedCase() {
       priority: parsePriority(searchParams.get("priority")),
       caseType: parseCaseType(searchParams.get("caseType")),
       automation: parseAutomation(searchParams.get("automation")),
+      refs: parsePresence(searchParams.get("refs")),
+      labels: parsePresence(searchParams.get("labels")),
+      estimate: parsePresence(searchParams.get("estimate")),
       state: parseState(searchParams.get("state"))
     }),
     [searchParams]
   );
+  const caseColumns = useMemo(() => parseColumns(searchParams.get("columns")), [searchParams]);
 
   const setExpandedCase = useCallback((nextCaseId: number | null, nextMode: "view" | "edit" = "view") => {
     const next = new URLSearchParams(searchParams);
@@ -87,6 +128,9 @@ export function useExpandedCase() {
     const priority = patch.priority ?? caseFilters.priority;
     const caseType = patch.caseType ?? caseFilters.caseType;
     const automation = patch.automation ?? caseFilters.automation;
+    const refs = patch.refs ?? caseFilters.refs;
+    const labels = patch.labels ?? caseFilters.labels;
+    const estimate = patch.estimate ?? caseFilters.estimate;
     const state = patch.state ?? caseFilters.state;
 
     if (q.trim().length > 0) next.set("q", q.trim());
@@ -100,6 +144,15 @@ export function useExpandedCase() {
 
     if (automation) next.set("automation", automation);
     else next.delete("automation");
+
+    if (refs) next.set("refs", refs);
+    else next.delete("refs");
+
+    if (labels) next.set("labels", labels);
+    else next.delete("labels");
+
+    if (estimate) next.set("estimate", estimate);
+    else next.delete("estimate");
 
     if (state === "archived") next.set("state", state);
     else next.delete("state");
@@ -115,13 +168,22 @@ export function useExpandedCase() {
     next.delete("priority");
     next.delete("caseType");
     next.delete("automation");
+    next.delete("refs");
+    next.delete("labels");
+    next.delete("estimate");
     next.delete("state");
     next.delete("caseId");
     next.delete("mode");
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
-  const applySavedView = useCallback((view: { sectionId: number | null; filters: CaseListFilters }) => {
+  const setCaseColumns = useCallback((columns: CaseListColumn[]) => {
+    const next = new URLSearchParams(searchParams);
+    writeColumns(next, columns);
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  const applySavedView = useCallback((view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[] }) => {
     const next = new URLSearchParams(searchParams);
     if (view.sectionId != null) next.set("sectionId", String(view.sectionId));
     else next.delete("sectionId");
@@ -138,9 +200,19 @@ export function useExpandedCase() {
     if (view.filters.automation) next.set("automation", view.filters.automation);
     else next.delete("automation");
 
+    if (view.filters.refs) next.set("refs", view.filters.refs);
+    else next.delete("refs");
+
+    if (view.filters.labels) next.set("labels", view.filters.labels);
+    else next.delete("labels");
+
+    if (view.filters.estimate) next.set("estimate", view.filters.estimate);
+    else next.delete("estimate");
+
     if (view.filters.state === "archived") next.set("state", view.filters.state);
     else next.delete("state");
 
+    writeColumns(next, view.columns ?? defaultCaseListColumns);
     next.delete("caseId");
     next.delete("mode");
     setSearchParams(next);
@@ -151,9 +223,11 @@ export function useExpandedCase() {
     mode,
     selectedSectionId,
     caseFilters,
+    caseColumns,
     setExpandedCase,
     setSelectedSection,
     setCaseFilters,
+    setCaseColumns,
     clearCaseFilters,
     applySavedView
   };

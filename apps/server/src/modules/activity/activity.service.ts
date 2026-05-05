@@ -15,6 +15,20 @@ type ActivityInput = {
   notificationType?: NotificationType;
 };
 
+function toRecord(value: Prisma.InputJsonValue | undefined): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function toTargetUserId(value: unknown): bigint | null {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isInteger(value)) return BigInt(value);
+  if (typeof value === "string" && value.trim().length > 0 && /^-?\d+$/.test(value.trim())) {
+    return BigInt(value.trim());
+  }
+  return null;
+}
+
 function preferenceEnabled(
   type: NotificationType,
   preference?: {
@@ -144,9 +158,19 @@ export async function recordActivityEvent(prisma: PrismaClient | undefined, inpu
     return preferenceEnabled(input.notificationType!, member.user.notificationPreferences[0]);
   });
 
-  if (recipients.length > 0) {
+  const payload = toRecord(input.payload);
+  const assignmentTargetId = toTargetUserId(payload.assignedToUserId ?? payload.assignedTo);
+  const failureTargetId = toTargetUserId(payload.assignedToUserId ?? payload.assignedTo);
+  const targetedRecipients =
+    input.notificationType === "assignment" && assignmentTargetId
+      ? recipients.filter((member) => member.userId === assignmentTargetId)
+      : input.notificationType === "failed_result" && failureTargetId
+        ? recipients.filter((member) => member.userId === failureTargetId)
+        : recipients;
+
+  if (targetedRecipients.length > 0) {
     await prisma.notification.createMany({
-      data: recipients.map((member) => ({
+      data: targetedRecipients.map((member) => ({
         userId: member.userId,
         projectId: input.projectId,
         activityEventId: event.id,
@@ -173,6 +197,7 @@ export async function recordResultActivity(
       instance: {
         select: {
           id: true,
+          assignedTo: true,
           titleSnapshot: true,
           run: { select: { id: true, name: true, projectId: true } }
         }
@@ -193,7 +218,8 @@ export async function recordResultActivity(
       resultId: result.id.toString(),
       testId: result.instance.id.toString(),
       runId: result.instance.run.id.toString(),
-      status: result.status
+      status: result.status,
+      assignedToUserId: result.instance.assignedTo?.toString() ?? null
     },
     notificationType: result.status === "failed" ? "failed_result" : undefined
   });

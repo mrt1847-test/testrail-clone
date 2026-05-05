@@ -30,14 +30,14 @@ Legend:
 
 검토 결과:
 - 2026-05-04 배치: 런 생성 섹션 스코프, 오픈 런 케이스 추가·제거(결과 보존 플래그), 런 재개, 결과 이력 페이징, 리포트 서브라우트, DB 모드 웹훅 전송 워커·test-send, `/api/v2/get_projects`가 반영되었다.
-- 남은 우선 과제: 섹션 그룹 선택 UX, 대규모 실행 화면 분해, 활동/알림 이벤트·이메일 전달, `/api/v2` 비핵심 카테고리 확장 등은 아래 미체크 항목과 Top 10을 따른다.
+- 남은 우선 과제: 대규모 실행 화면 분해, 활동/알림 이벤트·이메일 전달, `/api/v2` 비핵심 카테고리 확장 등은 아래 미체크 항목과 Top 10을 따른다.
 - 문서 운영 규칙은 [DOC_MAINTENANCE.md](./DOC_MAINTENANCE.md), 파일 기반 감사 스냅샷은 [FILE_BASED_AUDIT_2026-05-04.md](./FILE_BASED_AUDIT_2026-05-04.md)를 참고한다.
 
 ## 미구현 우선순위 재정렬 (실행 기준 Top 10)
 
 아래 순서는 "테스트 팀이 매일 쓰는 흐름" 기준의 권장 구현 순서다.
 
-1. P0 Run composition 완성: ~~섹션 API·생성 후 add/remove·결과 보호~~ (2026-05-04 기준선 완료) → 남음: 섹션 트리 그룹 선택 UX·벌크 피드백.
+1. P0 Run composition 완성: ~~섹션 API·생성 후 add/remove·결과 보호·섹션 트리 그룹 선택 UX~~ (2026-05-05 기준선 완료) → 남음: 벌크 피드백·대규모 실행 UX 정리.
 2. P0 Run execution 안정화: ~~결과 이력 페이징·일부 캐시 무효화~~ (2026-05-04) → 남음: 대규모 실행용 헤더/요약/필터/테이블 분리.
 3. P0 Case repository 생산성: bulk move/update/archive, 저장된 필터/뷰, 실무 필터 강화.
 4. P0 Report drilldown 페이지: ~~서브라우트·테이블형 상세~~ (2026-05-04) → 남음: 통일 필터 바·차트/요약 스트립 고도화.
@@ -86,9 +86,9 @@ Use this order when choosing the next implementation batch:
 - [x] Saved case filters/views baseline with reusable per-user/project section + query/priority/type/automation/archive-state views.
 - [x] Case custom value CSV import/export columns and active-field import validation baseline.
 - [x] P0 Bulk case archive semantics with active-vs-archived repository views, archived run-composition exclusion, and bulk restore feedback.
-- [x] P1 Rich case filter baseline with saved `q`/priority/type/automation/archive-state views and faster collapsed-row metadata chips.
+- [x] P1 Rich case filter baseline with saved `q`/priority/type/automation/archive-state/refs/labels/estimate views and faster collapsed-row metadata chips.
 - [x] P1 Case custom value list chip baseline for visible custom values in collapsed rows.
-- [ ] P1 Deeper case list filters and optional list columns.
+- [x] P1 Deeper case list filters and optional list column visibility baseline.
 - [x] P1 Required-field UI validation and template-aware case authoring form ordering.
 - [ ] P1 Rich visual diffs for case version comparison.
 - [ ] P1 Restore conflict messaging in UI.
@@ -120,7 +120,7 @@ Use this order when choosing the next implementation batch:
 - [x] P0 Remove cases from an existing open run.
 - [x] P0 Existing-result safeguards when removing cases from a run (`confirmDataLoss` + CASCADE delete of results on confirm).
 - [x] P0 Closed-run restrictions for composition changes (API returns `RUN_CLOSED` for mutations).
-- [ ] P0 Grouped run creation selection UX by section with selected/excluded counts.
+- [x] P0 Grouped run creation selection UX by section with selected/excluded counts.
 - [ ] P1 Run header/summary/filter/table component split.
 - [x] P1 Result history pagination per selected test.
 - [x] P1 Scoped cache invalidation after run/result mutations (results query prefix + bulk result predicate invalidation).
@@ -270,6 +270,11 @@ Use this order when choosing the next implementation batch:
 - [x] Webhook subscription persistence with event filters and secrets.
 - [x] Activity events enqueue signed webhook delivery attempts.
 - [x] Webhook settings UI for create/toggle/delete/inspect/retry state baseline.
+- [x] Activity/notification drilldown baseline links from Activity/Notifications UI to run/case/report sources (payload-driven where available).
+- [x] Assignment and failed-result notification routing baseline targets explicit assignee when payload includes assignee context.
+- [x] Case CSV import/export and report export workflows emit activity events for validate/request/complete/download milestones.
+- [x] Project create/update/delete mutations emit project-level activity events.
+- [x] Settings mutations (`custom_fields`, `custom_statuses`, `case_templates`, `project_members`) emit activity events for create/update/delete lifecycle.
 - [ ] P0 Broader activity event coverage across all major mutations.
 - [ ] P0 Notification targeting and activity drilldown links.
 - [ ] P0 Email/digest notification delivery jobs.

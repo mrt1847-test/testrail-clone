@@ -12,6 +12,7 @@ import {
   enforceNotLastOwner,
   type SettingsRouteDeps
 } from "./settings.shared.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 
 export async function registerMembersRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/members", async (req, reply) => {
@@ -84,6 +85,16 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
       });
       return { id: member.id, userId: user.id, email: user.email, name: user.name, role: member.role };
     });
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: actor.id,
+      entityType: "project_member",
+      entityId: result.id,
+      eventType: "project.member.upsert",
+      title: "Project member added or updated",
+      body: result.email,
+      payload: { userId: result.userId.toString(), role: result.role, email: result.email }
+    });
     return reply.send(toJsonSafe(ok(result)));
   });
 
@@ -118,6 +129,16 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
         });
         return row;
       });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: actor.id,
+        entityType: "project_member",
+        entityId: updated.id,
+        eventType: "project.member.role.updated",
+        title: "Project member role updated",
+        body: updated.user.email,
+        payload: { userId: updated.user.id.toString(), role: updated.role, email: updated.user.email }
+      });
       return reply.send(
         toJsonSafe(
           ok({
@@ -148,14 +169,15 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
     }
     const actor = await getAuthenticatedUser(req, deps);
     try {
-      await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const removed = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const checked = await enforceNotLastOwner(tx, { projectId, memberId, deleting: true });
         if (!checked.exists) {
           throw new Error("MEMBER_NOT_FOUND");
         }
-        await tx.projectMember.update({
+        const row = await tx.projectMember.update({
           where: { id: memberId },
-          data: { deletedAt: new Date(), updatedBy: actor.id }
+          data: { deletedAt: new Date(), updatedBy: actor.id },
+          select: { id: true, userId: true, user: { select: { email: true } } }
         });
         await tx.auditLog.create({
           data: {
@@ -166,6 +188,17 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
             entityId: memberId.toString()
           }
         });
+        return row;
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: actor.id,
+        entityType: "project_member",
+        entityId: removed.id,
+        eventType: "project.member.removed",
+        title: "Project member removed",
+        body: removed.user.email,
+        payload: { userId: removed.userId.toString(), email: removed.user.email }
       });
       return reply.code(204).send();
     } catch (e) {
