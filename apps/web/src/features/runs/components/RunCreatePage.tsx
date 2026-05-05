@@ -32,7 +32,7 @@ export function RunCreatePage() {
     queryKey: ["run-create-cases", projectId, suiteId],
     queryFn: async () =>
       apiFetch<Paged<{ id: string; title: string; sectionId?: string }>>(
-        `/api/projects/${projectId}/cases?page=1&pageSize=200${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
+        `/api/projects/${projectId}/cases?page=1&pageSize=100${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
       ),
     enabled: Boolean(projectId && suiteId)
   });
@@ -45,7 +45,7 @@ export function RunCreatePage() {
     queryKey: ["run-create-sections", suiteId],
     queryFn: async () =>
       apiFetch<Paged<{ id: string; name: string; parentSectionId?: string | null }>>(
-        `/api/suites/${suiteId}/sections?page=1&pageSize=500`
+        `/api/suites/${suiteId}/sections?page=1&pageSize=100`
       ),
     enabled: Boolean(suiteId)
   });

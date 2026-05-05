@@ -101,7 +101,7 @@ export async function fetchSectionsForProject(projectId: string): Promise<Sectio
   const first = suites.data[0];
   if (!first) return { suiteId: "", sections: [] };
 
-  const sections = await apiFetch<Paged<ApiSection>>(`/api/suites/${first.id}/sections?page=1&pageSize=200`);
+  const sections = await apiFetch<Paged<ApiSection>>(`/api/suites/${first.id}/sections?page=1&pageSize=100`);
   return {
     suiteId: String(first.id),
     sections: sections.data.map((section) => ({ id: asNum(section.id), name: section.name }))
