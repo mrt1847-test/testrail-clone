@@ -93,6 +93,7 @@ The default comes from `apps/server/src/config/env.ts`, where `USE_IN_MEMORY_REP
 Use this when you want persistent data and the full Prisma-backed workflow.
 
 - Set `DATABASE_URL`
+- Set `DIRECT_URL` when using a pooled production database connection
 - Set `USE_IN_MEMORY_REPOSITORY=false`
 - Generate Prisma client
 - Run migrations
@@ -118,8 +119,9 @@ Default local URLs:
 
 1. Copy `.env.example` to `.env`
 2. Set `DATABASE_URL`
-3. Add `USE_IN_MEMORY_REPOSITORY=false`
-4. Run:
+3. Set `DIRECT_URL` if `DATABASE_URL` points at a connection pooler
+4. Add `USE_IN_MEMORY_REPOSITORY=false`
+5. Run:
 
 ```bash
 npm run prisma:generate -w apps/server
@@ -137,6 +139,7 @@ npm run dev:web
 | `PORT` | `4000` | Fastify server port |
 | `WEB_ORIGIN` | `http://localhost:5173` | Allowed web origin for the API |
 | `DATABASE_URL` | empty unless set | Required for Prisma/PostgreSQL mode |
+| `DIRECT_URL` | empty unless set | Direct/session database URL used by Prisma migrations when `DATABASE_URL` uses a pooler |
 | `USE_IN_MEMORY_REPOSITORY` | `true` unless explicitly `false` | Switches between in-memory and Prisma repositories |
 
 ## Useful commands
@@ -149,7 +152,31 @@ npm run test
 npm run lint
 npm run prisma:generate -w apps/server
 npm run prisma:migrate -w apps/server
+npm run prisma:deploy -w apps/server
 npm run prisma:seed -w apps/server
+```
+
+### Render server deployment without Pre-Deploy Command
+
+If your Render plan does not expose a Pre-Deploy Command, run production migrations during the build step.
+
+Use these Render settings for the API service:
+
+```bash
+# Build Command
+npm ci --include=dev && npm run render:build:server
+
+# Start Command
+npm run start -w apps/server
+```
+
+Required Render environment variables:
+
+```bash
+DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
+DIRECT_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+USE_IN_MEMORY_REPOSITORY=false
+WEB_ORIGIN="https://your-vercel-app.vercel.app"
 ```
 
 ## Testing
