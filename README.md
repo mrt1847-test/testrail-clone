@@ -173,10 +173,16 @@ npm run start -w apps/server
 Required Render environment variables:
 
 ```bash
-DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
+DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
 DIRECT_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
 USE_IN_MEMORY_REPOSITORY=false
 WEB_ORIGIN="https://your-vercel-app.vercel.app"
+```
+
+For Supabase's transaction pooler on port `6543`, append `pgbouncer=true` to avoid Prisma prepared statement errors:
+
+```bash
+DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
 ```
 
 ## Testing

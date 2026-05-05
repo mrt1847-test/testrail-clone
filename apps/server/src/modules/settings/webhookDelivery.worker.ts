@@ -104,9 +104,17 @@ export function startWebhookDeliveryWorker(opts: { prisma: PrismaClient; interva
     }
   };
 
-  void tick();
+  const runTick = () => {
+    void tick().catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error(`Webhook delivery worker failed: ${message}`);
+    });
+  };
+
+  runTick();
   timer = setInterval(() => {
-    void tick();
+    runTick();
   }, intervalMs);
 
   return () => {
