@@ -19,5 +19,6 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "",
+  authSecret: process.env.AUTH_SECRET ?? "dev-auth-secret",
   useInMemoryRepository: process.env.USE_IN_MEMORY_REPOSITORY !== "false"
 };

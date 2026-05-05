@@ -140,6 +140,7 @@ npm run dev:web
 | `WEB_ORIGIN` | `http://localhost:5173` | Allowed web origin for the API |
 | `DATABASE_URL` | empty unless set | Required for Prisma/PostgreSQL mode |
 | `DIRECT_URL` | empty unless set | Direct/session database URL used by Prisma migrations when `DATABASE_URL` uses a pooler |
+| `AUTH_SECRET` | `dev-auth-secret` | Signs development auth tokens; set a long random value in deployed environments |
 | `USE_IN_MEMORY_REPOSITORY` | `true` unless explicitly `false` | Switches between in-memory and Prisma repositories |
 
 ## Useful commands
@@ -177,6 +178,7 @@ DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.po
 DIRECT_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
 USE_IN_MEMORY_REPOSITORY=false
 WEB_ORIGIN="https://your-vercel-app.vercel.app"
+AUTH_SECRET="replace-me-with-a-long-random-secret"
 ```
 
 For Supabase's transaction pooler on port `6543`, append `pgbouncer=true` to avoid Prisma prepared statement errors:
