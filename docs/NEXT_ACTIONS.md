@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-05
+Last aligned: 2026-05-06
 
 This is the current implementation queue after reviewing the docs and codebase. It now includes the actionable workflow items that previously lived in `CORE_FEATURE_COMPLETION_PLAN.md`.
 
@@ -18,6 +18,8 @@ Working rules:
 - Treat [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) as the execution source for "what to build next."
 - Treat [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) as the source of truth for implemented vs partial vs missing capability.
 - Keep [ROADMAP.md](./ROADMAP.md) concise and phase-oriented; avoid duplicating detailed execution backlog there.
+- Treat UI/API contract consistency as a release gate: every feature change should verify request/response shape, pagination completeness, and behavior parity between UI copy and backend policy.
+- During implementation and review, explicitly check for frontend-backend mismatches (scope semantics, mutation constraints, error handling), then either align code or document intentional differences in the same PR.
 
 ## PR6 Structural Refactor Sync
 
@@ -47,7 +49,7 @@ The implementation order should follow the daily TestRail workflow:
 
 1. Case repository productivity
    - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, and template-aware required-field authoring validation exist.
-   - Remaining P1: richer visual diffs, stale restore conflict messaging, and dedicated version detail surfaces.
+   - Remaining P1: drag-and-drop move/copy parity for one or many selected cases, richer visual diffs, stale restore conflict messaging, and dedicated version detail surfaces.
 
 2. Activity events and notification inbox
    - Baseline done: `ActivityEvent`, `Notification`, and `NotificationPreference` persistence.
@@ -96,7 +98,9 @@ The implementation order should follow the daily TestRail workflow:
   - Baseline done: bulk delete returns per-case success/failure feedback and records a bulk activity event.
   - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state/refs/labels/estimate filters and selected list columns per user/project, then re-apply them from the case toolbar.
   - Baseline done: case list search/filtering covers title, refs, automation key, labels, and visible custom values; collapsed rows show metadata/custom-value chips for faster scanning.
-  - Remaining work: deeper field updates, labels/refs/custom field edits, and richer partial-failure UI.
+  - Missing parity: dragging one case row or the current multi-selection onto a section tree node or case-list drop zone should open a move-or-copy chooser before committing the action.
+  - Implementation note: `move` should reuse the existing bulk move mutation; `copy` should create new cases in the target section by cloning the source case fields, custom values, and ordered steps into new case records, keep originals in place, and return per-case success/failure plus activity feedback.
+  - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and explicit drop-position ordering rules for moved/copied items.
 
 - Case step images and rich authoring
   - Extend attachment usage to cases and case steps.
@@ -190,7 +194,7 @@ The implementation order should follow the daily TestRail workflow:
 ## Recommended Implementation Batches
 
 1. Case repository productivity
-   - Bulk move/update/archive.
+   - Bulk move/update/archive plus drag-and-drop move/copy parity.
    - Saved filters/views.
    - Rich case filters and case list columns.
 

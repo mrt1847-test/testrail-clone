@@ -1,11 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useMemo, useState, type ComponentProps } from "react";
 
-import { useAuth } from "../../auth/context/AuthContext";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { useAuth } from "../../auth/context/AuthContext";
+import { fetchCaseTemplates, fetchCustomFields } from "../../projects/api/settingsApi";
+import { projectKeys } from "../../projects/hooks/useProjectsApi";
+import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   bulkArchiveCases,
   bulkDeleteCases,
@@ -20,20 +22,16 @@ import {
   updateCase,
   updateCaseStep
 } from "../api/catalogApi";
-import { projectKeys } from "../../projects/hooks/useProjectsApi";
-import { reportKeys } from "../../projects/hooks/reportKeys";
-import { fetchCaseTemplates, fetchCustomFields } from "../../projects/api/settingsApi";
-import { caseDetailKeys } from "../hooks/useCaseDetail";
-import { useCaseDetail } from "../hooks/useCaseDetail";
+import { useCaseDetail, caseDetailKeys } from "../hooks/useCaseDetail";
 import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
-import { caseKeys } from "../hooks/useCases";
-import { useCases } from "../hooks/useCases";
+import { useCases, caseKeys } from "../hooks/useCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { sectionKeys } from "../hooks/useSections";
 import type { SectionNode } from "../types";
 import { CaseAuthoringForm } from "./CaseAuthoringForm";
 import { CaseListToolbar } from "./CaseListToolbar";
 import { CaseRow } from "./CaseRow";
+import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
 type CaseListPaneProps = {
   projectId: string;
@@ -68,7 +66,6 @@ function initialCreateDraftSteps(): CaseCreateDraftStep[] {
   return [emptyCreateDraftStep()];
 }
 
-/** Persists draft rows after POST /sections/:id/cases. API requires non-empty step content. */
 async function persistCreateDraftSteps(
   caseId: number,
   drafts: Array<{ description: string; expected: string }>
@@ -111,6 +108,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     clearCaseFilters,
     applySavedView
   } = useExpandedCase();
+
   const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, caseFilters);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
@@ -128,6 +126,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     queryFn: () => fetchCaseVersions(expandedCaseId!),
     enabled: expandedCaseId != null
   });
+
   const [showAdd, setShowAdd] = useState(false);
   const [createFormVersion, setCreateFormVersion] = useState(0);
   const [createDraftSteps, setCreateDraftSteps] = useState<CaseCreateDraftStep[]>(initialCreateDraftSteps);
@@ -145,6 +144,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   const [bulkActionMessage, setBulkActionMessage] = useState<string | null>(null);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [saveViewName, setSaveViewName] = useState("");
+
   const deferredSearch = useDeferredValue(searchDraft);
   const currentView = useMemo(
     () => ({
@@ -154,7 +154,12 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     }),
     [caseColumns, caseFilters, selectedSectionId]
   );
-  const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(projectId, user?.id, currentView);
+  const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(
+    projectId,
+    user?.id,
+    currentView
+  );
+
   const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
   const selectedVisibleCaseIds = useMemo(
     () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
@@ -181,6 +186,17 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   );
   const hasBulkUpdatePatch = bulkUpdatePriority !== "" || bulkUpdateCaseType !== "";
   const bulkArchiveMode = caseFilters.state === "archived" ? "restore" : "archive";
+  const selectedSection = useMemo(
+    () => sections.find((section) => section.id === selectedSectionId) ?? null,
+    [sections, selectedSectionId]
+  );
+  const activeEditorCase = useMemo(
+    () =>
+      expandedCaseId != null
+        ? (caseDetailRemote ?? cases.find((item) => item.id === expandedCaseId) ?? null)
+        : null,
+    [caseDetailRemote, cases, expandedCaseId]
+  );
 
   useEffect(() => {
     setSearchDraft(caseFilters.q);
@@ -196,6 +212,11 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     if (!showAdd) return;
     setCreateDraftSteps(initialCreateDraftSteps());
   }, [showAdd, createFormVersion]);
+
+  useEffect(() => {
+    if (expandedCaseId == null) return;
+    setShowAdd(false);
+  }, [expandedCaseId]);
 
   useEffect(() => {
     setEditFormError(null);
@@ -229,6 +250,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
     void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
   };
+
   const invalidateAfterCaseEdit = (caseId: number) => {
     void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
     void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(caseId) });
@@ -257,11 +279,12 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
       }
       return { created, stepsWarning };
     },
-    onSuccess: ({ stepsWarning }) => {
+    onSuccess: ({ created, stepsWarning }) => {
       invalidateCases();
       setShowAdd(false);
       setCreateFormError(null);
       setCreateFormVersion((current) => current + 1);
+      setExpandedCase(created.id);
       if (stepsWarning) {
         setBulkActionMessage(
           `Case was created, but saving one or more steps failed (${stepsWarning}). Open the case and add steps from edit mode.`
@@ -286,7 +309,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
         preconditions: input.preconditions,
         customValues: input.customValues,
         expectedVersion: input.expectedVersion
-    }),
+      }),
     onSuccess: (_, vars) => {
       setEditFormError(null);
       invalidateAfterCaseEdit(vars.caseId);
@@ -390,9 +413,9 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
         content: input.content,
         expectedResult: input.expected.length ? input.expected : null
       }),
-    onSuccess: (_, v) => {
+    onSuccess: (_, vars) => {
       invalidateCases();
-      invalidateCaseDetail(v.caseId);
+      invalidateCaseDetail(vars.caseId);
     }
   });
 
@@ -402,22 +425,21 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
       stepId: number;
       patch: { content?: string; expectedResult?: string | null; stepOrder?: number };
     }) => updateCaseStep(input.stepId, input.patch),
-    onSuccess: (_, v) => {
+    onSuccess: (_, vars) => {
       invalidateCases();
-      invalidateCaseDetail(v.caseId);
+      invalidateCaseDetail(vars.caseId);
     }
   });
 
   const deleteStepMutation = useMutation({
     mutationFn: (input: { caseId: number; stepId: number }) => deleteCaseStep(input.stepId),
-    onSuccess: (_, v) => {
+    onSuccess: (_, vars) => {
       invalidateCases();
-      invalidateCaseDetail(v.caseId);
+      invalidateCaseDetail(vars.caseId);
     }
   });
 
-  const stepsBusy =
-    createStepMutation.isPending || updateStepMutation.isPending || deleteStepMutation.isPending;
+  const stepsBusy = createStepMutation.isPending || updateStepMutation.isPending || deleteStepMutation.isPending;
 
   const toggleCaseSelection = (caseId: number, checked: boolean) => {
     setBulkActionMessage(null);
@@ -506,273 +528,390 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     onAddCase: () => {
       setBulkActionMessage(null);
       setCreateFormError(null);
-      setShowAdd((current) => {
-        const next = !current;
-        if (next) {
-          setCreateFormVersion((value) => value + 1);
-        }
-        return next;
-      });
+      setExpandedCase(null);
+      setShowAdd(true);
+      setCreateFormVersion((value) => value + 1);
     }
   } satisfies ComponentProps<typeof CaseListToolbar>;
 
+  const clearFiltersAndSearch = () => {
+    setSearchDraft("");
+    clearCaseFilters();
+  };
+
   if (isLoading) {
     return (
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <CaseListToolbar {...toolbarProps} />
-        <LoadingState message="Loading cases…" />
+        <div className="p-6">
+          <LoadingState message="Loading the case repository..." />
+        </div>
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <CaseListToolbar {...toolbarProps} />
-        <p className="text-sm text-red-700">케이스 목록을 불러오지 못했습니다.</p>
+        <p className="text-sm text-red-700">Could not load the case repository.</p>
         <button
           type="button"
           onClick={() => void refetch()}
           className="mt-2 text-sm font-medium text-slate-700 underline"
         >
-          다시 시도
+          Try again
         </button>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <CaseListToolbar {...toolbarProps} />
-      {showAdd ? (
-        <div className="border-b border-slate-100 bg-slate-50 px-3 py-3">
-          <p className="mb-2 text-xs font-medium text-slate-600">New case</p>
-          <CaseAuthoringForm
-            valueKey={`create:${selectedSectionId ?? "none"}:${createFormVersion}`}
-            initialTitle=""
-            initialPreconditions=""
-            initialCustomValues={{}}
-            customFields={customFields}
-            templates={caseTemplates}
-            submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
-            isSubmitting={createCaseMutation.isPending}
-            submitError={createFormError}
-            stepsSection={
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-800">Steps</span>
+    <>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Repository</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                  {selectedSection?.name ?? "Selected section"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {cases.length} visible case{cases.length === 1 ? "" : "s"} in the{" "}
+                  {caseFilters.state === "archived" ? "archived" : "active"} repository.
+                </p>
+              </div>
+              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+                {showAdd
+                  ? "Create panel open"
+                  : activeEditorCase
+                    ? `${mode === "edit" ? "Editing" : "Reviewing"} ${activeEditorCase.caseCode}`
+                    : "Editor idle"}
+              </div>
+            </div>
+          </div>
+
+          <CaseListToolbar {...toolbarProps} />
+
+          {cases.length > 0 ? (
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(e) => toggleAllVisible(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  />
+                  Select visible
+                </label>
+                <div className="text-sm text-slate-600">
+                  {selectedVisibleCaseIds.length > 0
+                    ? `${selectedVisibleCaseIds.length} selected`
+                    : "Select one or more cases to show bulk actions"}
+                </div>
+              </div>
+
+              {selectedVisibleCaseIds.length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    disabled={createCaseMutation.isPending}
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    onClick={() => setCreateDraftSteps((prev) => [...prev, emptyCreateDraftStep()])}
+                    disabled={bulkUpdateMutation.isPending}
+                    onClick={() => setBulkUpdateOpen(true)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Add step
+                    Update selected
+                  </button>
+                  <button
+                    type="button"
+                    disabled={moveTargets.length === 0 || bulkMoveMutation.isPending}
+                    onClick={() => setBulkMoveOpen(true)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Move selected
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkArchiveMutation.isPending}
+                    onClick={() => setBulkArchiveOpen(true)}
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {bulkArchiveMode === "archive" ? "Archive selected" : "Restore selected"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkDeleteMutation.isPending}
+                    onClick={() => setBulkDeleteOpen(true)}
+                    className="rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Delete selected
                   </button>
                 </div>
-                <ol className="list-decimal space-y-3 pl-5 text-sm">
-                  {createDraftSteps.map((step) => (
-                    <li
-                      key={step.key}
-                      className="grid gap-2 rounded-md border border-slate-200 bg-white p-2"
+              ) : null}
+
+              {bulkActionMessage ? <p className="mt-3 text-sm text-slate-600">{bulkActionMessage}</p> : null}
+            </div>
+          ) : null}
+
+          {cases.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title={
+                  activeFilterCount > 0
+                    ? "No cases match the current filters"
+                    : caseFilters.state === "archived"
+                      ? "No archived test cases in this section"
+                      : "No test cases in this section"
+                }
+                description={
+                  activeFilterCount > 0
+                    ? "Try clearing filters, switching sections, or saving a different view."
+                    : caseFilters.state === "archived"
+                      ? "Archive cases from the active list or switch sections."
+                      : "Add a case or pick another section."
+                }
+                action={
+                  activeFilterCount > 0 ? (
+                    <button
+                      type="button"
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+                      onClick={clearFiltersAndSearch}
                     >
-                      <div className="flex flex-wrap items-center gap-1">
-                        {createDraftSteps.length > 1 ? (
-                          <button
-                            type="button"
-                            disabled={createCaseMutation.isPending}
-                            className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800 disabled:opacity-50"
-                            onClick={() =>
-                              setCreateDraftSteps((prev) => prev.filter((row) => row.key !== step.key))
-                            }
-                          >
-                            Remove
-                          </button>
-                        ) : null}
+                      Clear filters
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-xl bg-slate-900 px-3 py-1.5 text-sm text-white"
+                      onClick={() => {
+                        setExpandedCase(null);
+                        setCreateFormError(null);
+                        setCreateFormVersion((current) => current + 1);
+                        setShowAdd(true);
+                      }}
+                    >
+                      Add case
+                    </button>
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <div>
+              {cases.map((item) => {
+                const isExpanded = expandedCaseId === item.id;
+                const caseDetail = isExpanded ? caseDetailRemote ?? item : item;
+                return (
+                  <CaseRow
+                    key={item.id}
+                    item={item}
+                    isExpanded={isExpanded}
+                    mode={mode}
+                    detail={caseDetail}
+                    versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
+                    customFields={customFields}
+                    caseTemplates={caseTemplates}
+                    visibleColumns={caseColumns}
+                    isSelected={selectedCaseIds.has(item.id)}
+                    onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
+                    onToggle={() => {
+                      setShowAdd(false);
+                      setExpandedCase(isExpanded ? null : item.id);
+                    }}
+                    onEdit={() => {
+                      setShowAdd(false);
+                      setExpandedCase(item.id, "edit");
+                    }}
+                    onCloseDetail={() => setExpandedCase(null)}
+                    onSave={async (patch) => {
+                      await updateCaseMutation.mutateAsync({
+                        caseId: item.id,
+                        ...patch,
+                        expectedVersion: Number.isInteger(caseDetail.lockVersion)
+                          ? caseDetail.lockVersion
+                          : undefined
+                      });
+                      setExpandedCase(item.id, "view");
+                    }}
+                    onDelete={async () => {
+                      await deleteCaseMutation.mutateAsync(item.id);
+                    }}
+                    onRestoreVersion={async (versionId) => {
+                      await restoreVersionMutation.mutateAsync({
+                        caseId: item.id,
+                        versionId,
+                        expectedVersion: Number.isInteger(caseDetail.lockVersion)
+                          ? caseDetail.lockVersion
+                          : undefined
+                      });
+                    }}
+                    isSaving={updateCaseMutation.isPending}
+                    submitError={editFormError}
+                    isDeleting={deleteCaseMutation.isPending}
+                    isRestoring={restoreVersionMutation.isPending}
+                    onCreateStep={async (input) => {
+                      await createStepMutation.mutateAsync({ caseId: item.id, ...input });
+                    }}
+                    onUpdateStep={async (stepId, patch) => {
+                      await updateStepMutation.mutateAsync({ caseId: item.id, stepId, patch });
+                    }}
+                    onDeleteStep={async (stepId) => {
+                      await deleteStepMutation.mutateAsync({ caseId: item.id, stepId });
+                    }}
+                    isStepsBusy={stepsBusy}
+                    renderDetailInline={false}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-6">
+          {showAdd ? (
+            <>
+              <div className="border-b border-slate-200 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">New test case</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Creating in {selectedSection?.name ?? "the selected section"}.
+                </p>
+              </div>
+              <div className="p-4">
+                <CaseAuthoringForm
+                  valueKey={`create:${selectedSectionId ?? "none"}:${createFormVersion}`}
+                  initialTitle=""
+                  initialPreconditions=""
+                  initialCustomValues={{}}
+                  customFields={customFields}
+                  templates={caseTemplates}
+                  submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
+                  isSubmitting={createCaseMutation.isPending}
+                  submitError={createFormError}
+                  stepsSection={
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-800">Steps</span>
+                        <button
+                          type="button"
+                          disabled={createCaseMutation.isPending}
+                          className="rounded-xl border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          onClick={() => setCreateDraftSteps((prev) => [...prev, emptyCreateDraftStep()])}
+                        >
+                          Add step
+                        </button>
                       </div>
-                      <label className="grid gap-0.5 text-xs text-slate-600">
-                        Action
-                        <textarea
-                          value={step.description}
-                          disabled={createCaseMutation.isPending}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setCreateDraftSteps((prev) =>
-                              prev.map((row) => (row.key === step.key ? { ...row, description: value } : row))
-                            );
-                          }}
-                          className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                        />
-                      </label>
-                      <label className="grid gap-0.5 text-xs text-slate-600">
-                        Expected
-                        <textarea
-                          value={step.expected}
-                          disabled={createCaseMutation.isPending}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setCreateDraftSteps((prev) =>
-                              prev.map((row) => (row.key === step.key ? { ...row, expected: value } : row))
-                            );
-                          }}
-                          className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                        />
-                      </label>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            }
-            onSubmit={async (input) => {
-              setCreateFormError(null);
-              await createCaseMutation.mutateAsync({
-                title: input.title,
-                preconditions: input.preconditions,
-                customValues: input.customValues,
-                draftSteps: createDraftSteps.map(({ description, expected }) => ({ description, expected }))
-              });
-            }}
-            onCancel={() => {
-              setShowAdd(false);
-              setCreateFormError(null);
-              setCreateFormVersion((current) => current + 1);
-            }}
-          />
-        </div>
-      ) : null}
-      {cases.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={(e) => toggleAllVisible(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-            />
-            Select visible
-          </label>
-          <div className="flex items-center gap-2 text-sm">
-            {bulkActionMessage ? <span className="text-slate-600">{bulkActionMessage}</span> : null}
-            <span className="text-slate-600">{selectedVisibleCaseIds.length} selected</span>
-            <button
-              type="button"
-              disabled={selectedVisibleCaseIds.length === 0 || bulkUpdateMutation.isPending}
-              onClick={() => setBulkUpdateOpen(true)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Update selected
-            </button>
-            <button
-              type="button"
-              disabled={
-                selectedVisibleCaseIds.length === 0 || moveTargets.length === 0 || bulkMoveMutation.isPending
-              }
-              onClick={() => setBulkMoveOpen(true)}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Move selected
-            </button>
-            <button
-              type="button"
-              disabled={selectedVisibleCaseIds.length === 0 || bulkArchiveMutation.isPending}
-              onClick={() => setBulkArchiveOpen(true)}
-              className="rounded-md border border-amber-200 bg-white px-3 py-1.5 font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {bulkArchiveMode === "archive" ? "Archive selected" : "Restore selected"}
-            </button>
-            <button
-              type="button"
-              disabled={selectedVisibleCaseIds.length === 0 || bulkDeleteMutation.isPending}
-              onClick={() => setBulkDeleteOpen(true)}
-              className="rounded-md border border-red-200 bg-white px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Delete selected
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {cases.length === 0 ? (
-        <div className="p-6">
-          <EmptyState
-            title={
-              activeFilterCount > 0
-                ? "No cases match the current filters"
-                : caseFilters.state === "archived"
-                  ? "No archived test cases in this section"
-                  : "No test cases in this section"
-            }
-            description={
-              activeFilterCount > 0
-                ? "Try clearing filters, switching sections, or saving a different view."
-                : caseFilters.state === "archived"
-                  ? "Archive cases from the active list or switch sections."
-                  : "Add a case or pick another section."
-            }
-            action={
-              activeFilterCount > 0 ? (
-                <button
-                  type="button"
-                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
-                  onClick={() => {
-                    setSearchDraft("");
-                    clearCaseFilters();
+                      <ol className="list-decimal space-y-3 pl-5 text-sm">
+                        {createDraftSteps.map((step) => (
+                          <li key={step.key} className="grid gap-2 rounded-md border border-slate-200 bg-white p-2">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {createDraftSteps.length > 1 ? (
+                                <button
+                                  type="button"
+                                  disabled={createCaseMutation.isPending}
+                                  className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800 disabled:opacity-50"
+                                  onClick={() =>
+                                    setCreateDraftSteps((prev) => prev.filter((row) => row.key !== step.key))
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              ) : null}
+                            </div>
+                            <label className="grid gap-0.5 text-xs text-slate-600">
+                              Action
+                              <textarea
+                                value={step.description}
+                                disabled={createCaseMutation.isPending}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setCreateDraftSteps((prev) =>
+                                    prev.map((row) =>
+                                      row.key === step.key ? { ...row, description: value } : row
+                                    )
+                                  );
+                                }}
+                                className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                              />
+                            </label>
+                            <label className="grid gap-0.5 text-xs text-slate-600">
+                              Expected
+                              <textarea
+                                value={step.expected}
+                                disabled={createCaseMutation.isPending}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setCreateDraftSteps((prev) =>
+                                    prev.map((row) =>
+                                      row.key === step.key ? { ...row, expected: value } : row
+                                    )
+                                  );
+                                }}
+                                className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                              />
+                            </label>
+                          </li>
+                        ))}
+                      </ol>
+                    </>
+                  }
+                  onSubmit={async (input) => {
+                    setCreateFormError(null);
+                    await createCaseMutation.mutateAsync({
+                      title: input.title,
+                      preconditions: input.preconditions,
+                      customValues: input.customValues,
+                      draftSteps: createDraftSteps.map(({ description, expected }) => ({ description, expected }))
+                    });
                   }}
-                >
-                  Clear filters
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white"
-                  onClick={() => {
+                  onCancel={() => {
+                    setShowAdd(false);
                     setCreateFormError(null);
                     setCreateFormVersion((current) => current + 1);
-                    setShowAdd(true);
                   }}
-                >
-                  Add case
-                </button>
-              )
-            }
-          />
-        </div>
-      ) : (
-        <div>
-          {cases.map((item) => {
-            const isExpanded = expandedCaseId === item.id;
-            const caseDetail = isExpanded ? (caseDetailRemote ?? item) : item;
-            return (
-              <CaseRow
-                key={item.id}
-                item={item}
-                isExpanded={isExpanded}
-                mode={mode}
-                detail={caseDetail}
-                versions={isExpanded ? caseVersionsQuery.data ?? [] : []}
+                />
+              </div>
+            </>
+          ) : activeEditorCase ? (
+            <>
+              <div className="border-b border-slate-200 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                  {activeEditorCase.caseCode} {activeEditorCase.title}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {mode === "edit" ? "Editing full case details." : "Reviewing case details and history."}
+                </p>
+              </div>
+              <ExpandableCaseDetail
+                data={activeEditorCase}
+                versions={caseVersionsQuery.data ?? []}
                 customFields={customFields}
                 caseTemplates={caseTemplates}
-                visibleColumns={caseColumns}
-                isSelected={selectedCaseIds.has(item.id)}
-                onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
-                onToggle={() => setExpandedCase(isExpanded ? null : item.id)}
-                onEdit={() => setExpandedCase(item.id, "edit")}
-                onCloseDetail={() => setExpandedCase(null)}
+                mode={mode}
+                onEdit={() => setExpandedCase(activeEditorCase.id, "edit")}
+                onClose={() => setExpandedCase(null)}
                 onSave={async (patch) => {
                   await updateCaseMutation.mutateAsync({
-                    caseId: item.id,
+                    caseId: activeEditorCase.id,
                     ...patch,
-                    expectedVersion: Number.isInteger(caseDetail.lockVersion) ? caseDetail.lockVersion : undefined
+                    expectedVersion: Number.isInteger(activeEditorCase.lockVersion)
+                      ? activeEditorCase.lockVersion
+                      : undefined
                   });
-                  setExpandedCase(item.id, "view");
+                  setExpandedCase(activeEditorCase.id, "view");
                 }}
                 onDelete={async () => {
-                  await deleteCaseMutation.mutateAsync(item.id);
+                  await deleteCaseMutation.mutateAsync(activeEditorCase.id);
                 }}
                 onRestoreVersion={async (versionId) => {
                   await restoreVersionMutation.mutateAsync({
-                    caseId: item.id,
+                    caseId: activeEditorCase.id,
                     versionId,
-                    expectedVersion: Number.isInteger(caseDetail.lockVersion) ? caseDetail.lockVersion : undefined
+                    expectedVersion: Number.isInteger(activeEditorCase.lockVersion)
+                      ? activeEditorCase.lockVersion
+                      : undefined
                   });
                 }}
                 isSaving={updateCaseMutation.isPending}
@@ -780,20 +919,29 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
                 isDeleting={deleteCaseMutation.isPending}
                 isRestoring={restoreVersionMutation.isPending}
                 onCreateStep={async (input) => {
-                  await createStepMutation.mutateAsync({ caseId: item.id, ...input });
+                  await createStepMutation.mutateAsync({ caseId: activeEditorCase.id, ...input });
                 }}
                 onUpdateStep={async (stepId, patch) => {
-                  await updateStepMutation.mutateAsync({ caseId: item.id, stepId, patch });
+                  await updateStepMutation.mutateAsync({ caseId: activeEditorCase.id, stepId, patch });
                 }}
                 onDeleteStep={async (stepId) => {
-                  await deleteStepMutation.mutateAsync({ caseId: item.id, stepId });
+                  await deleteStepMutation.mutateAsync({ caseId: activeEditorCase.id, stepId });
                 }}
                 isStepsBusy={stepsBusy}
               />
-            );
-          })}
-        </div>
-      )}
+            </>
+          ) : (
+            <div className="p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">Focus panel</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Select a case from the repository to review or edit it here, or create a new case to keep authoring separate from the browsing surface.
+              </p>
+            </div>
+          )}
+        </aside>
+      </div>
+
       <ConfirmDialog
         open={bulkUpdateOpen}
         title="Update selected test cases?"
@@ -854,6 +1002,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
           });
         }}
       />
+
       <ConfirmDialog
         open={bulkMoveOpen}
         title="Move selected test cases?"
@@ -895,13 +1044,17 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
           }
         }}
       />
+
       <ConfirmDialog
         open={bulkArchiveOpen}
         title={bulkArchiveMode === "archive" ? "Archive selected test cases?" : "Restore selected test cases?"}
         description={
           <span>
             {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will be{" "}
-            {bulkArchiveMode === "archive" ? "hidden from the active repository list and run composition" : "returned to the active repository list"}.
+            {bulkArchiveMode === "archive"
+              ? "hidden from the active repository list and run composition"
+              : "returned to the active repository list"}
+            .
           </span>
         }
         confirmLabel={
@@ -922,6 +1075,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
           })
         }
       />
+
       <ConfirmDialog
         open={bulkDeleteOpen}
         title="Delete selected test cases?"
@@ -936,6 +1090,6 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
         onCancel={() => setBulkDeleteOpen(false)}
         onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedVisibleCaseIds)}
       />
-    </div>
+    </>
   );
 }

@@ -16,6 +16,14 @@ export class SectionsService {
     return updated;
   }
   async deleteSection(sectionId: bigint) {
+    const casesInSectionTree = await this.repo.listCases({ sectionId, state: "all" });
+    if (casesInSectionTree.length > 0) {
+      throw new AppError(
+        "SECTION_NOT_EMPTY",
+        "section has test cases in this section tree; move or delete cases first",
+        409
+      );
+    }
     const deleted = await this.repo.deleteSection(sectionId);
     if (!deleted) throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found`, 404);
   }

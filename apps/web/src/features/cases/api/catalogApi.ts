@@ -32,7 +32,7 @@ type ApiCaseDetail = ApiCase & {
   steps?: Array<ApiCaseStep | { stepOrder: number; content: string; expectedResult?: string | null }>;
 };
 
-type ApiSection = { id: string; name: string };
+type ApiSection = { id: string; suiteId: string; name: string; parentSectionId?: string | null };
 
 export type SectionsBundle = {
   suiteId: string;
@@ -41,6 +41,19 @@ export type SectionsBundle = {
 
 function asNum(id: string): number {
   return Number(id);
+}
+
+async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 200): Promise<T[]> {
+  const out: T[] = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const res = await apiFetch<Paged<T>>(buildPath(page, pageSize));
+    out.push(...res.data);
+    totalPages = Math.max(1, res.totalPages ?? 1);
+    page += 1;
+  }
+  return out;
 }
 
 function normalizePriority(p?: string): CasePriority {
@@ -97,31 +110,60 @@ function mapApiCaseDetailToTestCase(row: ApiCaseDetail): TestCase {
 }
 
 export async function fetchSectionsForProject(projectId: string): Promise<SectionsBundle> {
-  const suites = await apiFetch<Paged<{ id: string }>>(`/api/projects/${projectId}/suites?page=1&pageSize=50`);
-  const first = suites.data[0];
+  const suites = await fetchAllPagedRows<{ id: string }>(
+    (page, pageSize) => `/api/projects/${projectId}/suites?page=${page}&pageSize=${pageSize}`
+  );
+  const first = suites[0];
   if (!first) return { suiteId: "", sections: [] };
-
-  const sections = await apiFetch<Paged<ApiSection>>(`/api/suites/${first.id}/sections?page=1&pageSize=100`);
+  const sectionsBySuite = await Promise.all(
+    suites.map((suite) =>
+      fetchAllPagedRows<ApiSection>(
+        (page, pageSize) => `/api/suites/${suite.id}/sections?page=${page}&pageSize=${pageSize}`
+      )
+    )
+  );
+  const allSections = sectionsBySuite.flat();
   return {
     suiteId: String(first.id),
-    sections: sections.data.map((section) => ({ id: asNum(section.id), name: section.name }))
+    sections: allSections.map((section) => ({
+      id: asNum(section.id),
+      suiteId: asNum(section.suiteId),
+      name: section.name,
+      parentSectionId: section.parentSectionId ? asNum(section.parentSectionId) : null
+    }))
   };
 }
 
-export async function createSection(suiteId: string, name: string): Promise<SectionNode> {
+export async function createSection(suiteId: string, name: string, parentSectionId?: number | null): Promise<SectionNode> {
   const res = await apiFetch<Ok<ApiSection>>(`/api/suites/${suiteId}/sections`, {
     method: "POST",
-    body: { name }
+    body: {
+      name,
+      ...(parentSectionId !== undefined ? { parentSectionId } : {})
+    }
   });
-  return { id: asNum(res.data.id), name: res.data.name };
+  return {
+    id: asNum(res.data.id),
+    suiteId: asNum(res.data.suiteId),
+    name: res.data.name,
+    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null
+  };
 }
 
-export async function updateSection(sectionId: number, name: string): Promise<SectionNode> {
+export async function updateSection(
+  sectionId: number,
+  patch: { name?: string; parentSectionId?: number | null }
+): Promise<SectionNode> {
   const res = await apiFetch<Ok<ApiSection>>(`/api/sections/${sectionId}`, {
     method: "PATCH",
-    body: { name }
+    body: patch
   });
-  return { id: asNum(res.data.id), name: res.data.name };
+  return {
+    id: asNum(res.data.id),
+    suiteId: asNum(res.data.suiteId),
+    name: res.data.name,
+    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null
+  };
 }
 
 export async function deleteSection(sectionId: number): Promise<void> {

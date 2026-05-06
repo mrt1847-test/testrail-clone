@@ -12,8 +12,9 @@ export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
   const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(projectId);
   const sections = bundle?.sections ?? [];
-  const suiteId = bundle?.suiteId ?? "";
   const { selectedSectionId, setExpandedCase, setSelectedSection } = useExpandedCase();
+  const selectedSectionSuiteId =
+    selectedSectionId != null ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? "") : "";
 
   useEffect(() => {
     if (sectionsLoading || sections.length === 0) return;
@@ -31,31 +32,48 @@ export function TestCaseWorkspace() {
   }
 
   if (sectionsLoading) {
-    return <LoadingState message="Loading test catalog…" />;
+    return <LoadingState message="Loading the test case workspace..." />;
   }
 
   if (sections.length === 0) {
     return (
       <p className="text-sm text-slate-600">
-        이 프로젝트에 스위트·섹션이 없습니다. 프로젝트를 새로 만들면 기본 스위트와 섹션이 생성됩니다.
+        No sections are available in this project yet. Create a suite and section first to start building the case repository.
       </p>
     );
   }
 
   if (selectedSectionId == null || !sections.some((s) => s.id === selectedSectionId)) {
-    return <LoadingState message="Loading test catalog…" />;
+    return <LoadingState message="Preparing the case repository..." />;
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-      <CaseListPane projectId={projectId} sections={sections} />
-      <SectionTreePane
-        suiteId={suiteId}
-        sections={sections}
-        selectedSectionId={selectedSectionId}
-        onSelectSection={setSelectedSection}
-        onClearExpand={() => setExpandedCase(null)}
-      />
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Test Cases</p>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Repository Workspace</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Navigate sections on the left, review the repository in the middle, and edit the active case in a dedicated side panel.
+            </p>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+            {sections.length} section{sections.length === 1 ? "" : "s"} available
+          </div>
+        </div>
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <SectionTreePane
+          suiteId={selectedSectionSuiteId}
+          sections={sections}
+          selectedSectionId={selectedSectionId}
+          onSelectSection={setSelectedSection}
+          onClearExpand={() => setExpandedCase(null)}
+        />
+        <CaseListPane projectId={projectId} sections={sections} />
+      </div>
     </div>
   );
 }

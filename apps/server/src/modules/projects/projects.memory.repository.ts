@@ -183,9 +183,31 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     const sectionIdsByProject = suiteIds
       ? this.sections.filter((sec) => suiteIds.includes(sec.suiteId)).map((sec) => sec.id)
       : null;
+    let sectionSubtreeIds: Set<bigint> | null = null;
+    if (params.sectionId) {
+      const root = this.sections.find((section) => section.id === params.sectionId);
+      if (!root) return [];
+      const children = new Map<bigint | null, bigint[]>();
+      for (const section of this.sections) {
+        if (section.suiteId !== root.suiteId) continue;
+        const parent = section.parentSectionId ?? null;
+        const list = children.get(parent);
+        if (list) list.push(section.id);
+        else children.set(parent, [section.id]);
+      }
+      sectionSubtreeIds = new Set<bigint>();
+      const stack: bigint[] = [params.sectionId];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        if (sectionSubtreeIds.has(current)) continue;
+        sectionSubtreeIds.add(current);
+        const kids = children.get(current) ?? [];
+        for (const kid of kids) stack.push(kid);
+      }
+    }
 
     return this.cases.filter((c) => {
-      if (params.sectionId && c.sectionId !== params.sectionId) return false;
+      if (sectionSubtreeIds && !sectionSubtreeIds.has(c.sectionId)) return false;
       if (params.suiteId) {
         const section = this.sections.find((s) => s.id === c.sectionId);
         if (!section || section.suiteId !== params.suiteId) return false;

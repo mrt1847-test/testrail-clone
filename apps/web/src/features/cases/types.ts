@@ -62,7 +62,9 @@ export type CaseVersion = {
 
 export interface SectionNode {
   id: number;
+  suiteId: number;
   name: string;
+  parentSectionId: number | null;
 }
 
 export type SavedCaseView = {

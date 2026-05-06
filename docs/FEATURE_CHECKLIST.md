@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-05
+Last aligned: 2026-05-06
 
 This is the working checklist for implemented and planned product capabilities. It is intentionally stricter than the roadmap: if a workflow is only partially usable, it stays open until the missing user-facing pieces are complete.
 
@@ -82,6 +82,7 @@ Use this order when choosing the next implementation batch:
 - [x] Optimistic locking baseline via `lockVersion`, `expectedVersion`, and `If-Match`.
 - [x] Bulk case delete baseline with multi-select list UX and per-case API feedback.
 - [x] Bulk case move baseline with section reassignment, multi-select list UX, and per-case API feedback.
+- [ ] P1 Drag-and-drop case move/copy parity with selection-aware case-list/section drop targets, a post-drop move-vs-copy chooser, and cloned case+step/custom-value creation semantics.
 - [x] Bulk case field update baseline with shared priority/type changes and per-case API feedback.
 - [x] Saved case filters/views baseline with reusable per-user/project section + query/priority/type/automation/archive-state views.
 - [x] Case custom value CSV import/export columns and active-field import validation baseline.

@@ -118,6 +118,29 @@ function matchesPresence(hasValue: boolean, filter: CasePresenceFilter | undefin
   return true;
 }
 
+function expandSectionSubtreeIds(
+  sections: Array<{ id: bigint; parentSectionId: bigint | null }>,
+  rootSectionId: bigint
+): bigint[] {
+  const children = new Map<bigint | null, bigint[]>();
+  for (const section of sections) {
+    const parent = section.parentSectionId ?? null;
+    const list = children.get(parent);
+    if (list) list.push(section.id);
+    else children.set(parent, [section.id]);
+  }
+  const out = new Set<bigint>();
+  const stack = [rootSectionId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (out.has(current)) continue;
+    out.add(current);
+    const kids = children.get(current) ?? [];
+    for (const kid of kids) stack.push(kid);
+  }
+  return [...out];
+}
+
 function caseMatchesPresence(
   row: Pick<CaseRow, "refs" | "labels" | "estimate">,
   params: { refs?: CasePresenceFilter; labels?: CasePresenceFilter; estimate?: CasePresenceFilter }
@@ -381,13 +404,29 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     estimate?: CasePresenceFilter;
     state?: "active" | "archived" | "all";
   }): Promise<CaseRow[]> {
+    let sectionIds: bigint[] | undefined;
+    if (params.sectionId !== undefined) {
+      const rootSection = await this.prisma.section.findFirst({
+        where: { id: params.sectionId, deletedAt: null },
+        select: { suiteId: true }
+      });
+      if (!rootSection) return [];
+      const allSections = await this.prisma.section.findMany({
+        where: { suiteId: rootSection.suiteId, deletedAt: null },
+        select: { id: true, parentSectionId: true }
+      });
+      sectionIds = expandSectionSubtreeIds(
+        allSections.map((section) => ({ id: section.id, parentSectionId: section.parentSectionId ?? null })),
+        params.sectionId
+      );
+    }
     const rows = await this.prisma.testCase.findMany({
       where: {
         deletedAt: null,
         ...caseStateWhere(params.state),
         ...(params.projectId !== undefined ? { projectId: params.projectId } : {}),
         ...(params.suiteId !== undefined ? { suiteId: params.suiteId } : {}),
-        ...(params.sectionId !== undefined ? { sectionId: params.sectionId } : {}),
+        ...(sectionIds ? { sectionId: { in: sectionIds } } : {}),
         ...(params.priority ? { priority: { equals: params.priority, mode: "insensitive" } } : {}),
         ...(params.caseType ? { caseType: { equals: params.caseType, mode: "insensitive" } } : {}),
         ...(params.automation === "automated"

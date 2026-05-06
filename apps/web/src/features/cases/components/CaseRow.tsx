@@ -38,6 +38,7 @@ type CaseRowProps = {
   ) => Promise<void>;
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
+  renderDetailInline?: boolean;
 };
 
 export function CaseRow({
@@ -64,7 +65,8 @@ export function CaseRow({
   onCreateStep,
   onUpdateStep,
   onDeleteStep,
-  isStepsBusy
+  isStepsBusy,
+  renderDetailInline = true
 }: CaseRowProps) {
   const visibleColumnSet = new Set(visibleColumns);
   const activeCustomFields = (customFields ?? []).filter((field) => field.isActive);
@@ -93,7 +95,12 @@ export function CaseRow({
 
   return (
     <article className="border-b border-slate-100 last:border-0">
-      <div className="flex items-center gap-2 bg-white pl-3 hover:bg-slate-50">
+      <div
+        className={[
+          "flex items-center gap-2 pl-3 transition-colors",
+          isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50"
+        ].join(" ")}
+      >
         <input
           type="checkbox"
           aria-label={`Select ${item.caseCode}`}
@@ -149,11 +156,11 @@ export function CaseRow({
             ) : null}
           </span>
           <span className="shrink-0 text-right text-xs text-slate-500">
-            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode} {isExpanded ? "-" : "+"}
+            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode} {isExpanded ? "▾" : "▸"}
           </span>
         </button>
       </div>
-      {isExpanded ? (
+      {renderDetailInline && isExpanded ? (
         <ExpandableCaseDetail
           data={detail ?? item}
           versions={versions ?? []}

@@ -10,6 +10,19 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchMilestones } from "../../projects/api/planningApi";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 
+async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 200): Promise<T[]> {
+  const out: T[] = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const res = await apiFetch<Paged<T>>(buildPath(page, pageSize));
+    out.push(...res.data);
+    totalPages = Math.max(1, res.totalPages ?? 1);
+    page += 1;
+  }
+  return out;
+}
+
 export function RunCreatePage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
@@ -25,14 +38,18 @@ export function RunCreatePage() {
   const mutation = useCreateRunMutation(projectId);
   const suitesQuery = useQuery({
     queryKey: ["run-create-suites", projectId],
-    queryFn: async () => apiFetch<Paged<{ id: string; name: string }>>(`/api/projects/${projectId}/suites?page=1&pageSize=100`),
+    queryFn: async () =>
+      fetchAllPagedRows<{ id: string; name: string }>(
+        (page, pageSize) => `/api/projects/${projectId}/suites?page=${page}&pageSize=${pageSize}`
+      ),
     enabled: Boolean(projectId)
   });
   const casesQuery = useQuery({
     queryKey: ["run-create-cases", projectId, suiteId],
     queryFn: async () =>
-      apiFetch<Paged<{ id: string; title: string; sectionId?: string }>>(
-        `/api/projects/${projectId}/cases?page=1&pageSize=100${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
+      fetchAllPagedRows<{ id: string; title: string; sectionId?: string }>(
+        (page, pageSize) =>
+          `/api/projects/${projectId}/cases?page=${page}&pageSize=${pageSize}${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ""}`
       ),
     enabled: Boolean(projectId && suiteId)
   });
@@ -44,15 +61,15 @@ export function RunCreatePage() {
   const sectionsQuery = useQuery({
     queryKey: ["run-create-sections", suiteId],
     queryFn: async () =>
-      apiFetch<Paged<{ id: string; name: string; parentSectionId?: string | null }>>(
-        `/api/suites/${suiteId}/sections?page=1&pageSize=100`
+      fetchAllPagedRows<{ id: string; name: string; parentSectionId?: string | null }>(
+        (page, pageSize) => `/api/suites/${suiteId}/sections?page=${page}&pageSize=${pageSize}`
       ),
     enabled: Boolean(suiteId)
   });
 
-  const suites = suitesQuery.data?.data ?? [];
-  const cases = casesQuery.data?.data ?? [];
-  const sections = sectionsQuery.data?.data ?? [];
+  const suites = suitesQuery.data ?? [];
+  const cases = casesQuery.data ?? [];
+  const sections = sectionsQuery.data ?? [];
   const milestones = milestonesQuery.data ?? [];
   const sectionDepth = useMemo(() => {
     const parentById = new Map<string, string | null>();
