@@ -63,6 +63,22 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   private readonly caseVersions: CaseVersionRow[] = [];
   private caseVersionSeq = 1n;
 
+  /** Per-case promise chain: same idea as locking the parent row before assigning versionNo. */
+  private caseSnapshotChain = new Map<string, Promise<unknown>>();
+
+  private runCaseSnapshotExclusive<T>(caseId: bigint, fn: () => Promise<T>): Promise<T> {
+    const key = caseId.toString();
+    const prev = this.caseSnapshotChain.get(key) ?? Promise.resolve();
+    const next = prev.then(() => fn());
+    this.caseSnapshotChain.set(key, next);
+    void next.finally(() => {
+      if (this.caseSnapshotChain.get(key) === next) {
+        this.caseSnapshotChain.delete(key);
+      }
+    });
+    return next as Promise<T>;
+  }
+
   async listProjects() {
     return [...this.projects];
   }
@@ -221,49 +237,51 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   }
 
   async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
-    const current = this.cases.find((c) => c.id === caseId);
-    if (!current) return null;
-    const stepsSnapshot = this.caseSteps
-      .filter((s) => s.caseId === caseId)
-      .sort((a, b) => a.stepOrder - b.stepOrder)
-      .map((s) => ({ stepOrder: s.stepOrder, content: s.content, expectedResult: s.expectedResult ?? null }));
-    const latest = this.caseVersions
-      .filter((v) => v.caseId === caseId)
-      .sort((a, b) => b.versionNo - a.versionNo)[0];
-    const sig = JSON.stringify({
-      title: current.title,
-      priority: current.priority ?? null,
-      caseType: current.caseType ?? null,
-      preconditions: current.preconditions ?? null,
-      customValues: current.customValues ?? {},
-      stepsSnapshot
-    });
-    if (latest) {
-      const latestSig = JSON.stringify({
-        title: latest.title,
-        priority: latest.priority ?? null,
-        caseType: latest.caseType ?? null,
-        preconditions: latest.preconditions ?? null,
-        customValues: latest.customValuesSnapshot ?? {},
-        stepsSnapshot: latest.stepsSnapshot
+    return this.runCaseSnapshotExclusive(caseId, async () => {
+      const current = this.cases.find((c) => c.id === caseId);
+      if (!current) return null;
+      const stepsSnapshot = this.caseSteps
+        .filter((s) => s.caseId === caseId)
+        .sort((a, b) => a.stepOrder - b.stepOrder)
+        .map((s) => ({ stepOrder: s.stepOrder, content: s.content, expectedResult: s.expectedResult ?? null }));
+      const latest = this.caseVersions
+        .filter((v) => v.caseId === caseId)
+        .sort((a, b) => b.versionNo - a.versionNo)[0];
+      const sig = JSON.stringify({
+        title: current.title,
+        priority: current.priority ?? null,
+        caseType: current.caseType ?? null,
+        preconditions: current.preconditions ?? null,
+        customValues: current.customValues ?? {},
+        stepsSnapshot
       });
-      if (sig === latestSig) return null;
-    }
-    const next: CaseVersionRow = {
-      id: this.caseVersionSeq++,
-      caseId,
-      versionNo: (latest?.versionNo ?? 0) + 1,
-      title: current.title,
-      priority: current.priority ?? null,
-      caseType: current.caseType ?? null,
-      preconditions: current.preconditions ?? null,
-      customValuesSnapshot: current.customValues ?? {},
-      stepsSnapshot,
-      changeReason: reason ?? null,
-      createdAt: new Date()
-    };
-    this.caseVersions.push(next);
-    return next;
+      if (latest) {
+        const latestSig = JSON.stringify({
+          title: latest.title,
+          priority: latest.priority ?? null,
+          caseType: latest.caseType ?? null,
+          preconditions: latest.preconditions ?? null,
+          customValues: latest.customValuesSnapshot ?? {},
+          stepsSnapshot: latest.stepsSnapshot
+        });
+        if (sig === latestSig) return null;
+      }
+      const next: CaseVersionRow = {
+        id: this.caseVersionSeq++,
+        caseId,
+        versionNo: (latest?.versionNo ?? 0) + 1,
+        title: current.title,
+        priority: current.priority ?? null,
+        caseType: current.caseType ?? null,
+        preconditions: current.preconditions ?? null,
+        customValuesSnapshot: current.customValues ?? {},
+        stepsSnapshot,
+        changeReason: reason ?? null,
+        createdAt: new Date()
+      };
+      this.caseVersions.push(next);
+      return next;
+    });
   }
 
   async createCaseStep(input: {

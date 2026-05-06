@@ -22,7 +22,7 @@ function serializeCaseSnapshot(input: {
   return JSON.stringify(input);
 }
 
-function jsonObject(value: Prisma.JsonValue | null): Record<string, string | number | boolean | null> {
+function jsonObject(value: unknown): Record<string, string | number | boolean | null> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: Record<string, string | number | boolean | null> = {};
   for (const [key, item] of Object.entries(value)) {
@@ -31,6 +31,19 @@ function jsonObject(value: Prisma.JsonValue | null): Record<string, string | num
     }
   }
   return out;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPrismaUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: unknown }).code === "P2002"
+  );
 }
 
 const caseSelect = {
@@ -50,9 +63,9 @@ const caseSelect = {
   lockVersion: true,
   updatedAt: true,
   archivedAt: true
-} satisfies Prisma.TestCaseSelect;
+} as const;
 
-function caseStateWhere(state: "active" | "archived" | "all" = "active"): Prisma.TestCaseWhereInput {
+function caseStateWhere(state: "active" | "archived" | "all" = "active") {
   if (state === "archived") {
     return { archivedAt: { not: null } };
   }
@@ -129,7 +142,7 @@ function mapCaseRow(row: {
   automationKey: string | null;
   externalId: string | null;
   preconditions: string | null;
-  customValues: Prisma.JsonValue;
+  customValues: unknown;
   lockVersion: number;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -388,8 +401,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     });
     return rows
       .map(mapCaseRow)
-      .filter((row) => caseMatchesPresence(row, params))
-      .filter((row) => caseMatchesSearch(row, params.q));
+      .filter((row: CaseRow) => caseMatchesPresence(row, params))
+      .filter((row: CaseRow) => caseMatchesSearch(row, params.q));
   }
 
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow> {
@@ -470,8 +483,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     priority: string | null;
     caseType: string | null;
     preconditions: string | null;
-    customValuesSnapshot: Prisma.JsonValue;
-    stepsSnapshot: Prisma.JsonValue;
+    customValuesSnapshot: unknown;
+    stepsSnapshot: unknown;
     changeReason: string | null;
     createdAt: Date;
   }): CaseVersionRow {
@@ -494,69 +507,113 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   }
 
   async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
-    const current = await this.getCase(caseId);
-    if (!current) return null;
-    const steps = await this.listCaseSteps(caseId);
-    const stepsSnapshot = steps.map((s) => ({
-      stepOrder: s.stepOrder,
-      content: s.content,
-      expectedResult: s.expectedResult ?? null
-    }));
-    const latest = await this.prisma.testCaseVersion.findFirst({
-      where: { caseId },
-      orderBy: { versionNo: "desc" }
-    });
-    const snapshotSignature = serializeCaseSnapshot({
-      title: current.title,
-      priority: current.priority ?? null,
-      caseType: current.caseType ?? null,
-      preconditions: current.preconditions ?? null,
-      customValues: current.customValues ?? {},
-      stepsSnapshot
-    });
-    if (latest) {
-      const latestSignature = serializeCaseSnapshot({
-        title: latest.title,
-        priority: latest.priority ?? null,
-        caseType: latest.caseType ?? null,
-        preconditions: latest.preconditions ?? null,
-        customValues: jsonObject(latest.customValuesSnapshot),
-        stepsSnapshot:
-          (Array.isArray(latest.stepsSnapshot)
-            ? latest.stepsSnapshot
-            : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>
-      });
-      if (latestSignature === snapshotSignature) return null;
+    const maxAttempts = 6;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await this.createCaseVersionSnapshotOnce(caseId, reason);
+      } catch (e) {
+        if (!isPrismaUniqueViolation(e) || attempt === maxAttempts - 1) {
+          throw e;
+        }
+        await sleep(Math.min(50 * 2 ** attempt, 400));
+      }
     }
-    const created = await this.prisma.testCaseVersion.create({
-      data: {
-        caseId,
-        versionNo: (latest?.versionNo ?? 0) + 1,
+    return null;
+  }
+
+  /**
+   * Locks the parent case row, dedupes by snapshot signature, then inserts a version row whose
+   * `versionNo` is assigned inside the DB via a subquery (serialized by `FOR UPDATE`).
+   */
+  private async createCaseVersionSnapshotOnce(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const locked = (await tx.$queryRaw`
+        SELECT id FROM "TestCase" WHERE id = ${caseId} AND "deletedAt" IS NULL FOR UPDATE
+      `) as Array<{ id: bigint }>;
+      if (locked.length === 0) return null;
+
+      const row = await tx.testCase.findFirst({
+        where: { id: caseId, deletedAt: null },
+        select: caseSelect
+      });
+      if (!row) return null;
+      const current = mapCaseRow(row);
+
+      const stepRows = await tx.testCaseStep.findMany({
+        where: { caseId, deletedAt: null },
+        orderBy: { stepOrder: "asc" },
+        select: { id: true, stepOrder: true, content: true, expectedResult: true }
+      });
+      const stepsSnapshot = stepRows.map((s: (typeof stepRows)[number]) => ({
+        stepOrder: s.stepOrder,
+        content: s.content,
+        expectedResult: s.expectedResult ?? null
+      }));
+
+      const latest = await tx.testCaseVersion.findFirst({
+        where: { caseId },
+        orderBy: { versionNo: "desc" }
+      });
+
+      const snapshotSignature = serializeCaseSnapshot({
         title: current.title,
         priority: current.priority ?? null,
         caseType: current.caseType ?? null,
         preconditions: current.preconditions ?? null,
-        customValuesSnapshot: (current.customValues ?? {}) as Prisma.InputJsonValue,
-        stepsSnapshot: stepsSnapshot as Prisma.InputJsonValue,
-        changeReason: reason ?? null
+        customValues: current.customValues ?? {},
+        stepsSnapshot
+      });
+      if (latest) {
+        const latestSignature = serializeCaseSnapshot({
+          title: latest.title,
+          priority: latest.priority ?? null,
+          caseType: latest.caseType ?? null,
+          preconditions: latest.preconditions ?? null,
+          customValues: jsonObject(latest.customValuesSnapshot),
+          stepsSnapshot:
+            (Array.isArray(latest.stepsSnapshot)
+              ? latest.stepsSnapshot
+              : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>
+        });
+        if (latestSignature === snapshotSignature) return null;
       }
+
+      const customValuesSnapshot = current.customValues ?? {};
+      const stepsPayload = stepsSnapshot;
+
+      const inserted = (await tx.$queryRaw`
+        INSERT INTO "TestCaseVersion" ("caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "changeReason")
+        SELECT
+          ${caseId},
+          (SELECT COALESCE(MAX(v."versionNo"), 0) + 1 FROM "TestCaseVersion" v WHERE v."caseId" = ${caseId}),
+          ${current.title},
+          ${current.priority},
+          ${current.caseType},
+          ${current.preconditions},
+          CAST(${customValuesSnapshot} AS jsonb),
+          CAST(${stepsPayload} AS jsonb),
+          ${reason ?? null}
+        RETURNING "id", "caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "changeReason", "createdAt"
+      `) as Array<{
+        id: bigint;
+        caseId: bigint;
+        versionNo: number;
+        title: string;
+        priority: string | null;
+        caseType: string | null;
+        preconditions: string | null;
+        customValuesSnapshot: unknown;
+        stepsSnapshot: unknown;
+        changeReason: string | null;
+        createdAt: Date;
+      }>;
+
+      const created = inserted[0];
+      if (!created) {
+        throw new Error("expected TestCaseVersion row after INSERT");
+      }
+      return this.mapCaseVersionRow(created);
     });
-    return {
-      id: created.id,
-      caseId: created.caseId,
-      versionNo: created.versionNo,
-      title: created.title,
-      priority: created.priority ?? null,
-      caseType: created.caseType ?? null,
-      preconditions: created.preconditions ?? null,
-      customValuesSnapshot: jsonObject(created.customValuesSnapshot),
-      stepsSnapshot:
-        (Array.isArray(created.stepsSnapshot)
-          ? created.stepsSnapshot
-          : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
-      changeReason: created.changeReason ?? null,
-      createdAt: created.createdAt
-    };
   }
 
   async createCaseStep(input: {
