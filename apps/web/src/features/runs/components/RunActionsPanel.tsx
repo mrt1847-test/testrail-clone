@@ -1,4 +1,5 @@
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
+import type { BulkResultFeedback } from "../hooks/useRunBulkActions";
 import type { ResultStatus } from "./resultEntryTypes";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   canBulkSubmit: boolean;
   isBulkPending: boolean;
   selectedCount: number;
+  bulkFeedback?: BulkResultFeedback | null;
+  onDismissBulkFeedback?: () => void;
   onBulkSubmit: () => void;
   assigneeInput: string;
   onAssigneeInputChange: (value: string) => void;
@@ -35,6 +38,8 @@ export function RunActionsPanel(props: Props) {
     canBulkSubmit,
     isBulkPending,
     selectedCount,
+    bulkFeedback = null,
+    onDismissBulkFeedback,
     onBulkSubmit,
     assigneeInput,
     onAssigneeInputChange,
@@ -55,6 +60,27 @@ export function RunActionsPanel(props: Props) {
       <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Run actions</h4>
       <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
         <p className="mb-2 font-medium text-slate-700">Bulk manual result entry</p>
+        {bulkFeedback ? (
+          <div
+            className={
+              bulkFeedback.type === "success"
+                ? "mb-2 flex items-start justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-900"
+                : "mb-2 flex items-start justify-between gap-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-red-900"
+            }
+            role="status"
+          >
+            <span>{bulkFeedback.message}</span>
+            {onDismissBulkFeedback ? (
+              <button
+                type="button"
+                className="shrink-0 underline opacity-80 hover:opacity-100"
+                onClick={onDismissBulkFeedback}
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <select

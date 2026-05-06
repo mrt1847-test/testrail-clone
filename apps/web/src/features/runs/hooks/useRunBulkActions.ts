@@ -1,6 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+export type BulkResultFeedback =
+  | { type: "success"; message: string }
+  | { type: "error"; message: string };
+
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { addRunResult } from "../api/runApi";
@@ -20,6 +24,7 @@ export function useRunBulkActions(input: Input) {
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<ResultStatus>("passed");
   const [bulkComment, setBulkComment] = useState("");
+  const [bulkFeedback, setBulkFeedback] = useState<BulkResultFeedback | null>(null);
 
   const bulkResultMutation = useMutation({
     mutationFn: async () => {
@@ -34,8 +39,12 @@ export function useRunBulkActions(input: Input) {
           })
         )
       );
+      return targets.length;
     },
-    onSuccess: async () => {
+    onMutate: () => {
+      setBulkFeedback(null);
+    },
+    onSuccess: async (appliedCount) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["runs", projectId, "detail", runId] }),
         qc.invalidateQueries({ queryKey: ["runs", projectId, "instances", runId] }),
@@ -48,6 +57,17 @@ export function useRunBulkActions(input: Input) {
       ]);
       setBulkComment("");
       setSelectedTestIds([]);
+      setBulkFeedback({
+        type: "success",
+        message:
+          appliedCount === 1
+            ? "Bulk result applied to 1 selected test."
+            : `Bulk result applied to ${appliedCount} selected tests.`
+      });
+    },
+    onError: (err) => {
+      const message = err instanceof Error ? err.message : "Bulk apply failed.";
+      setBulkFeedback({ type: "error", message });
     }
   });
 
@@ -68,6 +88,8 @@ export function useRunBulkActions(input: Input) {
     bulkComment,
     setBulkComment,
     bulkResultMutation,
+    bulkFeedback,
+    setBulkFeedback,
     allFilteredSelected,
     canBulkSubmit,
     selectedCount,

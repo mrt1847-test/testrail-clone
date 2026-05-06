@@ -121,7 +121,7 @@ Use this order when choosing the next implementation batch:
 - [x] P0 Existing-result safeguards when removing cases from a run (`confirmDataLoss` + CASCADE delete of results on confirm).
 - [x] P0 Closed-run restrictions for composition changes (API returns `RUN_CLOSED` for mutations).
 - [x] P0 Grouped run creation selection UX by section with selected/excluded counts.
-- [ ] P1 Run header/summary/filter/table component split.
+- [x] P1 Run header/summary/filter/table component split (`RunHeader`, `RunSummaryBar`, `TestInstanceFilterBar`, `TestInstanceTable`; bulk result feedback banner).
 - [x] P1 Result history pagination per selected test.
 - [x] P1 Scoped cache invalidation after run/result mutations (results query prefix + bulk result predicate invalidation).
 - [x] P1 Reopen policy (reopen endpoint + UI; closed run cannot accept new composition/results).
@@ -179,7 +179,7 @@ Use this order when choosing the next implementation batch:
 - [x] Traceability, coverage gap, and defect coverage CSV export baseline.
 - [x] Report export job/download baseline.
 - [x] P0 Report detail pages for run summary, results, traceability, coverage gap, and defect coverage (nested routes under `/projects/:id/reports/*`).
-- [ ] P1 Standard report filter bars, summary strips, chart/table bodies, and drilldown links.
+- [ ] P1 Standard report filter bars, summary strips, chart/table bodies, and drilldown links (baseline: shared `ReportPageHeader` / `ReportSummaryStrip` / `ReportTablePanel` on run summary, traceability, coverage gap, defect coverage, results explorer).
 - [ ] P1 Saved report definitions.
 - [ ] P1 Scheduled/email reports.
 - [ ] P1 Report history/download UI.
@@ -275,7 +275,7 @@ Use this order when choosing the next implementation batch:
 - [x] Case CSV import/export and report export workflows emit activity events for validate/request/complete/download milestones.
 - [x] Project create/update/delete mutations emit project-level activity events.
 - [x] Settings mutations (`custom_fields`, `custom_statuses`, `case_templates`, `project_members`) emit activity events for create/update/delete lifecycle.
-- [ ] P0 Broader activity event coverage across all major mutations.
+- [ ] P0 Broader activity event coverage across all major mutations (incremental: case step CRUD, `run.updated` on PATCH `/api/runs/:id`, `defect.unlinked`, `caseId` payloads on case create/update/version restore).
 - [ ] P0 Notification targeting and activity drilldown links.
 - [ ] P0 Email/digest notification delivery jobs.
 - [x] P0 Webhook background HTTP delivery worker (DB-backed server; in-memory 모드에서는 미기동).

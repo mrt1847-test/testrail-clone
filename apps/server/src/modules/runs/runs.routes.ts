@@ -133,6 +133,27 @@ export async function registerRunsRoutes(
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
     const updated = await deps.runsService.updateRun(runId, body);
+    if (!updated) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const hasPatch = body.name !== undefined || body.assignedTo !== undefined;
+    if (hasPatch) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: updated.projectId,
+        actorUserId: user.id,
+        entityType: "run",
+        entityId: updated.id,
+        eventType: "run.updated",
+        title: "Test run updated",
+        body: updated.name,
+        payload: {
+          runId: updated.id.toString(),
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {})
+        },
+        ...(body.assignedTo !== undefined ? { notificationType: "assignment" as const } : {})
+      });
+    }
     return reply.send(toJsonSafe(ok(updated)));
   });
 

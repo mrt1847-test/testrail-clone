@@ -425,13 +425,28 @@ export async function registerResultsRoutes(
 
   app.delete("/api/results/:resultId/defects/:defectLinkId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const params = defectLinkIdParamSchema.parse(req.params);
     if (!deps.prisma) {
       return reply.status(204).send();
     }
     const found = await deps.prisma.resultDefectLink.findFirst({
       where: { id: params.defectLinkId, resultId: params.resultId, deletedAt: null },
-      select: { id: true }
+      select: {
+        id: true,
+        defectKey: true,
+        result: {
+          select: {
+            instance: {
+              select: {
+                id: true,
+                titleSnapshot: true,
+                run: { select: { id: true, projectId: true } }
+              }
+            }
+          }
+        }
+      }
     });
     if (!found) {
       throw new AppError("NOT_FOUND", "defect link not found", 404);
@@ -439,6 +454,24 @@ export async function registerResultsRoutes(
     await deps.prisma.resultDefectLink.update({
       where: { id: params.defectLinkId },
       data: { deletedAt: new Date() }
+    });
+    const inst = found.result.instance;
+    const projectId = inst.run.projectId;
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "result",
+      entityId: params.resultId,
+      eventType: "defect.unlinked",
+      title: "Defect unlinked",
+      body: `${found.defectKey} removed from ${inst.titleSnapshot}.`,
+      payload: {
+        resultId: params.resultId.toString(),
+        defectLinkId: params.defectLinkId.toString(),
+        defectKey: found.defectKey,
+        runId: inst.run.id.toString(),
+        testId: inst.id.toString()
+      }
     });
     return reply.status(204).send();
   });

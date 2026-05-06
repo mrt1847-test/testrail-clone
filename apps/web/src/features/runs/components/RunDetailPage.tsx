@@ -26,7 +26,8 @@ import {
 } from "../hooks/useRunsApi";
 import { CloseRunDialog } from "./CloseRunDialog";
 import { RunActionsPanel } from "./RunActionsPanel";
-import { RunDetailSummarySection } from "./RunDetailSummarySection";
+import { RunHeader } from "./RunHeader";
+import { RunSummaryBar } from "./RunSummaryBar";
 import { RunInstancesSection } from "./RunInstancesSection";
 import { ResultEntryPanel } from "./ResultEntryPanel";
 import { ResultHistoryList } from "./ResultHistoryList";
@@ -81,8 +82,20 @@ export function RunDetailPage() {
     defectsQuery
   } = queries;
   const bulkActions = useRunBulkActions({ projectId, runId, pagedInstances });
-  const { selectedTestIds, setSelectedTestIds, bulkStatus, setBulkStatus, bulkComment, setBulkComment, bulkResultMutation, allFilteredSelected, canBulkSubmit, selectedCount } =
-    bulkActions;
+  const {
+    selectedTestIds,
+    setSelectedTestIds,
+    bulkStatus,
+    setBulkStatus,
+    bulkComment,
+    setBulkComment,
+    bulkResultMutation,
+    bulkFeedback,
+    setBulkFeedback,
+    allFilteredSelected,
+    canBulkSubmit,
+    selectedCount
+  } = bulkActions;
 
   const addResultMutation = useAddRunResultMutation(projectId, runId);
   const closeRunMutation = useCloseRunMutation(projectId, runId);
@@ -126,6 +139,11 @@ export function RunDetailPage() {
     setInstanceAssignees(next);
   }, [pagedInstances]);
 
+  const rerunStatuses = useMemo(
+    () => rerunSelectedStatuses as Array<"passed" | "failed" | "blocked" | "retest" | "untested">,
+    [rerunSelectedStatuses]
+  );
+
   if (runDetailQuery.isLoading) return <LoadingState message="Loading run..." />;
   if (runDetailQuery.isError || !runDetailQuery.data || !run) {
     return <ErrorState title="Run not found" onRetry={() => runDetailQuery.refetch()} />;
@@ -135,10 +153,6 @@ export function RunDetailPage() {
   const pushedDefectMessage = pushDefectMutation.data
     ? `Pushed ${pushDefectMutation.data.defectKey}${pushDefectMutation.data.url ? ` (${pushDefectMutation.data.url})` : ""}`
     : null;
-  const rerunStatuses = useMemo(
-    () => rerunSelectedStatuses as Array<"passed" | "failed" | "blocked" | "retest" | "untested">,
-    [rerunSelectedStatuses]
-  );
 
   return (
     <div className="space-y-4">
@@ -187,7 +201,10 @@ export function RunDetailPage() {
         }}
       />
 
-      <RunDetailSummarySection run={run} counts={counts} milestoneName={milestoneQuery.data?.name} />
+      <div className="space-y-3">
+        <RunHeader run={run} milestoneName={milestoneQuery.data?.name} />
+        <RunSummaryBar counts={counts} />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <RunInstancesSection
@@ -360,6 +377,8 @@ export function RunDetailPage() {
             canBulkSubmit={canBulkSubmit}
             isBulkPending={bulkResultMutation.isPending}
             selectedCount={selectedCount}
+            bulkFeedback={bulkFeedback}
+            onDismissBulkFeedback={() => setBulkFeedback(null)}
             onBulkSubmit={() => void bulkResultMutation.mutateAsync()}
             assigneeInput={assigneeInput}
             onAssigneeInputChange={setAssigneeInput}

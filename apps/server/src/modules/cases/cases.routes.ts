@@ -119,7 +119,8 @@ export async function registerCasesRoutes(
           entityId: created.id,
           eventType: "case.created",
           title: "Test case created",
-          body: created.title
+          body: created.title,
+          payload: { caseId: created.id.toString() }
         });
       }
       return reply.send(toJsonSafe(ok(created)));
@@ -298,7 +299,7 @@ export async function registerCasesRoutes(
         eventType: "case.version_restored",
         title: "Test case version restored",
         body: restored.title,
-        payload: { versionId: versionId.toString() }
+        payload: { caseId: restored.id.toString(), versionId: versionId.toString() }
       });
     }
     return reply.send(toJsonSafe(ok(restored)));
@@ -333,7 +334,8 @@ export async function registerCasesRoutes(
         entityId: updated.id,
         eventType: "case.updated",
         title: "Test case updated",
-        body: updated.title
+        body: updated.title,
+        payload: { caseId: updated.id.toString() }
       });
     }
     return reply.send(toJsonSafe(ok(updated)));
@@ -360,22 +362,88 @@ export async function registerCasesRoutes(
 
   app.post("/api/cases/:caseId/steps", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const body = createCaseStepSchema.parse(req.body ?? {});
-    return reply.send(toJsonSafe(ok(await deps.casesService.createCaseStep(caseId, body))));
+    const created = await deps.casesService.createCaseStep(caseId, body);
+    const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
+    if (projectId && deps.prisma) {
+      const preview =
+        created.content.length > 160 ? `${created.content.slice(0, 157).trimEnd()}…` : created.content;
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: caseId,
+        eventType: "case.step_created",
+        title: "Case step added",
+        body: preview,
+        payload: {
+          caseId: caseId.toString(),
+          stepId: created.id.toString(),
+          stepOrder: created.stepOrder
+        }
+      });
+    }
+    return reply.send(toJsonSafe(ok(created)));
   });
 
   app.patch("/api/case-steps/:stepId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { stepId } = stepIdParamSchema.parse(req.params);
     const body = updateCaseStepSchema.parse(req.body ?? {});
-    return reply.send(toJsonSafe(ok(await deps.casesService.updateCaseStep(stepId, body))));
+    let stepContext: { caseId: bigint; projectId: bigint } | null = null;
+    if (deps.prisma) {
+      const row = await deps.prisma.testCaseStep.findFirst({
+        where: { id: stepId, deletedAt: null },
+        select: { caseId: true, case: { select: { projectId: true } } }
+      });
+      if (row) stepContext = { caseId: row.caseId, projectId: row.case.projectId };
+    }
+    const updated = await deps.casesService.updateCaseStep(stepId, body);
+    if (stepContext && deps.prisma) {
+      const preview =
+        updated.content.length > 160 ? `${updated.content.slice(0, 157).trimEnd()}…` : updated.content;
+      await recordActivityEvent(deps.prisma, {
+        projectId: stepContext.projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: stepContext.caseId,
+        eventType: "case.step_updated",
+        title: "Case step updated",
+        body: preview,
+        payload: { caseId: stepContext.caseId.toString(), stepId: stepId.toString() }
+      });
+    }
+    return reply.send(toJsonSafe(ok(updated)));
   });
 
   app.delete("/api/case-steps/:stepId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { stepId } = stepIdParamSchema.parse(req.params);
+    let stepContext: { caseId: bigint; projectId: bigint } | null = null;
+    if (deps.prisma) {
+      const row = await deps.prisma.testCaseStep.findFirst({
+        where: { id: stepId, deletedAt: null },
+        select: { caseId: true, case: { select: { projectId: true } } }
+      });
+      if (row) stepContext = { caseId: row.caseId, projectId: row.case.projectId };
+    }
     await deps.casesService.deleteCaseStep(stepId);
+    if (stepContext && deps.prisma) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: stepContext.projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: stepContext.caseId,
+        eventType: "case.step_deleted",
+        title: "Case step removed",
+        body: `Step ${stepId.toString()}`,
+        payload: { caseId: stepContext.caseId.toString(), stepId: stepId.toString() }
+      });
+    }
     return reply.status(204).send();
   });
 }

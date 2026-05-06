@@ -1,6 +1,6 @@
 # Component Map
 
-Last aligned: 2026-04-30
+Last aligned: 2026-05-06
 
 ## Intent
 
@@ -31,9 +31,9 @@ Status legend:
 
 ## Runs And Results
 
-- `implemented`: `RunListPage`, `RunCreatePage`, `RunDetailPage`, `CloseRunDialog`, `ResultEntryPanel`, `ResultHistoryList`, `ResultExplorerPage`, `MyTestsPage`.
-- `partial`: attachment and defect workflows exist in run detail, but the page still owns too much UI orchestration.
-- `planned`: `RunHeader`, `RunSummaryBar`, `TestInstanceTable`, `TestInstanceFilterBar`, `StatusPicker`, `StepResultEditor`, `ResultMetadataFields`, `EvidenceQuickAttach`, `DefectQuickLink`, `RerunDialog`.
+- `implemented`: `RunListPage`, `RunCreatePage`, `RunDetailPage`, `RunHeader`, `RunSummaryBar`, `RunInstancesSection`, `TestInstanceFilterBar`, `TestInstanceTable`, `CloseRunDialog`, `ResultEntryPanel`, `ResultHistoryList`, `ResultExplorerPage`, `MyTestsPage`, `StepResultEditor`.
+- `partial`: attachment and defect workflows exist in run detail; `RunDetailPage` still composes dialogs, result entry, and actions.
+- `planned`: reusable `StatusPicker`, `ResultMetadataFields`, `EvidenceQuickAttach`, `DefectQuickLink`, dedicated `RerunDialog` component (rerun still inline confirm on run detail).
 
 ## Milestones And Plans
 
@@ -55,9 +55,9 @@ Status legend:
 
 ## Reports
 
-- `implemented`: `ReportsPage`, overview widgets, result explorer page, traceability/coverage/defect coverage API consumers.
-- `partial`: report export jobs exist, but report drilldown pages are not yet first-class.
-- `planned`: `ReportFilterBar`, `TraceabilityMatrix`, `CoverageGapTable`, `DefectCoverageTable`, `ReportExportMenu`, saved/scheduled report components.
+- `implemented`: `ReportsPage`, overview widgets, `ReportChrome` (`ReportPageHeader`, `ReportSummaryStrip`, `ReportTablePanel`), nested report pages (`ReportRunSummaryPage`, `ReportTraceabilityPage`, `ReportCoverageGapPage`, `ReportDefectCoveragePage`, `ReportResultsExplorerPage`).
+- `partial`: drilldown pages now share summary strips and headers; export jobs exist; interactive filter bars and charts still thin.
+- `planned`: reusable `ReportFilterBar`, richer `TraceabilityMatrix` / table primitives, `ReportExportMenu`, saved/scheduled report components.
 
 ## Activity And Notifications
 

@@ -154,7 +154,7 @@ Compatibility priority should be driven by migration and automation needs:
 ## Highest-Value Parity Gaps
 
 - P0: run composition polish (section-tree grouped selection UX, bulk feedback, policies beyond open-run add/remove).
-- P0: execution workspace depth (stable run header/summary/filter/table split; close/reopen UX polish beyond current reopen + safeguards).
+- P0: execution workspace depth (run header/summary/filter/table components in place; large-run table ergonomics + close/reopen UX polish beyond current reopen + safeguards).
 - P0: case repository productivity, including bulk move/update/archive, saved views, and rich case filters.
 - P0: report drilldown polish (unified filter bars, charts/summary strips) on top of nested `/reports/*` pages.
 - P0: activity events and notifications across the core case/run/result/assignment/defect/report workflows.
