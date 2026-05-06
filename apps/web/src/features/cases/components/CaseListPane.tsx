@@ -52,6 +52,47 @@ function extractApiErrorMessage(error: unknown, fallback: string) {
   }
 }
 
+type CaseCreateDraftStep = { key: string; description: string; expected: string };
+
+function newCreateDraftStepKey(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `step-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function emptyCreateDraftStep(): CaseCreateDraftStep {
+  return { key: newCreateDraftStepKey(), description: "", expected: "" };
+}
+
+function initialCreateDraftSteps(): CaseCreateDraftStep[] {
+  return [emptyCreateDraftStep()];
+}
+
+/** Persists draft rows after POST /sections/:id/cases. API requires non-empty step content. */
+async function persistCreateDraftSteps(
+  caseId: number,
+  drafts: Array<{ description: string; expected: string }>
+): Promise<void> {
+  let posted = 0;
+  for (const row of drafts) {
+    const content = row.description.trim();
+    const expected = row.expected.trim();
+    if (content.length > 0) {
+      await createCaseStep(caseId, {
+        content,
+        expectedResult: expected.length > 0 ? expected : null
+      });
+      posted += 1;
+    } else if (expected.length > 0) {
+      await createCaseStep(caseId, { content: "-", expectedResult: expected });
+      posted += 1;
+    }
+  }
+  if (posted === 0 && drafts.length === 1) {
+    await createCaseStep(caseId, { content: "New step", expectedResult: null });
+  }
+}
+
 export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   type BulkPriorityValue = "" | "low" | "medium" | "high";
   type BulkCaseTypeValue = "" | "functional" | "integration" | "regression";
@@ -89,6 +130,7 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   });
   const [showAdd, setShowAdd] = useState(false);
   const [createFormVersion, setCreateFormVersion] = useState(0);
+  const [createDraftSteps, setCreateDraftSteps] = useState<CaseCreateDraftStep[]>(initialCreateDraftSteps);
   const [createFormError, setCreateFormError] = useState<string | null>(null);
   const [editFormError, setEditFormError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(caseFilters.q);
@@ -151,6 +193,11 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   }, [createFormError, showAdd]);
 
   useEffect(() => {
+    if (!showAdd) return;
+    setCreateDraftSteps(initialCreateDraftSteps());
+  }, [showAdd, createFormVersion]);
+
+  useEffect(() => {
     setEditFormError(null);
   }, [expandedCaseId, mode]);
 
@@ -191,21 +238,35 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
   };
 
   const createCaseMutation = useMutation({
-    mutationFn: (input: {
+    mutationFn: async (input: {
       title: string;
       preconditions: string;
       customValues: Record<string, string | number | boolean | null>;
-    }) =>
-      createCase(selectedSectionId!, {
+      draftSteps: Array<{ description: string; expected: string }>;
+    }) => {
+      const created = await createCase(selectedSectionId!, {
         title: input.title,
         preconditions: input.preconditions,
         customValues: input.customValues
-      }),
-    onSuccess: () => {
+      });
+      let stepsWarning: string | null = null;
+      try {
+        await persistCreateDraftSteps(created.id, input.draftSteps);
+      } catch (error) {
+        stepsWarning = extractApiErrorMessage(error, "Could not save steps.");
+      }
+      return { created, stepsWarning };
+    },
+    onSuccess: ({ stepsWarning }) => {
       invalidateCases();
       setShowAdd(false);
       setCreateFormError(null);
       setCreateFormVersion((current) => current + 1);
+      if (stepsWarning) {
+        setBulkActionMessage(
+          `Case was created, but saving one or more steps failed (${stepsWarning}). Open the case and add steps from edit mode.`
+        );
+      }
     },
     onError: (error) => {
       setCreateFormError(extractApiErrorMessage(error, "Could not create case."));
@@ -496,12 +557,79 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
             submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
             isSubmitting={createCaseMutation.isPending}
             submitError={createFormError}
+            stepsSection={
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-800">Steps</span>
+                  <button
+                    type="button"
+                    disabled={createCaseMutation.isPending}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => setCreateDraftSteps((prev) => [...prev, emptyCreateDraftStep()])}
+                  >
+                    Add step
+                  </button>
+                </div>
+                <ol className="list-decimal space-y-3 pl-5 text-sm">
+                  {createDraftSteps.map((step) => (
+                    <li
+                      key={step.key}
+                      className="grid gap-2 rounded-md border border-slate-200 bg-white p-2"
+                    >
+                      <div className="flex flex-wrap items-center gap-1">
+                        {createDraftSteps.length > 1 ? (
+                          <button
+                            type="button"
+                            disabled={createCaseMutation.isPending}
+                            className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800 disabled:opacity-50"
+                            onClick={() =>
+                              setCreateDraftSteps((prev) => prev.filter((row) => row.key !== step.key))
+                            }
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                      <label className="grid gap-0.5 text-xs text-slate-600">
+                        Action
+                        <textarea
+                          value={step.description}
+                          disabled={createCaseMutation.isPending}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setCreateDraftSteps((prev) =>
+                              prev.map((row) => (row.key === step.key ? { ...row, description: value } : row))
+                            );
+                          }}
+                          className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                        />
+                      </label>
+                      <label className="grid gap-0.5 text-xs text-slate-600">
+                        Expected
+                        <textarea
+                          value={step.expected}
+                          disabled={createCaseMutation.isPending}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setCreateDraftSteps((prev) =>
+                              prev.map((row) => (row.key === step.key ? { ...row, expected: value } : row))
+                            );
+                          }}
+                          className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            }
             onSubmit={async (input) => {
               setCreateFormError(null);
               await createCaseMutation.mutateAsync({
                 title: input.title,
                 preconditions: input.preconditions,
-                customValues: input.customValues
+                customValues: input.customValues,
+                draftSteps: createDraftSteps.map(({ description, expected }) => ({ description, expected }))
               });
             }}
             onCancel={() => {

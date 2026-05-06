@@ -1,2 +1,5 @@
-ALTER TABLE "TestRun" ADD COLUMN IF NOT EXISTS "metadata" JSONB;
-ALTER TABLE "TestResult" ADD COLUMN IF NOT EXISTS "metadata" JSONB;
+-- AlterTable
+ALTER TABLE "TestRun" ADD COLUMN "metadata" JSONB;
+
+-- AlterTable
+ALTER TABLE "TestResult" ADD COLUMN "metadata" JSONB;
