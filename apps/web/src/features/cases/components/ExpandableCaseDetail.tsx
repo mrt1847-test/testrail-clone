@@ -38,6 +38,49 @@ type ExpandableCaseDetailProps = {
 
 type LocalStep = { id?: number; description: string; expected: string };
 
+function formatExpectedText(expected: string | null | undefined): string {
+  const t = (expected ?? "").trim();
+  if (t === "" || t === "-") return "—";
+  return t;
+}
+
+/** View mode: Action / Expected 를 카드 두 칸으로 분리 */
+function CaseStepReadOnlyBoxes({
+  index,
+  action,
+  expected
+}: {
+  index: number;
+  action: string;
+  expected: string | null | undefined;
+}) {
+  const actionText = action.trim() || "—";
+  return (
+    <li className="list-none">
+      <div className="flex gap-2.5">
+        <span
+          className="mt-0.5 flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-700"
+          aria-hidden
+        >
+          {index + 1}
+        </span>
+        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+          <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Action</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-snug text-slate-800">{actionText}</p>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Expected</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-snug text-slate-700">
+              {formatExpectedText(expected)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 function toLocalSteps(steps: CaseStep[]): LocalStep[] {
   return steps.map((s) => ({
     id: s.id,
@@ -252,43 +295,61 @@ export function ExpandableCaseDetail({
             <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}
           </p>
 
-          <div className="mt-2 rounded border border-slate-200 bg-white p-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-slate-700">Version history</p>
-              {selectedVersion ? (
-                <button
-                  type="button"
-                  className="text-xs font-medium text-slate-600 underline"
-                  onClick={() => setSelectedVersionId(null)}
+          <details className="group mt-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-2.5 py-2 text-xs text-slate-500 marker:hidden [&::-webkit-details-marker]:hidden">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-medium text-slate-600">Version history</span>
+                  {versions.length > 0 ? (
+                    <span className="text-slate-400"> · {versions.length} snapshot{versions.length === 1 ? "" : "s"}</span>
+                  ) : null}
+                  <p className="mt-0.5 text-[11px] font-normal text-slate-400">Click to show or hide</p>
+                </div>
+                <span
+                  className="shrink-0 pt-0.5 text-slate-400 transition group-open:rotate-90"
+                  aria-hidden
                 >
-                  Clear
-                </button>
-              ) : null}
+                  ▸
+                </span>
+              </div>
+            </summary>
+            <div className="border-t border-slate-100 px-2.5 pb-2.5 pt-2">
+              <div className="mb-2 flex items-center justify-end gap-2">
+                {selectedVersion ? (
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-slate-600 underline"
+                    onClick={() => setSelectedVersionId(null)}
+                  >
+                    Clear selection
+                  </button>
+                ) : null}
+              </div>
+              {versions.length === 0 ? (
+                <p className="text-xs text-slate-500">No versions yet.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-slate-600">
+                  {versions.map((v) => (
+                    <li key={v.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <button
+                        type="button"
+                        className={
+                          selectedVersionId === v.id
+                            ? "font-medium text-slate-900 underline"
+                            : "font-medium text-slate-700 underline"
+                        }
+                        onClick={() => setSelectedVersionId(v.id)}
+                      >
+                        v{v.versionNo}
+                      </button>
+                      <span className="text-slate-500">{v.changeReason ?? "updated"}</span>
+                      <span className="text-slate-400">{new Date(v.createdAt).toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {versions.length === 0 ? (
-              <p className="mt-1 text-xs text-slate-500">No versions yet.</p>
-            ) : (
-              <ul className="mt-1 space-y-1 text-xs text-slate-600">
-                {versions.map((v) => (
-                  <li key={v.id} className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={
-                        selectedVersionId === v.id
-                          ? "font-medium text-slate-900 underline"
-                          : "font-medium text-slate-700 underline"
-                      }
-                      onClick={() => setSelectedVersionId(v.id)}
-                    >
-                      v{v.versionNo}
-                    </button>
-                    <span>{v.changeReason ?? "updated"}</span>
-                    <span>{new Date(v.createdAt).toLocaleString()}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          </details>
 
           {selectedVersion ? (
             <div className="mt-2 rounded border border-slate-200 bg-white p-2">
@@ -343,21 +404,27 @@ export function ExpandableCaseDetail({
               <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                 <div className="rounded border border-slate-100 p-2">
                   <p className="font-medium text-slate-700">Current steps</p>
-                  <ol className="mt-1 list-decimal space-y-1 pl-4">
+                  <ol className="mt-2 space-y-3">
                     {data.steps.map((step, index) => (
-                      <li key={step.id ?? index}>
-                        {step.description} <span className="text-slate-500">({step.expected})</span>
-                      </li>
+                      <CaseStepReadOnlyBoxes
+                        key={step.id ?? index}
+                        index={index}
+                        action={step.description}
+                        expected={step.expected}
+                      />
                     ))}
                   </ol>
                 </div>
                 <div className="rounded border border-slate-100 p-2">
                   <p className="font-medium text-slate-700">Version steps</p>
-                  <ol className="mt-1 list-decimal space-y-1 pl-4">
-                    {(selectedVersion.stepsSnapshot ?? []).map((step) => (
-                      <li key={step.stepOrder}>
-                        {step.content} <span className="text-slate-500">({step.expectedResult ?? "-"})</span>
-                      </li>
+                  <ol className="mt-2 space-y-3">
+                    {(selectedVersion.stepsSnapshot ?? []).map((step, i) => (
+                      <CaseStepReadOnlyBoxes
+                        key={step.stepOrder}
+                        index={i}
+                        action={step.content}
+                        expected={step.expectedResult}
+                      />
                     ))}
                   </ol>
                 </div>
@@ -384,13 +451,19 @@ export function ExpandableCaseDetail({
           {data.steps.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500">No steps registered.</p>
           ) : (
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
-              {data.steps.map((step, index) => (
-                <li key={step.id ?? `${data.id}-s-${index}`}>
-                  {step.description} <span className="text-slate-500">(Expected: {step.expected})</span>
-                </li>
-              ))}
-            </ol>
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-700">Steps</p>
+              <ol className="mt-2 space-y-3">
+                {data.steps.map((step, index) => (
+                  <CaseStepReadOnlyBoxes
+                    key={step.id ?? `${data.id}-s-${index}`}
+                    index={index}
+                    action={step.description}
+                    expected={step.expected}
+                  />
+                ))}
+              </ol>
+            </div>
           )}
 
           <div className="mt-3 flex flex-wrap gap-2">
