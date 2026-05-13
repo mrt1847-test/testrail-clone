@@ -44,7 +44,7 @@ function asNum(id: string): number {
   return Number(id);
 }
 
-async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 200): Promise<T[]> {
+async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 100): Promise<T[]> {
   const out: T[] = [];
   let page = 1;
   let totalPages = 1;

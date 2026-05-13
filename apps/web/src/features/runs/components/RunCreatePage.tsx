@@ -10,7 +10,7 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchMilestones } from "../../projects/api/planningApi";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 
-async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 200): Promise<T[]> {
+async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 100): Promise<T[]> {
   const out: T[] = [];
   let page = 1;
   let totalPages = 1;
