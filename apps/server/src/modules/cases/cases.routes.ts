@@ -9,6 +9,7 @@ import { CasesService } from "./cases.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
   bulkArchiveCasesSchema,
+  bulkCopyCasesSchema,
   caseIdParamSchema,
   caseVersionIdParamSchema,
   bulkDeleteCasesSchema,
@@ -17,7 +18,9 @@ import {
   createCaseSchema,
   createCaseStepSchema,
   listCasesQuerySchema,
+  positionCasesSchema,
   projectIdParamSchema,
+  reorderCasesSchema,
   restoreCaseVersionSchema,
   sectionIdParamSchema,
   stepIdParamSchema,
@@ -49,6 +52,10 @@ function asCustomValues(value: unknown): CustomValues | undefined {
   return out;
 }
 
+function previewText(value: string, maxLength = 160) {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
+}
+
 export async function registerCasesRoutes(
   app: FastifyInstance,
   deps: { casesService: CasesService; authService: AuthService; prisma?: PrismaClient }
@@ -68,6 +75,7 @@ export async function registerCasesRoutes(
       refs: rawQuery.refs,
       labels: rawQuery.labels,
       estimate: rawQuery.estimate,
+      sectionScope: rawQuery.sectionScope,
       state: rawQuery.state
     });
     return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
@@ -86,6 +94,7 @@ export async function registerCasesRoutes(
       refs: rawQuery.refs,
       labels: rawQuery.labels,
       estimate: rawQuery.estimate,
+      sectionScope: rawQuery.sectionScope,
       state: rawQuery.state
     });
     return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
@@ -202,6 +211,45 @@ export async function registerCasesRoutes(
     );
   });
 
+  app.post("/api/projects/:projectId/cases/bulk-copy", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = bulkCopyCasesSchema.parse(req.body ?? {});
+    await deps.casesService.assertProjectScopedSection(projectId, body.targetSectionId);
+    const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
+    const result = await deps.casesService.bulkCopyCases(scopedIds, body.targetSectionId);
+    const items = [
+      ...result.items,
+      ...outOfScope.map((caseId) => ({ sourceCaseId: caseId, copiedCaseId: null, success: false, error: "NOT_FOUND" }))
+    ];
+    const copied = items.filter((item) => item.success).length;
+    const failed = items.filter((item) => !item.success).length;
+
+    if (copied > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "case",
+        entityId: "bulk-copy",
+        eventType: "case.bulk_copied",
+        title: "Test cases bulk copied",
+        body: `${copied} test case${copied === 1 ? "" : "s"} copied`,
+        payload: {
+          targetSectionId: body.targetSectionId.toString(),
+          sourceCaseIds: items.filter((item) => item.success).map((item) => item.sourceCaseId.toString()),
+          copiedCaseIds: items
+            .filter((item) => item.success && item.copiedCaseId)
+            .map((item) => item.copiedCaseId!.toString())
+        }
+      });
+    }
+
+    return reply.send(
+      toJsonSafe(ok({ requested: body.caseIds.length, copied, failed, targetSectionId: body.targetSectionId, items }))
+    );
+  });
+
   app.post("/api/projects/:projectId/cases/bulk-update", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -268,6 +316,53 @@ export async function registerCasesRoutes(
     return reply.send(
       toJsonSafe(ok({ requested: body.caseIds.length, changed, failed, archived: body.archived, items }))
     );
+  });
+
+  app.post("/api/projects/:projectId/cases/reorder", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = reorderCasesSchema.parse(req.body ?? {});
+    const result = await deps.casesService.reorderCasesInSection(projectId, body.sectionId, body.orderedCaseIds);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "case",
+      entityId: "reorder",
+      eventType: "case.reordered",
+      title: "Test cases reordered",
+      body: `${result.updated} test case${result.updated === 1 ? "" : "s"} ordered`,
+      payload: {
+        sectionId: body.sectionId.toString(),
+        orderedCaseIds: result.orderedCaseIds.map((caseId) => caseId.toString())
+      }
+    });
+    return reply.send(toJsonSafe(ok(result)));
+  });
+
+  app.post("/api/projects/:projectId/cases/position", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = positionCasesSchema.parse(req.body ?? {});
+    const result = await deps.casesService.positionCasesInSection(projectId, body);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "case",
+      entityId: "position",
+      eventType: "case.reordered",
+      title: "Test cases repositioned",
+      body: `${result.movedCaseIds.length} test case${result.movedCaseIds.length === 1 ? "" : "s"} moved in section order`,
+      payload: {
+        sectionId: body.sectionId.toString(),
+        movedCaseIds: result.movedCaseIds.map((caseId) => caseId.toString()),
+        beforeCaseId: body.beforeCaseId?.toString() ?? null,
+        afterCaseId: body.afterCaseId?.toString() ?? null,
+        orderedCaseIds: result.orderedCaseIds.map((caseId) => caseId.toString())
+      }
+    });
+    return reply.send(toJsonSafe(ok(result)));
   });
 
   app.get("/api/cases/:caseId/versions", async (req, reply) => {
@@ -368,8 +463,6 @@ export async function registerCasesRoutes(
     const created = await deps.casesService.createCaseStep(caseId, body);
     const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
     if (projectId && deps.prisma) {
-      const preview =
-        created.content.length > 160 ? `${created.content.slice(0, 157).trimEnd()}…` : created.content;
       await recordActivityEvent(deps.prisma, {
         projectId,
         actorUserId: user.id,
@@ -377,7 +470,7 @@ export async function registerCasesRoutes(
         entityId: caseId,
         eventType: "case.step_created",
         title: "Case step added",
-        body: preview,
+        body: previewText(created.content),
         payload: {
           caseId: caseId.toString(),
           stepId: created.id.toString(),
@@ -397,14 +490,12 @@ export async function registerCasesRoutes(
     if (deps.prisma) {
       const row = await deps.prisma.testCaseStep.findFirst({
         where: { id: stepId, deletedAt: null },
-        select: { caseId: true, case: { select: { projectId: true } } }
+        select: { caseId: true, testCase: { select: { projectId: true } } }
       });
-      if (row) stepContext = { caseId: row.caseId, projectId: row.case.projectId };
+      if (row) stepContext = { caseId: row.caseId, projectId: row.testCase.projectId };
     }
     const updated = await deps.casesService.updateCaseStep(stepId, body);
     if (stepContext && deps.prisma) {
-      const preview =
-        updated.content.length > 160 ? `${updated.content.slice(0, 157).trimEnd()}…` : updated.content;
       await recordActivityEvent(deps.prisma, {
         projectId: stepContext.projectId,
         actorUserId: user.id,
@@ -412,7 +503,7 @@ export async function registerCasesRoutes(
         entityId: stepContext.caseId,
         eventType: "case.step_updated",
         title: "Case step updated",
-        body: preview,
+        body: previewText(updated.content),
         payload: { caseId: stepContext.caseId.toString(), stepId: stepId.toString() }
       });
     }
@@ -427,9 +518,9 @@ export async function registerCasesRoutes(
     if (deps.prisma) {
       const row = await deps.prisma.testCaseStep.findFirst({
         where: { id: stepId, deletedAt: null },
-        select: { caseId: true, case: { select: { projectId: true } } }
+        select: { caseId: true, testCase: { select: { projectId: true } } }
       });
-      if (row) stepContext = { caseId: row.caseId, projectId: row.case.projectId };
+      if (row) stepContext = { caseId: row.caseId, projectId: row.testCase.projectId };
     }
     await deps.casesService.deleteCaseStep(stepId);
     if (stepContext && deps.prisma) {

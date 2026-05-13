@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-06
+Last aligned: 2026-05-13
 
 This is the working checklist for implemented and planned product capabilities. It is intentionally stricter than the roadmap: if a workflow is only partially usable, it stays open until the missing user-facing pieces are complete.
 
@@ -82,7 +82,22 @@ Use this order when choosing the next implementation batch:
 - [x] Optimistic locking baseline via `lockVersion`, `expectedVersion`, and `If-Match`.
 - [x] Bulk case delete baseline with multi-select list UX and per-case API feedback.
 - [x] Bulk case move baseline with section reassignment, multi-select list UX, and per-case API feedback.
-- [ ] P1 Drag-and-drop case move/copy parity with selection-aware case-list/section drop targets, a post-drop move-vs-copy chooser, and cloned case+step/custom-value creation semantics.
+- [x] Bulk case copy API baseline with cloned case fields, custom values, ordered steps, per-case API feedback, activity event output, and web API client support.
+- [x] P1 Drag-and-drop case move/copy parity with selection-aware case-list/section drop targets and a post-drop move-vs-copy chooser wired to the bulk move/copy APIs.
+- [x] Per-section test case ordering baseline with persisted `displayOrder`, append-on-create/move/copy behavior, and direct section sorting by `displayOrder` then `id`.
+- [x] Case reorder API baseline with persisted explicit section ordering, omitted-case preservation, section-scope validation, activity output, and web API client support.
+- [x] P1 Wire arbitrary test case reorder/drop-position insert semantics into drag-and-drop move/copy UI beyond append behavior.
+- [x] Direct-section vs subtree case-ordering contract via `sectionScope=direct|subtree`, with reorder constrained to direct section membership.
+- [x] P1 Paginated/filtered case-list reorder API safeguards that position moved cases before/after an anchor or append them while preserving non-visible direct-section cases.
+- [x] P1 Wire paginated/filtered case-list drag/drop UI to the position API with direct-section anchors instead of treating the visible subset as the full ordering.
+- [ ] P1 Folder-like section tree hardening with cycle-safe parent changes, same-suite parent validation, stable sibling ordering, and clearer empty/non-empty section semantics. Baseline: API rejects self-parenting, descendant cycles, and cross-suite parents.
+- [x] P1 Section subtree move/copy API operations with child sections and contained cases copied/moved as one folder-like unit, including source-to-copy ID mappings and activity feedback.
+- [x] P1 Section sibling `displayOrder` persistence/reorder API for stable folder ordering after create/rename/move/copy.
+- [x] P1 Wire section tree drag/drop UI to the section reorder API with sibling before/after targets and child move drops.
+- [x] P1 Add explicit section root drop zone and richer section move-vs-copy chooser feedback.
+- [x] P1 Section tree collapsed/expanded UI state with automatic ancestor expansion for the selected section.
+- [x] P1 Wire section subtree move/copy UI to the section parent-change and copy APIs.
+- [ ] P1 Section move/copy compatibility with saved views, run-composition section filters, activity payloads, and stale section ID drilldown behavior.
 - [x] Bulk case field update baseline with shared priority/type changes and per-case API feedback.
 - [x] Saved case filters/views baseline with reusable per-user/project section + query/priority/type/automation/archive-state views.
 - [x] Case custom value CSV import/export columns and active-field import validation baseline.
@@ -276,7 +291,8 @@ Use this order when choosing the next implementation batch:
 - [x] Case CSV import/export and report export workflows emit activity events for validate/request/complete/download milestones.
 - [x] Project create/update/delete mutations emit project-level activity events.
 - [x] Settings mutations (`custom_fields`, `custom_statuses`, `case_templates`, `project_members`) emit activity events for create/update/delete lifecycle.
-- [ ] P0 Broader activity event coverage across all major mutations (incremental: case step CRUD, `run.updated` on PATCH `/api/runs/:id`, `defect.unlinked`, `caseId` payloads on case create/update/version restore).
+- [x] Incremental activity coverage for case step CRUD, `run.updated` on PATCH `/api/runs/:id`, assignment drilldown payloads, `defect.unlinked`, result/defect `caseId` drilldown payloads, and matching webhook event filter options.
+- [ ] P0 Broader activity event coverage across remaining major case, run, result, assignment, defect, and reporting mutations.
 - [ ] P0 Notification targeting and activity drilldown links.
 - [ ] P0 Email/digest notification delivery jobs.
 - [x] P0 Webhook background HTTP delivery worker (DB-backed server; in-memory 모드에서는 미기동).

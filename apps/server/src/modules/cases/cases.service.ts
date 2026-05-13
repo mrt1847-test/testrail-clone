@@ -24,6 +24,7 @@ export class CasesService {
     refs?: "with" | "without";
     labels?: "with" | "without";
     estimate?: "with" | "without";
+    sectionScope?: "direct" | "subtree";
     state?: "active" | "archived" | "all";
   }) {
     return this.repo.listCases(params);
@@ -163,6 +164,55 @@ export class CasesService {
     };
   }
 
+  async bulkCopyCases(caseIds: bigint[], targetSectionId: bigint) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const sourceCaseId of uniqueCaseIds) {
+      const source = await this.repo.getCase(sourceCaseId);
+      if (!source) {
+        items.push({ sourceCaseId, copiedCaseId: null, success: false, error: "NOT_FOUND" });
+        continue;
+      }
+
+      const copied = await this.repo.createCase({
+        projectId: source.projectId,
+        sectionId: targetSectionId,
+        title: source.title,
+        priority: source.priority,
+        caseType: source.caseType,
+        estimate: source.estimate,
+        refs: source.refs,
+        labels: [...(source.labels ?? [])],
+        automationKey: null,
+        externalId: null,
+        preconditions: source.preconditions,
+        customValues: { ...(source.customValues ?? {}) },
+        archivedAt: null
+      });
+
+      const steps = await this.repo.listCaseSteps(sourceCaseId);
+      for (const step of steps) {
+        await this.repo.createCaseStep({
+          caseId: copied.id,
+          stepOrder: step.stepOrder,
+          content: step.content,
+          expectedResult: step.expectedResult ?? null
+        });
+      }
+      await this.repo.createCaseVersionSnapshot(copied.id, `case_copied:${sourceCaseId.toString()}`);
+
+      items.push({ sourceCaseId, copiedCaseId: copied.id, success: true, error: null });
+    }
+
+    return {
+      requested: caseIds.length,
+      copied: items.filter((item) => item.success).length,
+      failed: items.filter((item) => !item.success).length,
+      items
+    };
+  }
+
   async bulkUpdateCases(
     caseIds: bigint[],
     patch: {
@@ -219,6 +269,89 @@ export class CasesService {
       failed: items.filter((item) => !item.success).length,
       archived,
       items
+    };
+  }
+
+  async reorderCasesInSection(projectId: bigint, sectionId: bigint, orderedCaseIds: bigint[]) {
+    await this.assertProjectScopedSection(projectId, sectionId);
+    const uniqueOrderedIds = Array.from(new Set(orderedCaseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const sectionCases = await this.listCases({ sectionId, sectionScope: "direct", state: "all" });
+    const casesById = new Map(sectionCases.map((row) => [row.id.toString(), row]));
+    const missing = uniqueOrderedIds.filter((caseId) => !casesById.has(caseId.toString()));
+    if (missing.length > 0) {
+      throw new AppError("VALIDATION_ERROR", "orderedCaseIds must all belong to the target section", 400);
+    }
+
+    const orderedIdSet = new Set(uniqueOrderedIds.map((caseId) => caseId.toString()));
+    const nextOrder = [
+      ...uniqueOrderedIds,
+      ...sectionCases.filter((row) => !orderedIdSet.has(row.id.toString())).map((row) => row.id)
+    ];
+
+    for (let index = 0; index < nextOrder.length; index += 1) {
+      await this.repo.updateCase(nextOrder[index]!, { displayOrder: index });
+    }
+
+    return {
+      sectionId,
+      orderedCaseIds: nextOrder,
+      updated: nextOrder.length
+    };
+  }
+
+  async positionCasesInSection(
+    projectId: bigint,
+    input: { sectionId: bigint; caseIds: bigint[]; beforeCaseId?: bigint; afterCaseId?: bigint }
+  ) {
+    await this.assertProjectScopedSection(projectId, input.sectionId);
+    if (input.beforeCaseId && input.afterCaseId) {
+      throw new AppError("VALIDATION_ERROR", "provide only one of beforeCaseId or afterCaseId", 400);
+    }
+
+    const uniqueMovingIds = Array.from(new Set(input.caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const sectionCases = await this.listCases({ sectionId: input.sectionId, sectionScope: "direct", state: "all" });
+    const casesById = new Map(sectionCases.map((row) => [row.id.toString(), row]));
+    const missing = [
+      ...uniqueMovingIds,
+      ...(input.beforeCaseId ? [input.beforeCaseId] : []),
+      ...(input.afterCaseId ? [input.afterCaseId] : [])
+    ].filter((caseId) => !casesById.has(caseId.toString()));
+    if (missing.length > 0) {
+      throw new AppError("VALIDATION_ERROR", "caseIds and anchors must all belong to the target section", 400);
+    }
+
+    const movingIdSet = new Set(uniqueMovingIds.map((caseId) => caseId.toString()));
+    if (
+      (input.beforeCaseId && movingIdSet.has(input.beforeCaseId.toString())) ||
+      (input.afterCaseId && movingIdSet.has(input.afterCaseId.toString()))
+    ) {
+      throw new AppError("VALIDATION_ERROR", "anchor case must not be one of the moved cases", 400);
+    }
+
+    const remaining = sectionCases.filter((row) => !movingIdSet.has(row.id.toString())).map((row) => row.id);
+    let insertIndex = remaining.length;
+    if (input.beforeCaseId) {
+      insertIndex = remaining.findIndex((caseId) => caseId === input.beforeCaseId);
+    } else if (input.afterCaseId) {
+      const afterIndex = remaining.findIndex((caseId) => caseId === input.afterCaseId);
+      insertIndex = afterIndex === -1 ? remaining.length : afterIndex + 1;
+    }
+    if (insertIndex < 0) insertIndex = remaining.length;
+
+    const nextOrder = [
+      ...remaining.slice(0, insertIndex),
+      ...uniqueMovingIds,
+      ...remaining.slice(insertIndex)
+    ];
+    for (let index = 0; index < nextOrder.length; index += 1) {
+      await this.repo.updateCase(nextOrder[index]!, { displayOrder: index });
+    }
+
+    return {
+      sectionId: input.sectionId,
+      movedCaseIds: uniqueMovingIds,
+      orderedCaseIds: nextOrder,
+      updated: nextOrder.length
     };
   }
 

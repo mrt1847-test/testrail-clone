@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { useCaseListDnD, type PendingMoveCopy } from "../hooks/useCaseListDnD";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
 import { CaseListPane } from "./CaseListPane";
@@ -13,6 +14,8 @@ export function TestCaseWorkspace() {
   const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(projectId);
   const sections = bundle?.sections ?? [];
   const { selectedSectionId, setExpandedCase, setSelectedSection } = useExpandedCase();
+  const dnd = useCaseListDnD();
+  const [pendingMoveCopy, setPendingMoveCopy] = useState<PendingMoveCopy | null>(null);
   const selectedSectionSuiteId =
     selectedSectionId != null ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? "") : "";
 
@@ -71,8 +74,28 @@ export function TestCaseWorkspace() {
           selectedSectionId={selectedSectionId}
           onSelectSection={setSelectedSection}
           onClearExpand={() => setExpandedCase(null)}
+          dnd={{
+            isDragging: dnd.isDragging,
+            draggingCount: dnd.draggingCount,
+            sourceSectionId: dnd.sourceSectionId,
+            hoveredSectionId: dnd.hoveredSectionId,
+            onDragOver: (event, sectionId) => dnd.handleSectionDragOver(event, sectionId),
+            onDragLeave: (sectionId) => dnd.handleSectionDragLeave(sectionId),
+            onDrop: (event, sectionId) =>
+              dnd.handleSectionDrop({
+                event,
+                targetSectionId: sectionId,
+                onCrossSectionDrop: setPendingMoveCopy
+              })
+          }}
         />
-        <CaseListPane projectId={projectId} sections={sections} />
+        <CaseListPane
+          projectId={projectId}
+          sections={sections}
+          dnd={dnd}
+          pendingMoveCopy={pendingMoveCopy}
+          onPendingMoveCopyChange={setPendingMoveCopy}
+        />
       </div>
     </div>
   );

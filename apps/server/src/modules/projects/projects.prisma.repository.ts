@@ -50,6 +50,7 @@ const caseSelect = {
   id: true,
   projectId: true,
   sectionId: true,
+  displayOrder: true,
   title: true,
   priority: true,
   caseType: true,
@@ -156,6 +157,7 @@ function mapCaseRow(row: {
   id: bigint;
   projectId: bigint;
   sectionId: bigint;
+  displayOrder: number;
   title: string;
   priority: string | null;
   caseType: string | null;
@@ -174,6 +176,7 @@ function mapCaseRow(row: {
     id: row.id,
     projectId: row.projectId,
     sectionId: row.sectionId,
+    displayOrder: row.displayOrder,
     title: row.title,
     priority: row.priority,
     caseType: row.caseType,
@@ -337,15 +340,25 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   async listSectionsBySuite(suiteId: bigint): Promise<SectionRow[]> {
     return this.prisma.section.findMany({
       where: { suiteId, deletedAt: null },
-      orderBy: { id: "asc" },
-      select: { id: true, suiteId: true, parentSectionId: true, name: true }
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { id: true, suiteId: true, parentSectionId: true, displayOrder: true, name: true }
     });
   }
 
   async createSection(input: Omit<SectionRow, "id">): Promise<SectionRow> {
+    const lastSection = await this.prisma.section.findFirst({
+      where: { suiteId: input.suiteId, parentSectionId: input.parentSectionId ?? null, deletedAt: null },
+      orderBy: [{ displayOrder: "desc" }, { id: "desc" }],
+      select: { displayOrder: true }
+    });
     return this.prisma.section.create({
-      data: { suiteId: input.suiteId, parentSectionId: input.parentSectionId, name: input.name },
-      select: { id: true, suiteId: true, parentSectionId: true, name: true }
+      data: {
+        suiteId: input.suiteId,
+        parentSectionId: input.parentSectionId,
+        displayOrder: input.displayOrder ?? (lastSection?.displayOrder ?? -1) + 1,
+        name: input.name
+      },
+      select: { id: true, suiteId: true, parentSectionId: true, displayOrder: true, name: true }
     });
   }
 
@@ -359,9 +372,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       where: { id: sectionId },
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.parentSectionId !== undefined ? { parentSectionId: patch.parentSectionId } : {})
+        ...(patch.parentSectionId !== undefined ? { parentSectionId: patch.parentSectionId } : {}),
+        ...(patch.displayOrder !== undefined ? { displayOrder: patch.displayOrder } : {})
       },
-      select: { id: true, suiteId: true, parentSectionId: true, name: true }
+      select: { id: true, suiteId: true, parentSectionId: true, displayOrder: true, name: true }
     });
   }
 
@@ -378,14 +392,14 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   async getSection(sectionId: bigint): Promise<SectionRow | null> {
     return this.prisma.section.findFirst({
       where: { id: sectionId, deletedAt: null },
-      select: { id: true, suiteId: true, parentSectionId: true, name: true }
+      select: { id: true, suiteId: true, parentSectionId: true, displayOrder: true, name: true }
     });
   }
 
   async listCasesForSuite(projectId: bigint, suiteId: bigint, state: "active" | "archived" | "all" = "active"): Promise<CaseRow[]> {
     const rows = await this.prisma.testCase.findMany({
       where: { projectId, suiteId, deletedAt: null, ...caseStateWhere(state) },
-      orderBy: { id: "asc" },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       select: caseSelect
     });
     return rows.map(mapCaseRow);
@@ -402,23 +416,28 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     refs?: CasePresenceFilter;
     labels?: CasePresenceFilter;
     estimate?: CasePresenceFilter;
+    sectionScope?: "direct" | "subtree";
     state?: "active" | "archived" | "all";
   }): Promise<CaseRow[]> {
     let sectionIds: bigint[] | undefined;
     if (params.sectionId !== undefined) {
-      const rootSection = await this.prisma.section.findFirst({
-        where: { id: params.sectionId, deletedAt: null },
-        select: { suiteId: true }
-      });
-      if (!rootSection) return [];
-      const allSections = await this.prisma.section.findMany({
-        where: { suiteId: rootSection.suiteId, deletedAt: null },
-        select: { id: true, parentSectionId: true }
-      });
-      sectionIds = expandSectionSubtreeIds(
-        allSections.map((section) => ({ id: section.id, parentSectionId: section.parentSectionId ?? null })),
-        params.sectionId
-      );
+      if ((params.sectionScope ?? "subtree") === "direct") {
+        sectionIds = [params.sectionId];
+      } else {
+        const rootSection = await this.prisma.section.findFirst({
+          where: { id: params.sectionId, deletedAt: null },
+          select: { suiteId: true }
+        });
+        if (!rootSection) return [];
+        const allSections = await this.prisma.section.findMany({
+          where: { suiteId: rootSection.suiteId, deletedAt: null },
+          select: { id: true, parentSectionId: true }
+        });
+        sectionIds = expandSectionSubtreeIds(
+          allSections.map((section) => ({ id: section.id, parentSectionId: section.parentSectionId ?? null })),
+          params.sectionId
+        );
+      }
     }
     const rows = await this.prisma.testCase.findMany({
       where: {
@@ -435,7 +454,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
             ? { automationKey: null }
             : {})
       },
-      orderBy: { id: "asc" },
+      orderBy: [{ sectionId: "asc" }, { displayOrder: "asc" }, { id: "asc" }],
       select: caseSelect
     });
     return rows
@@ -459,11 +478,17 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     if (!suite) {
       throw new Error("suite not found");
     }
+    const lastCase = await this.prisma.testCase.findFirst({
+      where: { sectionId: input.sectionId, deletedAt: null },
+      orderBy: [{ displayOrder: "desc" }, { id: "desc" }],
+      select: { displayOrder: true }
+    });
     const row = await this.prisma.testCase.create({
       data: {
         projectId: suite.projectId,
         suiteId: section.suiteId,
         sectionId: input.sectionId,
+        displayOrder: input.displayOrder ?? (lastCase?.displayOrder ?? -1) + 1,
         title: input.title,
         priority: input.priority,
         caseType: input.caseType,
@@ -817,11 +842,17 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       select: { suiteId: true }
     });
     if (!targetSection) return null;
+    const lastCase = await this.prisma.testCase.findFirst({
+      where: { sectionId: targetSectionId, deletedAt: null, id: { not: caseId } },
+      orderBy: [{ displayOrder: "desc" }, { id: "desc" }],
+      select: { displayOrder: true }
+    });
     const row = await this.prisma.testCase.update({
       where: { id: caseId },
       data: {
         suiteId: targetSection.suiteId,
         sectionId: targetSectionId,
+        displayOrder: (lastCase?.displayOrder ?? -1) + 1,
         lockVersion: { increment: 1 }
       },
       select: caseSelect

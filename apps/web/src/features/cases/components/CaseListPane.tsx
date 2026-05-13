@@ -10,6 +10,7 @@ import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   bulkArchiveCases,
+  bulkCopyCases,
   bulkDeleteCases,
   bulkMoveCases,
   bulkUpdateCases,
@@ -18,11 +19,13 @@ import {
   deleteCase,
   deleteCaseStep,
   fetchCaseVersions,
+  positionCases,
   restoreCaseVersion,
   updateCase,
   updateCaseStep
 } from "../api/catalogApi";
 import { useCaseDetail, caseDetailKeys } from "../hooks/useCaseDetail";
+import type { CaseListDnD, PendingMoveCopy } from "../hooks/useCaseListDnD";
 import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
 import { useCases, caseKeys } from "../hooks/useCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
@@ -32,10 +35,14 @@ import { CaseAuthoringForm } from "./CaseAuthoringForm";
 import { CaseListToolbar } from "./CaseListToolbar";
 import { CaseRow } from "./CaseRow";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
+import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
 
 type CaseListPaneProps = {
   projectId: string;
   sections: SectionNode[];
+  dnd?: CaseListDnD;
+  pendingMoveCopy?: PendingMoveCopy | null;
+  onPendingMoveCopyChange?: (pending: PendingMoveCopy | null) => void;
 };
 
 function extractApiErrorMessage(error: unknown, fallback: string) {
@@ -90,7 +97,13 @@ async function persistCreateDraftSteps(
   }
 }
 
-export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
+export function CaseListPane({
+  projectId,
+  sections,
+  dnd,
+  pendingMoveCopy = null,
+  onPendingMoveCopyChange
+}: CaseListPaneProps) {
   type BulkPriorityValue = "" | "low" | "medium" | "high";
   type BulkCaseTypeValue = "" | "functional" | "integration" | "regression";
 
@@ -402,6 +415,46 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
     }
   });
 
+  const bulkCopyMutation = useMutation({
+    mutationFn: (input: { caseIds: number[]; targetSectionId: number }) =>
+      bulkCopyCases(projectId, input.caseIds, input.targetSectionId),
+    onSuccess: (result) => {
+      invalidateCases();
+      setBulkActionMessage(
+        result.failed > 0
+          ? `Copied ${result.copied}; ${result.failed} could not be copied.`
+          : `Copied ${result.copied} case${result.copied === 1 ? "" : "s"} to the target section.`
+      );
+    },
+    onError: (error) => {
+      setBulkActionMessage(extractApiErrorMessage(error, "Could not copy the selected cases."));
+    }
+  });
+
+  const positionCasesMutation = useMutation({
+    mutationFn: (input: {
+      sectionId: number;
+      caseIds: number[];
+      beforeCaseId?: number;
+      afterCaseId?: number;
+    }) =>
+      positionCases(projectId, {
+        sectionId: input.sectionId,
+        caseIds: input.caseIds,
+        ...(input.beforeCaseId !== undefined ? { beforeCaseId: input.beforeCaseId } : {}),
+        ...(input.afterCaseId !== undefined ? { afterCaseId: input.afterCaseId } : {})
+      }),
+    onSuccess: (result, variables) => {
+      invalidateCases();
+      setBulkActionMessage(
+        `Reordered ${variables.caseIds.length} case${variables.caseIds.length === 1 ? "" : "s"} within the section (${result.updated} positions updated).`
+      );
+    },
+    onError: (error) => {
+      setBulkActionMessage(extractApiErrorMessage(error, "Could not reorder cases."));
+    }
+  });
+
   const invalidateCaseDetail = (caseId: number) => {
     void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(caseId) });
     void qc.invalidateQueries({ queryKey: ["case-versions", caseId] });
@@ -462,6 +515,79 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
       return next;
     });
   };
+
+  const dndAnyMutationPending =
+    bulkMoveMutation.isPending || bulkCopyMutation.isPending || positionCasesMutation.isPending;
+
+  const dndPendingAction: "move" | "copy" | null = bulkMoveMutation.isPending
+    ? "move"
+    : bulkCopyMutation.isPending
+      ? "copy"
+      : null;
+
+  const cancelPendingMoveCopy = () => {
+    if (dndAnyMutationPending) return;
+    onPendingMoveCopyChange?.(null);
+  };
+
+  const handleSamePositionDrop = (input: {
+    caseIds: number[];
+    sectionId: number;
+    anchorCaseId: number;
+    anchorPosition: "before" | "after";
+  }) => {
+    if (positionCasesMutation.isPending) return;
+    setBulkActionMessage(null);
+    void positionCasesMutation.mutateAsync({
+      sectionId: input.sectionId,
+      caseIds: input.caseIds,
+      ...(input.anchorPosition === "before"
+        ? { beforeCaseId: input.anchorCaseId }
+        : { afterCaseId: input.anchorCaseId })
+    });
+  };
+
+  const handleSameSectionAppend = (input: { caseIds: number[]; sectionId: number }) => {
+    if (positionCasesMutation.isPending) return;
+    setBulkActionMessage(null);
+    void positionCasesMutation.mutateAsync({
+      sectionId: input.sectionId,
+      caseIds: input.caseIds
+    });
+  };
+
+  const handleCrossSectionDrop = (pending: PendingMoveCopy) => {
+    onPendingMoveCopyChange?.(pending);
+  };
+
+  const handleMoveConfirm = () => {
+    if (!pendingMoveCopy || dndAnyMutationPending) return;
+    bulkMoveMutation.mutate(
+      { caseIds: pendingMoveCopy.caseIds, targetSectionId: pendingMoveCopy.targetSectionId },
+      {
+        onSuccess: () => {
+          onPendingMoveCopyChange?.(null);
+        }
+      }
+    );
+  };
+
+  const handleCopyConfirm = () => {
+    if (!pendingMoveCopy || dndAnyMutationPending) return;
+    bulkCopyMutation.mutate(
+      { caseIds: pendingMoveCopy.caseIds, targetSectionId: pendingMoveCopy.targetSectionId },
+      {
+        onSuccess: () => {
+          onPendingMoveCopyChange?.(null);
+        }
+      }
+    );
+  };
+
+  const targetSectionName = useMemo(() => {
+    if (!pendingMoveCopy) return null;
+    return sections.find((section) => section.id === pendingMoveCopy.targetSectionId)?.name ?? null;
+  }, [pendingMoveCopy, sections]);
 
   const toolbarProps = {
     searchValue: searchDraft,
@@ -702,6 +828,9 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
               {cases.map((item) => {
                 const isExpanded = expandedCaseId === item.id;
                 const caseDetail = isExpanded ? caseDetailRemote ?? item : item;
+                const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
+                const dropIndicator =
+                  dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
                 return (
                   <CaseRow
                     key={item.id}
@@ -715,6 +844,31 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
                     visibleColumns={caseColumns}
                     isSelected={selectedCaseIds.has(item.id)}
                     onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
+                    draggable={Boolean(dnd) && selectedSectionId != null}
+                    isDraggingThis={isDraggingThis}
+                    dropIndicator={dropIndicator}
+                    onRowDragStart={(event) => {
+                      if (!dnd || selectedSectionId == null) return;
+                      dnd.startCaseDrag(event, {
+                        caseId: item.id,
+                        sectionId: selectedSectionId,
+                        selectedCaseIds
+                      });
+                    }}
+                    onRowDragEnd={() => dnd?.endCaseDrag()}
+                    onRowDragOver={(event) => dnd?.handleRowDragOver({ event, caseId: item.id })}
+                    onRowDragLeave={() => dnd?.handleRowDragLeave(item.id)}
+                    onRowDrop={(event) => {
+                      if (!dnd || selectedSectionId == null) return;
+                      dnd.handleRowDrop({
+                        event,
+                        targetCaseId: item.id,
+                        targetSectionId: selectedSectionId,
+                        visibleCaseIds,
+                        onSamePositionDrop: handleSamePositionDrop,
+                        onCrossSectionDrop: handleCrossSectionDrop
+                      });
+                    }}
                     onToggle={() => {
                       setShowAdd(false);
                       setExpandedCase(isExpanded ? null : item.id);
@@ -764,6 +918,28 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
                   />
                 );
               })}
+              {dnd?.isDragging && selectedSectionId != null ? (
+                <div
+                  className={[
+                    "border-t border-dashed",
+                    dnd.hoveredAppendZone ? "border-sky-500 bg-sky-50" : "border-slate-200 bg-slate-50",
+                    "px-4 py-3 text-center text-xs text-slate-600"
+                  ].join(" ")}
+                  onDragOver={(event) => dnd.handleAppendDragOver(event)}
+                  onDragLeave={() => dnd.handleAppendDragLeave()}
+                  onDrop={(event) =>
+                    dnd.handleAppendDrop({
+                      event,
+                      currentSectionId: selectedSectionId,
+                      onSameSectionAppend: handleSameSectionAppend,
+                      onCrossSectionDrop: handleCrossSectionDrop
+                    })
+                  }
+                >
+                  Drop here to append {dnd.draggingCount} case{dnd.draggingCount === 1 ? "" : "s"}
+                  {dnd.sourceSectionId === selectedSectionId ? " to the end of this section" : " into this section"}
+                </div>
+              ) : null}
             </div>
           )}
         </section>
@@ -1089,6 +1265,30 @@ export function CaseListPane({ projectId, sections }: CaseListPaneProps) {
         confirmDisabled={bulkDeleteMutation.isPending || selectedVisibleCaseIds.length === 0}
         onCancel={() => setBulkDeleteOpen(false)}
         onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedVisibleCaseIds)}
+      />
+
+      <MoveCopyChooserDialog
+        open={pendingMoveCopy != null}
+        title="Move or copy dropped cases?"
+        description={
+          pendingMoveCopy ? (
+            <div className="space-y-2">
+              <p>
+                {pendingMoveCopy.caseIds.length} case{pendingMoveCopy.caseIds.length === 1 ? "" : "s"} dropped on{" "}
+                <span className="font-medium">{targetSectionName ?? "the target section"}</span>.
+              </p>
+              <p className="text-xs text-slate-500">
+                Move keeps a single copy in the new section. Copy clones the cases, keeping the originals in place. The new
+                position appends to the end of the target section.
+              </p>
+            </div>
+          ) : null
+        }
+        busy={dndAnyMutationPending}
+        pendingAction={dndPendingAction}
+        onCancel={cancelPendingMoveCopy}
+        onMove={handleMoveConfirm}
+        onCopy={handleCopyConfirm}
       />
     </>
   );

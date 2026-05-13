@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-06
+Last aligned: 2026-05-13
 
 This is the current implementation queue after reviewing the docs and codebase. It now includes the actionable workflow items that previously lived in `CORE_FEATURE_COMPLETION_PLAN.md`.
 
@@ -48,8 +48,8 @@ The implementation order should follow the daily TestRail workflow:
 ## Immediate Priority
 
 1. Case repository productivity
-   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, and template-aware required-field authoring validation exist.
-   - Remaining P1: drag-and-drop move/copy parity for one or many selected cases, richer visual diffs, stale restore conflict messaging, and dedicated version detail surfaces.
+   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk copy API with cloned case fields/custom values/ordered steps, per-section case ordering with append-on-create/move/copy semantics, reorder API support for persisted arbitrary case ordering, position-based case reorder API support for filtered/paginated views, stable section sibling ordering with a reorder API, section subtree move/copy API behavior, section tree drag/drop move/reorder UI, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, template-aware required-field authoring validation, and drag-and-drop case move/copy/reorder UI with selection-aware drag, section-node and case-row drop targets, before/after position indicators, append drop zone, and a move-vs-copy chooser modal wired to the bulk move/copy and position APIs exist.
+   - Remaining P1: richer visual diffs, stale restore conflict messaging, dedicated version detail surfaces, and deeper section move/copy compatibility polish.
 
 2. Activity events and notification inbox
    - Baseline done: `ActivityEvent`, `Notification`, and `NotificationPreference` persistence.
@@ -59,6 +59,7 @@ The implementation order should follow the daily TestRail workflow:
    - Baseline done: assignment/failed-result notifications route to explicit assignee targets when payload includes assignee context.
    - Baseline done: project create/update/delete mutations now emit project-level activity events.
    - Baseline done: settings mutations (custom fields/statuses/templates/members) now emit activity events on create/update/delete lifecycle.
+   - Baseline done: incremental activity coverage for case step CRUD, run metadata updates, assignment drilldown payloads, defect unlinking, result/defect case drilldown payloads, and matching webhook event filter options.
    - Missing P0: broader event coverage for case, run composition, execution, reporting, assignment, and defect workflows.
    - Missing P0: richer notification targeting and activity drilldown links.
    - Missing P0: email/digest notification delivery jobs.
@@ -93,14 +94,32 @@ The implementation order should follow the daily TestRail workflow:
 - Bulk case operations and saved views
   - Baseline done: multi-select case list UX with project-scoped bulk delete.
   - Baseline done: bulk move can reassign selected cases to another section with per-case API feedback.
+  - Baseline done: bulk copy can clone selected cases into another section with copied case fields, custom values, ordered steps, per-case API feedback, and activity output.
   - Baseline done: bulk update can apply shared priority/type changes to selected cases with per-case API feedback.
   - Baseline done: bulk archive can hide selected cases from the active repository/run composition baseline, and archived views can bulk-restore them with per-case API feedback.
   - Baseline done: bulk delete returns per-case success/failure feedback and records a bulk activity event.
   - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state/refs/labels/estimate filters and selected list columns per user/project, then re-apply them from the case toolbar.
   - Baseline done: case list search/filtering covers title, refs, automation key, labels, and visible custom values; collapsed rows show metadata/custom-value chips for faster scanning.
-  - Missing parity: dragging one case row or the current multi-selection onto a section tree node or case-list drop zone should open a move-or-copy chooser before committing the action.
-  - Implementation note: `move` should reuse the existing bulk move mutation; `copy` should create new cases in the target section by cloning the source case fields, custom values, and ordered steps into new case records, keep originals in place, and return per-case success/failure plus activity feedback.
+  - Baseline done: drag-and-drop case move/copy/reorder is wired into the case list and section tree, with selection-aware drag, section-node drop targets, before/after row drop indicators, an end-of-list append drop zone, and a post-drop move-vs-copy chooser modal that reuses the bulk move/copy mutations for cross-section drops and the position API for same-section reordering.
+  - Implementation note: `move` reuses the bulk move mutation; `copy` reuses the bulk copy mutation, keeps originals in place, and surfaces per-case success/failure feedback; same-section drops skip the chooser and call the position API directly using direct-section anchors.
+  - Baseline done: cases now have persisted `displayOrder`; create/copy/move append to the target section and direct section views sort by `displayOrder` then `id` instead of pure creation order.
+  - Baseline done: case reorder API can persist an explicit section ordering, keeps omitted cases after the explicit order, validates section scope, emits activity, and has web API client support.
+  - Baseline done: case listing supports an explicit `sectionScope=direct|subtree` contract, preserving existing subtree behavior by default while letting reorder flows operate on direct section membership only.
+  - Baseline done: case position API can move a visible subset before/after an anchor or append it while preserving non-visible cases in the same section, which gives filtered/paginated reorder flows a whole-section-safe backend contract.
+  - Baseline done: case list drag/drop UI now invokes the position API with a direct-section anchor (the dragged-over case row or the end-of-list append zone), so paginated/filtered views never resend the visible page as the full ordering.
+  - Implementation note: define subtree ordering as section tree order plus each section's case order before introducing section-level drag/drop.
+  - Implementation note: use `sectionScope=direct` for reorder/drop-position UI and `sectionScope=subtree` for browsing/run-composition-style views.
   - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and explicit drop-position ordering rules for moved/copied items.
+
+- Section tree folder semantics
+  - Current baseline: sections support parent-child nesting via `parentSectionId`; case listing and run composition treat a selected section as a subtree.
+  - Baseline done: sections now expose persisted `displayOrder`, create/move appends within the target sibling group, root/child sibling groups can be explicitly reordered via API, and parent changes reject self-parenting, descendant-parent cycles, and cross-suite parents.
+  - Baseline done: section move changes parent for the whole existing subtree and emits activity; section copy clones the full subtree under a target parent, clones contained cases with ordered steps/custom values, clears unique automation/external IDs, returns source-to-copy ID mappings, and emits activity with webhook filter support.
+  - Missing parity: section move/copy/delete should define how saved views, run-composition section filters, and activity/drilldown payloads continue to resolve moved or copied section IDs.
+  - Implementation note: section move must reject self-parenting, descendant-parent cycles, and cross-suite/cross-project parent changes unless an explicit cross-suite copy flow is designed.
+  - Baseline done: section tree UI can drag sections before/after sibling targets, drag into another section or the root drop zone, then choose move vs copy before committing; subtree copy remains available from the section action menu.
+  - Baseline done: section tree has local collapsed/expanded state, child-count-based expand controls, and keeps the selected section's ancestor path expanded.
+  - Remaining work: saved-view/run-composition compatibility handling and clear empty-section deletion/move messaging.
 
 - Case step images and rich authoring
   - Extend attachment usage to cases and case steps.

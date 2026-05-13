@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const customValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
 const presenceFilterSchema = z.enum(["with", "without"]);
+const sectionScopeSchema = z.enum(["direct", "subtree"]);
 
 export const createCaseSchema = z.object({
   sectionId: z.coerce.bigint(),
@@ -44,6 +45,7 @@ export const listCasesQuerySchema = z.object({
   refs: presenceFilterSchema.optional(),
   labels: presenceFilterSchema.optional(),
   estimate: presenceFilterSchema.optional(),
+  sectionScope: sectionScopeSchema.default("subtree"),
   state: z.enum(["active", "archived"]).optional()
 });
 
@@ -66,6 +68,11 @@ export const bulkMoveCasesSchema = z.object({
   targetSectionId: z.coerce.bigint()
 });
 
+export const bulkCopyCasesSchema = z.object({
+  caseIds: z.array(z.coerce.bigint()).min(1).max(200),
+  targetSectionId: z.coerce.bigint()
+});
+
 export const bulkUpdateCasesSchema = z.object({
   caseIds: z.array(z.coerce.bigint()).min(1).max(200),
   patch: z
@@ -82,6 +89,22 @@ export const bulkArchiveCasesSchema = z.object({
   caseIds: z.array(z.coerce.bigint()).min(1).max(200),
   archived: z.boolean().default(true)
 });
+
+export const reorderCasesSchema = z.object({
+  sectionId: z.coerce.bigint(),
+  orderedCaseIds: z.array(z.coerce.bigint()).min(1).max(500)
+});
+
+export const positionCasesSchema = z
+  .object({
+    sectionId: z.coerce.bigint(),
+    caseIds: z.array(z.coerce.bigint()).min(1).max(200),
+    beforeCaseId: z.coerce.bigint().optional(),
+    afterCaseId: z.coerce.bigint().optional()
+  })
+  .refine((value) => !(value.beforeCaseId && value.afterCaseId), {
+    message: "provide only one of beforeCaseId or afterCaseId"
+  });
 
 export const stepIdParamSchema = z.object({
   stepId: z.coerce.bigint()

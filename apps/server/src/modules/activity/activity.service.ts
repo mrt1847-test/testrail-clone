@@ -197,6 +197,7 @@ export async function recordResultActivity(
       instance: {
         select: {
           id: true,
+          caseId: true,
           assignedTo: true,
           titleSnapshot: true,
           run: { select: { id: true, name: true, projectId: true } }
@@ -217,6 +218,7 @@ export async function recordResultActivity(
     payload: {
       resultId: result.id.toString(),
       testId: result.instance.id.toString(),
+      caseId: result.instance.caseId.toString(),
       runId: result.instance.run.id.toString(),
       status: result.status,
       assignedToUserId: result.instance.assignedTo?.toString() ?? null

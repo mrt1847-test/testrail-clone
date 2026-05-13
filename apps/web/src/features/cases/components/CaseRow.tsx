@@ -1,3 +1,5 @@
+import type { DragEvent } from "react";
+
 import type { CaseListColumn, CaseVersion, TestCase } from "../types";
 
 import type {
@@ -39,6 +41,14 @@ type CaseRowProps = {
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
   renderDetailInline?: boolean;
+  draggable?: boolean;
+  isDraggingThis?: boolean;
+  dropIndicator?: "before" | "after" | null;
+  onRowDragStart?: (event: DragEvent<HTMLElement>) => void;
+  onRowDragEnd?: (event: DragEvent<HTMLElement>) => void;
+  onRowDragOver?: (event: DragEvent<HTMLElement>) => void;
+  onRowDragLeave?: (event: DragEvent<HTMLElement>) => void;
+  onRowDrop?: (event: DragEvent<HTMLElement>) => void;
 };
 
 export function CaseRow({
@@ -66,7 +76,15 @@ export function CaseRow({
   onUpdateStep,
   onDeleteStep,
   isStepsBusy,
-  renderDetailInline = true
+  renderDetailInline = true,
+  draggable = false,
+  isDraggingThis = false,
+  dropIndicator = null,
+  onRowDragStart,
+  onRowDragEnd,
+  onRowDragOver,
+  onRowDragLeave,
+  onRowDrop
 }: CaseRowProps) {
   const visibleColumnSet = new Set(visibleColumns);
   const activeCustomFields = (customFields ?? []).filter((field) => field.isActive);
@@ -93,21 +111,51 @@ export function CaseRow({
     visibleColumnSet.has("estimate") && item.estimate !== "-" ? item.estimate : null
   ].filter((part): part is string => part != null);
 
+  const rowClasses = [
+    "relative flex items-center gap-2 pl-3 transition-colors",
+    isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
+    isDraggingThis ? "opacity-50" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <article className="border-b border-slate-100 last:border-0">
-      <div
-        className={[
-          "flex items-center gap-2 pl-3 transition-colors",
-          isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50"
-        ].join(" ")}
-      >
+    <article
+      className="relative border-b border-slate-100 last:border-0"
+      onDragOver={onRowDragOver}
+      onDragLeave={onRowDragLeave}
+      onDrop={onRowDrop}
+    >
+      {dropIndicator === "before" ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-3 top-0 h-0.5 -translate-y-px bg-sky-500"
+        />
+      ) : null}
+      {dropIndicator === "after" ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 translate-y-px bg-sky-500"
+        />
+      ) : null}
+      <div className={rowClasses} draggable={draggable} onDragStart={onRowDragStart} onDragEnd={onRowDragEnd}>
         <input
           type="checkbox"
           aria-label={`Select ${item.caseCode}`}
           checked={isSelected}
           onChange={(e) => onSelectChange?.(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
           className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
         />
+        {draggable ? (
+          <span
+            aria-hidden="true"
+            title="Drag to move or copy"
+            className="select-none text-slate-300 transition-colors hover:text-slate-500"
+          >
+            ⠿
+          </span>
+        ) : null}
         <button
           type="button"
           aria-expanded={isExpanded}

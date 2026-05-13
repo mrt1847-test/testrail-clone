@@ -18,3 +18,12 @@ export const updateSectionSchema = z.object({
   parentSectionId: z.coerce.bigint().nullable().optional(),
   name: z.string().min(1).optional()
 });
+
+export const reorderSectionsSchema = z.object({
+  parentSectionId: z.coerce.bigint().nullable().optional(),
+  orderedSectionIds: z.array(z.coerce.bigint()).min(1).max(500)
+});
+
+export const copySectionSchema = z.object({
+  targetParentSectionId: z.coerce.bigint().nullable().optional()
+});

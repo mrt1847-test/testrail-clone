@@ -15,6 +15,7 @@ export type SectionRow = {
   id: bigint;
   suiteId: bigint;
   parentSectionId?: bigint | null;
+  displayOrder?: number;
   name: string;
 };
 
@@ -22,6 +23,7 @@ export type CaseRow = {
   id: bigint;
   projectId?: bigint;
   sectionId: bigint;
+  displayOrder?: number;
   title: string;
   priority?: string | null;
   caseType?: string | null;
@@ -94,6 +96,7 @@ export interface ProjectsRepository {
     refs?: CasePresenceFilter;
     labels?: CasePresenceFilter;
     estimate?: CasePresenceFilter;
+    sectionScope?: "direct" | "subtree";
     state?: "active" | "archived" | "all";
   }): Promise<CaseRow[]>;
   createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow>;

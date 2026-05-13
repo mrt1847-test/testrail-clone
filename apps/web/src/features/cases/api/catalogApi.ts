@@ -6,6 +6,7 @@ type ApiCase = {
   id: string;
   projectId?: string;
   sectionId: string;
+  displayOrder?: number;
   title: string;
   priority?: string;
   caseType?: string;
@@ -32,7 +33,7 @@ type ApiCaseDetail = ApiCase & {
   steps?: Array<ApiCaseStep | { stepOrder: number; content: string; expectedResult?: string | null }>;
 };
 
-type ApiSection = { id: string; suiteId: string; name: string; parentSectionId?: string | null };
+type ApiSection = { id: string; suiteId: string; name: string; parentSectionId?: string | null; displayOrder?: number };
 
 export type SectionsBundle = {
   suiteId: string;
@@ -87,6 +88,7 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
     customValues: row.customValues ?? {},
     steps: [],
     sectionId: asNum(row.sectionId),
+    displayOrder: row.displayOrder ?? 0,
     lockVersion: row.lockVersion ?? 1,
     updatedAt: row.updatedAt ?? new Date(0).toISOString(),
     archivedAt: row.archivedAt ?? null
@@ -129,7 +131,8 @@ export async function fetchSectionsForProject(projectId: string): Promise<Sectio
       id: asNum(section.id),
       suiteId: asNum(section.suiteId),
       name: section.name,
-      parentSectionId: section.parentSectionId ? asNum(section.parentSectionId) : null
+      parentSectionId: section.parentSectionId ? asNum(section.parentSectionId) : null,
+      displayOrder: section.displayOrder ?? 0
     }))
   };
 }
@@ -146,7 +149,8 @@ export async function createSection(suiteId: string, name: string, parentSection
     id: asNum(res.data.id),
     suiteId: asNum(res.data.suiteId),
     name: res.data.name,
-    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null
+    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null,
+    displayOrder: res.data.displayOrder ?? 0
   };
 }
 
@@ -162,12 +166,50 @@ export async function updateSection(
     id: asNum(res.data.id),
     suiteId: asNum(res.data.suiteId),
     name: res.data.name,
-    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null
+    parentSectionId: res.data.parentSectionId ? asNum(res.data.parentSectionId) : null,
+    displayOrder: res.data.displayOrder ?? 0
   };
 }
 
 export async function deleteSection(sectionId: number): Promise<void> {
   await apiFetch<void>(`/api/sections/${sectionId}`, { method: "DELETE" });
+}
+
+export type ReorderSectionsResult = {
+  suiteId: string;
+  parentSectionId: string | null;
+  orderedSectionIds: string[];
+  updated: number;
+};
+
+export async function reorderSections(
+  suiteId: string,
+  input: { parentSectionId?: number | null; orderedSectionIds: number[] }
+): Promise<ReorderSectionsResult> {
+  const res = await apiFetch<Ok<ReorderSectionsResult>>(`/api/suites/${suiteId}/sections/reorder`, {
+    method: "POST",
+    body: input
+  });
+  return res.data;
+}
+
+export type CopySectionSubtreeResult = {
+  sourceSectionId: string;
+  copiedSectionId: string;
+  targetParentSectionId: string | null;
+  sectionIdMap: Array<{ sourceSectionId: string; copiedSectionId: string }>;
+  caseIdMap: Array<{ sourceCaseId: string; copiedCaseId: string }>;
+};
+
+export async function copySectionSubtree(
+  sectionId: number,
+  input: { targetParentSectionId?: number | null } = {}
+): Promise<CopySectionSubtreeResult> {
+  const res = await apiFetch<Ok<CopySectionSubtreeResult>>(`/api/sections/${sectionId}/copy`, {
+    method: "POST",
+    body: input
+  });
+  return res.data;
 }
 
 export async function fetchCasesForSection(
@@ -189,6 +231,7 @@ export async function fetchCasesForSection(
   if (filters.refs) params.set("refs", filters.refs);
   if (filters.labels) params.set("labels", filters.labels);
   if (filters.estimate) params.set("estimate", filters.estimate);
+  if (filters.sectionScope) params.set("sectionScope", filters.sectionScope);
   if (filters.state === "archived") params.set("state", filters.state);
 
   const res = await apiFetch<Paged<ApiCase>>(`/api/projects/${projectId}/cases?${params.toString()}`);
@@ -275,6 +318,26 @@ export async function bulkMoveCases(
   return res.data;
 }
 
+export type BulkCopyCasesResult = {
+  requested: number;
+  copied: number;
+  failed: number;
+  targetSectionId: string;
+  items: Array<{ sourceCaseId: string; copiedCaseId: string | null; success: boolean; error: string | null }>;
+};
+
+export async function bulkCopyCases(
+  projectId: string,
+  caseIds: number[],
+  targetSectionId: number
+): Promise<BulkCopyCasesResult> {
+  const res = await apiFetch<Ok<BulkCopyCasesResult>>(`/api/projects/${projectId}/cases/bulk-copy`, {
+    method: "POST",
+    body: { caseIds, targetSectionId }
+  });
+  return res.data;
+}
+
 export type BulkUpdateCasesResult = {
   requested: number;
   updated: number;
@@ -311,6 +374,42 @@ export async function bulkArchiveCases(
   const res = await apiFetch<Ok<BulkArchiveCasesResult>>(`/api/projects/${projectId}/cases/bulk-archive`, {
     method: "POST",
     body: { caseIds, archived }
+  });
+  return res.data;
+}
+
+export type ReorderCasesResult = {
+  sectionId: string;
+  orderedCaseIds: string[];
+  updated: number;
+};
+
+export async function reorderCases(
+  projectId: string,
+  sectionId: number,
+  orderedCaseIds: number[]
+): Promise<ReorderCasesResult> {
+  const res = await apiFetch<Ok<ReorderCasesResult>>(`/api/projects/${projectId}/cases/reorder`, {
+    method: "POST",
+    body: { sectionId, orderedCaseIds }
+  });
+  return res.data;
+}
+
+export type PositionCasesResult = {
+  sectionId: string;
+  movedCaseIds: string[];
+  orderedCaseIds: string[];
+  updated: number;
+};
+
+export async function positionCases(
+  projectId: string,
+  input: { sectionId: number; caseIds: number[]; beforeCaseId?: number; afterCaseId?: number }
+): Promise<PositionCasesResult> {
+  const res = await apiFetch<Ok<PositionCasesResult>>(`/api/projects/${projectId}/cases/position`, {
+    method: "POST",
+    body: input
   });
   return res.data;
 }

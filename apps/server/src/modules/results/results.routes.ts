@@ -398,7 +398,16 @@ export async function registerResultsRoutes(
     });
     const context = await deps.prisma.testResult.findUnique({
       where: { id: params.resultId },
-      select: { instance: { select: { run: { select: { projectId: true } }, titleSnapshot: true } } }
+      select: {
+        instance: {
+          select: {
+            id: true,
+            caseId: true,
+            run: { select: { id: true, projectId: true } },
+            titleSnapshot: true
+          }
+        }
+      }
     });
     if (context) {
       await recordActivityEvent(deps.prisma, {
@@ -409,7 +418,14 @@ export async function registerResultsRoutes(
         eventType: "defect.linked",
         title: "Defect linked",
         body: `${body.defectKey} linked to ${context.instance.titleSnapshot}.`,
-        payload: { defectKey: body.defectKey, defectLinkId: upserted.id.toString() },
+        payload: {
+          resultId: params.resultId.toString(),
+          defectKey: body.defectKey,
+          defectLinkId: upserted.id.toString(),
+          runId: context.instance.run.id.toString(),
+          testId: context.instance.id.toString(),
+          caseId: context.instance.caseId.toString()
+        },
         notificationType: "activity"
       });
     }
@@ -440,6 +456,7 @@ export async function registerResultsRoutes(
             instance: {
               select: {
                 id: true,
+                caseId: true,
                 titleSnapshot: true,
                 run: { select: { id: true, projectId: true } }
               }
@@ -470,7 +487,8 @@ export async function registerResultsRoutes(
         defectLinkId: params.defectLinkId.toString(),
         defectKey: found.defectKey,
         runId: inst.run.id.toString(),
-        testId: inst.id.toString()
+        testId: inst.id.toString(),
+        caseId: inst.caseId.toString()
       }
     });
     return reply.status(204).send();
@@ -531,7 +549,15 @@ export async function registerResultsRoutes(
       eventType: "defect.pushed",
       title: "Defect pushed",
       body: `${generatedKey} was created or linked for ${result.instance.titleSnapshot}.`,
-      payload: { defectKey: generatedKey, defectLinkId: upserted.id.toString(), provider },
+      payload: {
+        resultId: params.resultId.toString(),
+        defectKey: generatedKey,
+        defectLinkId: upserted.id.toString(),
+        provider,
+        runId: result.instance.run.id.toString(),
+        testId: result.instance.id.toString(),
+        caseId: result.instance.caseId.toString()
+      },
       notificationType: "activity"
     });
     return reply.send(

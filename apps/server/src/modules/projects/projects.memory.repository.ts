@@ -48,6 +48,14 @@ function matchesPresence(hasValue: boolean, filter: CasePresenceFilter | undefin
   return true;
 }
 
+function compareCaseOrder(left: CaseRow, right: CaseRow) {
+  return (left.displayOrder ?? 0) - (right.displayOrder ?? 0) || Number(left.id - right.id);
+}
+
+function compareSectionOrder(left: SectionRow, right: SectionRow) {
+  return (left.displayOrder ?? 0) - (right.displayOrder ?? 0) || Number(left.id - right.id);
+}
+
 export class ProjectsMemoryRepository implements ProjectsRepository {
   private projectSeq = 1n;
   private suiteSeq = 1n;
@@ -128,10 +136,13 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   }
 
   async listSectionsBySuite(suiteId: bigint) {
-    return this.sections.filter((s) => s.suiteId === suiteId);
+    return this.sections.filter((s) => s.suiteId === suiteId).sort(compareSectionOrder);
   }
   async createSection(input: Omit<SectionRow, "id">) {
-    const row: SectionRow = { id: this.sectionSeq++, ...input };
+    const lastOrder = this.sections
+      .filter((s) => s.suiteId === input.suiteId && (s.parentSectionId ?? null) === (input.parentSectionId ?? null))
+      .reduce((max, row) => Math.max(max, row.displayOrder ?? 0), -1);
+    const row: SectionRow = { id: this.sectionSeq++, ...input, displayOrder: input.displayOrder ?? lastOrder + 1 };
     this.sections.push(row);
     return row;
   }
@@ -156,12 +167,14 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     const suite = await this.getSuite(suiteId);
     if (!suite || suite.projectId !== projectId) return [];
     const sectionIds = new Set(this.sections.filter((s) => s.suiteId === suiteId).map((s) => s.id));
-    return this.cases.filter((c) => {
-      if (!sectionIds.has(c.sectionId)) return false;
-      if (state === "archived") return c.archivedAt != null;
-      if (state === "all") return true;
-      return c.archivedAt == null;
-    });
+    return this.cases
+      .filter((c) => {
+        if (!sectionIds.has(c.sectionId)) return false;
+        if (state === "archived") return c.archivedAt != null;
+        if (state === "all") return true;
+        return c.archivedAt == null;
+      })
+      .sort(compareCaseOrder);
   }
 
   async listCases(params: {
@@ -175,6 +188,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     refs?: CasePresenceFilter;
     labels?: CasePresenceFilter;
     estimate?: CasePresenceFilter;
+    sectionScope?: "direct" | "subtree";
     state?: "active" | "archived" | "all";
   }) {
     const suiteIds = params.projectId
@@ -187,49 +201,62 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     if (params.sectionId) {
       const root = this.sections.find((section) => section.id === params.sectionId);
       if (!root) return [];
-      const children = new Map<bigint | null, bigint[]>();
-      for (const section of this.sections) {
-        if (section.suiteId !== root.suiteId) continue;
-        const parent = section.parentSectionId ?? null;
-        const list = children.get(parent);
-        if (list) list.push(section.id);
-        else children.set(parent, [section.id]);
-      }
-      sectionSubtreeIds = new Set<bigint>();
-      const stack: bigint[] = [params.sectionId];
-      while (stack.length > 0) {
-        const current = stack.pop()!;
-        if (sectionSubtreeIds.has(current)) continue;
-        sectionSubtreeIds.add(current);
-        const kids = children.get(current) ?? [];
-        for (const kid of kids) stack.push(kid);
+      if ((params.sectionScope ?? "subtree") === "direct") {
+        sectionSubtreeIds = new Set<bigint>([params.sectionId]);
+      } else {
+        const children = new Map<bigint | null, bigint[]>();
+        for (const section of this.sections) {
+          if (section.suiteId !== root.suiteId) continue;
+          const parent = section.parentSectionId ?? null;
+          const list = children.get(parent);
+          if (list) list.push(section.id);
+          else children.set(parent, [section.id]);
+        }
+        sectionSubtreeIds = new Set<bigint>();
+        const stack: bigint[] = [params.sectionId];
+        while (stack.length > 0) {
+          const current = stack.pop()!;
+          if (sectionSubtreeIds.has(current)) continue;
+          sectionSubtreeIds.add(current);
+          const kids = children.get(current) ?? [];
+          for (const kid of kids) stack.push(kid);
+        }
       }
     }
 
-    return this.cases.filter((c) => {
-      if (sectionSubtreeIds && !sectionSubtreeIds.has(c.sectionId)) return false;
-      if (params.suiteId) {
-        const section = this.sections.find((s) => s.id === c.sectionId);
-        if (!section || section.suiteId !== params.suiteId) return false;
-      }
-      if (sectionIdsByProject && !sectionIdsByProject.includes(c.sectionId)) return false;
-      if ((params.state ?? "active") === "archived" && c.archivedAt == null) return false;
-      if ((params.state ?? "active") === "active" && c.archivedAt != null) return false;
-      if (params.priority && (c.priority ?? "").toLowerCase() !== params.priority.toLowerCase()) return false;
-      if (params.caseType && (c.caseType ?? "").toLowerCase() !== params.caseType.toLowerCase()) return false;
-      if (params.automation === "automated" && !c.automationKey) return false;
-      if (params.automation === "manual" && c.automationKey) return false;
-      if (!matchesPresence(hasText(c.refs), params.refs)) return false;
-      if (!matchesPresence(hasLabels(c.labels), params.labels)) return false;
-      if (!matchesPresence(hasText(c.estimate), params.estimate)) return false;
-      if (!caseMatchesSearch(c, params.q)) return false;
-      return true;
-    });
+    return this.cases
+      .filter((c) => {
+        if (sectionSubtreeIds && !sectionSubtreeIds.has(c.sectionId)) return false;
+        if (params.suiteId) {
+          const section = this.sections.find((s) => s.id === c.sectionId);
+          if (!section || section.suiteId !== params.suiteId) return false;
+        }
+        if (sectionIdsByProject && !sectionIdsByProject.includes(c.sectionId)) return false;
+        if ((params.state ?? "active") === "archived" && c.archivedAt == null) return false;
+        if ((params.state ?? "active") === "active" && c.archivedAt != null) return false;
+        if (params.priority && (c.priority ?? "").toLowerCase() !== params.priority.toLowerCase()) return false;
+        if (params.caseType && (c.caseType ?? "").toLowerCase() !== params.caseType.toLowerCase()) return false;
+        if (params.automation === "automated" && !c.automationKey) return false;
+        if (params.automation === "manual" && c.automationKey) return false;
+        if (!matchesPresence(hasText(c.refs), params.refs)) return false;
+        if (!matchesPresence(hasLabels(c.labels), params.labels)) return false;
+        if (!matchesPresence(hasText(c.estimate), params.estimate)) return false;
+        if (!caseMatchesSearch(c, params.q)) return false;
+        return true;
+      })
+      .sort((left, right) => {
+        if (left.sectionId !== right.sectionId) return Number(left.sectionId - right.sectionId);
+        return compareCaseOrder(left, right);
+      });
   }
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">) {
+    const lastOrder = this.cases
+      .filter((c) => c.sectionId === input.sectionId)
+      .reduce((max, row) => Math.max(max, row.displayOrder ?? 0), -1);
     const row: CaseRow = {
       id: this.caseSeq++,
       ...input,
+      displayOrder: input.displayOrder ?? lastOrder + 1,
       labels: input.labels ?? [],
       lockVersion: 1,
       updatedAt: new Date(),
@@ -388,7 +415,11 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     const row = this.cases.find((c) => c.id === caseId);
     const targetSection = this.sections.find((section) => section.id === targetSectionId);
     if (!row || !targetSection) return null;
+    const lastOrder = this.cases
+      .filter((c) => c.sectionId === targetSectionId && c.id !== caseId)
+      .reduce((max, item) => Math.max(max, item.displayOrder ?? 0), -1);
     row.sectionId = targetSectionId;
+    row.displayOrder = lastOrder + 1;
     row.lockVersion += 1;
     row.updatedAt = new Date();
     return row;

@@ -139,6 +139,7 @@ model Section {
 
   @@index([suiteId])
   @@index([parentSectionId])
+  @@index([suiteId, parentSectionId, displayOrder, id])
 }
 
 model TestCase {
@@ -146,6 +147,7 @@ model TestCase {
   projectId      BigInt
   suiteId        BigInt
   sectionId      BigInt
+  displayOrder   Int       @default(0)
   title          String
   preconditions  String?
   expectedResult String?
@@ -177,6 +179,7 @@ model TestCase {
   @@unique([projectId, externalId])
   @@index([projectId])
   @@index([sectionId])
+  @@index([sectionId, displayOrder, id])
   @@index([projectId, sectionId, deletedAt])
   @@index([projectId, archivedAt, deletedAt])
   @@index([automationKey])

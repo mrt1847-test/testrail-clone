@@ -5,6 +5,7 @@ export type CaseFilterType = "" | "functional" | "integration" | "regression";
 export type CaseFilterAutomation = "" | "manual" | "automated";
 export type CaseFilterState = "active" | "archived";
 export type CasePresenceFilter = "" | "with" | "without";
+export type CaseSectionScope = "direct" | "subtree";
 export type CaseListColumn = "type" | "priority" | "automation" | "estimate" | "refs" | "labels" | "customValues";
 
 export type CaseListFilters = {
@@ -15,6 +16,7 @@ export type CaseListFilters = {
   refs: CasePresenceFilter;
   labels: CasePresenceFilter;
   estimate: CasePresenceFilter;
+  sectionScope?: CaseSectionScope;
   state: CaseFilterState;
 };
 
@@ -41,6 +43,7 @@ export interface TestCase {
   customValues: Record<string, string | number | boolean | null>;
   steps: CaseStep[];
   sectionId: number;
+  displayOrder: number;
   lockVersion: number;
   updatedAt: string;
   archivedAt: string | null;
@@ -65,6 +68,7 @@ export interface SectionNode {
   suiteId: number;
   name: string;
   parentSectionId: number | null;
+  displayOrder: number;
 }
 
 export type SavedCaseView = {

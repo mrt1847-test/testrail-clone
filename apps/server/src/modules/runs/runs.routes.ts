@@ -171,7 +171,7 @@ export async function registerRunsRoutes(
       eventType: "run.assigned",
       title: "Run assignment changed",
       body: updated.name,
-      payload: { assignedTo: updated.assignedTo?.toString() ?? null },
+      payload: { runId: updated.id.toString(), assignedTo: updated.assignedTo?.toString() ?? null },
       notificationType: "assignment"
     });
     return reply.send(toJsonSafe(ok(updated)));
@@ -383,7 +383,7 @@ export async function registerRunsRoutes(
     if (deps.prisma) {
       const instance = await deps.prisma.testInstance.findUnique({
         where: { id: testId },
-        select: { run: { select: { projectId: true } }, titleSnapshot: true }
+        select: { caseId: true, run: { select: { id: true, projectId: true } }, titleSnapshot: true }
       });
       if (instance) {
         await recordActivityEvent(deps.prisma, {
@@ -394,7 +394,12 @@ export async function registerRunsRoutes(
           eventType: "test.assigned",
           title: "Test assignment changed",
           body: instance.titleSnapshot,
-          payload: { assignedTo: assignedTo?.toString() ?? null },
+          payload: {
+            runId: instance.run.id.toString(),
+            testId: testId.toString(),
+            caseId: instance.caseId.toString(),
+            assignedTo: assignedTo?.toString() ?? null
+          },
           notificationType: "assignment"
         });
       }
