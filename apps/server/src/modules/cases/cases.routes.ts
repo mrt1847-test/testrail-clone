@@ -5,9 +5,12 @@ import type { AuthService } from "../auth/auth.service.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import { AppError } from "../../common/errors/appError.js";
 import { CasesService } from "./cases.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
+  caseAttachmentBodySchema,
+  caseAttachmentPresignBodySchema,
   bulkArchiveCasesSchema,
   bulkCopyCasesSchema,
   caseIdParamSchema,
@@ -54,6 +57,145 @@ function asCustomValues(value: unknown): CustomValues | undefined {
 
 function previewText(value: string, maxLength = 160) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
+}
+
+type AttachmentEntity = "case" | "case_step";
+
+function mapAttachmentRow(row: {
+  id: bigint;
+  entityType: string;
+  entityId: bigint;
+  fileName: string;
+  contentType: string | null;
+  storagePath: string;
+  fileSize: bigint | null;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    fileName: row.fileName,
+    contentType: row.contentType ?? null,
+    storagePath: row.storagePath,
+    fileSize: row.fileSize ?? null,
+    createdAt: row.createdAt
+  };
+}
+
+async function caseAttachmentContext(prisma: PrismaClient, entityType: AttachmentEntity, entityId: bigint) {
+  if (entityType === "case") {
+    const row = await prisma.testCase.findFirst({
+      where: { id: entityId, deletedAt: null },
+      select: { id: true, projectId: true, title: true }
+    });
+    return row ? { projectId: row.projectId, caseId: row.id, title: row.title, stepOrder: null } : null;
+  }
+
+  const row = await prisma.testCaseStep.findFirst({
+    where: { id: entityId, deletedAt: null },
+    select: {
+      id: true,
+      stepOrder: true,
+      testCase: { select: { id: true, projectId: true, title: true } }
+    }
+  });
+  return row
+    ? { projectId: row.testCase.projectId, caseId: row.testCase.id, title: row.testCase.title, stepOrder: row.stepOrder }
+    : null;
+}
+
+async function listCaseEntityAttachments(prisma: PrismaClient | undefined, entityType: AttachmentEntity, entityId: bigint) {
+  if (!prisma) return [];
+  const rows = await prisma.attachment.findMany({
+    where: { entityType, entityId, deletedAt: null },
+    orderBy: { id: "desc" },
+    select: {
+      id: true,
+      entityType: true,
+      entityId: true,
+      fileName: true,
+      contentType: true,
+      storagePath: true,
+      fileSize: true,
+      createdAt: true
+    }
+  });
+  return rows.map(mapAttachmentRow);
+}
+
+async function createCaseEntityAttachment(
+  prisma: PrismaClient | undefined,
+  input: {
+    entityType: AttachmentEntity;
+    entityId: bigint;
+    userId: bigint;
+    fileName: string;
+    contentType?: string;
+    storagePath?: string;
+    fileSize?: bigint;
+  }
+) {
+  const storagePath =
+    input.storagePath ??
+    `local://${input.entityType === "case" ? "cases" : "case-steps"}/${input.entityId.toString()}/${input.fileName}`;
+  if (!prisma) {
+    return {
+      id: BigInt(Date.now()),
+      entityType: input.entityType,
+      entityId: input.entityId,
+      fileName: input.fileName,
+      contentType: input.contentType ?? null,
+      storagePath,
+      fileSize: input.fileSize ?? null,
+      createdAt: new Date()
+    };
+  }
+
+  const context = await caseAttachmentContext(prisma, input.entityType, input.entityId);
+  if (!context) {
+    throw new AppError("NOT_FOUND", input.entityType === "case" ? "case not found" : "case step not found", 404);
+  }
+  const created = await prisma.attachment.create({
+    data: {
+      projectId: context.projectId,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      fileName: input.fileName,
+      contentType: input.contentType,
+      storagePath,
+      fileSize: input.fileSize,
+      createdBy: input.userId
+    },
+    select: {
+      id: true,
+      entityType: true,
+      entityId: true,
+      fileName: true,
+      contentType: true,
+      storagePath: true,
+      fileSize: true,
+      createdAt: true
+    }
+  });
+  await recordActivityEvent(prisma, {
+    projectId: context.projectId,
+    actorUserId: input.userId,
+    entityType: "attachment",
+    entityId: created.id,
+    eventType: "attachment.created",
+    title: input.entityType === "case" ? "Case attachment added" : "Case step attachment added",
+    body: `${created.fileName} on ${context.title}.`,
+    payload: {
+      attachmentId: created.id.toString(),
+      caseId: context.caseId.toString(),
+      entityType: input.entityType,
+      entityId: input.entityId.toString(),
+      stepOrder: context.stepOrder,
+      fileName: created.fileName
+    }
+  });
+  return mapAttachmentRow(created);
 }
 
 export async function registerCasesRoutes(
@@ -143,6 +285,47 @@ export async function registerCasesRoutes(
   app.get("/api/cases/:caseId", async (req, reply) => {
     const { caseId } = caseIdParamSchema.parse(req.params);
     return reply.send(toJsonSafe(ok(await deps.casesService.getCase(caseId))));
+  });
+
+  app.get("/api/cases/:caseId/attachments", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe(await listCaseEntityAttachments(deps.prisma, "case", caseId)));
+  });
+
+  app.post("/api/cases/:caseId/attachments", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = caseAttachmentBodySchema.parse(req.body ?? {});
+    const created = await createCaseEntityAttachment(deps.prisma, {
+      entityType: "case",
+      entityId: caseId,
+      userId: user.id,
+      fileName: body.fileName,
+      contentType: body.contentType,
+      storagePath: body.storagePath,
+      fileSize: body.fileSize
+    });
+    return reply.send(toJsonSafe(created));
+  });
+
+  app.post("/api/cases/:caseId/attachments/presign", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
+    const now = Date.now();
+    const storagePath = `cases/${caseId.toString()}/${now}-${body.fileName}`;
+    return reply.send(
+      toJsonSafe({
+        data: {
+          storagePath,
+          uploadUrl: `https://storage.local/upload/${encodeURIComponent(storagePath)}`,
+          method: "PUT",
+          headers: { "content-type": body.contentType ?? "application/octet-stream" },
+          expiresAt: new Date(now + 10 * 60 * 1000)
+        }
+      })
+    );
   });
 
   app.post("/api/projects/:projectId/cases/bulk-delete", async (req, reply) => {
@@ -479,6 +662,47 @@ export async function registerCasesRoutes(
       });
     }
     return reply.send(toJsonSafe(ok(created)));
+  });
+
+  app.get("/api/case-steps/:stepId/attachments", async (req, reply) => {
+    const { stepId } = stepIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe(await listCaseEntityAttachments(deps.prisma, "case_step", stepId)));
+  });
+
+  app.post("/api/case-steps/:stepId/attachments", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { stepId } = stepIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = caseAttachmentBodySchema.parse(req.body ?? {});
+    const created = await createCaseEntityAttachment(deps.prisma, {
+      entityType: "case_step",
+      entityId: stepId,
+      userId: user.id,
+      fileName: body.fileName,
+      contentType: body.contentType,
+      storagePath: body.storagePath,
+      fileSize: body.fileSize
+    });
+    return reply.send(toJsonSafe(created));
+  });
+
+  app.post("/api/case-steps/:stepId/attachments/presign", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { stepId } = stepIdParamSchema.parse(req.params);
+    const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
+    const now = Date.now();
+    const storagePath = `case-steps/${stepId.toString()}/${now}-${body.fileName}`;
+    return reply.send(
+      toJsonSafe({
+        data: {
+          storagePath,
+          uploadUrl: `https://storage.local/upload/${encodeURIComponent(storagePath)}`,
+          method: "PUT",
+          headers: { "content-type": body.contentType ?? "application/octet-stream" },
+          expiresAt: new Date(now + 10 * 60 * 1000)
+        }
+      })
+    );
   });
 
   app.patch("/api/case-steps/:stepId", async (req, reply) => {

@@ -302,7 +302,8 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
         caseType: current.caseType ?? null,
         preconditions: current.preconditions ?? null,
         customValues: current.customValues ?? {},
-        stepsSnapshot
+        stepsSnapshot,
+        attachmentSnapshots: []
       });
       if (latest) {
         const latestSig = JSON.stringify({
@@ -311,7 +312,8 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
           caseType: latest.caseType ?? null,
           preconditions: latest.preconditions ?? null,
           customValues: latest.customValuesSnapshot ?? {},
-          stepsSnapshot: latest.stepsSnapshot
+          stepsSnapshot: latest.stepsSnapshot,
+          attachmentSnapshots: latest.attachmentSnapshots ?? []
         });
         if (sig === latestSig) return null;
       }
@@ -325,6 +327,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
         preconditions: current.preconditions ?? null,
         customValuesSnapshot: current.customValues ?? {},
         stepsSnapshot,
+        attachmentSnapshots: [],
         changeReason: reason ?? null,
         createdAt: new Date()
       };

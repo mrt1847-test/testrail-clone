@@ -18,6 +18,7 @@ function serializeCaseSnapshot(input: {
   preconditions?: string | null;
   customValues?: Record<string, string | number | boolean | null>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+  attachmentSnapshots: CaseVersionRow["attachmentSnapshots"];
 }) {
   return JSON.stringify(input);
 }
@@ -31,6 +32,31 @@ function jsonObject(value: unknown): Record<string, string | number | boolean | 
     }
   }
   return out;
+}
+
+function jsonAttachmentSnapshots(value: unknown): CaseVersionRow["attachmentSnapshots"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (row.entityType !== "case" && row.entityType !== "case_step") return [];
+    if (typeof row.id !== "string" || typeof row.entityId !== "string" || typeof row.fileName !== "string") return [];
+    if (typeof row.storagePath !== "string" || typeof row.createdAt !== "string") return [];
+    return [
+      {
+        id: row.id,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        stepOrder: typeof row.stepOrder === "number" ? row.stepOrder : null,
+        fileName: row.fileName,
+        contentType: typeof row.contentType === "string" ? row.contentType : null,
+        storagePath: row.storagePath,
+        fileSize: typeof row.fileSize === "string" ? row.fileSize : null,
+        createdAt: row.createdAt,
+        createdBy: typeof row.createdBy === "string" ? row.createdBy : null
+      }
+    ];
+  });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -549,6 +575,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     preconditions: string | null;
     customValuesSnapshot: unknown;
     stepsSnapshot: unknown;
+    attachmentSnapshots: unknown;
     changeReason: string | null;
     createdAt: Date;
   }): CaseVersionRow {
@@ -565,6 +592,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         (Array.isArray(row.stepsSnapshot)
           ? row.stepsSnapshot
           : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
+      attachmentSnapshots: jsonAttachmentSnapshots(row.attachmentSnapshots),
       changeReason: row.changeReason ?? null,
       createdAt: row.createdAt
     };
@@ -613,6 +641,48 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         content: s.content,
         expectedResult: s.expectedResult ?? null
       }));
+      const stepOrderById = new Map(stepRows.map((step) => [step.id.toString(), step.stepOrder]));
+      const attachmentRows = await tx.attachment.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            { entityType: "case", entityId: caseId },
+            ...(stepRows.length > 0
+              ? [{ entityType: "case_step", entityId: { in: stepRows.map((step) => step.id) } }]
+              : [])
+          ]
+        },
+        orderBy: [{ entityType: "asc" }, { entityId: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          entityType: true,
+          entityId: true,
+          fileName: true,
+          contentType: true,
+          storagePath: true,
+          fileSize: true,
+          createdAt: true,
+          createdBy: true
+        }
+      });
+      const attachmentSnapshots: CaseVersionRow["attachmentSnapshots"] = attachmentRows.flatMap((attachment) => {
+        if (attachment.entityType !== "case" && attachment.entityType !== "case_step") return [];
+        return [
+          {
+            id: attachment.id.toString(),
+            entityType: attachment.entityType,
+            entityId: attachment.entityId.toString(),
+            stepOrder:
+              attachment.entityType === "case_step" ? (stepOrderById.get(attachment.entityId.toString()) ?? null) : null,
+            fileName: attachment.fileName,
+            contentType: attachment.contentType ?? null,
+            storagePath: attachment.storagePath,
+            fileSize: attachment.fileSize?.toString() ?? null,
+            createdAt: attachment.createdAt.toISOString(),
+            createdBy: attachment.createdBy?.toString() ?? null
+          }
+        ];
+      });
 
       const latest = await tx.testCaseVersion.findFirst({
         where: { caseId },
@@ -625,7 +695,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         caseType: current.caseType ?? null,
         preconditions: current.preconditions ?? null,
         customValues: current.customValues ?? {},
-        stepsSnapshot
+        stepsSnapshot,
+        attachmentSnapshots
       });
       if (latest) {
         const latestSignature = serializeCaseSnapshot({
@@ -637,16 +708,18 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           stepsSnapshot:
             (Array.isArray(latest.stepsSnapshot)
               ? latest.stepsSnapshot
-              : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>
+              : []) as Array<{ stepOrder: number; content: string; expectedResult?: string | null }>,
+          attachmentSnapshots: jsonAttachmentSnapshots(latest.attachmentSnapshots)
         });
         if (latestSignature === snapshotSignature) return null;
       }
 
       const customValuesSnapshot = current.customValues ?? {};
       const stepsPayload = stepsSnapshot;
+      const attachmentPayload = attachmentSnapshots;
 
       const inserted = (await tx.$queryRaw`
-        INSERT INTO "TestCaseVersion" ("caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "changeReason")
+        INSERT INTO "TestCaseVersion" ("caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "attachmentSnapshots", "changeReason")
         SELECT
           ${caseId},
           (SELECT COALESCE(MAX(v."versionNo"), 0) + 1 FROM "TestCaseVersion" v WHERE v."caseId" = ${caseId}),
@@ -656,8 +729,9 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ${current.preconditions},
           CAST(${customValuesSnapshot} AS jsonb),
           CAST(${stepsPayload} AS jsonb),
+          CAST(${attachmentPayload} AS jsonb),
           ${reason ?? null}
-        RETURNING "id", "caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "changeReason", "createdAt"
+        RETURNING "id", "caseId", "versionNo", "title", "priority", "caseType", "preconditions", "customValuesSnapshot", "stepsSnapshot", "attachmentSnapshots", "changeReason", "createdAt"
       `) as Array<{
         id: bigint;
         caseId: bigint;
@@ -668,6 +742,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         preconditions: string | null;
         customValuesSnapshot: unknown;
         stepsSnapshot: unknown;
+        attachmentSnapshots: unknown;
         changeReason: string | null;
         createdAt: Date;
       }>;

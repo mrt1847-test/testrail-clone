@@ -121,3 +121,16 @@ export const updateCaseStepSchema = z.object({
   stepOrder: z.coerce.number().int().positive().optional()
 });
 
+export const caseAttachmentBodySchema = z.object({
+  fileName: z.string().trim().min(1),
+  contentType: z.string().trim().optional(),
+  storagePath: z.string().trim().optional(),
+  fileSize: z.coerce.bigint().optional()
+});
+
+export const caseAttachmentPresignBodySchema = z.object({
+  fileName: z.string().trim().min(1),
+  contentType: z.string().trim().min(1).optional(),
+  fileSize: z.coerce.bigint().positive().optional()
+});
+

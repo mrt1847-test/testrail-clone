@@ -228,6 +228,7 @@ model TestCaseVersion {
   preconditions  String?
   stepsSnapshot  Json
   customValuesSnapshot Json @default("{}")
+  attachmentSnapshots Json @default("[]")
   changeReason   String?
   createdAt      DateTime @default(now())
 

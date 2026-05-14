@@ -3,8 +3,14 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "../../common/errors/appError.js";
+import {
+  getAuthenticatedUser,
+  requireProjectMutationRole
+} from "../../common/middlewares/authorization.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
+import type { AuthService } from "../auth/auth.service.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsService } from "../runs/runs.service.js";
@@ -93,7 +99,12 @@ function parseOptionalEntryId(raw: unknown): bigint | undefined {
 
 export async function registerPlansRoutes(
   app: FastifyInstance,
-  deps: { prisma?: PrismaClient; runsService: RunsService; catalog: ProjectsRepository }
+  deps: {
+    prisma?: PrismaClient;
+    authService: AuthService;
+    runsService: RunsService;
+    catalog: ProjectsRepository;
+  }
 ) {
   app.get("/api/projects/:projectId/plans", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -122,6 +133,8 @@ export async function registerPlansRoutes(
   });
 
   app.post("/api/projects/:projectId/plans", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = req.body as { name?: string };
     if (deps.prisma) {
@@ -130,6 +143,16 @@ export async function registerPlansRoutes(
           projectId,
           name: body.name?.trim() || "New test plan"
         }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan",
+        entityId: created.id,
+        eventType: "plan.created",
+        title: "Test plan created",
+        body: created.name,
+        payload: { planId: created.id.toString(), name: created.name }
       });
       return reply.send(
         toJsonSafe({
@@ -148,6 +171,8 @@ export async function registerPlansRoutes(
   });
 
   app.patch("/api/projects/:projectId/plans/:planId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
@@ -155,7 +180,7 @@ export async function registerPlansRoutes(
     if (deps.prisma) {
       const found = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
@@ -163,6 +188,19 @@ export async function registerPlansRoutes(
       const updated = await deps.prisma.testPlan.update({
         where: { id: planId },
         data: { ...(body.name !== undefined ? { name: body.name.trim() || "Untitled plan" } : {}) }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan",
+        entityId: updated.id,
+        eventType: "plan.updated",
+        title: "Test plan updated",
+        body: updated.name,
+        payload: {
+          planId: updated.id.toString(),
+          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {})
+        }
       });
       return reply.send(
         toJsonSafe({
@@ -179,13 +217,15 @@ export async function registerPlansRoutes(
   });
 
   app.delete("/api/projects/:projectId/plans/:planId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
     if (deps.prisma) {
       const found = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
@@ -193,6 +233,16 @@ export async function registerPlansRoutes(
       await deps.prisma.testPlan.update({
         where: { id: planId },
         data: { deletedAt: new Date() }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan",
+        entityId: planId,
+        eventType: "plan.deleted",
+        title: "Test plan deleted",
+        body: found.name,
+        payload: { planId: planId.toString(), name: found.name }
       });
       return reply.status(204).send();
     }
@@ -268,6 +318,8 @@ export async function registerPlansRoutes(
   });
 
   app.post("/api/projects/:projectId/plans/:planId/entries", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
@@ -285,6 +337,21 @@ export async function registerPlansRoutes(
           planId,
           name: body.name?.trim() || "Entry",
           environment: body.environment?.trim()
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan_entry",
+        entityId: created.id,
+        eventType: "plan.entry_created",
+        title: "Plan entry created",
+        body: created.name,
+        payload: {
+          planId: planId.toString(),
+          entryId: created.id.toString(),
+          name: created.name,
+          environment: created.environment ?? null
         }
       });
       return reply.send(
@@ -312,6 +379,8 @@ export async function registerPlansRoutes(
   });
 
   app.patch("/api/projects/:projectId/plans/:planId/entries/:entryId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string; entryId: string };
     const planId = BigInt(params.planId);
@@ -327,7 +396,7 @@ export async function registerPlansRoutes(
       }
       const found = await deps.prisma.testPlanEntry.findFirst({
         where: { id: entryId, planId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true, environment: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
@@ -338,6 +407,23 @@ export async function registerPlansRoutes(
           ...(body.name !== undefined ? { name: body.name.trim() || "Untitled entry" } : {}),
           ...(body.environment !== undefined
             ? { environment: body.environment === null ? null : body.environment.trim() || null }
+            : {})
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan_entry",
+        entityId: updated.id,
+        eventType: "plan.entry_updated",
+        title: "Plan entry updated",
+        body: updated.name,
+        payload: {
+          planId: planId.toString(),
+          entryId: updated.id.toString(),
+          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
+          ...(body.environment !== undefined
+            ? { previousEnvironment: found.environment ?? null, environment: updated.environment ?? null }
             : {})
         }
       });
@@ -368,6 +454,8 @@ export async function registerPlansRoutes(
   });
 
   app.delete("/api/projects/:projectId/plans/:planId/entries/:entryId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string; entryId: string };
     const planId = BigInt(params.planId);
@@ -382,7 +470,7 @@ export async function registerPlansRoutes(
       }
       const found = await deps.prisma.testPlanEntry.findFirst({
         where: { id: entryId, planId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
@@ -390,6 +478,16 @@ export async function registerPlansRoutes(
       await deps.prisma.testPlanEntry.update({
         where: { id: entryId },
         data: { deletedAt: new Date() }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "plan_entry",
+        entityId: entryId,
+        eventType: "plan.entry_deleted",
+        title: "Plan entry deleted",
+        body: found.name,
+        payload: { planId: planId.toString(), entryId: entryId.toString(), name: found.name }
       });
       return reply.status(204).send();
     }
@@ -1035,6 +1133,8 @@ export async function registerPlansRoutes(
   });
 
   app.post("/api/projects/:projectId/configuration-groups", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = configurationGroupBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
@@ -1043,6 +1143,20 @@ export async function registerPlansRoutes(
           projectId,
           name: body.name,
           displayOrder: body.displayOrder ?? 0
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "configuration_group",
+        entityId: created.id,
+        eventType: "configuration_group.created",
+        title: "Configuration group created",
+        body: created.name,
+        payload: {
+          configurationGroupId: created.id.toString(),
+          name: created.name,
+          displayOrder: created.displayOrder
         }
       });
       return reply.send(toJsonSafe({ data: created }));
@@ -1058,12 +1172,13 @@ export async function registerPlansRoutes(
   });
 
   app.patch("/api/configuration-groups/:groupId", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
     const { groupId } = groupIdParamSchema.parse(req.params);
     const body = configurationGroupBodySchema.partial().parse(req.body ?? {});
     if (deps.prisma) {
       const found = await deps.prisma.configurationGroup.findFirst({
         where: { id: groupId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, projectId: true, name: true, displayOrder: true }
       });
       if (!found) return reply.status(404).send({ error: "NOT_FOUND", message: "configuration group not found" });
       const updated = await deps.prisma.configurationGroup.update({
@@ -1071,6 +1186,22 @@ export async function registerPlansRoutes(
         data: {
           ...(body.name !== undefined ? { name: body.name } : {}),
           ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {})
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: found.projectId,
+        actorUserId: user.id,
+        entityType: "configuration_group",
+        entityId: updated.id,
+        eventType: "configuration_group.updated",
+        title: "Configuration group updated",
+        body: updated.name,
+        payload: {
+          configurationGroupId: updated.id.toString(),
+          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
+          ...(body.displayOrder !== undefined
+            ? { previousDisplayOrder: found.displayOrder, displayOrder: updated.displayOrder }
+            : {})
         }
       });
       return reply.send(toJsonSafe({ data: updated }));
@@ -1083,11 +1214,12 @@ export async function registerPlansRoutes(
   });
 
   app.delete("/api/configuration-groups/:groupId", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
     const { groupId } = groupIdParamSchema.parse(req.params);
     if (deps.prisma) {
       const found = await deps.prisma.configurationGroup.findFirst({
         where: { id: groupId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, projectId: true, name: true }
       });
       if (!found) return reply.status(404).send({ error: "NOT_FOUND", message: "configuration group not found" });
       await deps.prisma.configurationGroup.update({
@@ -1097,6 +1229,16 @@ export async function registerPlansRoutes(
       await deps.prisma.configuration.updateMany({
         where: { groupId, deletedAt: null },
         data: { deletedAt: new Date() }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: found.projectId,
+        actorUserId: user.id,
+        entityType: "configuration_group",
+        entityId: groupId,
+        eventType: "configuration_group.deleted",
+        title: "Configuration group deleted",
+        body: found.name,
+        payload: { configurationGroupId: groupId.toString(), name: found.name }
       });
       return reply.status(204).send();
     }
@@ -1114,12 +1256,13 @@ export async function registerPlansRoutes(
   });
 
   app.post("/api/configuration-groups/:groupId/configurations", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
     const { groupId } = groupIdParamSchema.parse(req.params);
     const body = configurationBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
       const group = await deps.prisma.configurationGroup.findFirst({
         where: { id: groupId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, projectId: true, name: true }
       });
       if (!group) return reply.status(404).send({ error: "NOT_FOUND", message: "configuration group not found" });
       const created = await deps.prisma.configuration.create({
@@ -1128,6 +1271,22 @@ export async function registerPlansRoutes(
           name: body.name,
           displayOrder: body.displayOrder ?? 0,
           isActive: body.isActive ?? true
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: group.projectId,
+        actorUserId: user.id,
+        entityType: "configuration",
+        entityId: created.id,
+        eventType: "configuration.created",
+        title: "Configuration created",
+        body: created.name,
+        payload: {
+          configurationId: created.id.toString(),
+          configurationGroupId: groupId.toString(),
+          groupName: group.name,
+          name: created.name,
+          isActive: created.isActive
         }
       });
       return reply.send(toJsonSafe({ data: created }));
@@ -1146,12 +1305,20 @@ export async function registerPlansRoutes(
   });
 
   app.patch("/api/configurations/:configurationId", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
     const { configurationId } = configurationIdParamSchema.parse(req.params);
     const body = configurationBodySchema.partial().parse(req.body ?? {});
     if (deps.prisma) {
       const found = await deps.prisma.configuration.findFirst({
         where: { id: configurationId, deletedAt: null },
-        select: { id: true }
+        select: {
+          id: true,
+          name: true,
+          displayOrder: true,
+          isActive: true,
+          groupId: true,
+          group: { select: { projectId: true } }
+        }
       });
       if (!found) return reply.status(404).send({ error: "NOT_FOUND", message: "configuration not found" });
       const updated = await deps.prisma.configuration.update({
@@ -1160,6 +1327,26 @@ export async function registerPlansRoutes(
           ...(body.name !== undefined ? { name: body.name } : {}),
           ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
+        }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: found.group.projectId,
+        actorUserId: user.id,
+        entityType: "configuration",
+        entityId: updated.id,
+        eventType: "configuration.updated",
+        title: "Configuration updated",
+        body: updated.name,
+        payload: {
+          configurationId: updated.id.toString(),
+          configurationGroupId: found.groupId.toString(),
+          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
+          ...(body.displayOrder !== undefined
+            ? { previousDisplayOrder: found.displayOrder, displayOrder: updated.displayOrder }
+            : {}),
+          ...(body.isActive !== undefined
+            ? { previousIsActive: found.isActive, isActive: updated.isActive }
+            : {})
         }
       });
       return reply.send(toJsonSafe({ data: updated }));
@@ -1173,16 +1360,36 @@ export async function registerPlansRoutes(
   });
 
   app.delete("/api/configurations/:configurationId", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
     const { configurationId } = configurationIdParamSchema.parse(req.params);
     if (deps.prisma) {
       const found = await deps.prisma.configuration.findFirst({
         where: { id: configurationId, deletedAt: null },
-        select: { id: true }
+        select: {
+          id: true,
+          name: true,
+          groupId: true,
+          group: { select: { projectId: true } }
+        }
       });
       if (!found) return reply.status(404).send({ error: "NOT_FOUND", message: "configuration not found" });
       await deps.prisma.configuration.update({
         where: { id: configurationId },
         data: { deletedAt: new Date() }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: found.group.projectId,
+        actorUserId: user.id,
+        entityType: "configuration",
+        entityId: configurationId,
+        eventType: "configuration.deleted",
+        title: "Configuration deleted",
+        body: found.name,
+        payload: {
+          configurationId: configurationId.toString(),
+          configurationGroupId: found.groupId.toString(),
+          name: found.name
+        }
       });
       return reply.status(204).send();
     }

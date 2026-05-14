@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 
+import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import type { AuthService } from "../auth/auth.service.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 
 type MilestoneRow = {
@@ -15,7 +18,10 @@ type MilestoneRow = {
 const milestones: MilestoneRow[] = [];
 const milestoneRuns = new Map<bigint, Array<{ runId: bigint; runName: string; status: string; progress: number }>>();
 
-export async function registerMilestonesRoutes(app: FastifyInstance, deps: { prisma?: PrismaClient }) {
+export async function registerMilestonesRoutes(
+  app: FastifyInstance,
+  deps: { prisma?: PrismaClient; authService: AuthService }
+) {
   app.get("/api/projects/:projectId/milestones", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
@@ -44,6 +50,8 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
   });
 
   app.post("/api/projects/:projectId/milestones", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = req.body as { name?: string };
     if (deps.prisma) {
@@ -52,6 +60,16 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
           projectId,
           name: body.name?.trim() || "New milestone"
         }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "milestone",
+        entityId: created.id,
+        eventType: "milestone.created",
+        title: "Milestone created",
+        body: created.name,
+        payload: { milestoneId: created.id.toString(), name: created.name }
       });
       return reply.send(
         toJsonSafe({
@@ -75,6 +93,8 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
   });
 
   app.patch("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { milestoneId: string };
     const milestoneId = BigInt(params.milestoneId);
@@ -82,7 +102,7 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
     if (deps.prisma) {
       const found = await deps.prisma.milestone.findFirst({
         where: { id: milestoneId, projectId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true, isCompleted: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
@@ -92,6 +112,23 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
         data: {
           ...(body.name !== undefined ? { name: body.name.trim() || "Untitled milestone" } : {}),
           ...(body.isCompleted !== undefined ? { isCompleted: body.isCompleted } : {})
+        }
+      });
+      const completionChanged = body.isCompleted !== undefined && found.isCompleted !== updated.isCompleted;
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "milestone",
+        entityId: updated.id,
+        eventType: completionChanged && updated.isCompleted ? "milestone.completed" : "milestone.updated",
+        title: completionChanged && updated.isCompleted ? "Milestone completed" : "Milestone updated",
+        body: updated.name,
+        payload: {
+          milestoneId: updated.id.toString(),
+          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
+          ...(body.isCompleted !== undefined
+            ? { previousIsCompleted: found.isCompleted, isCompleted: updated.isCompleted }
+            : {})
         }
       });
       return reply.send(
@@ -115,13 +152,15 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
   });
 
   app.delete("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { milestoneId: string };
     const milestoneId = BigInt(params.milestoneId);
     if (deps.prisma) {
       const found = await deps.prisma.milestone.findFirst({
         where: { id: milestoneId, projectId, deletedAt: null },
-        select: { id: true }
+        select: { id: true, name: true }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
@@ -129,6 +168,16 @@ export async function registerMilestonesRoutes(app: FastifyInstance, deps: { pri
       await deps.prisma.milestone.update({
         where: { id: milestoneId },
         data: { deletedAt: new Date() }
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "milestone",
+        entityId: milestoneId,
+        eventType: "milestone.deleted",
+        title: "Milestone deleted",
+        body: found.name,
+        payload: { milestoneId: milestoneId.toString(), name: found.name }
       });
       return reply.status(204).send();
     }

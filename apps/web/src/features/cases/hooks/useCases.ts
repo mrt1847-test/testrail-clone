@@ -17,6 +17,7 @@ export const caseKeys = {
       filters.refs,
       filters.labels,
       filters.estimate,
+      filters.sectionScope,
       filters.state
     ] as const
 };

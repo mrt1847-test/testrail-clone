@@ -21,12 +21,22 @@ function getActivityHref(
   const testId = asString(payload.testId);
   const caseId = asString(payload.caseId);
   const reportType = asString(payload.reportType);
+  const milestoneId = asString(payload.milestoneId);
+  const planId = asString(payload.planId);
 
   if (testId && runId) return `/projects/${projectId}/runs/${runId}?testId=${encodeURIComponent(testId)}`;
   if (runId) return `/projects/${projectId}/runs/${runId}`;
   if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
   if (row.entityType === "run") return `/projects/${projectId}/runs/${row.entityId}`;
   if (row.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(row.entityId)}`;
+  if (row.entityType === "milestone") return `/projects/${projectId}/milestones/${row.entityId}`;
+  if (milestoneId) return `/projects/${projectId}/milestones/${milestoneId}`;
+  if (row.entityType === "plan") return `/projects/${projectId}/plans/${row.entityId}`;
+  if (row.entityType === "plan_entry" && planId) return `/projects/${projectId}/plans/${planId}`;
+  if (planId) return `/projects/${projectId}/plans/${planId}`;
+  if (row.entityType === "suite") return `/projects/${projectId}/cases`;
+  if (row.entityType === "section") return `/projects/${projectId}/cases`;
+  if (row.entityType === "requirement") return `/projects/${projectId}/reports/traceability`;
   if (row.entityType === "report") {
     if (reportType === "run_summary") return `/projects/${projectId}/reports/runs`;
     if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;

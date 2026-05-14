@@ -3,10 +3,14 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "../../common/errors/appError.js";
-import { requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import {
+  getAuthenticatedUser,
+  requireProjectMutationRole
+} from "../../common/middlewares/authorization.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import { recordActivityEvent } from "../activity/activity.service.js";
 import { caseIdParamSchema } from "../cases/cases.schema.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
@@ -82,6 +86,7 @@ export async function registerRequirementsRoutes(
 
   app.post("/api/projects/:projectId/requirements", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = createRequirementSchema.parse(req.body ?? {});
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "requirements API needs prisma mode", 501);
@@ -95,11 +100,27 @@ export async function registerRequirementsRoutes(
         externalUrl: body.externalUrl
       }
     });
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "requirement",
+      entityId: created.id,
+      eventType: "requirement.created",
+      title: "Requirement created",
+      body: `${created.key} ${created.title}`,
+      payload: {
+        requirementId: created.id.toString(),
+        key: created.key,
+        title: created.title,
+        status: created.status
+      }
+    });
     return reply.send(toJsonSafe(ok(created)));
   });
 
   app.patch("/api/requirements/:requirementId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { requirementId } = requirementIdParamSchema.parse(req.params);
     const body = patchRequirementSchema.parse(req.body ?? {});
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "requirements API needs prisma mode", 501);
@@ -117,11 +138,27 @@ export async function registerRequirementsRoutes(
         ...(body.externalUrl !== undefined ? { externalUrl: body.externalUrl } : {})
       }
     });
+    await recordActivityEvent(deps.prisma, {
+      projectId: updated.projectId,
+      actorUserId: user.id,
+      entityType: "requirement",
+      entityId: updated.id,
+      eventType: "requirement.updated",
+      title: "Requirement updated",
+      body: `${updated.key} ${updated.title}`,
+      payload: {
+        requirementId: updated.id.toString(),
+        ...(body.key !== undefined ? { previousKey: found.key, key: updated.key } : {}),
+        ...(body.title !== undefined ? { previousTitle: found.title, title: updated.title } : {}),
+        ...(body.status !== undefined ? { previousStatus: found.status, status: updated.status } : {})
+      }
+    });
     return reply.send(toJsonSafe(ok(updated)));
   });
 
   app.delete("/api/requirements/:requirementId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { requirementId } = requirementIdParamSchema.parse(req.params);
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "requirements API needs prisma mode", 501);
     const found = await deps.prisma.requirement.findFirst({
@@ -132,19 +169,37 @@ export async function registerRequirementsRoutes(
       where: { id: requirementId },
       data: { deletedAt: new Date() }
     });
+    await recordActivityEvent(deps.prisma, {
+      projectId: found.projectId,
+      actorUserId: user.id,
+      entityType: "requirement",
+      entityId: requirementId,
+      eventType: "requirement.deleted",
+      title: "Requirement deleted",
+      body: `${found.key} ${found.title}`,
+      payload: {
+        requirementId: requirementId.toString(),
+        key: found.key,
+        title: found.title
+      }
+    });
     return reply.status(204).send();
   });
 
   app.post("/api/cases/:caseId/requirements/:requirementId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const { requirementId } = requirementIdParamSchema.parse(req.params);
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "requirements API needs prisma mode", 501);
     const [testCase, requirement] = await Promise.all([
-      deps.prisma.testCase.findFirst({ where: { id: caseId, deletedAt: null }, select: { projectId: true } }),
+      deps.prisma.testCase.findFirst({
+        where: { id: caseId, deletedAt: null },
+        select: { projectId: true, title: true }
+      }),
       deps.prisma.requirement.findFirst({
         where: { id: requirementId, deletedAt: null },
-        select: { projectId: true }
+        select: { projectId: true, key: true, title: true }
       })
     ]);
     if (!testCase) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
@@ -157,17 +212,65 @@ export async function registerRequirementsRoutes(
       update: {},
       create: { caseId, requirementId }
     });
+    await recordActivityEvent(deps.prisma, {
+      projectId: testCase.projectId,
+      actorUserId: user.id,
+      entityType: "requirement",
+      entityId: requirementId,
+      eventType: "requirement.linked",
+      title: "Requirement linked to case",
+      body: `${requirement.key} ↔ ${testCase.title}`,
+      payload: {
+        requirementId: requirementId.toString(),
+        caseId: caseId.toString(),
+        requirementKey: requirement.key,
+        requirementTitle: requirement.title,
+        caseTitle: testCase.title
+      }
+    });
     return reply.send(toJsonSafe(ok(linked)));
   });
 
   app.delete("/api/cases/:caseId/requirements/:requirementId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const { requirementId } = requirementIdParamSchema.parse(req.params);
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "requirements API needs prisma mode", 501);
-    await deps.prisma.caseRequirement.deleteMany({
+    const [testCase, requirement] = await Promise.all([
+      deps.prisma.testCase.findFirst({
+        where: { id: caseId, deletedAt: null },
+        select: { projectId: true, title: true }
+      }),
+      deps.prisma.requirement.findFirst({
+        where: { id: requirementId, deletedAt: null },
+        select: { key: true, title: true }
+      })
+    ]);
+    const result = await deps.prisma.caseRequirement.deleteMany({
       where: { caseId, requirementId }
     });
+    if (result.count > 0 && testCase) {
+      await recordActivityEvent(deps.prisma, {
+        projectId: testCase.projectId,
+        actorUserId: user.id,
+        entityType: "requirement",
+        entityId: requirementId,
+        eventType: "requirement.unlinked",
+        title: "Requirement unlinked from case",
+        body: requirement
+          ? `${requirement.key} ↔ ${testCase.title}`
+          : `case ${caseId.toString()} ↔ requirement ${requirementId.toString()}`,
+        payload: {
+          requirementId: requirementId.toString(),
+          caseId: caseId.toString(),
+          ...(requirement
+            ? { requirementKey: requirement.key, requirementTitle: requirement.title }
+            : {}),
+          caseTitle: testCase.title
+        }
+      });
+    }
     return reply.status(204).send();
   });
 }

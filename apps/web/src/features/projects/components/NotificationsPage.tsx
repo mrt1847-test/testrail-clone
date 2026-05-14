@@ -35,12 +35,24 @@ function getNotificationHref(
   const payload = activity.payload ?? {};
   const asString = (value: unknown) => (typeof value === "string" ? value : null);
   const runId = asString(payload.runId);
+  const testId = asString(payload.testId);
   const caseId = asString(payload.caseId);
   const reportType = asString(payload.reportType);
+  const milestoneId = asString(payload.milestoneId);
+  const planId = asString(payload.planId);
+  if (testId && runId) return `/projects/${projectId}/runs/${runId}?testId=${encodeURIComponent(testId)}`;
   if (runId) return `/projects/${projectId}/runs/${runId}`;
   if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
   if (activity.entityType === "run") return `/projects/${projectId}/runs/${activity.entityId}`;
   if (activity.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(activity.entityId)}`;
+  if (activity.entityType === "milestone") return `/projects/${projectId}/milestones/${activity.entityId}`;
+  if (milestoneId) return `/projects/${projectId}/milestones/${milestoneId}`;
+  if (activity.entityType === "plan") return `/projects/${projectId}/plans/${activity.entityId}`;
+  if (activity.entityType === "plan_entry" && planId) return `/projects/${projectId}/plans/${planId}`;
+  if (planId) return `/projects/${projectId}/plans/${planId}`;
+  if (activity.entityType === "suite") return `/projects/${projectId}/cases`;
+  if (activity.entityType === "section") return `/projects/${projectId}/cases`;
+  if (activity.entityType === "requirement") return `/projects/${projectId}/reports/traceability`;
   if (activity.entityType === "report") {
     if (reportType === "run_summary") return `/projects/${projectId}/reports/runs`;
     if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;

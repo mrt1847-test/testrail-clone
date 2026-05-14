@@ -78,8 +78,8 @@ export function buildApp() {
     repo,
     prisma
   });
-  void registerMilestonesRoutes(app, { prisma });
-  void registerPlansRoutes(app, { prisma, runsService, catalog: catalogRepo });
+  void registerMilestonesRoutes(app, { prisma, authService });
+  void registerPlansRoutes(app, { prisma, authService, runsService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });
   void registerTokensRoutes(app, { prisma });
 

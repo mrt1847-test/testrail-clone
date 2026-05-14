@@ -1,6 +1,14 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Ok, Paged } from "../../../shared/api/types";
-import type { CaseListFilters, CasePriority, CaseType, CaseVersion, SectionNode, TestCase } from "../types";
+import type {
+  CaseAttachmentItem,
+  CaseListFilters,
+  CasePriority,
+  CaseType,
+  CaseVersion,
+  SectionNode,
+  TestCase
+} from "../types";
 
 type ApiCase = {
   id: string;
@@ -34,6 +42,16 @@ type ApiCaseDetail = ApiCase & {
 };
 
 type ApiSection = { id: string; suiteId: string; name: string; parentSectionId?: string | null; displayOrder?: number };
+type ApiCaseAttachment = {
+  id: string;
+  entityType: "case" | "case_step";
+  entityId: string;
+  fileName: string;
+  contentType?: string | null;
+  storagePath: string;
+  fileSize?: string | null;
+  createdAt: string;
+};
 
 export type SectionsBundle = {
   suiteId: string;
@@ -108,6 +126,19 @@ function mapApiCaseDetailToTestCase(row: ApiCaseDetail): TestCase {
       description: step.content,
       expected: step.expectedResult ?? "-"
     }))
+  };
+}
+
+function mapApiCaseAttachment(row: ApiCaseAttachment): CaseAttachmentItem {
+  return {
+    id: row.id,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    fileName: row.fileName,
+    contentType: row.contentType ?? null,
+    storagePath: row.storagePath,
+    fileSize: row.fileSize ?? null,
+    createdAt: row.createdAt
   };
 }
 
@@ -444,6 +475,114 @@ export async function deleteCaseStep(stepId: number): Promise<void> {
   await apiFetch<void>(`/api/case-steps/${stepId}`, { method: "DELETE" });
 }
 
+type PresignCaseAttachmentResponse = {
+  data: {
+    storagePath: string;
+    uploadUrl: string;
+    method: "PUT";
+    headers?: Record<string, string>;
+    expiresAt: string;
+  };
+};
+
+async function uploadFileToPresignedUrl(file: File, presign: PresignCaseAttachmentResponse["data"]) {
+  const res = await fetch(presign.uploadUrl, {
+    method: presign.method,
+    headers: presign.headers,
+    body: file
+  });
+  if (!res.ok) throw new Error("attachment upload failed");
+}
+
+export async function fetchCaseAttachments(caseId: number): Promise<CaseAttachmentItem[]> {
+  const rows = await apiFetch<ApiCaseAttachment[]>(`/api/cases/${caseId}/attachments`);
+  return rows.map(mapApiCaseAttachment);
+}
+
+export async function addCaseAttachment(
+  caseId: number,
+  input: { fileName: string; contentType?: string; storagePath?: string; fileSize?: number }
+): Promise<CaseAttachmentItem> {
+  const row = await apiFetch<ApiCaseAttachment>(`/api/cases/${caseId}/attachments`, {
+    method: "POST",
+    body: input
+  });
+  return mapApiCaseAttachment(row);
+}
+
+export async function uploadCaseAttachmentViaPresign(caseId: number, file: File): Promise<CaseAttachmentItem> {
+  const presign = await apiFetch<PresignCaseAttachmentResponse>(`/api/cases/${caseId}/attachments/presign`, {
+    method: "POST",
+    body: {
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+      fileSize: file.size
+    }
+  });
+  await uploadFileToPresignedUrl(file, presign.data);
+  return addCaseAttachment(caseId, {
+    fileName: file.name,
+    contentType: file.type || "application/octet-stream",
+    storagePath: presign.data.storagePath,
+    fileSize: file.size
+  });
+}
+
+export async function fetchCaseStepAttachments(stepId: number): Promise<CaseAttachmentItem[]> {
+  const rows = await apiFetch<ApiCaseAttachment[]>(`/api/case-steps/${stepId}/attachments`);
+  return rows.map(mapApiCaseAttachment);
+}
+
+export async function addCaseStepAttachment(
+  stepId: number,
+  input: { fileName: string; contentType?: string; storagePath?: string; fileSize?: number }
+): Promise<CaseAttachmentItem> {
+  const row = await apiFetch<ApiCaseAttachment>(`/api/case-steps/${stepId}/attachments`, {
+    method: "POST",
+    body: input
+  });
+  return mapApiCaseAttachment(row);
+}
+
+export async function uploadCaseStepAttachmentViaPresign(stepId: number, file: File): Promise<CaseAttachmentItem> {
+  const presign = await apiFetch<PresignCaseAttachmentResponse>(`/api/case-steps/${stepId}/attachments/presign`, {
+    method: "POST",
+    body: {
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+      fileSize: file.size
+    }
+  });
+  await uploadFileToPresignedUrl(file, presign.data);
+  return addCaseStepAttachment(stepId, {
+    fileName: file.name,
+    contentType: file.type || "application/octet-stream",
+    storagePath: presign.data.storagePath,
+    fileSize: file.size
+  });
+}
+
+type CaseAttachmentDownloadUrlResponse = {
+  data: {
+    attachmentId: string;
+    downloadUrl: string;
+    expiresAt: string;
+  };
+};
+
+export async function fetchCaseAttachmentDownloadUrl(attachmentId: string): Promise<string> {
+  const res = await apiFetch<CaseAttachmentDownloadUrlResponse>(`/api/attachments/${attachmentId}/download-url`, {
+    method: "POST"
+  });
+  return res.data.downloadUrl;
+}
+
+export async function deleteCaseAttachment(attachmentId: string): Promise<void> {
+  await apiFetch<void>(`/api/attachments/${attachmentId}`, {
+    method: "DELETE"
+  });
+}
+
 type ApiCaseVersion = {
   id: string;
   caseId: string;
@@ -454,6 +593,7 @@ type ApiCaseVersion = {
   preconditions?: string | null;
   customValuesSnapshot?: Record<string, string | number | boolean | null>;
   stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+  attachmentSnapshots?: CaseVersion["attachmentSnapshots"];
   changeReason?: string | null;
   createdAt: string;
 };
@@ -469,6 +609,7 @@ function mapApiCaseVersion(row: ApiCaseVersion): CaseVersion {
     preconditions: row.preconditions ?? null,
     customValuesSnapshot: row.customValuesSnapshot ?? {},
     stepsSnapshot: row.stepsSnapshot ?? [],
+    attachmentSnapshots: row.attachmentSnapshots ?? [],
     changeReason: row.changeReason ?? null,
     createdAt: row.createdAt
   };

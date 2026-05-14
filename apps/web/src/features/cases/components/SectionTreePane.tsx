@@ -386,19 +386,15 @@ export function SectionTreePane({
       : "root";
 
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-6">
+    <aside className="rounded-md border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-6">
       <div className="mb-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Repository</p>
-        <h3 className="mt-1 text-sm font-semibold text-slate-900">Sections</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Keep navigation focused here, then review and edit the selected case in the workspace.
-        </p>
+        <h3 className="text-sm font-semibold text-slate-900">Sections</h3>
       </div>
 
       {suiteId ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
           <input
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs"
             placeholder="New section name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -407,15 +403,15 @@ export function SectionTreePane({
             <button
               type="button"
               disabled={!newName.trim() || createMutation.isPending}
-              className="rounded-xl bg-slate-900 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
+              className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
               onClick={() => void createMutation.mutateAsync({ name: newName.trim(), parentSectionId: null })}
             >
-              Add root
+              Add
             </button>
             <button
               type="button"
               disabled={!newName.trim() || createMutation.isPending}
-              className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 disabled:opacity-50"
               onClick={() =>
                 void createMutation.mutateAsync({
                   name: newName.trim(),
@@ -431,21 +427,21 @@ export function SectionTreePane({
         <p className="mt-2 text-xs text-slate-500">No suite found. Create a suite first.</p>
       )}
 
-      <div
-        className={
-          "mt-3 rounded-xl border px-3 py-2 text-xs transition " +
-          (rootDropActive
-            ? "border-emerald-400 bg-emerald-50 text-emerald-800"
-            : sectionDragSourceId != null
-              ? "border-dashed border-emerald-300 bg-white text-slate-600"
-              : "border-slate-200 bg-slate-50 text-slate-500")
-        }
-        onDragOver={handleRootDropOver}
-        onDragLeave={() => setRootDropActive(false)}
-        onDrop={handleRootDrop}
-      >
-        Drop here to move or copy a section to the root level.
-      </div>
+      {sectionDragSourceId != null ? (
+        <div
+          className={
+            "mt-3 rounded-md border px-3 py-2 text-xs transition " +
+            (rootDropActive
+              ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+              : "border-dashed border-emerald-300 bg-white text-slate-600")
+          }
+          onDragOver={handleRootDropOver}
+          onDragLeave={() => setRootDropActive(false)}
+          onDrop={handleRootDrop}
+        >
+          Drop to root
+        </div>
+      ) : null}
 
       <ul className="mt-3 grid gap-1.5">
         {(sectionByParent.get(null) ?? []).map((root) => {

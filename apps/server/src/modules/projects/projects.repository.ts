@@ -58,6 +58,18 @@ export type CaseVersionRow = {
   preconditions?: string | null;
   customValuesSnapshot?: Record<string, string | number | boolean | null>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+  attachmentSnapshots: Array<{
+    id: string;
+    entityType: "case" | "case_step";
+    entityId: string;
+    stepOrder?: number | null;
+    fileName: string;
+    contentType?: string | null;
+    storagePath: string;
+    fileSize?: string | null;
+    createdAt: string;
+    createdBy?: string | null;
+  }>;
   changeReason?: string | null;
   createdAt: Date;
 };

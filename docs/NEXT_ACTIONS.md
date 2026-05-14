@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-13
+Last aligned: 2026-05-14 (activity coverage refresh)
 
 This is the current implementation queue after reviewing the docs and codebase. It now includes the actionable workflow items that previously lived in `CORE_FEATURE_COMPLETION_PLAN.md`.
 
@@ -48,8 +48,8 @@ The implementation order should follow the daily TestRail workflow:
 ## Immediate Priority
 
 1. Case repository productivity
-   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk copy API with cloned case fields/custom values/ordered steps, per-section case ordering with append-on-create/move/copy semantics, reorder API support for persisted arbitrary case ordering, position-based case reorder API support for filtered/paginated views, stable section sibling ordering with a reorder API, section subtree move/copy API behavior, section tree drag/drop move/reorder UI, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, template-aware required-field authoring validation, and drag-and-drop case move/copy/reorder UI with selection-aware drag, section-node and case-row drop targets, before/after position indicators, append drop zone, and a move-vs-copy chooser modal wired to the bulk move/copy and position APIs exist.
-   - Remaining P1: richer visual diffs, stale restore conflict messaging, dedicated version detail surfaces, and deeper section move/copy compatibility polish.
+   - Current baseline: case/section CRUD, case steps, custom values, version history, restore, bulk delete, bulk move, bulk copy API with cloned case fields/custom values/ordered steps, per-section case ordering with append-on-create/move/copy semantics, reorder API support for persisted arbitrary case ordering, position-based case reorder API support for filtered/paginated views, stable section sibling ordering with a reorder API, section subtree move/copy API behavior, section tree drag/drop move/reorder UI, bulk priority/type update, bulk archive/restore semantics, saved case views, richer search/filtering (`q`/priority/type/automation/archive state/refs/labels/estimate), optional list columns, list metadata/custom-value chips, template-aware required-field authoring validation, and drag-and-drop case move/copy/reorder UI with selection-aware drag, section-node and case-row drop targets, before/after position indicators, append drop zone, and a move-vs-copy chooser modal wired to the bulk move/copy and position APIs exist. Same-section drops persist direct-section order, and cross-section row drops preserve the selected before/after drop position after move/copy.
+   - Remaining P1: attachment preview drawer, upload progress/retry, historical attachment download semantics, and deeper section move/copy compatibility polish.
 
 2. Activity events and notification inbox
    - Baseline done: `ActivityEvent`, `Notification`, and `NotificationPreference` persistence.
@@ -60,9 +60,12 @@ The implementation order should follow the daily TestRail workflow:
    - Baseline done: project create/update/delete mutations now emit project-level activity events.
    - Baseline done: settings mutations (custom fields/statuses/templates/members) now emit activity events on create/update/delete lifecycle.
    - Baseline done: incremental activity coverage for case step CRUD, run metadata updates, assignment drilldown payloads, defect unlinking, result/defect case drilldown payloads, and matching webhook event filter options.
-   - Missing P0: broader event coverage for case, run composition, execution, reporting, assignment, and defect workflows.
-   - Missing P0: richer notification targeting and activity drilldown links.
-   - Missing P0: email/digest notification delivery jobs.
+  - Baseline done: result evidence attachment add/remove events now emit activity with run/test/case/result drilldown payloads and webhook filter options.
+  - Baseline done: suite/section/milestone/plan/plan-entry/configuration-group/configuration CRUD and requirement CRUD + link/unlink mutations now emit activity events, with matching webhook event filter options.
+  - Baseline done: activity/notification drilldown extended to milestone, plan, plan-entry, suite, section, and requirement entity types via direct routes or payload IDs.
+  - Missing P0: broader event coverage for remaining case/run composition/execution/reporting and defect workflows beyond the current baselines.
+  - Missing P0: richer notification targeting beyond assignment/failed-result heuristics.
+  - Missing P0: email/digest notification delivery jobs.
 
 3. Report detail pages and risk review polish
    - Baseline done: nested report routes/pages for run summary, results explorer, traceability, coverage gap, and defect coverage.
@@ -89,7 +92,11 @@ The implementation order should follow the daily TestRail workflow:
 
 - Case version compare and restore
   - Version detail API, restore behavior, timeline, basic field/step comparison, and restore confirmation are baseline done.
-  - Remaining work: richer visual diffs, stale-conflict messaging in the UI, attachment context, and dedicated version detail drawer.
+  - Baseline done: visual diff comparison now highlights changed fields/steps first, counts differences, and keeps unchanged fields collapsed.
+  - Baseline done: stale restore conflicts now surface a targeted refresh/review/retry message in the version compare UI.
+  - Baseline done: dedicated version detail drawer shows snapshot fields, custom values, captured steps, and compare/restore actions.
+  - Baseline done: case version snapshots now preserve case/case-step attachment metadata context and expose it in the version detail drawer.
+  - Remaining work: file preview/download restoration semantics for historical attachment references.
 
 - Bulk case operations and saved views
   - Baseline done: multi-select case list UX with project-scoped bulk delete.
@@ -100,16 +107,16 @@ The implementation order should follow the daily TestRail workflow:
   - Baseline done: bulk delete returns per-case success/failure feedback and records a bulk activity event.
   - Baseline done: saved case views can store section + `q`/priority/type/automation/archive-state/refs/labels/estimate filters and selected list columns per user/project, then re-apply them from the case toolbar.
   - Baseline done: case list search/filtering covers title, refs, automation key, labels, and visible custom values; collapsed rows show metadata/custom-value chips for faster scanning.
-  - Baseline done: drag-and-drop case move/copy/reorder is wired into the case list and section tree, with selection-aware drag, section-node drop targets, before/after row drop indicators, an end-of-list append drop zone, and a post-drop move-vs-copy chooser modal that reuses the bulk move/copy mutations for cross-section drops and the position API for same-section reordering.
-  - Implementation note: `move` reuses the bulk move mutation; `copy` reuses the bulk copy mutation, keeps originals in place, and surfaces per-case success/failure feedback; same-section drops skip the chooser and call the position API directly using direct-section anchors.
+  - Baseline done: drag-and-drop case move/copy/reorder is wired into the case list and section tree, with selection-aware drag, section-node drop targets, before/after row drop indicators, an end-of-list append drop zone, and a post-drop move-vs-copy chooser modal that reuses the bulk move/copy mutations for cross-section drops and the position API for same-section and post-move/post-copy ordering.
+  - Implementation note: `move` reuses the bulk move mutation; `copy` reuses the bulk copy mutation, keeps originals in place, and surfaces per-case success/failure feedback; same-section drops skip the chooser and call the position API directly using direct-section anchors, while cross-section row drops apply the saved direct-section anchor after the move/copy succeeds.
   - Baseline done: cases now have persisted `displayOrder`; create/copy/move append to the target section and direct section views sort by `displayOrder` then `id` instead of pure creation order.
   - Baseline done: case reorder API can persist an explicit section ordering, keeps omitted cases after the explicit order, validates section scope, emits activity, and has web API client support.
   - Baseline done: case listing supports an explicit `sectionScope=direct|subtree` contract, preserving existing subtree behavior by default while letting reorder flows operate on direct section membership only.
   - Baseline done: case position API can move a visible subset before/after an anchor or append it while preserving non-visible cases in the same section, which gives filtered/paginated reorder flows a whole-section-safe backend contract.
-  - Baseline done: case list drag/drop UI now invokes the position API with a direct-section anchor (the dragged-over case row or the end-of-list append zone), so paginated/filtered views never resend the visible page as the full ordering.
+  - Baseline done: case list drag/drop UI now invokes the position API with a direct-section anchor (the dragged-over case row or the end-of-list append zone), and the case repository list requests `sectionScope=direct` so same-section moves are persisted against the exact sibling group instead of a mixed subtree view.
   - Implementation note: define subtree ordering as section tree order plus each section's case order before introducing section-level drag/drop.
   - Implementation note: use `sectionScope=direct` for reorder/drop-position UI and `sectionScope=subtree` for browsing/run-composition-style views.
-  - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and explicit drop-position ordering rules for moved/copied items.
+  - Remaining work: deeper field updates, labels/refs/custom field edits, richer partial-failure UI, and broader drop-position compatibility polish for copied/moved section subtrees.
 
 - Section tree folder semantics
   - Current baseline: sections support parent-child nesting via `parentSectionId`; case listing and run composition treat a selected section as a subtree.
@@ -122,9 +129,11 @@ The implementation order should follow the daily TestRail workflow:
   - Remaining work: saved-view/run-composition compatibility handling and clear empty-section deletion/move messaging.
 
 - Case step images and rich authoring
-  - Extend attachment usage to cases and case steps.
-  - Add upload/open/preview/delete controls for step images.
-  - Preserve enough attachment context in version snapshots for historical authored content.
+  - Baseline done: attachment API/client primitives now support cases and case steps with list, direct create, presign, shared download/delete, activity output, and version snapshot context.
+  - Baseline done: version snapshots preserve case/case-step attachment context for historical authored content.
+  - Baseline done: case-step image controls in the case detail authoring UI support upload, open, and delete, while view mode keeps attachment access read-only.
+  - Baseline done: case-level image controls in the case detail authoring UI support upload, open, and delete, while view mode keeps attachment access read-only.
+  - Remaining work: preview drawer, upload progress/retry, and historical download semantics for versioned attachment references.
 
 - Case custom values follow-up
   - Case custom value persistence, form rendering, version snapshot inclusion, CSV import/export columns, active-field import validation, required-field UI validation, and template-aware authoring order are baseline done.
@@ -164,8 +173,8 @@ The implementation order should follow the daily TestRail workflow:
   - Improve bulk result entry feedback and large-run table ergonomics.
 
 - Assignment and to-do workflow
-  - Expand `assigned-to-me` filters by project, run, status, due date, and milestone where available.
-  - Improve `MyTestsPage` into a true to-do view with status counts, aging, and direct execution shortcuts.
+  - Baseline done: `MyTestsPage` now has status counts, status/run/search filters, and direct execution shortcuts into the selected test.
+  - Remaining work: due date and milestone filters when those fields are available on assigned test rows, plus aging indicators.
 
 ### Reporting And Traceability
 

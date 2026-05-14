@@ -56,6 +56,55 @@ const defectPushBodySchema = z.object({
   provider: z.string().trim().optional()
 });
 
+async function resultActivityContext(prisma: PrismaClient, resultId: bigint) {
+  return prisma.testResult.findUnique({
+    where: { id: resultId },
+    select: {
+      id: true,
+      instance: {
+        select: {
+          id: true,
+          caseId: true,
+          titleSnapshot: true,
+          run: { select: { id: true, projectId: true, name: true } }
+        }
+      }
+    }
+  });
+}
+
+async function recordAttachmentActivity(
+  prisma: PrismaClient,
+  input: {
+    resultId: bigint;
+    attachmentId: bigint;
+    actorUserId: bigint;
+    fileName: string;
+    eventType: "attachment.created" | "attachment.deleted";
+  }
+) {
+  const context = await resultActivityContext(prisma, input.resultId);
+  if (!context) return;
+  await recordActivityEvent(prisma, {
+    projectId: context.instance.run.projectId,
+    actorUserId: input.actorUserId,
+    entityType: "attachment",
+    entityId: input.attachmentId,
+    eventType: input.eventType,
+    title: input.eventType === "attachment.created" ? "Attachment added" : "Attachment removed",
+    body: `${input.fileName} on ${context.instance.titleSnapshot}.`,
+    payload: {
+      attachmentId: input.attachmentId.toString(),
+      resultId: input.resultId.toString(),
+      runId: context.instance.run.id.toString(),
+      runName: context.instance.run.name,
+      testId: context.instance.id.toString(),
+      caseId: context.instance.caseId.toString(),
+      fileName: input.fileName
+    }
+  });
+}
+
 export async function registerResultsRoutes(
   app: FastifyInstance,
   deps: { resultsService: ResultsService; prisma?: PrismaClient; authService: AuthService }
@@ -101,6 +150,13 @@ export async function registerResultsRoutes(
         fileSize: body.fileSize,
         createdBy: user.id
       }
+    });
+    await recordAttachmentActivity(deps.prisma, {
+      resultId: body.resultId,
+      attachmentId: created.id,
+      actorUserId: user.id,
+      fileName: created.fileName,
+      eventType: "attachment.created"
     });
     return reply.send(
       toJsonSafe({
@@ -221,6 +277,13 @@ export async function registerResultsRoutes(
         createdBy: user.id
       }
     });
+    await recordAttachmentActivity(deps.prisma, {
+      resultId: params.resultId,
+      attachmentId: created.id,
+      actorUserId: user.id,
+      fileName: created.fileName,
+      eventType: "attachment.created"
+    });
     return reply.send(
       toJsonSafe({
         id: created.id,
@@ -296,17 +359,27 @@ export async function registerResultsRoutes(
     if (!deps.prisma) {
       return reply.status(204).send();
     }
+    const user = await getAuthenticatedUser(req, deps);
     const found = await deps.prisma.attachment.findFirst({
       where: { id: params.attachmentId, deletedAt: null },
-      select: { id: true }
+      select: { id: true, resultId: true, fileName: true }
     });
     if (!found) {
       throw new AppError("NOT_FOUND", "attachment not found", 404);
     }
     await deps.prisma.attachment.update({
       where: { id: params.attachmentId },
-      data: { deletedAt: new Date() }
+      data: { deletedAt: new Date(), updatedBy: user.id }
     });
+    if (found.resultId) {
+      await recordAttachmentActivity(deps.prisma, {
+        resultId: found.resultId,
+        attachmentId: found.id,
+        actorUserId: user.id,
+        fileName: found.fileName,
+        eventType: "attachment.deleted"
+      });
+    }
     return reply.status(204).send();
   });
 

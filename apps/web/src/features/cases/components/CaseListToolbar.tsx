@@ -2,11 +2,11 @@ import { useState } from "react";
 
 import type {
   CaseFilterAutomation,
-  CaseListColumn,
-  CasePresenceFilter,
   CaseFilterPriority,
   CaseFilterState,
   CaseFilterType,
+  CaseListColumn,
+  CasePresenceFilter,
   SavedCaseView
 } from "../types";
 
@@ -78,7 +78,7 @@ export function CaseListToolbar({
   onAddCase
 }: CaseListToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(activeFilterCount > 0);
-  const [displayOpen, setDisplayOpen] = useState(false);
+  const [viewToolsOpen, setViewToolsOpen] = useState(false);
   const columnOptions: Array<{ value: CaseListColumn; label: string }> = [
     { value: "type", label: "Type" },
     { value: "priority", label: "Priority" },
@@ -104,13 +104,13 @@ export function CaseListToolbar({
           placeholder="Search cases"
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+          className="min-w-[220px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         />
         <select
           aria-label="Saved case views"
           value={matchedSavedViewId}
           onChange={(e) => onSavedViewSelect(e.target.value)}
-          className="min-w-[200px] rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+          className="min-w-[180px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">Custom view</option>
           {savedViews.map((view) => (
@@ -122,65 +122,37 @@ export function CaseListToolbar({
         <button
           type="button"
           onClick={() => setFiltersOpen((current) => !current)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
         >
           Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
         </button>
         <button
           type="button"
-          onClick={() => setDisplayOpen((current) => !current)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          onClick={() => setViewToolsOpen((current) => !current)}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
         >
-          Display
-        </button>
-        <button
-          type="button"
-          onClick={onToggleSaveView}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          {saveViewOpen ? "Close view tools" : "Save view"}
+          View
         </button>
         <button
           type="button"
           onClick={onAddCase}
-          className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
           Add case
         </button>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        <span>{activeFilterCount > 0 ? `${activeFilterCount} filters applied` : "All repository filters are clear"}</span>
-        <span>·</span>
-        <span>{columnsValue.length} columns visible</span>
-        {matchedSavedViewId ? (
-          <>
-            <span>·</span>
-            <button
-              type="button"
-              onClick={onDeleteSavedView}
-              className="font-medium text-slate-600 underline"
-            >
-              Delete selected view
-            </button>
-          </>
-        ) : null}
-      </div>
-
       {filtersOpen ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Filters</p>
-              <p className="text-sm text-slate-600">Keep the main toolbar focused and open deeper controls only when needed.</p>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Filters</p>
             <button
               type="button"
               disabled={activeFilterCount === 0}
               onClick={onClearFilters}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Clear filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              Clear
             </button>
           </div>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -188,7 +160,7 @@ export function CaseListToolbar({
               aria-label="Filter by case state"
               value={stateValue}
               onChange={(e) => onStateChange(e.target.value as CaseFilterState)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="active">Active cases</option>
               <option value="archived">Archived cases</option>
@@ -197,7 +169,7 @@ export function CaseListToolbar({
               aria-label="Filter by priority"
               value={priorityValue}
               onChange={(e) => onPriorityChange(e.target.value as CaseFilterPriority)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All priorities</option>
               <option value="low">Low</option>
@@ -208,7 +180,7 @@ export function CaseListToolbar({
               aria-label="Filter by case type"
               value={caseTypeValue}
               onChange={(e) => onCaseTypeChange(e.target.value as CaseFilterType)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All types</option>
               <option value="functional">Functional</option>
@@ -219,7 +191,7 @@ export function CaseListToolbar({
               aria-label="Filter by automation coverage"
               value={automationValue}
               onChange={(e) => onAutomationChange(e.target.value as CaseFilterAutomation)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All automation states</option>
               <option value="manual">Manual only</option>
@@ -229,7 +201,7 @@ export function CaseListToolbar({
               aria-label="Filter by references"
               value={refsValue}
               onChange={(e) => onRefsChange(e.target.value as CasePresenceFilter)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All refs</option>
               <option value="with">With refs</option>
@@ -239,7 +211,7 @@ export function CaseListToolbar({
               aria-label="Filter by labels"
               value={labelsValue}
               onChange={(e) => onLabelsChange(e.target.value as CasePresenceFilter)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All labels</option>
               <option value="with">With labels</option>
@@ -249,7 +221,7 @@ export function CaseListToolbar({
               aria-label="Filter by estimate"
               value={estimateValue}
               onChange={(e) => onEstimateChange(e.target.value as CasePresenceFilter)}
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
             >
               <option value="">All estimates</option>
               <option value="with">With estimate</option>
@@ -259,14 +231,34 @@ export function CaseListToolbar({
         </div>
       ) : null}
 
-      {displayOpen ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Display</p>
+      {viewToolsOpen ? (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">View</p>
+            <div className="flex items-center gap-2">
+              {matchedSavedViewId ? (
+                <button
+                  type="button"
+                  onClick={onDeleteSavedView}
+                  className="text-xs font-medium text-red-700 hover:underline"
+                >
+                  Delete view
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onToggleSaveView}
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                {saveViewOpen ? "Close save" : "Save view"}
+              </button>
+            </div>
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
             {columnOptions.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5"
+                className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5"
               >
                 <input
                   type="checkbox"
@@ -278,36 +270,33 @@ export function CaseListToolbar({
               </label>
             ))}
           </div>
-        </div>
-      ) : null}
 
-      {saveViewOpen ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Saved View</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              aria-label="Saved view name"
-              placeholder="View name"
-              value={saveViewName}
-              onChange={(e) => onSaveViewNameChange(e.target.value)}
-              className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <button
-              type="button"
-              disabled={!saveViewName.trim()}
-              onClick={onSaveView}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Save current
-            </button>
-            <button
-              type="button"
-              onClick={onCancelSaveView}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-          </div>
+          {saveViewOpen ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+              <input
+                aria-label="Saved view name"
+                placeholder="View name"
+                value={saveViewName}
+                onChange={(e) => onSaveViewNameChange(e.target.value)}
+                className="min-w-[220px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              <button
+                type="button"
+                disabled={!saveViewName.trim()}
+                onClick={onSaveView}
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={onCancelSaveView}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

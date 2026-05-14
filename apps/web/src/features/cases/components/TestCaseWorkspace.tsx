@@ -51,23 +51,7 @@ export function TestCaseWorkspace() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Test Cases</p>
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Repository Workspace</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Navigate sections on the left, review the repository in the middle, and edit the active case in a dedicated side panel.
-            </p>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-            {sections.length} section{sections.length === 1 ? "" : "s"} available
-          </div>
-        </div>
-      </div>
-
-      <div className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
         <SectionTreePane
           suiteId={selectedSectionSuiteId}
           sections={sections}
@@ -96,7 +80,6 @@ export function TestCaseWorkspace() {
           pendingMoveCopy={pendingMoveCopy}
           onPendingMoveCopyChange={setPendingMoveCopy}
         />
-      </div>
     </div>
   );
 }

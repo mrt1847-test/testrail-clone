@@ -31,6 +31,7 @@ type CaseRowProps = {
   onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
   submitError?: string | null;
+  restoreError?: string | null;
   isDeleting?: boolean;
   isRestoring?: boolean;
   onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
@@ -70,6 +71,7 @@ export function CaseRow({
   onRestoreVersion,
   isSaving,
   submitError,
+  restoreError,
   isDeleting,
   isRestoring,
   onCreateStep,
@@ -222,6 +224,7 @@ export function CaseRow({
           onRestoreVersion={onRestoreVersion}
           isSaving={isSaving}
           submitError={submitError}
+          restoreError={restoreError}
           isDeleting={isDeleting}
           isRestoring={isRestoring}
           onCreateStep={onCreateStep}

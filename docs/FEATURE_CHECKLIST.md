@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-13
+Last aligned: 2026-05-14 (activity coverage refresh)
 
 This is the working checklist for implemented and planned product capabilities. It is intentionally stricter than the roadmap: if a workflow is only partially usable, it stays open until the missing user-facing pieces are complete.
 
@@ -86,10 +86,10 @@ Use this order when choosing the next implementation batch:
 - [x] P1 Drag-and-drop case move/copy parity with selection-aware case-list/section drop targets and a post-drop move-vs-copy chooser wired to the bulk move/copy APIs.
 - [x] Per-section test case ordering baseline with persisted `displayOrder`, append-on-create/move/copy behavior, and direct section sorting by `displayOrder` then `id`.
 - [x] Case reorder API baseline with persisted explicit section ordering, omitted-case preservation, section-scope validation, activity output, and web API client support.
-- [x] P1 Wire arbitrary test case reorder/drop-position insert semantics into drag-and-drop move/copy UI beyond append behavior.
+- [x] P1 Wire arbitrary test case reorder/drop-position insert semantics into drag-and-drop move/copy UI beyond append behavior, including cross-section row drops that preserve the selected before/after target after move/copy.
 - [x] Direct-section vs subtree case-ordering contract via `sectionScope=direct|subtree`, with reorder constrained to direct section membership.
 - [x] P1 Paginated/filtered case-list reorder API safeguards that position moved cases before/after an anchor or append them while preserving non-visible direct-section cases.
-- [x] P1 Wire paginated/filtered case-list drag/drop UI to the position API with direct-section anchors instead of treating the visible subset as the full ordering.
+- [x] P1 Wire paginated/filtered case-list drag/drop UI to the position API with direct-section anchors and direct-section list scope instead of treating a visible subset or mixed subtree view as the full ordering.
 - [ ] P1 Folder-like section tree hardening with cycle-safe parent changes, same-suite parent validation, stable sibling ordering, and clearer empty/non-empty section semantics. Baseline: API rejects self-parenting, descendant cycles, and cross-suite parents.
 - [x] P1 Section subtree move/copy API operations with child sections and contained cases copied/moved as one folder-like unit, including source-to-copy ID mappings and activity feedback.
 - [x] P1 Section sibling `displayOrder` persistence/reorder API for stable folder ordering after create/rename/move/copy.
@@ -106,11 +106,14 @@ Use this order when choosing the next implementation batch:
 - [x] P1 Case custom value list chip baseline for visible custom values in collapsed rows.
 - [x] P1 Deeper case list filters and optional list column visibility baseline.
 - [x] P1 Required-field UI validation and template-aware case authoring form ordering.
-- [ ] P1 Rich visual diffs for case version comparison.
-- [ ] P1 Restore conflict messaging in UI.
-- [ ] P1 Attachment context in case version snapshots.
-- [ ] P1 Dedicated case version detail drawer.
-- [ ] P2 Case/case-step image attachments.
+- [x] P1 Rich visual diff baseline for case version comparison with changed field/step highlighting and collapsed unchanged details.
+- [x] P1 Restore conflict messaging in UI.
+- [x] P1 Attachment context in case version snapshots with case/case-step attachment metadata surfaced in the version detail drawer.
+- [x] P1 Dedicated case version detail drawer with snapshot fields, custom values, steps, compare, and restore actions.
+- [x] P2 Case/case-step attachment API and web client baseline with list, create, presign, shared download/delete support, and activity output.
+- [x] P2 Case-step image attachment UI baseline with upload, open, delete, and read-only access from case detail.
+- [x] P2 Case-level image attachment UI baseline with upload, open, delete, and read-only access from case detail.
+- [ ] P2 Attachment preview drawer, upload progress/retry, and historical attachment download semantics.
 - [ ] P2 Shared steps.
 - [ ] P2 Labels as first-class entities.
 - [ ] P2 Deleted case restore and permanent delete semantics.
@@ -169,8 +172,8 @@ Use this order when choosing the next implementation batch:
 - [x] Test assignment baseline.
 - [x] My Tests page baseline.
 - [x] Notification inbox baseline can surface assignment-related workflow.
-- [ ] P1 `assigned-to-me` filters by project, run, status, due date, and milestone.
-- [ ] P1 True to-do view with status counts, aging, and execution shortcuts.
+- [x] P1 `assigned-to-me` project-scoped view with run/status/search filters. Remaining depth: due date and milestone filters when available.
+- [x] P1 True to-do view baseline with status counts and execution shortcuts. Remaining depth: aging indicators.
 - [ ] P1 Notification-driven assignment workflow polish.
 
 ## Requirements And Traceability
@@ -292,7 +295,10 @@ Use this order when choosing the next implementation batch:
 - [x] Project create/update/delete mutations emit project-level activity events.
 - [x] Settings mutations (`custom_fields`, `custom_statuses`, `case_templates`, `project_members`) emit activity events for create/update/delete lifecycle.
 - [x] Incremental activity coverage for case step CRUD, `run.updated` on PATCH `/api/runs/:id`, assignment drilldown payloads, `defect.unlinked`, result/defect `caseId` drilldown payloads, and matching webhook event filter options.
+- [x] Result evidence attachment add/remove activity events with run/test/case/result drilldown payloads and webhook filter options.
+- [x] Suite create/update/delete, section create/update/delete, milestone create/update/complete/delete, plan create/update/delete, plan entry create/update/delete, configuration group/configuration create/update/delete, and requirement create/update/delete + link/unlink activity events with matching webhook event filter options.
 - [ ] P0 Broader activity event coverage across remaining major case, run, result, assignment, defect, and reporting mutations.
+- [x] Activity/notification drilldown links extended to milestone, plan, plan entry, suite, section, and requirement entities (cases/runs/reports remain payload-driven).
 - [ ] P0 Notification targeting and activity drilldown links.
 - [ ] P0 Email/digest notification delivery jobs.
 - [x] P0 Webhook background HTTP delivery worker (DB-backed server; in-memory 모드에서는 미기동).
@@ -310,7 +316,7 @@ Use this order when choosing the next implementation batch:
 - [ ] P1 Shared `Button`, `IconButton`, `StatusBadge`, `DataTable`, `FilterBar`, `PageHeader`, `Panel`, `Drawer`, and `Toast`.
 - [ ] P1 Dense, scannable table-oriented screens for large lists.
 - [ ] P1 Centralized query keys per feature.
-- [ ] P1 Notification/inbox entry in shell/header.
+- [x] P1 Notification/inbox entry in shell/header.
 - [ ] P2 Settings sidebar for lower-frequency admin categories.
 
 ## Deferred Or Explicitly Not Baseline

@@ -57,6 +57,25 @@ function extractApiErrorMessage(error: unknown, fallback: string) {
   }
 }
 
+function extractApiErrorCode(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  try {
+    const parsed = JSON.parse(error.message) as
+      | { code?: string; error?: { code?: string } }
+      | undefined;
+    return parsed?.error?.code ?? parsed?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function restoreVersionErrorMessage(error: unknown) {
+  if (extractApiErrorCode(error) === "CONFLICT") {
+    return "This case changed after you opened it. Refresh the case, review the latest version, then restore again.";
+  }
+  return extractApiErrorMessage(error, "Could not restore the selected version.");
+}
+
 type CaseCreateDraftStep = { key: string; description: string; expected: string };
 
 function newCreateDraftStepKey(): string {
@@ -122,7 +141,8 @@ export function CaseListPane({
     applySavedView
   } = useExpandedCase();
 
-  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, caseFilters);
+  const directCaseFilters = useMemo(() => ({ ...caseFilters, sectionScope: "direct" as const }), [caseFilters]);
+  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, directCaseFilters);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
     queryFn: () => fetchCustomFields(projectId, "case"),
@@ -145,6 +165,7 @@ export function CaseListPane({
   const [createDraftSteps, setCreateDraftSteps] = useState<CaseCreateDraftStep[]>(initialCreateDraftSteps);
   const [createFormError, setCreateFormError] = useState<string | null>(null);
   const [editFormError, setEditFormError] = useState<string | null>(null);
+  const [restoreFormError, setRestoreFormError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(caseFilters.q);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
@@ -233,6 +254,7 @@ export function CaseListPane({
 
   useEffect(() => {
     setEditFormError(null);
+    setRestoreFormError(null);
   }, [expandedCaseId, mode]);
 
   useEffect(() => {
@@ -344,7 +366,11 @@ export function CaseListPane({
     mutationFn: (input: { caseId: number; versionId: number; expectedVersion?: number }) =>
       restoreCaseVersion(input.caseId, input.versionId, input.expectedVersion),
     onSuccess: (_, vars) => {
+      setRestoreFormError(null);
       invalidateAfterCaseEdit(vars.caseId);
+    },
+    onError: (error) => {
+      setRestoreFormError(restoreVersionErrorMessage(error));
     }
   });
 
@@ -560,28 +586,75 @@ export function CaseListPane({
     onPendingMoveCopyChange?.(pending);
   };
 
+  const buildPendingPositionInput = (pending: PendingMoveCopy, caseIds: number[]) => {
+    if (pending.anchorCaseId == null || pending.anchorPosition == null || caseIds.length === 0) return null;
+    return {
+      sectionId: pending.targetSectionId,
+      caseIds,
+      ...(pending.anchorPosition === "before"
+        ? { beforeCaseId: pending.anchorCaseId }
+        : { afterCaseId: pending.anchorCaseId })
+    };
+  };
+
   const handleMoveConfirm = () => {
     if (!pendingMoveCopy || dndAnyMutationPending) return;
-    bulkMoveMutation.mutate(
-      { caseIds: pendingMoveCopy.caseIds, targetSectionId: pendingMoveCopy.targetSectionId },
-      {
-        onSuccess: () => {
-          onPendingMoveCopyChange?.(null);
+    const pending = pendingMoveCopy;
+    void (async () => {
+      let committed = false;
+      try {
+        const result = await bulkMoveMutation.mutateAsync({
+          caseIds: pending.caseIds,
+          targetSectionId: pending.targetSectionId
+        });
+        committed = true;
+        const movedCaseIds = result.items
+          .filter((item) => item.success)
+          .map((item) => Number(item.caseId))
+          .filter((caseId) => Number.isInteger(caseId));
+        const positionInput = buildPendingPositionInput(pending, movedCaseIds);
+        if (positionInput) {
+          await positionCasesMutation.mutateAsync(positionInput);
+          setBulkActionMessage(
+            `Moved ${movedCaseIds.length} case${movedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
+          );
         }
+      } finally {
+        if (committed) onPendingMoveCopyChange?.(null);
       }
-    );
+    })().catch(() => {
+      // Mutation onError handlers surface the actionable message.
+    });
   };
 
   const handleCopyConfirm = () => {
     if (!pendingMoveCopy || dndAnyMutationPending) return;
-    bulkCopyMutation.mutate(
-      { caseIds: pendingMoveCopy.caseIds, targetSectionId: pendingMoveCopy.targetSectionId },
-      {
-        onSuccess: () => {
-          onPendingMoveCopyChange?.(null);
+    const pending = pendingMoveCopy;
+    void (async () => {
+      let committed = false;
+      try {
+        const result = await bulkCopyMutation.mutateAsync({
+          caseIds: pending.caseIds,
+          targetSectionId: pending.targetSectionId
+        });
+        committed = true;
+        const copiedCaseIds = result.items
+          .filter((item) => item.success && item.copiedCaseId != null)
+          .map((item) => Number(item.copiedCaseId))
+          .filter((caseId) => Number.isInteger(caseId));
+        const positionInput = buildPendingPositionInput(pending, copiedCaseIds);
+        if (positionInput) {
+          await positionCasesMutation.mutateAsync(positionInput);
+          setBulkActionMessage(
+            `Copied ${copiedCaseIds.length} case${copiedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
+          );
         }
+      } finally {
+        if (committed) onPendingMoveCopyChange?.(null);
       }
-    );
+    })().catch(() => {
+      // Mutation onError handlers surface the actionable message.
+    });
   };
 
   const targetSectionName = useMemo(() => {
@@ -695,25 +768,17 @@ export function CaseListPane({
   return (
     <>
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-4">
+        <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Repository</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                <h3 className="text-lg font-semibold text-slate-900">
                   {selectedSection?.name ?? "Selected section"}
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-0.5 text-sm text-slate-500">
                   {cases.length} visible case{cases.length === 1 ? "" : "s"} in the{" "}
                   {caseFilters.state === "archived" ? "archived" : "active"} repository.
                 </p>
-              </div>
-              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
-                {showAdd
-                  ? "Create panel open"
-                  : activeEditorCase
-                    ? `${mode === "edit" ? "Editing" : "Reviewing"} ${activeEditorCase.caseCode}`
-                    : "Editor idle"}
               </div>
             </div>
           </div>
@@ -732,11 +797,9 @@ export function CaseListPane({
                   />
                   Select visible
                 </label>
-                <div className="text-sm text-slate-600">
-                  {selectedVisibleCaseIds.length > 0
-                    ? `${selectedVisibleCaseIds.length} selected`
-                    : "Select one or more cases to show bulk actions"}
-                </div>
+                {selectedVisibleCaseIds.length > 0 ? (
+                  <div className="text-sm text-slate-600">{selectedVisibleCaseIds.length} selected</div>
+                ) : null}
               </div>
 
               {selectedVisibleCaseIds.length > 0 ? (
@@ -902,6 +965,7 @@ export function CaseListPane({
                     }}
                     isSaving={updateCaseMutation.isPending}
                     submitError={editFormError}
+                    restoreError={restoreFormError}
                     isDeleting={deleteCaseMutation.isPending}
                     isRestoring={restoreVersionMutation.isPending}
                     onCreateStep={async (input) => {
@@ -944,15 +1008,11 @@ export function CaseListPane({
           )}
         </section>
 
-        <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-6">
+        <aside className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm xl:sticky xl:top-6">
           {showAdd ? (
             <>
-              <div className="border-b border-slate-200 px-4 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">New test case</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Creating in {selectedSection?.name ?? "the selected section"}.
-                </p>
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h3 className="text-lg font-semibold text-slate-900">New test case</h3>
               </div>
               <div className="p-4">
                 <CaseAuthoringForm
@@ -1051,14 +1111,10 @@ export function CaseListPane({
             </>
           ) : activeEditorCase ? (
             <>
-              <div className="border-b border-slate-200 px-4 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h3 className="text-lg font-semibold text-slate-900">
                   {activeEditorCase.caseCode} {activeEditorCase.title}
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {mode === "edit" ? "Editing full case details." : "Reviewing case details and history."}
-                </p>
               </div>
               <ExpandableCaseDetail
                 data={activeEditorCase}
@@ -1092,6 +1148,7 @@ export function CaseListPane({
                 }}
                 isSaving={updateCaseMutation.isPending}
                 submitError={editFormError}
+                restoreError={restoreFormError}
                 isDeleting={deleteCaseMutation.isPending}
                 isRestoring={restoreVersionMutation.isPending}
                 onCreateStep={async (input) => {
@@ -1108,11 +1165,7 @@ export function CaseListPane({
             </>
           ) : (
             <div className="p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Case Editor</p>
-              <h3 className="mt-1 text-lg font-semibold text-slate-900">Focus panel</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Select a case from the repository to review or edit it here, or create a new case to keep authoring separate from the browsing surface.
-              </p>
+              <h3 className="text-lg font-semibold text-slate-900">No case selected</h3>
             </div>
           )}
         </aside>
@@ -1279,7 +1332,7 @@ export function CaseListPane({
               </p>
               <p className="text-xs text-slate-500">
                 Move keeps a single copy in the new section. Copy clones the cases, keeping the originals in place. The new
-                position appends to the end of the target section.
+                position follows the drop target when you drop on a case row, otherwise it appends to the target section.
               </p>
             </div>
           ) : null

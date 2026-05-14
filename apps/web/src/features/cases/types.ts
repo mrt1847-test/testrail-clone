@@ -27,6 +27,17 @@ export type CaseStep = {
   expected: string;
 };
 
+export type CaseAttachmentItem = {
+  id: string;
+  entityType: "case" | "case_step";
+  entityId: string;
+  fileName: string;
+  contentType: string | null;
+  storagePath: string;
+  fileSize: string | null;
+  createdAt: string;
+};
+
 export interface TestCase {
   id: number;
   projectId?: number;
@@ -59,6 +70,18 @@ export type CaseVersion = {
   preconditions?: string | null;
   customValuesSnapshot?: Record<string, string | number | boolean | null>;
   stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
+  attachmentSnapshots?: Array<{
+    id: string;
+    entityType: "case" | "case_step";
+    entityId: string;
+    stepOrder?: number | null;
+    fileName: string;
+    contentType?: string | null;
+    storagePath: string;
+    fileSize?: string | null;
+    createdAt: string;
+    createdBy?: string | null;
+  }>;
   changeReason?: string | null;
   createdAt: string;
 };
