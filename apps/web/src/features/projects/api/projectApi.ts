@@ -5,8 +5,24 @@ import type { ProjectOverviewDto, ProjectSummary } from "../types";
 type ProjectRow = { id: string; name: string; description?: string };
 
 type RunRow = { id: string; name: string; status: string };
-type RunSummaryRow = { runId: string; name: string; status: string; total: number; passed: number; failed: number; progress: number };
-type ReportActivityRow = { runId: string; runName?: string; caseId: string; title: string; status: string; source?: string; createdAt?: string };
+type RunSummaryRow = {
+  runId: string;
+  name: string;
+  status: string;
+  total: number;
+  passed: number;
+  failed: number;
+  progress: number;
+};
+type ReportActivityRow = {
+  runId: string;
+  runName?: string;
+  caseId: string;
+  title: string;
+  status: string;
+  source?: string;
+  createdAt?: string;
+};
 
 async function fetchFirstSuiteId(projectId: string): Promise<string | null> {
   const res = await apiFetch<Paged<{ id: string }>>(`/api/projects/${projectId}/suites?page=1&pageSize=1`);
@@ -58,12 +74,8 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
     ),
     apiFetch<Paged<RunRow>>(`/api/projects/${projectId}/runs?page=1&pageSize=20`),
     apiFetch<{ data: { items: RunSummaryRow[] } }>(`/api/projects/${projectId}/reports/run-summary`),
-    apiFetch<{ data: { items: ReportActivityRow[] } }>(
-      `/api/projects/${projectId}/reports/recent-failures`
-    ),
-    apiFetch<{ data: { items: ReportActivityRow[] } }>(
-      `/api/projects/${projectId}/reports/recent-results`
-    )
+    apiFetch<{ data: { items: ReportActivityRow[] } }>(`/api/projects/${projectId}/reports/recent-failures`),
+    apiFetch<{ data: { items: ReportActivityRow[] } }>(`/api/projects/${projectId}/reports/recent-results`)
   ]);
 
   const totalCases = overviewRes.data.totalCases;
@@ -73,13 +85,29 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
     runSummaryRes.data.items.map((row: RunSummaryRow) => [String(row.runId), row])
   );
 
-  const recentRuns = runs.slice(0, 5).map((r: RunRow) => ({
-    id: String(r.id),
-    name: r.name,
-    status: r.status,
-    progress: runSummaryMap.get(String(r.id))?.progress ?? 0,
-    createdAt: "—"
-  }));
+  const recentRuns = runs.slice(0, 5).map((r: RunRow) => {
+    const summary = runSummaryMap.get(String(r.id));
+    return {
+      id: String(r.id),
+      name: r.name,
+      status: r.status,
+      progress: summary?.progress ?? 0,
+      total: summary?.total ?? 0,
+      passed: summary?.passed ?? 0,
+      failed: summary?.failed ?? 0,
+      createdAt: "-"
+    };
+  });
+  const execution = runSummaryRes.data.items.reduce(
+    (acc, row) => {
+      acc.total += row.total;
+      acc.passed += row.passed;
+      acc.failed += row.failed;
+      return acc;
+    },
+    { total: 0, passed: 0, failed: 0, remaining: 0 }
+  );
+  execution.remaining = Math.max(0, execution.total - execution.passed - execution.failed);
 
   return {
     stats: {
@@ -88,18 +116,20 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
       recentFailures: overviewRes.data.recentFailures,
       automationCoveragePct: overviewRes.data.automationCoveragePct
     },
+    execution,
     recentRuns,
     recentFailures: failuresRes.data.items.map((item: ReportActivityRow) => ({
       caseCode: `C${item.caseId}`,
+      runId: item.runId,
       runName: item.runName ?? `Run ${item.runId}`,
       title: item.title,
-      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"
+      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
     })),
     recentResults: resultsRes.data.items.map((item: ReportActivityRow) => ({
       caseCode: `C${item.caseId}`,
       status: item.status,
       source: item.source ?? "manual",
-      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"
+      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
     }))
   };
 }

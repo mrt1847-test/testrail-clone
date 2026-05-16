@@ -1,13 +1,42 @@
 import { AppError } from "../../common/errors/appError.js";
 import { assertRunCreationInput } from "../../domain/invariants.js";
+import { defaultCompositionMetadata, toMetadataJson, type RunCompositionMetadata } from "./runComposition.js";
 import type { CreateRunWithInstancesInput, TestInstance } from "./runs.types.js";
 import type { RunsRepository } from "./runs.repository.js";
 
 export class RunsService {
+  private compositionSync?: import("./runCompositionSync.service.js").RunCompositionSyncService;
+
   constructor(private readonly repo: RunsRepository) {}
 
+  bindCompositionSync(sync: import("./runCompositionSync.service.js").RunCompositionSyncService) {
+    this.compositionSync = sync;
+  }
+
   async createRunWithInstances(input: CreateRunWithInstancesInput) {
-    assertRunCreationInput(input.includeAll, input.caseIds, input.excludedCaseIds, input.excludedSectionIds);
+    const compositionMode = input.compositionMode ?? "static";
+    assertRunCreationInput(
+      input.includeAll,
+      input.caseIds,
+      input.excludedCaseIds,
+      input.excludedSectionIds,
+      compositionMode
+    );
+
+    const includeAll = compositionMode === "include_all_live" ? true : input.includeAll;
+    const metadata: RunCompositionMetadata = {
+      ...defaultCompositionMetadata(includeAll, compositionMode),
+      ...(input.filterDefinition ? { filterDefinition: input.filterDefinition } : {}),
+      ...(input.excludedCaseIds?.length
+        ? { excludedCaseIds: input.excludedCaseIds.map((id) => id.toString()) }
+        : {}),
+      ...(input.excludedSectionIds?.length
+        ? { excludedSectionIds: input.excludedSectionIds.map((id) => id.toString()) }
+        : {}),
+      ...(input.includedSectionIds?.length
+        ? { includedSectionIds: input.includedSectionIds.map((id) => id.toString()) }
+        : {})
+    };
 
     return this.repo.transaction(async (tx) => {
       const run = await tx.createRun({
@@ -15,18 +44,21 @@ export class RunsService {
         suiteId: input.suiteId,
         milestoneId: input.milestoneId ?? null,
         name: input.name,
-        includeAll: input.includeAll,
-        environment: input.environment ?? null
+        includeAll,
+        environment: input.environment ?? null,
+        metadata: toMetadataJson(metadata)
       });
 
       const cases = await tx.getCasesForRun({
         projectId: input.projectId,
         suiteId: input.suiteId,
-        caseIds: input.caseIds,
+        caseIds: compositionMode === "dynamic_filter" ? undefined : input.caseIds,
         excludedCaseIds: input.excludedCaseIds,
-        includeAll: input.includeAll,
+        includeAll,
         includedSectionIds: input.includedSectionIds,
-        excludedSectionIds: input.excludedSectionIds
+        excludedSectionIds: input.excludedSectionIds,
+        compositionMode,
+        filterDefinition: input.filterDefinition
       });
 
       if (cases.length === 0) {
@@ -184,5 +216,13 @@ export class RunsService {
 
   async listAssignedToMe(projectId: bigint, userId: bigint) {
     return this.repo.listAssignedTests({ projectId, userId });
+  }
+
+  async syncRunComposition(runId: bigint) {
+    const sync = this.compositionSync;
+    if (!sync) {
+      throw new AppError("NOT_IMPLEMENTED", "run composition sync requires prisma mode", 501);
+    }
+    return sync.syncRun(runId);
   }
 }

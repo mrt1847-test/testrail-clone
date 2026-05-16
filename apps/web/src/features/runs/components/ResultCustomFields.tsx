@@ -34,7 +34,7 @@ export function ResultCustomFields({ fields, values, errors, onChange, onClearEr
   if (fields.length === 0) return null;
 
   return (
-    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2">
       {fields.map((field) => (
         <label key={field.id} className="text-xs text-slate-600">
           <span className="font-medium">

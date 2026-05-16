@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { reconcileSavedViews, sectionIdsSignature } from "../../../shared/sections/sectionCompatibility";
 import { defaultCaseListColumns } from "./useExpandedCase";
 import type { CaseListColumn, CaseListFilters, SavedCaseView } from "../types";
 
@@ -91,7 +92,12 @@ function nextViewId() {
   return `view-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function useCaseSavedViews(projectId: string, userId: string | null | undefined, currentView: CurrentCaseView) {
+export function useCaseSavedViews(
+  projectId: string,
+  userId: string | null | undefined,
+  currentView: CurrentCaseView,
+  validSectionIds?: ReadonlySet<number>
+) {
   const storageKey = useMemo(
     () => `testrail.caseViews.${userId ?? "anonymous"}.${projectId}`,
     [projectId, userId]
@@ -126,6 +132,19 @@ export function useCaseSavedViews(projectId: string, userId: string | null | und
     if (typeof window === "undefined" || hydratedKeyRef.current !== storageKey) return;
     window.localStorage.setItem(storageKey, JSON.stringify(savedViews));
   }, [savedViews, storageKey]);
+
+  const validSectionIdsKey = useMemo(
+    () => (validSectionIds && validSectionIds.size > 0 ? sectionIdsSignature(validSectionIds) : ""),
+    [validSectionIds]
+  );
+
+  useEffect(() => {
+    if (!validSectionIds || validSectionIds.size === 0 || hydratedKeyRef.current !== storageKey) return;
+    setSavedViews((current) => {
+      const next = reconcileSavedViews(current, validSectionIds);
+      return next === current ? current : next;
+    });
+  }, [storageKey, validSectionIds, validSectionIdsKey]);
 
   const matchedSavedView = useMemo(
     () =>

@@ -6,6 +6,10 @@ import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
+  getActivityCompositionCaseLinks,
+  getActivityPrimaryHref
+} from "../../../shared/activity/activityLinks";
+import {
   fetchNotificationPreferences,
   fetchNotifications,
   markAllNotificationsRead,
@@ -22,46 +26,6 @@ const preferenceLabels: Array<{ key: PreferenceKey; label: string }> = [
   { key: "mentionEnabled", label: "Mentions" },
   { key: "digestEnabled", label: "Digest" }
 ];
-
-function getNotificationHref(
-  projectId: string,
-  activity: {
-    entityType: string;
-    entityId: string;
-    payload?: Record<string, unknown> | null;
-  } | null
-) {
-  if (!activity) return null;
-  const payload = activity.payload ?? {};
-  const asString = (value: unknown) => (typeof value === "string" ? value : null);
-  const runId = asString(payload.runId);
-  const testId = asString(payload.testId);
-  const caseId = asString(payload.caseId);
-  const reportType = asString(payload.reportType);
-  const milestoneId = asString(payload.milestoneId);
-  const planId = asString(payload.planId);
-  if (testId && runId) return `/projects/${projectId}/runs/${runId}?testId=${encodeURIComponent(testId)}`;
-  if (runId) return `/projects/${projectId}/runs/${runId}`;
-  if (caseId) return `/projects/${projectId}/cases?caseId=${encodeURIComponent(caseId)}`;
-  if (activity.entityType === "run") return `/projects/${projectId}/runs/${activity.entityId}`;
-  if (activity.entityType === "case") return `/projects/${projectId}/cases?caseId=${encodeURIComponent(activity.entityId)}`;
-  if (activity.entityType === "milestone") return `/projects/${projectId}/milestones/${activity.entityId}`;
-  if (milestoneId) return `/projects/${projectId}/milestones/${milestoneId}`;
-  if (activity.entityType === "plan") return `/projects/${projectId}/plans/${activity.entityId}`;
-  if (activity.entityType === "plan_entry" && planId) return `/projects/${projectId}/plans/${planId}`;
-  if (planId) return `/projects/${projectId}/plans/${planId}`;
-  if (activity.entityType === "suite") return `/projects/${projectId}/cases`;
-  if (activity.entityType === "section") return `/projects/${projectId}/cases`;
-  if (activity.entityType === "requirement") return `/projects/${projectId}/reports/traceability`;
-  if (activity.entityType === "report") {
-    if (reportType === "run_summary") return `/projects/${projectId}/reports/runs`;
-    if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;
-    if (reportType === "coverage_gap") return `/projects/${projectId}/reports/coverage`;
-    if (reportType === "defect_coverage") return `/projects/${projectId}/reports/defects`;
-    return `/projects/${projectId}/reports/explorer`;
-  }
-  return null;
-}
 
 export function NotificationsPage() {
   const { projectId = "" } = useParams();
@@ -147,7 +111,19 @@ export function NotificationsPage() {
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <ul className="divide-y divide-slate-200">
-            {rows.map((row) => (
+            {rows.map((row) => {
+              const activity = row.activity;
+              const target = activity
+                ? {
+                    entityType: activity.entityType,
+                    entityId: activity.entityId,
+                    eventType: activity.eventType,
+                    payload: activity.payload
+                  }
+                : null;
+              const primaryHref = target ? getActivityPrimaryHref(projectId, target) : null;
+              const caseLinks = target ? getActivityCompositionCaseLinks(projectId, target) : [];
+              return (
               <li key={row.id} className={row.readAt ? "px-4 py-3" : "bg-slate-50 px-4 py-3"}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -156,14 +132,20 @@ export function NotificationsPage() {
                     <p className="mt-1 text-xs text-slate-500">
                       {row.type} - {new Date(row.createdAt).toLocaleString()}
                     </p>
-                    {getNotificationHref(projectId, row.activity) ? (
-                      <Link
-                        to={getNotificationHref(projectId, row.activity)!}
-                        className="mt-1 inline-flex text-xs font-medium text-slate-700 underline"
-                      >
-                        Open source
-                      </Link>
-                    ) : null}
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {primaryHref ? (
+                        <Link to={primaryHref} className="text-xs font-medium text-slate-700 underline">
+                          {activity?.eventType === "run.tests_added" || activity?.eventType === "run.test_removed"
+                            ? "Open run"
+                            : "Open source"}
+                        </Link>
+                      ) : null}
+                      {caseLinks.map((link) => (
+                        <Link key={link.caseId} to={link.href} className="text-xs text-slate-600 underline">
+                          Case {link.label}
+                        </Link>
+                      ))}
+                    </div>
                   </div>
                   {!row.readAt ? (
                     <button
@@ -176,7 +158,8 @@ export function NotificationsPage() {
                   ) : null}
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
             <span className="text-slate-600">

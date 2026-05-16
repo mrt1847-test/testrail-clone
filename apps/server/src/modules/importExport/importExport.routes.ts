@@ -35,8 +35,18 @@ const caseImportSchema = z.object({
   sectionId: z.coerce.bigint().optional()
 });
 
-const reportExportSchema = z.object({
-  reportType: z.enum(["run_summary", "results_explorer", "traceability", "coverage_gap", "defect_coverage"]).default("results_explorer"),
+export const reportExportSchema = z.object({
+  reportType: z
+    .enum([
+      "run_summary",
+      "milestone_summary",
+      "plan_summary",
+      "results_explorer",
+      "traceability",
+      "coverage_gap",
+      "defect_coverage"
+    ])
+    .default("results_explorer"),
   format: z.enum(["csv"]).default("csv"),
   runId: z.coerce.bigint().optional(),
   caseId: z.coerce.bigint().optional(),
@@ -242,6 +252,102 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
     return {
       fileName: `project-${projectId.toString()}-run-summary.csv`,
       csv: toCsv(["run_id", "name", "status", "total", "passed", "failed", "progress"], rows),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "milestone_summary") {
+    const milestones = await prisma.milestone.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ isCompleted: "asc" }, { id: "desc" }],
+      take: input.maxRows
+    });
+    const rows = [];
+    for (const milestone of milestones) {
+      const runs = await prisma.testRun.findMany({
+        where: { projectId, milestoneId: milestone.id, deletedAt: null },
+        include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+      });
+      const metrics = toRunSummaryMetrics(runs.flatMap((run) => run.instances.map((item) => item.status)));
+      rows.push({
+        milestone_id: milestone.id,
+        name: milestone.name,
+        is_completed: milestone.isCompleted,
+        run_count: runs.length,
+        open_run_count: runs.filter((run) => run.status === "open").length,
+        total: metrics.total,
+        passed: metrics.passed,
+        failed: metrics.failed,
+        progress: metrics.progress
+      });
+    }
+    return {
+      fileName: `project-${projectId.toString()}-milestone-summary.csv`,
+      csv: toCsv(
+        [
+          "milestone_id",
+          "name",
+          "is_completed",
+          "run_count",
+          "open_run_count",
+          "total",
+          "passed",
+          "failed",
+          "progress"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "plan_summary") {
+    const plans = await prisma.testPlan.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ status: "asc" }, { id: "desc" }],
+      take: input.maxRows,
+      include: {
+        entries: {
+          where: { deletedAt: null },
+          include: {
+            run: {
+              include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+            }
+          }
+        },
+        runs: {
+          where: { deletedAt: null },
+          include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+        }
+      }
+    });
+    const rows = plans.map((plan) => {
+      const runMap = new Map<string, (typeof plan.runs)[number]>();
+      for (const run of plan.runs) runMap.set(run.id.toString(), run);
+      for (const entry of plan.entries) {
+        if (entry.run) runMap.set(entry.run.id.toString(), entry.run);
+      }
+      const runs = Array.from(runMap.values());
+      const metrics = toRunSummaryMetrics(runs.flatMap((run) => run.instances.map((item) => item.status)));
+      return {
+        plan_id: plan.id,
+        name: plan.name,
+        status: plan.status,
+        entry_count: plan.entries.length,
+        run_count: runs.length,
+        open_run_count: runs.filter((run) => run.status === "open").length,
+        total: metrics.total,
+        passed: metrics.passed,
+        failed: metrics.failed,
+        progress: metrics.progress
+      };
+    });
+    return {
+      fileName: `project-${projectId.toString()}-plan-summary.csv`,
+      csv: toCsv(
+        ["plan_id", "name", "status", "entry_count", "run_count", "open_run_count", "total", "passed", "failed", "progress"],
+        rows
+      ),
       totalRows: rows.length
     };
   }
@@ -500,7 +606,7 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
   return { issues, normalized };
 }
 
-class ImportExportService {
+export class ImportExportService {
   constructor(private readonly prisma?: PrismaClient) {}
 
   getPrisma() {
@@ -606,9 +712,12 @@ class ImportExportService {
     return { rows, total };
   }
 
-  async listExportJobs(projectId: bigint, page: number, pageSize: number) {
+  async listExportJobs(projectId: bigint, page: number, pageSize: number, typePrefix?: string) {
     const prisma = this.getPrisma();
-    const where = { projectId };
+    const where = {
+      projectId,
+      ...(typePrefix ? { type: { startsWith: typePrefix } } : {})
+    };
     const [rows, total] = await prisma.$transaction([
       prisma.exportJob.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
       prisma.exportJob.count({ where })
@@ -867,8 +976,20 @@ export async function registerImportExportRoutes(
   app.get("/api/projects/:projectId/export-jobs", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    const typePrefix =
+      typeof (req.query as Record<string, unknown> | undefined)?.typePrefix === "string"
+        ? String((req.query as Record<string, unknown>).typePrefix)
+        : undefined;
     if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
-    const { rows, total } = await importExportService.listExportJobs(projectId, page, pageSize);
+    const { rows, total } = await importExportService.listExportJobs(projectId, page, pageSize, typePrefix);
+    return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
+  });
+
+  app.get("/api/projects/:projectId/reports/export-jobs", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
+    if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+    const { rows, total } = await importExportService.listExportJobs(projectId, page, pageSize, "report_");
     return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
   });
 
@@ -938,13 +1059,17 @@ export async function registerImportExportRoutes(
     const exported = await importExportService.buildReportExportFromJob(projectId, jobId);
     const reportType = String(exported.fileName).includes("run-summary")
       ? "run_summary"
-      : String(exported.fileName).includes("traceability")
-        ? "traceability"
-        : String(exported.fileName).includes("coverage-gap")
-          ? "coverage_gap"
-          : String(exported.fileName).includes("defect-coverage")
-            ? "defect_coverage"
-            : "results_explorer";
+      : String(exported.fileName).includes("milestone-summary")
+        ? "milestone_summary"
+        : String(exported.fileName).includes("plan-summary")
+          ? "plan_summary"
+          : String(exported.fileName).includes("traceability")
+            ? "traceability"
+            : String(exported.fileName).includes("coverage-gap")
+              ? "coverage_gap"
+              : String(exported.fileName).includes("defect-coverage")
+                ? "defect_coverage"
+                : "results_explorer";
     await recordActivityEvent(deps.prisma, {
       projectId,
       actorUserId: user.id,

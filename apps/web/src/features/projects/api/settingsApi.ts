@@ -1,5 +1,6 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Ok, Paged } from "../../../shared/api/types";
+import { downloadCsv } from "./importExportApi";
 
 type TestStatus = "untested" | "passed" | "failed" | "blocked" | "retest";
 
@@ -38,12 +39,57 @@ export type CaseTemplateRow = {
 
 export type WebhookRow = {
   id: string;
+  scope?: "project" | "global";
   event: string;
   targetUrl: string;
   secretPrefix?: string;
   isActive: boolean;
+  consecutiveFailures?: number;
+  disabledAt?: string | null;
+  lastFailureAt?: string | null;
+  autoDisabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type EmailOutboxRow = {
+  id: string;
+  userId: string;
+  recipientEmail: string;
+  kind: string;
+  subject: string;
+  bodyPreview: string;
+  status: string;
+  attemptNo: number;
+  nextRetryAt: string | null;
+  sentAt: string | null;
+  error: string | null;
+  notificationIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmailOutboxQuery = {
+  page?: number;
+  pageSize?: number;
+  status?: "pending" | "sent" | "failed";
+  kind?: "immediate" | "digest";
+  recipientEmail?: string;
+};
+
+export type EmailOutboxResult = {
+  items: EmailOutboxRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type DigestPreview = {
+  bodyText: string;
+  notificationCount: number;
+  recipientEmail: string | null;
+  digestEnabled?: boolean;
 };
 
 export type WebhookAttemptRow = {
@@ -72,6 +118,8 @@ export type ProjectMemberRow = {
 
 export type AuditLogRow = {
   id: string;
+  projectId?: string | null;
+  projectName?: string | null;
   action: string;
   actorUserId: string | null;
   entityType: string;
@@ -83,10 +131,15 @@ export type AuditLogRow = {
 export type AuditLogQuery = {
   page?: number;
   pageSize?: number;
+  scope?: "project" | "all";
   action?: string;
   entityType?: string;
   entityId?: string;
   actorUserId?: string;
+  actorEmail?: string;
+  actionExact?: boolean;
+  entityTypeExact?: boolean;
+  changesContains?: string;
   createdFrom?: string;
   createdTo?: string;
   q?: string;
@@ -299,6 +352,7 @@ export async function fetchWebhookEvents(projectId: string): Promise<string[]> {
 }
 
 export async function createWebhook(projectId: string, input: {
+  scope?: "project" | "global";
   event: string;
   targetUrl: string;
   secret?: string;
@@ -314,7 +368,7 @@ export async function createWebhook(projectId: string, input: {
 export async function updateWebhook(
   projectId: string,
   webhookId: string,
-  input: Partial<{ event: string; targetUrl: string; secret: string; isActive: boolean }>
+  input: Partial<{ scope: "project" | "global"; event: string; targetUrl: string; secret: string; isActive: boolean }>
 ): Promise<WebhookRow> {
   const res = await apiFetch<Ok<WebhookRow>>(`/api/projects/${projectId}/settings/webhooks/${webhookId}`, {
     method: "PATCH",
@@ -363,10 +417,15 @@ export async function fetchAuditLogs(projectId: string, query: AuditLogQuery = {
   const params = new URLSearchParams();
   if (query.page) params.set("page", String(query.page));
   if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.scope) params.set("scope", query.scope);
   if (query.action?.trim()) params.set("action", query.action.trim());
   if (query.entityType?.trim()) params.set("entityType", query.entityType.trim());
   if (query.entityId?.trim()) params.set("entityId", query.entityId.trim());
   if (query.actorUserId?.trim()) params.set("actorUserId", query.actorUserId.trim());
+  if (query.actorEmail?.trim()) params.set("actorEmail", query.actorEmail.trim());
+  if (query.actionExact) params.set("actionExact", "true");
+  if (query.entityTypeExact) params.set("entityTypeExact", "true");
+  if (query.changesContains?.trim()) params.set("changesContains", query.changesContains.trim());
   if (query.createdFrom?.trim()) params.set("createdFrom", query.createdFrom.trim());
   if (query.createdTo?.trim()) params.set("createdTo", query.createdTo.trim());
   if (query.q?.trim()) params.set("q", query.q.trim());
@@ -377,14 +436,88 @@ export async function fetchAuditLogs(projectId: string, query: AuditLogQuery = {
     items: res.data.items.map((row) => ({
       ...row,
       id: String(row.id),
+      projectId: row.projectId ? String(row.projectId) : null,
       actorUserId: row.actorUserId ? String(row.actorUserId) : null,
       entityId: String(row.entityId)
     }))
   };
 }
 
-export async function fetchAuditLogFilterOptions(projectId: string): Promise<AuditLogFilterOptions> {
-  const res = await apiFetch<Ok<AuditLogFilterOptions>>(`/api/projects/${projectId}/settings/audit-log-filters`);
+export async function fetchAuditLogFilterOptions(
+  projectId: string,
+  scope: AuditLogQuery["scope"] = "project"
+): Promise<AuditLogFilterOptions> {
+  const suffix = scope === "all" ? "?scope=all" : "";
+  const res = await apiFetch<Ok<AuditLogFilterOptions>>(`/api/projects/${projectId}/settings/audit-log-filters${suffix}`);
+  return res.data;
+}
+
+function auditQueryParams(query: AuditLogQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.action?.trim()) params.set("action", query.action.trim());
+  if (query.scope) params.set("scope", query.scope);
+  if (query.entityType?.trim()) params.set("entityType", query.entityType.trim());
+  if (query.entityId?.trim()) params.set("entityId", query.entityId.trim());
+  if (query.actorUserId?.trim()) params.set("actorUserId", query.actorUserId.trim());
+  if (query.actorEmail?.trim()) params.set("actorEmail", query.actorEmail.trim());
+  if (query.actionExact) params.set("actionExact", "true");
+  if (query.entityTypeExact) params.set("entityTypeExact", "true");
+  if (query.changesContains?.trim()) params.set("changesContains", query.changesContains.trim());
+  if (query.createdFrom?.trim()) params.set("createdFrom", query.createdFrom.trim());
+  if (query.createdTo?.trim()) params.set("createdTo", query.createdTo.trim());
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  return params;
+}
+
+export async function downloadAuditLogsCsv(projectId: string, query: AuditLogQuery = {}) {
+  const params = auditQueryParams(query);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  await downloadCsv(
+    `/api/projects/${projectId}/settings/audit-logs/export.csv${suffix}`,
+    `${query.scope === "all" ? "all-projects" : `project-${projectId}`}-audit-logs.csv`
+  );
+}
+
+export async function pruneAuditLogs(projectId: string, olderThanDays: number): Promise<{ deleted: number; cutoff: string | null }> {
+  const res = await apiFetch<Ok<{ deleted: number; cutoff: string | null }>>(
+    `/api/projects/${projectId}/settings/audit-logs/retention-prune`,
+    {
+      method: "POST",
+      body: { olderThanDays }
+    }
+  );
+  return res.data;
+}
+
+export async function fetchEmailOutbox(projectId: string, query: EmailOutboxQuery = {}): Promise<EmailOutboxResult> {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.status) params.set("status", query.status);
+  if (query.kind) params.set("kind", query.kind);
+  if (query.recipientEmail?.trim()) params.set("recipientEmail", query.recipientEmail.trim());
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await apiFetch<Ok<EmailOutboxResult>>(`/api/projects/${projectId}/settings/email-outbox${suffix}`);
+  return {
+    ...res.data,
+    items: res.data.items.map((row) => ({
+      ...row,
+      id: String(row.id),
+      userId: String(row.userId)
+    }))
+  };
+}
+
+export async function retryEmailOutbox(projectId: string, outboxId: string): Promise<EmailOutboxRow> {
+  const res = await apiFetch<Ok<EmailOutboxRow>>(
+    `/api/projects/${projectId}/settings/email-outbox/${outboxId}/retry`,
+    { method: "POST" }
+  );
+  return { ...res.data, id: String(res.data.id), userId: String(res.data.userId) };
+}
+
+export async function fetchDigestPreview(projectId: string): Promise<DigestPreview> {
+  const res = await apiFetch<Ok<DigestPreview>>(`/api/projects/${projectId}/settings/email-outbox/digest-preview`);
   return res.data;
 }
 

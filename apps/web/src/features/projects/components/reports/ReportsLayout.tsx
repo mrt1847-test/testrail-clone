@@ -16,6 +16,12 @@ export function ReportsLayout() {
         <NavLink to={`${base}/runs`} className={linkCls}>
           Run summary
         </NavLink>
+        <NavLink to={`${base}/milestones`} className={linkCls}>
+          Milestones
+        </NavLink>
+        <NavLink to={`${base}/plans`} className={linkCls}>
+          Plans
+        </NavLink>
         <NavLink to={`${base}/traceability`} className={linkCls}>
           Traceability
         </NavLink>
@@ -27,6 +33,9 @@ export function ReportsLayout() {
         </NavLink>
         <NavLink to={`${base}/explorer`} className={linkCls}>
           Results explorer
+        </NavLink>
+        <NavLink to={`${base}/saved`} className={linkCls}>
+          Saved & exports
         </NavLink>
       </nav>
       <Outlet />

@@ -1,12 +1,32 @@
 import { AppError } from "../common/errors/appError.js";
+import type { CompositionMode } from "../modules/runs/runComposition.js";
 import type { TestCase, TestInstance } from "../modules/runs/runs.types.js";
 
 export function assertRunCreationInput(
   includeAll: boolean,
   caseIds?: bigint[],
   excludedCaseIds?: bigint[],
-  excludedSectionIds?: bigint[]
+  excludedSectionIds?: bigint[],
+  compositionMode: CompositionMode = "static"
 ) {
+  if (compositionMode === "include_all_live") {
+    if (!includeAll) {
+      throw new AppError("VALIDATION_ERROR", "includeAll must be true for include_all_live composition", 400);
+    }
+    if (caseIds && caseIds.length > 0) {
+      throw new AppError("VALIDATION_ERROR", "caseIds is not allowed for include_all_live composition", 400);
+    }
+    return;
+  }
+  if (compositionMode === "dynamic_filter") {
+    if (caseIds && caseIds.length > 0) {
+      throw new AppError("VALIDATION_ERROR", "caseIds is not allowed for dynamic_filter composition; cases are derived from the filter", 400);
+    }
+    if (includeAll) {
+      throw new AppError("VALIDATION_ERROR", "includeAll must be false for dynamic_filter composition", 400);
+    }
+    return;
+  }
   if (!includeAll && (!caseIds || caseIds.length === 0)) {
     throw new AppError("VALIDATION_ERROR", "caseIds is required when includeAll is false");
   }

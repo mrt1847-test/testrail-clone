@@ -1,4 +1,5 @@
-import { API_BASE, apiFetch, getAccessToken } from "../../../shared/api/http";
+import { apiFetch } from "../../../shared/api/http";
+import { uploadFileToPresignedUrl } from "../../../shared/api/upload";
 import type { Ok, Paged } from "../../../shared/api/types";
 import type {
   ResultAttachmentItem,
@@ -17,6 +18,17 @@ type ApiRun = {
   environment?: string | null;
   assignedTo?: string | null;
   milestoneId?: string | null;
+  composition?: {
+    compositionMode: "static" | "include_all_live" | "dynamic_filter";
+    filterDefinition?: {
+      priority?: "low" | "medium" | "high";
+      state?: "active" | "archived";
+      includedSectionIds?: string[];
+    };
+    lastSyncedAt?: string;
+    lastSyncAdded?: number;
+    lastSyncRemoved?: number;
+  } | null;
 };
 
 type ApiInstance = {
@@ -74,6 +86,8 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         environment: run.environment ?? undefined,
         milestoneId: run.milestoneId ? String(run.milestoneId) : null,
         assignedTo: run.assignedTo ? String(run.assignedTo) : null,
+        includeAll: run.includeAll,
+        composition: run.composition ?? null,
         progress,
         failed,
         createdAt: "—"
@@ -131,6 +145,57 @@ export async function addRunResult(input: {
   });
 }
 
+export type BulkRunResultItem = {
+  index: number;
+  caseId: string;
+  status: "saved" | "failed";
+  testId?: string;
+  resultId?: string;
+  errorCode?: string;
+  message?: string;
+};
+
+export type BulkRunResultsResponse = {
+  runId: string;
+  atomic: boolean;
+  total: number;
+  saved: number;
+  failed: number;
+  items: BulkRunResultItem[];
+};
+
+export async function bulkAddRunResults(input: {
+  runId: string;
+  atomic?: boolean;
+  results: Array<{
+    caseId: string;
+    status: "passed" | "failed" | "blocked" | "retest" | "untested";
+    comment?: string;
+    elapsed?: string;
+    version?: string;
+    defects?: string[];
+    customValues?: Record<string, string | number | boolean | null>;
+  }>;
+}): Promise<BulkRunResultsResponse> {
+  const res = await apiFetch<BulkRunResultsResponse>(`/api/runs/${input.runId}/results/bulk`, {
+    method: "POST",
+    body: {
+      atomic: input.atomic ?? false,
+      results: input.results
+    }
+  });
+  return {
+    ...res,
+    runId: String(res.runId),
+    items: res.items.map((item) => ({
+      ...item,
+      caseId: String(item.caseId),
+      testId: item.testId != null ? String(item.testId) : undefined,
+      resultId: item.resultId != null ? String(item.resultId) : undefined
+    }))
+  };
+}
+
 export async function closeRun(runId: string) {
   return apiFetch(`/api/runs/${runId}/close`, { method: "POST" });
 }
@@ -153,6 +218,18 @@ export async function updateTestAssignee(testId: string, assignedTo: string | nu
   return apiFetch(`/api/tests/${testId}/assignee`, {
     method: "PATCH",
     body: { assignedTo }
+  });
+}
+
+export async function fetchRunTestSubscriptions(runId: string): Promise<string[]> {
+  const res = await apiFetch<Ok<{ testIds: string[] }>>(`/api/runs/${runId}/test-subscriptions`);
+  return (res.data.testIds ?? []).map(String);
+}
+
+export async function updateTestSubscription(testId: string, subscribed: boolean) {
+  return apiFetch<Ok<{ testId: string; subscribed: boolean }>>(`/api/tests/${testId}/subscription`, {
+    method: "PUT",
+    body: { subscribed }
   });
 }
 
@@ -188,7 +265,26 @@ export type CreateRunInput = {
   excludedSectionIds?: string[];
   milestoneId?: string | null;
   environment?: string;
+  compositionMode?: "static" | "include_all_live" | "dynamic_filter";
+  filterDefinition?: {
+    priority?: "low" | "medium" | "high";
+    state?: "active" | "archived";
+    includedSectionIds?: string[];
+  };
 };
+
+export async function syncRunComposition(projectId: string, runId: string) {
+  const res = await apiFetch<
+    Ok<{
+      runId: string;
+      skipped: boolean;
+      added: number;
+      removed: number;
+      reason?: string;
+    }>
+  >(`/api/projects/${projectId}/runs/${runId}/sync-composition`, { method: "POST" });
+  return res.data;
+}
 
 export async function createRun(input: CreateRunInput): Promise<RunSummary> {
   const created = await apiFetch<{ run: ApiRun; instances: ApiInstance[] }>(`/api/projects/${input.projectId}/runs`, {
@@ -202,7 +298,9 @@ export async function createRun(input: CreateRunInput): Promise<RunSummary> {
       includedSectionIds: input.includedSectionIds,
       excludedSectionIds: input.excludedSectionIds,
       milestoneId: input.milestoneId ?? undefined,
-      environment: input.environment
+      environment: input.environment,
+      compositionMode: input.compositionMode,
+      filterDefinition: input.filterDefinition
     }
   });
   return {
@@ -286,10 +384,13 @@ export async function addCasesToRun(runId: string, caseIds: string[]) {
 }
 
 export async function removeTestFromRun(runId: string, testId: string, confirmDataLoss?: boolean) {
-  return apiFetch<Ok<{ removed: boolean; hadResults: boolean }>>(`/api/runs/${runId}/remove-test`, {
-    method: "POST",
-    body: { testId, confirmDataLoss }
-  });
+  return apiFetch<Ok<{ removed: boolean; hadResults: boolean; caseId: string; titleSnapshot: string }>>(
+    `/api/runs/${runId}/remove-test`,
+    {
+      method: "POST",
+      body: { testId, confirmDataLoss }
+    }
+  );
 }
 
 type ApiResultStep = {
@@ -361,7 +462,11 @@ type PresignAttachmentResponse = {
   };
 };
 
-export async function uploadResultAttachmentViaPresign(resultId: string, file: File) {
+export async function uploadResultAttachmentViaPresign(
+  resultId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+) {
   const presign = await apiFetch<PresignAttachmentResponse>(`/api/results/${resultId}/attachments/presign`, {
     method: "POST",
     body: {
@@ -370,22 +475,10 @@ export async function uploadResultAttachmentViaPresign(resultId: string, file: F
       fileSize: String(file.size)
     }
   });
-  const uploadHeaders: Record<string, string> = {
-    ...(presign.data.headers ?? {}),
-    "Content-Type": file.type || "application/octet-stream"
-  };
-  const accessToken = getAccessToken();
-  if (accessToken && presign.data.uploadUrl.startsWith(API_BASE)) {
-    uploadHeaders.Authorization = `Bearer ${accessToken}`;
-  }
-  const uploadRes = await fetch(presign.data.uploadUrl, {
-    method: presign.data.method,
-    headers: uploadHeaders,
-    body: file
+  await uploadFileToPresignedUrl(file, presign.data, {
+    contentType: file.type || "application/octet-stream",
+    onProgress
   });
-  if (!uploadRes.ok) {
-    throw new Error("attachment upload failed");
-  }
 
   return apiFetch(`/api/attachments`, {
     method: "POST",

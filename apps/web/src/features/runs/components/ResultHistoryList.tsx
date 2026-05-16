@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { AttachmentPreviewDrawer } from "../../../shared/ui/AttachmentPreviewDrawer";
+import { fetchAttachmentDownloadUrl } from "../api/runApi";
 import type { ResultAttachmentItem, ResultDefectLinkItem, TestResultHistoryItem, TestResultStepItem } from "../types";
 
 type ResultHistoryListProps = {
@@ -24,7 +26,7 @@ type ResultHistoryListProps = {
   isPushingDefect: boolean;
   isDeletingDefect: boolean;
   pushedDefectMessage?: string | null;
-  onAddAttachment: (file: File) => void;
+  onAddAttachment: (file: File, onProgress?: (progress: number) => void) => void;
   onOpenAttachmentDownload: (attachmentId: string) => void;
   onDeleteAttachment: (attachmentId: string) => void;
   onAddDefect: (input: { defectKey: string; url?: string }) => void;
@@ -66,9 +68,40 @@ export function ResultHistoryList({
   onDeleteDefect
 }: ResultHistoryListProps) {
   const [selectedAttachmentFile, setSelectedAttachmentFile] = useState<File | null>(null);
+  const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<ResultAttachmentItem | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const [isAttachmentPreviewLoading, setIsAttachmentPreviewLoading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [defectKey, setDefectKey] = useState("");
   const [defectUrl, setDefectUrl] = useState("");
   const [pushProvider, setPushProvider] = useState("custom");
+  const attachmentMutationError =
+    !isAddingAttachment && attachmentUploadProgress !== null && attachmentUploadProgress < 100
+      ? "Upload did not complete. You can retry the selected file."
+      : null;
+
+  const uploadAttachment = (file: File) => {
+    setPendingAttachmentFile(file);
+    setAttachmentUploadProgress(0);
+    onAddAttachment(file, (progress) => setAttachmentUploadProgress(progress));
+  };
+
+  const selectAttachment = async (attachment: ResultAttachmentItem) => {
+    setSelectedAttachment(attachment);
+    setAttachmentPreviewUrl(null);
+    setAttachmentError(null);
+    if (!attachment.contentType?.startsWith("image/")) return;
+    setIsAttachmentPreviewLoading(true);
+    try {
+      setAttachmentPreviewUrl(await fetchAttachmentDownloadUrl(attachment.id));
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Could not load attachment preview");
+    } finally {
+      setIsAttachmentPreviewLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -190,13 +223,35 @@ export function ResultHistoryList({
                 disabled={isAddingAttachment || !selectedAttachmentFile}
                 onClick={() => {
                   if (!selectedAttachmentFile) return;
-                  onAddAttachment(selectedAttachmentFile);
+                  uploadAttachment(selectedAttachmentFile);
                   setSelectedAttachmentFile(null);
                 }}
               >
                 {isAddingAttachment ? "Uploading..." : "Upload"}
               </button>
             </div>
+            {attachmentUploadProgress !== null ? (
+              <div className="mt-2">
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-slate-700 transition-all"
+                    style={{ width: `${Math.max(4, attachmentUploadProgress)}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                  <span>{isAddingAttachment ? `Uploading ${attachmentUploadProgress}%` : "Upload ready"}</span>
+                  {attachmentMutationError && pendingAttachmentFile ? (
+                    <button
+                      type="button"
+                      className="font-medium text-slate-700 underline"
+                      onClick={() => uploadAttachment(pendingAttachmentFile)}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="mt-2 max-h-32 space-y-1 overflow-auto">
               {isAttachmentsLoading ? (
                 <p className="text-xs text-slate-500">Loading attachments...</p>
@@ -209,6 +264,13 @@ export function ResultHistoryList({
                       {item.fileName} - {item.contentType ?? "unknown"} - {item.storagePath}
                     </p>
                     <div className="mt-1 flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px]"
+                        onClick={() => void selectAttachment(item)}
+                      >
+                        Preview
+                      </button>
                       <button
                         type="button"
                         className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] disabled:opacity-50"
@@ -322,6 +384,26 @@ export function ResultHistoryList({
           </>
         )}
       </div>
+      <AttachmentPreviewDrawer
+        open={selectedAttachment != null}
+        attachment={selectedAttachment}
+        title="Evidence attachment"
+        previewUrl={attachmentPreviewUrl}
+        isPreviewLoading={isAttachmentPreviewLoading}
+        isOpening={isOpeningAttachmentDownload}
+        isDeleting={isDeletingAttachment}
+        error={attachmentError}
+        onClose={() => {
+          setSelectedAttachment(null);
+          setAttachmentPreviewUrl(null);
+          setAttachmentError(null);
+        }}
+        onOpen={(attachmentId) => onOpenAttachmentDownload(attachmentId)}
+        onDelete={(attachmentId) => {
+          onDeleteAttachment(attachmentId);
+          setSelectedAttachment(null);
+        }}
+      />
     </div>
   );
 }

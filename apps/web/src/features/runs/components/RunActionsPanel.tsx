@@ -28,6 +28,16 @@ type Props = {
   onReopenRun: () => void;
 };
 
+function bulkFeedbackClass(feedback: BulkResultFeedback) {
+  if (feedback.type === "success") {
+    return "mb-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-900";
+  }
+  if (feedback.type === "partial") {
+    return "mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-950";
+  }
+  return "mb-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-red-900";
+}
+
 export function RunActionsPanel(props: Props) {
   const {
     members,
@@ -55,29 +65,39 @@ export function RunActionsPanel(props: Props) {
     onReopenRun
   } = props;
 
+  const failureRows =
+    bulkFeedback && (bulkFeedback.type === "partial" || bulkFeedback.type === "error")
+      ? bulkFeedback.failures ?? []
+      : [];
+
   return (
-    <div className="mt-6 space-y-2 border-t border-slate-100 pt-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Run actions</h4>
+    <div className="space-y-2">
       <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
         <p className="mb-2 font-medium text-slate-700">Bulk manual result entry</p>
         {bulkFeedback ? (
-          <div
-            className={
-              bulkFeedback.type === "success"
-                ? "mb-2 flex items-start justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-900"
-                : "mb-2 flex items-start justify-between gap-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-red-900"
-            }
-            role="status"
-          >
-            <span>{bulkFeedback.message}</span>
-            {onDismissBulkFeedback ? (
-              <button
-                type="button"
-                className="shrink-0 underline opacity-80 hover:opacity-100"
-                onClick={onDismissBulkFeedback}
-              >
-                Dismiss
-              </button>
+          <div className={bulkFeedbackClass(bulkFeedback)} role="status">
+            <div className="flex items-start justify-between gap-2">
+              <p>{bulkFeedback.message}</p>
+              {onDismissBulkFeedback ? (
+                <button
+                  type="button"
+                  className="shrink-0 underline opacity-80 hover:opacity-100"
+                  onClick={onDismissBulkFeedback}
+                >
+                  Dismiss
+                </button>
+              ) : null}
+            </div>
+            {failureRows.length > 0 ? (
+              <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto border-t border-current/10 pt-2 text-[11px]">
+                {failureRows.map((row) => (
+                  <li key={row.caseId}>
+                    <span className="font-medium">{row.caseCode}</span>
+                    <span className="text-current/80"> — {row.title}: </span>
+                    <span>{row.message}</span>
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </div>
         ) : null}
@@ -102,6 +122,7 @@ export function RunActionsPanel(props: Props) {
             />
           </div>
           <button
+            type="button"
             className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
             disabled={!canBulkSubmit}
             onClick={onBulkSubmit}
@@ -124,13 +145,13 @@ export function RunActionsPanel(props: Props) {
               </option>
             ))}
           </select>
-          <button className="rounded border border-slate-300 px-2 py-1" disabled={isAssignPending} onClick={onAssignRun}>
+          <button type="button" className="rounded border border-slate-300 px-2 py-1" disabled={isAssignPending} onClick={onAssignRun}>
             Assign
           </button>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button className="rounded border border-slate-300 px-2 py-1 text-xs" disabled={isRerunPending} onClick={onOpenRerunDialog}>
+        <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs" disabled={isRerunPending} onClick={onOpenRerunDialog}>
           Rerun…
         </button>
         <button

@@ -23,17 +23,19 @@ export function StepResultEditor({ caseSteps, isCaseStepsLoading, stepResults, o
   }
 
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-slate-700">
-          Step results
-          {isCaseStepsLoading ? <span className="ml-1 font-normal text-slate-500">loading case steps...</span> : null}
-        </p>
-        <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" onClick={addStepResult}>
-          Add step
+    <details className="group border-t border-slate-100 pt-2">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-slate-700">
+        <span>
+          Step results ({stepResults.length})
+          {isCaseStepsLoading ? <span className="ml-1 font-normal text-slate-500">loading...</span> : null}
+        </span>
+        <span className="text-slate-400 group-open:hidden">Show</span>
+        <span className="hidden text-slate-400 group-open:inline">Hide</span>
+      </summary>
+      <div className="mt-3 space-y-2">
+        <button type="button" className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700" onClick={addStepResult}>
+          Add step result
         </button>
-      </div>
-      <div className="space-y-2">
         {stepResults.map((step, index) => {
           const context = caseSteps.find((item, itemIndex) => (item.stepOrder ?? itemIndex + 1) === step.stepOrder);
           return (
@@ -84,8 +86,8 @@ export function StepResultEditor({ caseSteps, isCaseStepsLoading, stepResults, o
                   Remove
                 </button>
               </div>
-              <input
-                className="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+              <textarea
+                className="mt-2 min-h-16 w-full resize-y rounded border border-slate-300 px-2 py-1 text-xs"
                 placeholder="step comment"
                 value={step.comment}
                 onChange={(e) => updateStepResult(step.id, { comment: e.target.value })}
@@ -94,6 +96,6 @@ export function StepResultEditor({ caseSteps, isCaseStepsLoading, stepResults, o
           );
         })}
       </div>
-    </div>
+    </details>
   );
 }

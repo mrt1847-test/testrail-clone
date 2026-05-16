@@ -1,6 +1,8 @@
 import { buildApp } from "./app.js";
 import { describeDatabaseUrl, env } from "./config/env.js";
 import { getPrismaClient } from "./db/prisma.js";
+import { startEmailDeliveryWorker } from "./modules/notifications/emailDelivery.worker.js";
+import { startScheduledReportWorker } from "./modules/reports/scheduledReport.worker.js";
 import { startWebhookDeliveryWorker } from "./modules/settings/webhookDelivery.worker.js";
 
 const app = buildApp();
@@ -8,6 +10,8 @@ const app = buildApp();
 if (!env.useInMemoryRepository) {
   const prisma = getPrismaClient();
   startWebhookDeliveryWorker({ prisma });
+  startEmailDeliveryWorker({ prisma });
+  startScheduledReportWorker({ prisma });
 }
 
 // eslint-disable-next-line no-console

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { compositionModeSchema, runCaseFilterSchema } from "./runComposition.js";
+
 export const createRunSchema = z.object({
   projectId: z.coerce.bigint(),
   suiteId: z.coerce.bigint(),
@@ -12,7 +14,9 @@ export const createRunSchema = z.object({
   /** 섹션 루트 ID(하위 섹션 포함). includeAll이면 스위트 내 해당 트리만, false면 caseIds와 교집합 */
   includedSectionIds: z.array(z.coerce.bigint()).optional(),
   /** includeAll일 때 제외할 섹션 서브트리 루트 */
-  excludedSectionIds: z.array(z.coerce.bigint()).optional()
+  excludedSectionIds: z.array(z.coerce.bigint()).optional(),
+  compositionMode: compositionModeSchema.optional(),
+  filterDefinition: runCaseFilterSchema.optional()
 });
 
 export const createProjectRunSchema = createRunSchema.omit({ projectId: true });

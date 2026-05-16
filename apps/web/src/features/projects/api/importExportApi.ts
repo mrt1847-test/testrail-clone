@@ -65,7 +65,52 @@ export async function fetchExportJobs(projectId: string): Promise<ImportExportJo
   return res.data.map((row) => ({ ...row, id: String(row.id), projectId: String(row.projectId) }));
 }
 
-async function downloadCsv(path: string, filename: string) {
+export async function fetchReportExportJobs(projectId: string): Promise<ImportExportJobRow[]> {
+  const res = await apiFetch<Paged<ImportExportJobRow>>(
+    `/api/projects/${projectId}/reports/export-jobs?page=1&pageSize=30`
+  );
+  return res.data.map((row) => ({ ...row, id: String(row.id), projectId: String(row.projectId) }));
+}
+
+export type ReportExportJobRequest = {
+  reportType: string;
+  format?: "csv";
+  runId?: string;
+  caseId?: string;
+  testId?: string;
+  status?: string;
+  source?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  q?: string;
+  maxRows?: number;
+};
+
+export async function requestReportExportJob(
+  projectId: string,
+  body: ReportExportJobRequest
+): Promise<{ jobId: string; downloadPath: string }> {
+  const res = await apiFetch<
+    Ok<{
+      job: { id: string | number };
+      downloadUrl: string;
+    }>
+  >(`/api/projects/${projectId}/reports/export`, {
+    method: "POST",
+    body: { format: "csv", ...body }
+  });
+  const jobId = String(res.data.job.id);
+  return {
+    jobId,
+    downloadPath: `/api/projects/${projectId}/export-jobs/${jobId}/download`
+  };
+}
+
+export async function downloadExportJob(projectId: string, jobId: string, filename: string) {
+  await downloadCsv(`/api/projects/${projectId}/export-jobs/${jobId}/download`, filename);
+}
+
+export async function downloadCsv(path: string, filename: string) {
   const headers: Record<string, string> = {};
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;

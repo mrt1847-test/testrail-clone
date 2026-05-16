@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 
 import { paginationQuerySchema } from "../../common/types/pagination.js";
@@ -26,6 +27,15 @@ import {
 import { calculateRunSummary } from "../reports/reports.service.js";
 import type { RunsRepository } from "./runs.repository.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
+import {
+  listSubscribedTestIdsForRun,
+  setTestSubscription
+} from "../subscriptions/testSubscriptions.service.js";
+import { recordAuditLog } from "../settings/auditLog.service.js";
+
+const testSubscriptionBodySchema = z.object({
+  subscribed: z.boolean()
+});
 
 async function projectIdForRun(repo: RunsRepository, runId: bigint) {
   const run = await repo.getRun(runId);
@@ -138,6 +148,17 @@ export async function registerRunsRoutes(
     }
     const hasPatch = body.name !== undefined || body.assignedTo !== undefined;
     if (hasPatch) {
+      await recordAuditLog(deps.prisma, {
+        projectId: updated.projectId,
+        actorUserId: user.id,
+        action: body.assignedTo !== undefined ? "run.assignment.updated" : "run.updated",
+        entityType: "run",
+        entityId: updated.id,
+        changes: {
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {})
+        }
+      });
       await recordActivityEvent(deps.prisma, {
         projectId: updated.projectId,
         actorUserId: user.id,
@@ -149,7 +170,12 @@ export async function registerRunsRoutes(
         payload: {
           runId: updated.id.toString(),
           ...(body.name !== undefined ? { name: body.name } : {}),
-          ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {})
+          ...(body.assignedTo !== undefined
+            ? {
+                assignedTo: body.assignedTo?.toString() ?? null,
+                assignedToUserId: body.assignedTo?.toString() ?? null
+              }
+            : {})
         },
         ...(body.assignedTo !== undefined ? { notificationType: "assignment" as const } : {})
       });
@@ -163,6 +189,14 @@ export async function registerRunsRoutes(
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
     const updated = await deps.runsService.updateRun(runId, { assignedTo: body.assignedTo ?? null });
+    await recordAuditLog(deps.prisma, {
+      projectId: updated.projectId,
+      actorUserId: user.id,
+      action: "run.assignment.updated",
+      entityType: "run",
+      entityId: updated.id,
+      changes: { assignedTo: updated.assignedTo?.toString() ?? null }
+    });
     await recordActivityEvent(deps.prisma, {
       projectId: updated.projectId,
       actorUserId: user.id,
@@ -171,7 +205,11 @@ export async function registerRunsRoutes(
       eventType: "run.assigned",
       title: "Run assignment changed",
       body: updated.name,
-      payload: { runId: updated.id.toString(), assignedTo: updated.assignedTo?.toString() ?? null },
+      payload: {
+        runId: updated.id.toString(),
+        assignedTo: updated.assignedTo?.toString() ?? null,
+        assignedToUserId: updated.assignedTo?.toString() ?? null
+      },
       notificationType: "assignment"
     });
     return reply.send(toJsonSafe(ok(updated)));
@@ -218,10 +256,31 @@ export async function registerRunsRoutes(
         caseId: item.caseId as bigint
       }))
     });
+    let failedCount = 0;
     for (const item of res.items) {
       if (item.status === "saved") {
         await recordResultActivity(deps.prisma, { resultId: item.resultId, actorUserId: user.id });
+      } else {
+        failedCount += 1;
       }
+    }
+    if (projectId && res.saved > 0) {
+      await recordActivityEvent(deps.prisma, {
+        projectId,
+        actorUserId: user.id,
+        entityType: "run",
+        entityId: params.runId,
+        eventType: "result.bulk_created",
+        title: "Bulk results added",
+        body: `${res.saved} saved, ${failedCount} failed of ${res.total}`,
+        payload: {
+          runId: params.runId.toString(),
+          saved: res.saved,
+          failed: failedCount,
+          total: res.total,
+          atomic: res.atomic
+        }
+      });
     }
     return reply.send(toJsonSafe(res));
   });
@@ -276,6 +335,35 @@ export async function registerRunsRoutes(
       body: closed.name
     });
     return reply.send(toJsonSafe(ok(closed)));
+  });
+
+  app.post("/api/projects/:projectId/runs/:runId/sync-composition", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const run = await deps.repo.getRun(runId);
+    if (!run || run.projectId !== projectId) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const result = await deps.runsService.syncRunComposition(runId);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: runId,
+      eventType: "run.composition_synced",
+      title: "Run composition synced",
+      body: `+${result.added} / -${result.removed}`,
+      payload: {
+        runId: runId.toString(),
+        skipped: result.skipped,
+        added: result.added,
+        removed: result.removed,
+        reason: result.reason ?? null
+      }
+    });
+    return reply.send(toJsonSafe(ok(result)));
   });
 
   app.post("/api/runs/:runId/reopen", async (req, reply) => {
@@ -386,6 +474,18 @@ export async function registerRunsRoutes(
         select: { caseId: true, run: { select: { id: true, projectId: true } }, titleSnapshot: true }
       });
       if (instance) {
+        await recordAuditLog(deps.prisma, {
+          projectId: instance.run.projectId,
+          actorUserId: user.id,
+          action: "test.assignment.updated",
+          entityType: "test",
+          entityId: testId,
+          changes: {
+            runId: instance.run.id.toString(),
+            caseId: instance.caseId.toString(),
+            assignedTo: assignedTo?.toString() ?? null
+          }
+        });
         await recordActivityEvent(deps.prisma, {
           projectId: instance.run.projectId,
           actorUserId: user.id,
@@ -398,7 +498,8 @@ export async function registerRunsRoutes(
             runId: instance.run.id.toString(),
             testId: testId.toString(),
             caseId: instance.caseId.toString(),
-            assignedTo: assignedTo?.toString() ?? null
+            assignedTo: assignedTo?.toString() ?? null,
+            assignedToUserId: assignedTo?.toString() ?? null
           },
           notificationType: "assignment"
         });
@@ -412,5 +513,50 @@ export async function registerRunsRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const rows = await deps.runsService.listAssignedToMe(projectId, user.id);
     return reply.send(toJsonSafe(ok({ items: rows })));
+  });
+
+  app.get("/api/runs/:runId/test-subscriptions", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    if (!deps.prisma) {
+      return reply.send(toJsonSafe(ok({ testIds: [] as string[] })));
+    }
+    const testIds = await listSubscribedTestIdsForRun(deps.prisma, { runId, userId: user.id });
+    return reply.send(toJsonSafe(ok({ testIds: testIds.map((id) => id.toString()) })));
+  });
+
+  app.put("/api/tests/:testId/subscription", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { testId } = testIdParamSchema.parse(req.params);
+    const body = testSubscriptionBodySchema.parse(req.body ?? {});
+    if (!deps.prisma) {
+      return reply.code(501).send({ code: "NOT_AVAILABLE", message: "subscriptions require database mode" });
+    }
+    const instance = await deps.prisma.testInstance.findFirst({
+      where: { id: testId, deletedAt: null },
+      select: { run: { select: { projectId: true } } }
+    });
+    if (!instance) return reply.code(404).send({ code: "NOT_FOUND", message: "test not found" });
+    try {
+      const result = await setTestSubscription(deps.prisma, {
+        projectId: instance.run.projectId,
+        userId: user.id,
+        testId,
+        subscribed: body.subscribed
+      });
+      return reply.send(
+        toJsonSafe(
+          ok({
+            testId: result.testId.toString(),
+            subscribed: result.subscribed
+          })
+        )
+      );
+    } catch (e) {
+      if (e instanceof Error && e.message === "TEST_NOT_FOUND") {
+        return reply.code(404).send({ code: "NOT_FOUND", message: "test not found" });
+      }
+      throw e;
+    }
   });
 }

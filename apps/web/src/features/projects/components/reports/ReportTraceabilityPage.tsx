@@ -1,13 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
-import { ReportPageHeader, ReportSummaryStrip, ReportTablePanel } from "./ReportChrome";
+import {
+  ReportExportButton,
+  ReportSaveViewButton,
+  ReportFilterBar,
+  ReportPageHeader,
+  ReportSummaryStrip,
+  ReportTablePanel
+} from "./ReportChrome";
 
 type Row = {
   requirementId: string;
@@ -24,6 +31,10 @@ type Row = {
 
 export function ReportTraceabilityPage() {
   const { projectId = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [scopeFilter, setScopeFilter] = useState("all");
+
   const q = useQuery({
     queryKey: reportKeys.traceability(projectId),
     queryFn: async (): Promise<Row[]> => {
@@ -35,20 +46,34 @@ export function ReportTraceabilityPage() {
 
   const rows = q.data ?? [];
 
+  const filteredRows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (scopeFilter === "with_run" && row.runId == null) return false;
+      if (scopeFilter === "no_run" && row.runId != null) return false;
+      if (scopeFilter === "with_defects" && row.defects.length === 0) return false;
+      if (!needle) return true;
+      const haystack = [row.requirementKey, row.requirementTitle, row.caseTitle, row.runName ?? ""]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [rows, search, scopeFilter]);
+
   const summaryItems = useMemo(() => {
-    if (rows.length === 0) return [];
-    const reqIds = new Set(rows.map((r) => r.requirementId));
-    const caseIds = new Set(rows.map((r) => r.caseId));
-    const withRun = rows.filter((r) => r.runId != null).length;
-    const withDefect = rows.filter((r) => r.defects.length > 0).length;
+    if (filteredRows.length === 0) return [];
+    const reqIds = new Set(filteredRows.map((r) => r.requirementId));
+    const caseIds = new Set(filteredRows.map((r) => r.caseId));
+    const withRun = filteredRows.filter((r) => r.runId != null).length;
+    const withDefect = filteredRows.filter((r) => r.defects.length > 0).length;
     return [
-      { label: "Links", value: rows.length, tone: "neutral" as const, hint: "Requirement × case rows" },
+      { label: "Links", value: filteredRows.length, tone: "neutral" as const, hint: "Requirement × case rows" },
       { label: "Requirements", value: reqIds.size, tone: "violet" as const },
       { label: "Cases", value: caseIds.size, tone: "neutral" as const },
       { label: "With run", value: withRun, tone: "emerald" as const },
       { label: "With defects", value: withDefect, tone: "rose" as const }
     ];
-  }, [rows]);
+  }, [filteredRows]);
 
   if (q.isLoading) return <LoadingState message="Loading traceability…" />;
   if (q.isError) return <ErrorState title="Could not load traceability" onRetry={() => void q.refetch()} />;
@@ -59,10 +84,49 @@ export function ReportTraceabilityPage() {
         title="Traceability"
         description="Requirement links to cases and the latest execution context (run, status, defects)."
       />
+      <ReportFilterBar
+        fields={[
+          {
+            kind: "search",
+            id: "q",
+            label: "Search",
+            value: search,
+            onChange: setSearch,
+            placeholder: "Requirement, case, or run…"
+          },
+          {
+            kind: "select",
+            id: "scope",
+            label: "Scope",
+            value: scopeFilter,
+            onChange: setScopeFilter,
+            options: [
+              { value: "all", label: "All links" },
+              { value: "with_run", label: "With run" },
+              { value: "no_run", label: "No run yet" },
+              { value: "with_defects", label: "With defects" }
+            ]
+          }
+        ]}
+      />
       <ReportSummaryStrip items={summaryItems} />
-      <ReportTablePanel title="Matrix">
-        {rows.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No requirement links.</p>
+      <ReportTablePanel
+        title="Matrix"
+        toolbar={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ReportSaveViewButton
+              projectId={projectId}
+              reportType="traceability"
+              filters={{ ui: { search, scope: scopeFilter } }}
+            />
+            <ReportExportButton projectId={projectId} reportType="traceability" disabled={rows.length === 0} />
+          </div>
+        }
+      >
+        {filteredRows.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">
+            {rows.length === 0 ? "No requirement links." : "No rows match the current filters."}
+          </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
@@ -76,7 +140,7 @@ export function ReportTraceabilityPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {filteredRows.map((row) => (
                   <tr key={`${row.requirementId}-${row.caseId}`} className="border-b border-slate-100">
                     <td className="py-2 pr-2">
                       <p className="font-medium text-slate-900">{row.requirementKey}</p>
@@ -89,7 +153,10 @@ export function ReportTraceabilityPage() {
                     </td>
                     <td className="py-2 pr-2">
                       {row.runId && row.runName ? (
-                        <Link className="text-indigo-800 hover:underline" to={`/projects/${projectId}/runs/${row.runId}`}>
+                        <Link
+                          className="text-indigo-800 hover:underline"
+                          to={`/projects/${projectId}/runs/${row.runId}${row.testId ? `?testId=${encodeURIComponent(row.testId)}` : ""}`}
+                        >
                           {row.runName}
                         </Link>
                       ) : (

@@ -1,5 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { recordWebhookDeliveryFailure, recordWebhookDeliverySuccess } from "./webhookFailure.service.js";
+
 const MAX_ATTEMPTS = 8;
 
 function backoffMs(attemptNo: number) {
@@ -70,36 +72,41 @@ export function startWebhookDeliveryWorker(opts: { prisma: PrismaClient; interva
               updatedAt: new Date()
             }
           });
+          await recordWebhookDeliverySuccess(opts.prisma, attempt.webhookId);
         } else {
           const nextAttemptNo = attempt.attemptNo + 1;
           const next = new Date(Date.now() + backoffMs(nextAttemptNo));
+          const exhausted = nextAttemptNo > MAX_ATTEMPTS;
           await opts.prisma.webhookDeliveryAttempt.update({
             where: { id: attempt.id },
             data: {
               attemptNo: nextAttemptNo,
-              status: nextAttemptNo > MAX_ATTEMPTS ? "failed" : "pending",
+              status: exhausted ? "failed" : "pending",
               responseStatus: res.status,
               responseBody: responseText,
               error: `http ${String(res.status)}`,
-              nextRetryAt: nextAttemptNo > MAX_ATTEMPTS ? null : next,
+              nextRetryAt: exhausted ? null : next,
               updatedAt: new Date()
             }
           });
+          if (exhausted) await recordWebhookDeliveryFailure(opts.prisma, attempt.webhookId);
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : "unknown error";
         const nextAttemptNo = attempt.attemptNo + 1;
         const next = new Date(Date.now() + backoffMs(nextAttemptNo));
+        const exhausted = nextAttemptNo > MAX_ATTEMPTS;
         await opts.prisma.webhookDeliveryAttempt.update({
           where: { id: attempt.id },
           data: {
             attemptNo: nextAttemptNo,
-            status: nextAttemptNo > MAX_ATTEMPTS ? "failed" : "pending",
+            status: exhausted ? "failed" : "pending",
             error: truncateBody(message, 2000),
-            nextRetryAt: nextAttemptNo > MAX_ATTEMPTS ? null : next,
+            nextRetryAt: exhausted ? null : next,
             updatedAt: new Date()
           }
         });
+        if (exhausted) await recordWebhookDeliveryFailure(opts.prisma, attempt.webhookId);
       }
     }
   };

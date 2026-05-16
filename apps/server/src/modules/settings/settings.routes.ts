@@ -8,6 +8,7 @@ import { registerStatusesRoutes } from "./statuses.routes.js";
 import { registerTemplatesRoutes } from "./templates.routes.js";
 import { registerWebhooksRoutes } from "./webhooks.routes.js";
 import { registerAuditRoutes } from "./audit.routes.js";
+import { registerEmailOutboxRoutes } from "./emailOutbox.routes.js";
 import { registerMembersRoutes } from "./members.routes.js";
 
 export async function registerSettingsRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
@@ -25,6 +26,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, deps: Setting
   await registerStatusesRoutes(app, deps);
   await registerTemplatesRoutes(app, deps);
   await registerWebhooksRoutes(app, deps);
+  await registerEmailOutboxRoutes(app, deps);
   await registerAuditRoutes(app, deps);
   await registerMembersRoutes(app, deps);
 }

@@ -1,4 +1,5 @@
 import { apiFetch } from "../../../shared/api/http";
+import { uploadFileToPresignedUrl } from "../../../shared/api/upload";
 import type { Ok, Paged } from "../../../shared/api/types";
 import type {
   CaseAttachmentItem,
@@ -485,15 +486,6 @@ type PresignCaseAttachmentResponse = {
   };
 };
 
-async function uploadFileToPresignedUrl(file: File, presign: PresignCaseAttachmentResponse["data"]) {
-  const res = await fetch(presign.uploadUrl, {
-    method: presign.method,
-    headers: presign.headers,
-    body: file
-  });
-  if (!res.ok) throw new Error("attachment upload failed");
-}
-
 export async function fetchCaseAttachments(caseId: number): Promise<CaseAttachmentItem[]> {
   const rows = await apiFetch<ApiCaseAttachment[]>(`/api/cases/${caseId}/attachments`);
   return rows.map(mapApiCaseAttachment);
@@ -510,7 +502,11 @@ export async function addCaseAttachment(
   return mapApiCaseAttachment(row);
 }
 
-export async function uploadCaseAttachmentViaPresign(caseId: number, file: File): Promise<CaseAttachmentItem> {
+export async function uploadCaseAttachmentViaPresign(
+  caseId: number,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<CaseAttachmentItem> {
   const presign = await apiFetch<PresignCaseAttachmentResponse>(`/api/cases/${caseId}/attachments/presign`, {
     method: "POST",
     body: {
@@ -519,7 +515,10 @@ export async function uploadCaseAttachmentViaPresign(caseId: number, file: File)
       fileSize: file.size
     }
   });
-  await uploadFileToPresignedUrl(file, presign.data);
+  await uploadFileToPresignedUrl(file, presign.data, {
+    contentType: file.type || "application/octet-stream",
+    onProgress
+  });
   return addCaseAttachment(caseId, {
     fileName: file.name,
     contentType: file.type || "application/octet-stream",
@@ -544,7 +543,11 @@ export async function addCaseStepAttachment(
   return mapApiCaseAttachment(row);
 }
 
-export async function uploadCaseStepAttachmentViaPresign(stepId: number, file: File): Promise<CaseAttachmentItem> {
+export async function uploadCaseStepAttachmentViaPresign(
+  stepId: number,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<CaseAttachmentItem> {
   const presign = await apiFetch<PresignCaseAttachmentResponse>(`/api/case-steps/${stepId}/attachments/presign`, {
     method: "POST",
     body: {
@@ -553,7 +556,10 @@ export async function uploadCaseStepAttachmentViaPresign(stepId: number, file: F
       fileSize: file.size
     }
   });
-  await uploadFileToPresignedUrl(file, presign.data);
+  await uploadFileToPresignedUrl(file, presign.data, {
+    contentType: file.type || "application/octet-stream",
+    onProgress
+  });
   return addCaseStepAttachment(stepId, {
     fileName: file.name,
     contentType: file.type || "application/octet-stream",
@@ -574,6 +580,17 @@ export async function fetchCaseAttachmentDownloadUrl(attachmentId: string): Prom
   const res = await apiFetch<CaseAttachmentDownloadUrlResponse>(`/api/attachments/${attachmentId}/download-url`, {
     method: "POST"
   });
+  return res.data.downloadUrl;
+}
+
+export async function fetchCaseVersionAttachmentDownloadUrl(
+  caseId: string | number,
+  versionNo: number,
+  attachmentId: string
+): Promise<string> {
+  const res = await apiFetch<CaseAttachmentDownloadUrlResponse>(
+    `/api/cases/${caseId}/versions/${versionNo}/attachments/${encodeURIComponent(attachmentId)}/download`
+  );
   return res.data.downloadUrl;
 }
 

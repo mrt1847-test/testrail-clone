@@ -1,3 +1,4 @@
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import type { ProjectOverviewDto } from "../types";
 
 type RecentResultListProps = {
@@ -14,7 +15,7 @@ export function RecentResultList({ rows }: RecentResultListProps) {
       {rows.map((r, i) => (
         <li key={`${r.caseCode}-${i}`} className="flex items-center justify-between px-4 py-2 text-sm">
           <span className="font-mono text-xs text-slate-700">{r.caseCode}</span>
-          <span className="text-slate-800">{r.status}</span>
+          <StatusBadge status={r.status} />
           <span className="text-xs text-slate-500">{r.source}</span>
           <span className="text-xs text-slate-400">{r.at}</span>
         </li>

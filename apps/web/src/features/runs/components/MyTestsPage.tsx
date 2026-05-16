@@ -3,7 +3,10 @@ import { Link, useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
+import { FilterBar, type FilterField } from "../../../shared/ui/FilterBar";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { PageHeader } from "../../../shared/ui/PageHeader";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { useAssignedToMeQuery } from "../hooks/useRunsApi";
 
 const statusOptions = ["all", "untested", "failed", "blocked", "retest", "passed"] as const;
@@ -43,6 +46,39 @@ export function MyTestsPage() {
 
   const activeCount = data.filter((row) => activeStatuses.has(row.status)).length;
 
+  const filterFields: FilterField[] = [
+    {
+      kind: "search",
+      id: "search",
+      label: "Search",
+      value: search,
+      onChange: setSearch,
+      placeholder: "Search cases or runs"
+    },
+    {
+      kind: "select",
+      id: "status",
+      label: "Status",
+      value: statusFilter,
+      onChange: (value) => setStatusFilter(value as (typeof statusOptions)[number]),
+      options: statusOptions.map((status) => ({
+        value: status,
+        label: status === "all" ? `All (${statusCounts[status] ?? 0})` : `${status} (${statusCounts[status] ?? 0})`
+      }))
+    },
+    {
+      kind: "select",
+      id: "run",
+      label: "Run",
+      value: runFilter,
+      onChange: setRunFilter,
+      options: [
+        { value: "all", label: "All runs" },
+        ...runOptions.map(([runId, runName]) => ({ value: runId, label: runName }))
+      ]
+    }
+  ];
+
   if (isLoading) return <LoadingState message="Loading assigned tests..." />;
   if (isError) return <ErrorState title="Could not load assigned tests" onRetry={() => refetch()} />;
   if (data.length === 0) {
@@ -51,55 +87,13 @@ export function MyTestsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">Assigned to me</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {activeCount} active of {data.length} assigned tests.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {statusOptions.map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setStatusFilter(status)}
-                className={
-                  statusFilter === status
-                    ? "rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
-                    : "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                }
-              >
-                {status === "all" ? "All" : status} {statusCounts[status] ?? 0}
-              </button>
-            ))}
-          </div>
-        </div>
+      <PageHeader
+        eyebrow="My Tests"
+        title="Assigned to me"
+        description={`${activeCount} active of ${data.length} assigned tests.`}
+      />
 
-        <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_220px]">
-          <input
-            aria-label="Search assigned tests"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search cases or runs"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-          />
-          <select
-            aria-label="Filter assigned tests by run"
-            value={runFilter}
-            onChange={(event) => setRunFilter(event.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-400"
-          >
-            <option value="all">All runs</option>
-            {runOptions.map(([runId, runName]) => (
-              <option key={runId} value={runId}>
-                {runName}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <FilterBar fields={filterFields} ariaLabel="Filter assigned tests" variant="card" />
 
       {filteredRows.length === 0 ? (
         <EmptyState title="No matching tests" description="Adjust the filters to widen the list." />
@@ -123,9 +117,7 @@ export function MyTestsPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">{row.runName}</td>
                   <td className="px-4 py-3">
-                    <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                      {row.status}
-                    </span>
+                    <StatusBadge status={row.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

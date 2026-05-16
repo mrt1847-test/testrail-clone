@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
+import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
+import { KeyboardShortcutsDialog } from "../../../shared/ui/KeyboardShortcutsDialog";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import type { TestInstanceRow } from "../types";
@@ -22,15 +24,23 @@ import {
   usePushResultDefectMutation,
   useRerunMutation,
   useUpdateRunAssigneeMutation,
-  useUpdateTestAssigneeMutation
+  useSyncRunCompositionMutation,
+  useRunTestSubscriptionsQuery,
+  useTestSubscriptionMutation,
 } from "../hooks/useRunsApi";
+import type { RunCompositionInfo } from "../types";
 import { CloseRunDialog } from "./CloseRunDialog";
 import { RunActionsPanel } from "./RunActionsPanel";
 import { RunHeader } from "./RunHeader";
 import { RunSummaryBar } from "./RunSummaryBar";
+import { RunStatusSidebar } from "./RunStatusSidebar";
+import { RunExecutionToolbar } from "./RunExecutionToolbar";
 import { RunInstancesSection } from "./RunInstancesSection";
+import { RUN_DETAIL_SHORTCUTS, useRunKeyboardShortcuts } from "../hooks/useRunKeyboardShortcuts";
+import { useRunTestNavigation } from "../hooks/useRunTestNavigation";
 import { ResultEntryPanel } from "./ResultEntryPanel";
 import { ResultHistoryList } from "./ResultHistoryList";
+import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionPanel";
 
 export function RunDetailPage() {
   const { projectId = "", runId = "" } = useParams();
@@ -38,12 +48,13 @@ export function RunDetailPage() {
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const [assigneeInput, setAssigneeInput] = useState("");
-  const [instanceAssignees, setInstanceAssignees] = useState<Record<string, string>>({});
   const [closeRunDialogOpen, setCloseRunDialogOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 15;
   const [addCasesInput, setAddCasesInput] = useState("");
+  const [compositionFeedback, setCompositionFeedback] = useState<CompositionFeedback | null>(null);
   const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [rerunSelectedStatuses, setRerunSelectedStatuses] = useState<Array<"failed" | "blocked" | "retest">>(["failed"]);
   const instancePageSize = 50;
   const selectedCaseId = selected?.caseId ? Number(selected.caseId) : null;
@@ -102,8 +113,8 @@ export function RunDetailPage() {
   const reopenRunMutation = useReopenRunMutation(projectId, runId);
   const addCasesMutation = useAddCasesToRunMutation(projectId, runId);
   const removeTestMutation = useRemoveTestFromRunMutation(projectId, runId);
+  const syncCompositionMutation = useSyncRunCompositionMutation(projectId, runId);
   const assigneeMutation = useUpdateRunAssigneeMutation(projectId, runId);
-  const testAssigneeMutation = useUpdateTestAssigneeMutation(projectId, runId);
   const rerunMutation = useRerunMutation(projectId, runId);
   const addAttachmentMutation = useAddResultAttachmentMutation(selectedResultId ?? undefined);
   const openAttachmentDownloadMutation = useOpenAttachmentDownloadMutation();
@@ -111,6 +122,33 @@ export function RunDetailPage() {
   const addDefectMutation = useAddResultDefectMutation(selectedResultId ?? undefined);
   const pushDefectMutation = usePushResultDefectMutation(selectedResultId ?? undefined);
   const deleteDefectMutation = useDeleteResultDefectMutation(selectedResultId ?? undefined);
+  const subscriptionsQuery = useRunTestSubscriptionsQuery(runId);
+  const subscriptionMutation = useTestSubscriptionMutation(runId);
+  const subscribedTestIds = useMemo(
+    () => new Set(subscriptionsQuery.data ?? []),
+    [subscriptionsQuery.data]
+  );
+  const testNavigation = useRunTestNavigation({
+    projectId,
+    runId,
+    selectedTestId: selected?.id ?? null,
+    pagedInstances,
+    statusFilter,
+    assigneeFilter,
+    searchText,
+    setStatusFilter,
+    setInstancePage,
+    onSelectInstance: setSelected
+  });
+  const runLoaded = Boolean(runDetailQuery.data?.run);
+  useRunKeyboardShortcuts({
+    enabled: runLoaded && !shortcutsOpen,
+    onShowHelp: () => setShortcutsOpen(true),
+    onNextTest: testNavigation.goNextTest,
+    onPrevTest: testNavigation.goPrevTest,
+    onNextFailed: testNavigation.goNextFailed,
+    onNextBlocked: testNavigation.goNextBlocked
+  });
   const run = runDetailQuery.data?.run;
   const counts = runDetailQuery.data?.counts ?? { passed: 0, failed: 0, blocked: 0, retest: 0, untested: 0 };
 
@@ -131,14 +169,6 @@ export function RunDetailPage() {
     setAssigneeInput(run?.assignedTo ?? "");
   }, [run?.assignedTo]);
 
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    for (const instance of pagedInstances) {
-      next[instance.id] = instance.assignedTo ?? "";
-    }
-    setInstanceAssignees(next);
-  }, [pagedInstances]);
-
   const rerunStatuses = useMemo(
     () => rerunSelectedStatuses as Array<"passed" | "failed" | "blocked" | "retest" | "untested">,
     [rerunSelectedStatuses]
@@ -149,6 +179,8 @@ export function RunDetailPage() {
     return <ErrorState title="Run not found" onRetry={() => runDetailQuery.refetch()} />;
   }
 
+  const composition = run.composition;
+  const compositionSummary = formatCompositionSummary(composition);
   const untestedCount = counts.untested ?? 0;
   const pushedDefectMessage = pushDefectMutation.data
     ? `Pushed ${pushDefectMutation.data.defectKey}${pushDefectMutation.data.url ? ` (${pushDefectMutation.data.url})` : ""}`
@@ -172,7 +204,9 @@ export function RunDetailPage() {
         title="Create rerun run"
         description={
           <div className="space-y-2 text-sm">
-            <p className="text-slate-600">선택한 상태의 테스트 인스턴스로 새 rerun을 생성합니다.</p>
+            <p className="text-slate-600">
+              Create a new run containing only tests with the selected statuses from this run.
+            </p>
             <div className="flex flex-wrap gap-2">
               {(["failed", "blocked", "retest"] as const).map((status) => (
                 <label key={status} className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
@@ -191,7 +225,7 @@ export function RunDetailPage() {
             </div>
           </div>
         }
-        confirmLabel={rerunMutation.isPending ? "Creating…" : "Create rerun"}
+        confirmLabel={rerunMutation.isPending ? "Creating?" : "Create rerun"}
         confirmDisabled={rerunMutation.isPending || rerunSelectedStatuses.length === 0}
         cancelLabel="Cancel"
         onCancel={() => setRerunDialogOpen(false)}
@@ -201,13 +235,35 @@ export function RunDetailPage() {
         }}
       />
 
-      <div className="space-y-3">
-        <RunHeader run={run} milestoneName={milestoneQuery.data?.name} />
-        <RunSummaryBar counts={counts} />
-      </div>
+      <RunHeader run={run} milestoneName={milestoneQuery.data?.name} counts={counts} />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <RunInstancesSection
+      <RunSummaryBar
+        className="lg:hidden"
+        counts={counts}
+        activeStatus={statusFilter}
+        onStatusClick={(status) => testNavigation.jumpToStatus(status)}
+      />
+
+      <div className={`grid gap-4 ${selected ? "lg:grid-cols-[minmax(0,1fr)_min(22rem,34vw)]" : ""}`}>
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <RunStatusSidebar
+            counts={counts}
+            activeStatus={statusFilter}
+            onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
+            footer={
+              <RunExecutionToolbar
+                variant="inline"
+                isNavigating={testNavigation.isNavigating}
+                onNextFailed={testNavigation.goNextFailed}
+                onNextBlocked={testNavigation.goNextBlocked}
+                onPrevTest={testNavigation.goPrevTest}
+                onNextTest={testNavigation.goNextTest}
+                onShowShortcuts={() => setShortcutsOpen(true)}
+              />
+            }
+          />
+            <div id="run-tests-section" className="min-w-0 flex-1">
+              <RunInstancesSection
           pagedInstances={pagedInstances}
           selectedInstanceId={selected?.id ?? null}
           onSelectInstance={setSelected}
@@ -230,31 +286,38 @@ export function RunDetailPage() {
           selectedTestIds={selectedTestIds}
           setSelectedTestIds={setSelectedTestIds}
           allFilteredSelected={allFilteredSelected}
-          instanceAssignees={instanceAssignees}
-          onInstanceAssigneeChange={(testId, value) =>
-            setInstanceAssignees((prev) => ({
-              ...prev,
-              [testId]: value
-            }))
-          }
-          onSaveInstanceAssignee={(testId) =>
-            void testAssigneeMutation.mutateAsync({
+          onQuickResultSave={(testId, payload) =>
+            void addResultMutation.mutateAsync({
               testId,
-              assignedTo: (instanceAssignees[testId] ?? "").trim() || null
+              status: payload.status,
+              comment: payload.comment,
+              elapsed: payload.elapsed,
+              version: payload.version,
+              defects: payload.defects
             })
           }
-          isSavingInstanceAssignee={testAssigneeMutation.isPending}
+          isSavingQuickResult={addResultMutation.isPending}
           page={runInstancesQuery.data?.page ?? instancePage}
           totalPages={runInstancesQuery.data?.totalPages ?? 1}
           total={runInstancesQuery.data?.total ?? 0}
           onPrevPage={() => setInstancePage((p) => Math.max(1, p - 1))}
           onNextPage={() => setInstancePage((p) => Math.min(runInstancesQuery.data?.totalPages ?? 1, p + 1))}
-        />
+          subscribedTestIds={subscribedTestIds}
+          onToggleSubscribe={(testId, subscribed) =>
+            void subscriptionMutation.mutateAsync({ testId, subscribed })
+          }
+                isSubscribePending={subscriptionMutation.isPending}
+                hideStatusFilter
+              />
+            </div>
+        </div>
 
-        <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-900">Result entry</h3>
-          {selected ? (
-            <div className="mt-3 space-y-4 text-sm text-slate-700">
+        {selected ? (
+          <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {selected.caseCode} ? {selected.title}
+            </p>
+            <div className="mt-2 space-y-3 text-sm text-slate-700">
               <ResultEntryPanel
                 key={selected.id}
                 projectId={projectId}
@@ -280,7 +343,12 @@ export function RunDetailPage() {
                   });
                 }}
               />
-              <ResultHistoryList
+              <CollapsibleSection
+                title="Result history"
+                badge={historyQuery.data?.total ?? 0}
+                defaultOpen={false}
+              >
+                <ResultHistoryList
                 history={historyQuery.data?.items ?? []}
                 historyTotal={historyQuery.data?.total ?? 0}
                 historyPage={historyPage}
@@ -302,7 +370,7 @@ export function RunDetailPage() {
                 isPushingDefect={pushDefectMutation.isPending}
                 isDeletingDefect={deleteDefectMutation.isPending}
                 pushedDefectMessage={pushedDefectMessage}
-                onAddAttachment={(file) => void addAttachmentMutation.mutateAsync(file)}
+                onAddAttachment={(file, onProgress) => void addAttachmentMutation.mutateAsync({ file, onProgress })}
                 onOpenAttachmentDownload={(attachmentId) =>
                   void openAttachmentDownloadMutation.mutateAsync(attachmentId)
                 }
@@ -311,90 +379,153 @@ export function RunDetailPage() {
                 onPushDefect={(input) => void pushDefectMutation.mutateAsync(input)}
                 onDeleteDefect={(defectLinkId) => void deleteDefectMutation.mutateAsync(defectLinkId)}
               />
+              </CollapsibleSection>
               {run.status === "open" ? (
-                <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
-                  <p className="font-medium text-slate-700">Run composition</p>
-                  <p className="mt-1 text-slate-500">케이스 ID를 쉼표로 구분해 오픈 런에 추가합니다.</p>
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1"
-                      placeholder="예: 101, 102"
-                      value={addCasesInput}
-                      onChange={(e) => setAddCasesInput(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
-                      disabled={addCasesMutation.isPending}
-                      onClick={() => {
-                        const ids = addCasesInput
-                          .split(/[,\s]+/)
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        if (ids.length === 0) return;
-                        void addCasesMutation.mutateAsync(ids).then(() => setAddCasesInput(""));
-                      }}
-                    >
-                      {addCasesMutation.isPending ? "Adding…" : "Add cases"}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="mt-2 text-rose-700 underline disabled:opacity-50"
-                    disabled={!selected || removeTestMutation.isPending}
-                    onClick={() => {
-                      if (!selected) return;
-                      void removeTestMutation.mutateAsync({ testId: selected.id });
-                    }}
-                  >
-                    Remove selected test (no results)
-                  </button>
-                  <button
-                    type="button"
-                    className="mt-1 block text-rose-800 underline disabled:opacity-50"
-                    disabled={!selected || removeTestMutation.isPending}
-                    onClick={() => {
-                      if (!selected) return;
-                      if (!window.confirm("이 테스트의 모든 결과 이력이 삭제됩니다. 계속할까요?")) return;
-                      void removeTestMutation.mutateAsync({ testId: selected.id, confirmDataLoss: true });
-                    }}
-                  >
-                    Remove selected test (delete results)
-                  </button>
-                </div>
+                <CollapsibleSection title="Composition" defaultOpen={false}>
+                <RunCompositionPanel
+                  projectId={projectId}
+                  compositionMode={composition?.compositionMode ?? "static"}
+                  compositionSummary={compositionSummary}
+                  isSyncing={syncCompositionMutation.isPending}
+                  onSyncComposition={() => {
+                    void syncCompositionMutation
+                      .mutateAsync()
+                      .then((res) => {
+                        if (res.skipped) {
+                          setCompositionFeedback({
+                            kind: "error",
+                            message: res.reason ? `Sync skipped: ${res.reason}` : "Sync skipped."
+                          });
+                          return;
+                        }
+                        setCompositionFeedback({
+                          kind: "synced",
+                          added: res.added,
+                          removed: res.removed
+                        });
+                      })
+                      .catch((err) => {
+                        setCompositionFeedback({
+                          kind: "error",
+                          message: err instanceof Error ? err.message : "Could not sync composition."
+                        });
+                      });
+                  }}
+                  addCasesInput={addCasesInput}
+                  onAddCasesInputChange={setAddCasesInput}
+                  isAdding={addCasesMutation.isPending}
+                  onAddCases={() => {
+                    const ids = addCasesInput
+                      .split(/[,\s]+/)
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    if (ids.length === 0) return;
+                    void addCasesMutation
+                      .mutateAsync(ids)
+                      .then((res) => {
+                        setAddCasesInput("");
+                        const added = res.data.added ?? [];
+                        setCompositionFeedback({
+                          kind: "added",
+                          addedCount: added.length,
+                          skipped: res.data.skipped ?? 0,
+                          caseIds: added.map((row) => String(row.caseId))
+                        });
+                      })
+                      .catch((err) => {
+                        setCompositionFeedback({
+                          kind: "error",
+                          message: err instanceof Error ? err.message : "Could not add cases."
+                        });
+                      });
+                  }}
+                  selectedTestId={selected?.id ?? null}
+                  isRemoving={removeTestMutation.isPending}
+                  onRemoveWithoutResults={() => {
+                    if (!selected) return;
+                    void removeTestMutation
+                      .mutateAsync({ testId: selected.id })
+                      .then((res) => {
+                        setCompositionFeedback({
+                          kind: "removed",
+                          caseId: String(res.data.caseId),
+                          title: res.data.titleSnapshot
+                        });
+                        setSelected(null);
+                      })
+                      .catch((err) => {
+                        setCompositionFeedback({
+                          kind: "error",
+                          message: err instanceof Error ? err.message : "Could not remove test."
+                        });
+                      });
+                  }}
+                  onRemoveWithResults={() => {
+                    if (!selected) return;
+                    if (!window.confirm("All result history for this test will be deleted. Continue?")) return;
+                    void removeTestMutation
+                      .mutateAsync({ testId: selected.id, confirmDataLoss: true })
+                      .then((res) => {
+                        setCompositionFeedback({
+                          kind: "removed",
+                          caseId: String(res.data.caseId),
+                          title: res.data.titleSnapshot
+                        });
+                        setSelected(null);
+                      })
+                      .catch((err) => {
+                        setCompositionFeedback({
+                          kind: "error",
+                          message: err instanceof Error ? err.message : "Could not remove test."
+                        });
+                      });
+                  }}
+                  feedback={compositionFeedback}
+                  onDismissFeedback={() => setCompositionFeedback(null)}
+                />
+                </CollapsibleSection>
               ) : null}
             </div>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">Select a test instance to enter results.</p>
-          )}
-
-          <RunActionsPanel
-            members={membersQuery.data ?? []}
-            bulkStatus={bulkStatus}
-            onBulkStatusChange={setBulkStatus}
-            bulkComment={bulkComment}
-            onBulkCommentChange={setBulkComment}
-            canBulkSubmit={canBulkSubmit}
-            isBulkPending={bulkResultMutation.isPending}
-            selectedCount={selectedCount}
-            bulkFeedback={bulkFeedback}
-            onDismissBulkFeedback={() => setBulkFeedback(null)}
-            onBulkSubmit={() => void bulkResultMutation.mutateAsync()}
-            assigneeInput={assigneeInput}
-            onAssigneeInputChange={setAssigneeInput}
-            isAssignPending={assigneeMutation.isPending}
-            onAssignRun={() => void assigneeMutation.mutateAsync(assigneeInput.trim() || null)}
-            isRerunPending={rerunMutation.isPending}
-            onOpenRerunDialog={() => setRerunDialogOpen(true)}
-            canCloseRun={run.status !== "closed"}
-            isCloseRunPending={closeRunMutation.isPending}
-            onOpenCloseRunDialog={() => setCloseRunDialogOpen(true)}
-            canReopenRun={run.status === "closed"}
-            isReopenRunPending={reopenRunMutation.isPending}
-            onReopenRun={() => void reopenRunMutation.mutateAsync()}
-          />
-        </aside>
+          </aside>
+        ) : null}
       </div>
+
+      <CollapsibleSection title="Run actions" defaultOpen={false}>
+        <RunActionsPanel
+          members={membersQuery.data ?? []}
+          bulkStatus={bulkStatus}
+          onBulkStatusChange={setBulkStatus}
+          bulkComment={bulkComment}
+          onBulkCommentChange={setBulkComment}
+          canBulkSubmit={canBulkSubmit}
+          isBulkPending={bulkResultMutation.isPending}
+          selectedCount={selectedCount}
+          bulkFeedback={bulkFeedback}
+          onDismissBulkFeedback={() => setBulkFeedback(null)}
+          onBulkSubmit={() => void bulkResultMutation.mutateAsync()}
+          assigneeInput={assigneeInput}
+          onAssigneeInputChange={setAssigneeInput}
+          isAssignPending={assigneeMutation.isPending}
+          onAssignRun={() => void assigneeMutation.mutateAsync(assigneeInput.trim() || null)}
+          isRerunPending={rerunMutation.isPending}
+          onOpenRerunDialog={() => setRerunDialogOpen(true)}
+          canCloseRun={run.status !== "closed"}
+          isCloseRunPending={closeRunMutation.isPending}
+          onOpenCloseRunDialog={() => setCloseRunDialogOpen(true)}
+          canReopenRun={run.status === "closed"}
+          isReopenRunPending={reopenRunMutation.isPending}
+          onReopenRun={() => void reopenRunMutation.mutateAsync()}
+        />
+      </CollapsibleSection>
     </div>
   );
+}
+
+function formatCompositionSummary(composition: RunCompositionInfo | null | undefined): string | null {
+  if (!composition?.lastSyncedAt) return null;
+  const parts: string[] = [];
+  if (composition.lastSyncAdded != null) parts.push(`+${composition.lastSyncAdded}`);
+  if (composition.lastSyncRemoved != null) parts.push(`-${composition.lastSyncRemoved}`);
+  const delta = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  return `Last sync ${new Date(composition.lastSyncedAt).toLocaleString()}${delta}`;
 }

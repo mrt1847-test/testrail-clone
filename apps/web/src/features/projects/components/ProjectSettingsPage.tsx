@@ -44,6 +44,11 @@ export function ProjectSettingsPage() {
             </Link>
           </li>
           <li>
+            <Link to={`/projects/${projectId}/settings/email-outbox`} className="text-slate-700 underline">
+              Email outbox
+            </Link>
+          </li>
+          <li>
             <Link to={`/projects/${projectId}/settings/defect-integration`} className="text-slate-700 underline">
               Defect integration
             </Link>

@@ -371,6 +371,119 @@ class ReportsQueryService {
   }
 }
 
+async function buildMilestoneSummaryItems(
+  projectId: bigint,
+  deps: { repo: RunsRepository; prisma?: PrismaClient }
+) {
+  if (deps.prisma) {
+    const milestones = await deps.prisma.milestone.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ isCompleted: "asc" }, { id: "desc" }]
+    });
+    const items = [];
+    for (const milestone of milestones) {
+      const runs = await deps.prisma.testRun.findMany({
+        where: { projectId, milestoneId: milestone.id, deletedAt: null },
+        include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+      });
+      const statuses = runs.flatMap((run) => run.instances.map((instance) => instance.status));
+      const metrics = toRunSummaryMetrics(statuses);
+      items.push({
+        milestoneId: milestone.id.toString(),
+        name: milestone.name,
+        isCompleted: milestone.isCompleted,
+        runCount: runs.length,
+        openRunCount: runs.filter((run) => run.status === "open").length,
+        total: metrics.total,
+        passed: metrics.passed,
+        failed: metrics.failed,
+        progress: metrics.progress
+      });
+    }
+    return items;
+  }
+
+  const runs = await deps.repo.listRunsByProject(projectId);
+  const grouped = new Map<string, { name: string; isCompleted: boolean; statuses: string[]; runCount: number; openRunCount: number }>();
+  for (const run of runs) {
+    if (run.milestoneId == null) continue;
+    const key = run.milestoneId.toString();
+    const bucket = grouped.get(key) ?? {
+      name: `Milestone ${key}`,
+      isCompleted: false,
+      statuses: [],
+      runCount: 0,
+      openRunCount: 0
+    };
+    bucket.runCount += 1;
+    if (run.status === "open") bucket.openRunCount += 1;
+    const instances = await deps.repo.listInstancesForRun(run.id);
+    bucket.statuses.push(...instances.map((instance) => instance.status));
+    grouped.set(key, bucket);
+  }
+  return Array.from(grouped.entries()).map(([milestoneId, bucket]) => {
+    const metrics = toRunSummaryMetrics(bucket.statuses);
+    return {
+      milestoneId,
+      name: bucket.name,
+      isCompleted: bucket.isCompleted,
+      runCount: bucket.runCount,
+      openRunCount: bucket.openRunCount,
+      total: metrics.total,
+      passed: metrics.passed,
+      failed: metrics.failed,
+      progress: metrics.progress
+    };
+  });
+}
+
+async function buildPlanSummaryItems(projectId: bigint, deps: { repo: RunsRepository; prisma?: PrismaClient }) {
+  if (deps.prisma) {
+    const plans = await deps.prisma.testPlan.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ status: "asc" }, { id: "desc" }],
+      include: {
+        entries: {
+          where: { deletedAt: null },
+          include: {
+            run: {
+              include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+            }
+          }
+        },
+        runs: {
+          where: { deletedAt: null },
+          include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+        }
+      }
+    });
+
+    return plans.map((plan) => {
+      const runMap = new Map<string, (typeof plan.runs)[number]>();
+      for (const run of plan.runs) runMap.set(run.id.toString(), run);
+      for (const entry of plan.entries) {
+        if (entry.run) runMap.set(entry.run.id.toString(), entry.run);
+      }
+      const runs = Array.from(runMap.values());
+      const metrics = toRunSummaryMetrics(runs.flatMap((run) => run.instances.map((instance) => instance.status)));
+      return {
+        planId: plan.id.toString(),
+        name: plan.name,
+        status: plan.status,
+        entryCount: plan.entries.length,
+        runCount: runs.length,
+        openRunCount: runs.filter((run) => run.status === "open").length,
+        total: metrics.total,
+        passed: metrics.passed,
+        failed: metrics.failed,
+        progress: metrics.progress
+      };
+    });
+  }
+
+  return [];
+}
+
 export async function registerReportsRoutes(
   app: FastifyInstance,
   deps: { repo: RunsRepository; prisma?: PrismaClient }
@@ -636,5 +749,17 @@ export async function registerReportsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await reportsQueryService.listDefectCoverage(projectId);
     return reply.send(toJsonSafe(ok({ items: items ?? [] })));
+  });
+
+  app.get("/api/projects/:projectId/reports/milestone-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const items = await buildMilestoneSummaryItems(projectId, deps);
+    return reply.send(toJsonSafe(ok({ items })));
+  });
+
+  app.get("/api/projects/:projectId/reports/plan-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const items = await buildPlanSummaryItems(projectId, deps);
+    return reply.send(toJsonSafe(ok({ items })));
   });
 }

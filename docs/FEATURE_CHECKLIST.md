@@ -1,327 +1,318 @@
 # Feature Checklist
 
-Last aligned: 2026-05-14 (activity coverage refresh)
+Last aligned: 2026-05-16 (/api/v2 attachments roles run_report)
 
-This is the working checklist for implemented and planned product capabilities. It is intentionally stricter than the roadmap: if a workflow is only partially usable, it stays open until the missing user-facing pieces are complete.
+This file tracks implemented, partial, and missing capabilities. It should not contain the roadmap narrative or the execution queue.
 
-Legend:
-- `[x]` implemented baseline is available from API and/or UI.
-- `[ ]` not complete or only partially implemented.
-- `P0` blocks the core daily TestRail-like workflow.
-- `P1` is high-value parity or team workflow depth.
-- `P2` is advanced parity, scale, or administrative depth.
+Strategy and phase intent live in [ROADMAP.md](./ROADMAP.md).
 
-## 점검 목적과 판정 기준
+## Legend
 
-이 문서는 "TestRail-like 테스트 관리 도구"로서의 실제 사용 가능성을 기준으로 관리한다.  
-요청된 점검 관점은 아래 4가지를 기본으로 한다.
+| Symbol | Meaning |
+|--------|---------|
+| `[x]` | Baseline available from API and/or UI (may still lack full TestRail depth). |
+| `[ ]` | Incomplete, partial, or missing. |
+| `P0` | Blocks core daily TestRail-like workflow. |
+| `P1` | High-value workflow or parity depth. |
+| `P2` | Advanced parity, scale, administration, or Enterprise-tier. |
 
-1. 기능 구현 현황을 체크리스트로 정리한다.
-2. 현재 코드베이스 기준으로 이미 구현된 기능이 `[x]`에 정확히 반영됐는지 확인한다.
-3. TestRail 유사 도구로 운영하기 위해 필요한 필수 기능이 누락 없이 정리됐는지 확인한다.
-4. 미구현 기능의 우선순위가 일일 사용 흐름(케이스 작성 -> 런 구성 -> 실행/결과 -> 리스크 리뷰 -> 알림) 기준으로 타당한지 확인한다.
+### Source tags (TestRail docs vs this product)
 
-판정 규칙:
-- `[x]`는 "사용 가능한 API 또는 UI 기준선"이 있을 때만 체크한다. (내부 모델/스키마만 존재하면 미완료로 유지)
-- "부분 구현"은 `[ ]`로 유지하고, 누락된 사용자 동작(예: drilldown, background worker, safeguards)을 명시한다.
-- 우선순위는 기술 난이도보다 "일일 운영 차단 여부"를 우선한다.
+| Tag | Meaning |
+|-----|---------|
+| **TR-Core** | Described in TestRail Introduction / core user guide (most projects). |
+| **TR-Pro** | Common professional workflow (integrations, deeper reports); not always edition-gated in docs. |
+| **TR-Ent** | TestRail Enterprise or explicitly edition-gated in support docs/API. |
+| **Clone+** | Intentional product extension; do not treat as TestRail `[x]` parity. |
 
-## 현재 구현 점검 요약 (2026-05-04)
+Official reference hub: [TestRail Support Center](https://support.testrail.com/hc/en-us/).
 
-검토 결과:
-- 2026-05-04 배치: 런 생성 섹션 스코프, 오픈 런 케이스 추가·제거(결과 보존 플래그), 런 재개, 결과 이력 페이징, 리포트 서브라우트, DB 모드 웹훅 전송 워커·test-send, `/api/v2/get_projects`가 반영되었다.
-- 남은 우선 과제: 대규모 실행 화면 분해, 활동/알림 이벤트·이메일 전달, `/api/v2` 비핵심 카테고리 확장 등은 아래 미체크 항목과 Top 10을 따른다.
-- 문서 운영 규칙은 [DOC_MAINTENANCE.md](./DOC_MAINTENANCE.md), 파일 기반 감사 스냅샷은 [FILE_BASED_AUDIT_2026-05-04.md](./FILE_BASED_AUDIT_2026-05-04.md)를 참고한다.
-
-## 미구현 우선순위 재정렬 (실행 기준 Top 10)
-
-아래 순서는 "테스트 팀이 매일 쓰는 흐름" 기준의 권장 구현 순서다.
-
-1. P0 Run composition 완성: ~~섹션 API·생성 후 add/remove·결과 보호·섹션 트리 그룹 선택 UX~~ (2026-05-05 기준선 완료) → 남음: 벌크 피드백·대규모 실행 UX 정리.
-2. P0 Run execution 안정화: ~~결과 이력 페이징·일부 캐시 무효화~~ (2026-05-04) → 남음: 대규모 실행용 헤더/요약/필터/테이블 분리.
-3. P0 Case repository 생산성: bulk move/update/archive, 저장된 필터/뷰, 실무 필터 강화.
-4. P0 Report drilldown 페이지: ~~서브라우트·테이블형 상세~~ (2026-05-04) → 남음: 통일 필터 바·차트/요약 스트립 고도화.
-5. P0 Activity/Notification 전달력: 핵심 이벤트 커버리지 + 대상자 라우팅 + drilldown 링크.
-6. P0 Webhook delivery worker: ~~백그라운드 전송·backoff·응답 기록·test-send~~ (2026-05-04, DB 모드).
-7. P1 Result custom field 확장: boolean 이후 타입/검증/필터 고도화.
-8. P1 첨부/증거 운영 강화: 객체 스토리지 수명주기, 업로드 진행률/재시도, 미리보기.
-9. P1 리포트 운영성: 저장/스케줄/히스토리, 마일스톤/플랜 리포트.
-10. P1/P2 `/api/v2` 호환 확장: 마이그레이션/자동화 영향이 큰 카테고리부터 단계적 확대.
-
-## TestRail-Like Delivery Order
-
-Use this order when choosing the next implementation batch:
-
-1. P0 run composition: create and maintain runs from suites, sections, selected cases, and exclusions.
-2. P0 execution workspace: make daily test execution fast, stable, and safe for large runs.
-3. P0 case repository productivity: bulk move/update/archive, saved views, and rich filters.
-4. P0 report drilldowns: turn existing report APIs into usable risk-review pages.
-5. P0 activity/notifications: notify people from case, run, result, assignment, defect, and report workflow events.
-6. P1/P2 administration, compatibility, migration, integrations, and UI system depth.
+---
 
 ## Product Foundation
 
-- [x] Projects CRUD baseline.
-- [x] Suites CRUD baseline.
-- [x] Sections CRUD baseline.
-- [x] Auth/current-user/login/logout baseline.
-- [x] Project membership role guards for mutations.
-- [x] Project member management baseline with add, role update, remove, and last-owner protection.
-- [ ] P1 Project archive/read-only mode.
-- [ ] P1 Global default access model.
-- [ ] P1 Full users, groups, global roles, custom roles, and permission matrix.
-- [ ] P2 Settings/admin sidebar organization as project tabs grow.
+- [x] **TR-Core** Projects, suites, sections, and auth baseline.
+- [x] **TR-Core** Project membership, role guards, member management, and last-owner protection.
+- [x] **TR-Core** Operational project shell, project switcher, primary tabs, inbox entry, and project dashboard baseline.
+- [ ] **TR-Core** P1 Project archive/read-only mode.
+- [ ] **TR-Core** P1 Global default access model.
+- [ ] **TR-Core** P1 Users, groups, global roles, custom roles, and permission matrix.
+- [ ] **TR-Core** P1 Project types: single repository, single repository with baselines, multiple test suites ([Projects and their types](https://support.testrail.com/hc/en-us/articles/7076923860244)).
+- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).
+- [ ] **TR-Core** P1 Multi-suite rule: one suite per test run when multiple suites are enabled.
+- [ ] **TR-Ent** P2 SSO (OIDC, OAuth 2.0, SAML 2.0) and enforced vs mixed login.
+- [ ] **TR-Ent** P2 MFA.
+- [ ] **Clone+** P2 Settings sidebar for lower-frequency admin categories.
+
+---
 
 ## Test Case Management
 
-- [x] Case CRUD baseline.
-- [x] Case-step CRUD baseline.
-- [x] Case custom field value persistence and case detail form rendering baseline.
-- [x] Case version persistence baseline.
-- [x] Case version timeline and basic compare/restore UI baseline.
-- [x] Optimistic locking baseline via `lockVersion`, `expectedVersion`, and `If-Match`.
-- [x] Bulk case delete baseline with multi-select list UX and per-case API feedback.
-- [x] Bulk case move baseline with section reassignment, multi-select list UX, and per-case API feedback.
-- [x] Bulk case copy API baseline with cloned case fields, custom values, ordered steps, per-case API feedback, activity event output, and web API client support.
-- [x] P1 Drag-and-drop case move/copy parity with selection-aware case-list/section drop targets and a post-drop move-vs-copy chooser wired to the bulk move/copy APIs.
-- [x] Per-section test case ordering baseline with persisted `displayOrder`, append-on-create/move/copy behavior, and direct section sorting by `displayOrder` then `id`.
-- [x] Case reorder API baseline with persisted explicit section ordering, omitted-case preservation, section-scope validation, activity output, and web API client support.
-- [x] P1 Wire arbitrary test case reorder/drop-position insert semantics into drag-and-drop move/copy UI beyond append behavior, including cross-section row drops that preserve the selected before/after target after move/copy.
-- [x] Direct-section vs subtree case-ordering contract via `sectionScope=direct|subtree`, with reorder constrained to direct section membership.
-- [x] P1 Paginated/filtered case-list reorder API safeguards that position moved cases before/after an anchor or append them while preserving non-visible direct-section cases.
-- [x] P1 Wire paginated/filtered case-list drag/drop UI to the position API with direct-section anchors and direct-section list scope instead of treating a visible subset or mixed subtree view as the full ordering.
-- [ ] P1 Folder-like section tree hardening with cycle-safe parent changes, same-suite parent validation, stable sibling ordering, and clearer empty/non-empty section semantics. Baseline: API rejects self-parenting, descendant cycles, and cross-suite parents.
-- [x] P1 Section subtree move/copy API operations with child sections and contained cases copied/moved as one folder-like unit, including source-to-copy ID mappings and activity feedback.
-- [x] P1 Section sibling `displayOrder` persistence/reorder API for stable folder ordering after create/rename/move/copy.
-- [x] P1 Wire section tree drag/drop UI to the section reorder API with sibling before/after targets and child move drops.
-- [x] P1 Add explicit section root drop zone and richer section move-vs-copy chooser feedback.
-- [x] P1 Section tree collapsed/expanded UI state with automatic ancestor expansion for the selected section.
-- [x] P1 Wire section subtree move/copy UI to the section parent-change and copy APIs.
-- [ ] P1 Section move/copy compatibility with saved views, run-composition section filters, activity payloads, and stale section ID drilldown behavior.
-- [x] Bulk case field update baseline with shared priority/type changes and per-case API feedback.
-- [x] Saved case filters/views baseline with reusable per-user/project section + query/priority/type/automation/archive-state views.
-- [x] Case custom value CSV import/export columns and active-field import validation baseline.
-- [x] P0 Bulk case archive semantics with active-vs-archived repository views, archived run-composition exclusion, and bulk restore feedback.
-- [x] P1 Rich case filter baseline with saved `q`/priority/type/automation/archive-state/refs/labels/estimate views and faster collapsed-row metadata chips.
-- [x] P1 Case custom value list chip baseline for visible custom values in collapsed rows.
-- [x] P1 Deeper case list filters and optional list column visibility baseline.
-- [x] P1 Required-field UI validation and template-aware case authoring form ordering.
-- [x] P1 Rich visual diff baseline for case version comparison with changed field/step highlighting and collapsed unchanged details.
-- [x] P1 Restore conflict messaging in UI.
-- [x] P1 Attachment context in case version snapshots with case/case-step attachment metadata surfaced in the version detail drawer.
-- [x] P1 Dedicated case version detail drawer with snapshot fields, custom values, steps, compare, and restore actions.
-- [x] P2 Case/case-step attachment API and web client baseline with list, create, presign, shared download/delete support, and activity output.
-- [x] P2 Case-step image attachment UI baseline with upload, open, delete, and read-only access from case detail.
-- [x] P2 Case-level image attachment UI baseline with upload, open, delete, and read-only access from case detail.
-- [ ] P2 Attachment preview drawer, upload progress/retry, and historical attachment download semantics.
-- [ ] P2 Shared steps.
-- [ ] P2 Labels as first-class entities.
-- [ ] P2 Deleted case restore and permanent delete semantics.
-- [ ] P2 BDD/scenario support.
+- [x] **TR-Core** Case CRUD, case steps, section tree, and suite organization baseline.
+- [x] **TR-Core** Case custom values, required-field validation, **field layout templates** (admin), and CSV import/export columns.
+- [ ] **TR-Core** P1 Default **case templates**: Test Case (Text), Test Case (Steps), Exploratory Session, Behaviour Driven Development, AI Evaluation ([Test case templates](https://support.testrail.com/hc/en-us/articles/14927678348052)).
+- [ ] **TR-Core** P1 Exploratory template fields (Mission, Goals).
+- [ ] **TR-Core** P1 AI Evaluation template and result fields (Quality Rating, Input, Output, Traces, Latency).
+- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).
+- [x] **Clone+** Case version persistence, timeline, compare/restore UI, conflict messaging, and snapshot detail drawer (TestRail Enterprise also offers versioning).
+- [x] **TR-Core** Bulk delete, move, copy, archive/restore, priority/type update, saved views, rich filters, optional list columns, and metadata chips.
+- [x] **TR-Core** Case and section drag/drop move/copy/reorder with persisted ordering and position APIs.
+- [x] **TR-Core** Case/case-step attachment API and basic case detail upload/open/delete UI.
+- [ ] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)).
+- [x] **TR-Core** P1 Section move/copy compatibility with saved views, run composition filters, and stale drilldown links.
+- [ ] **TR-Core** P1 Deeper field edits, labels/refs/custom field list presentation, and partial-failure polish.
+- [x] **TR-Core** P2 Attachment preview drawer and upload progress/retry baseline for cases, case steps, and result evidence.
+- [x] **TR-Core** P2 Historical attachment download semantics for version snapshots.
+- [ ] **TR-Core** P2 Shared steps ([Shared Steps](https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps)).
+- [ ] **TR-Core** P2 First-class labels, deleted case restore/permanent delete.
+- [ ] **TR-Ent** P2 Test case review workflow: Design / Review / Ready, approval permissions, re-review on edit ([Test case review & approvals](https://support.testrail.com/hc/en-us/articles/7766980011028)).
+
+---
 
 ## Run Composition And Execution
 
-- [x] Run creation with include-all suite cases baseline.
-- [x] Run creation with flat selected `caseIds` baseline.
-- [x] Test instance snapshots during run creation.
-- [x] Manual result entry baseline.
-- [x] Result history baseline.
-- [x] Run summary baseline.
-- [x] Close-run workflow baseline.
-- [x] Closed-run write protection baseline for result writes.
-- [x] Run instance server-side pagination/filter baseline.
-- [x] Run detail selected test, status filter, assignee filter, search, and page state in URL query params.
-- [x] Rerun by selected statuses baseline.
-- [x] Bulk manual result entry API baseline.
-- [x] Section-level include/exclude during run creation (suite subtree roots via `includedSectionIds` / `excludedSectionIds`; run create + Run create UI).
-- [x] Include-all-with-case-exclusions baseline for large suites.
-- [x] P0 Add cases to an existing open run.
-- [x] P0 Remove cases from an existing open run.
-- [x] P0 Existing-result safeguards when removing cases from a run (`confirmDataLoss` + CASCADE delete of results on confirm).
-- [x] P0 Closed-run restrictions for composition changes (API returns `RUN_CLOSED` for mutations).
-- [x] P0 Grouped run creation selection UX by section with selected/excluded counts.
-- [x] P1 Run header/summary/filter/table component split (`RunHeader`, `RunSummaryBar`, `TestInstanceFilterBar`, `TestInstanceTable`; bulk result feedback banner).
-- [x] P1 Result history pagination per selected test.
-- [x] P1 Scoped cache invalidation after run/result mutations (results query prefix + bulk result predicate invalidation).
-- [x] P1 Reopen policy (reopen endpoint + UI; closed run cannot accept new composition/results).
-- [ ] P1 Time tracking beyond elapsed entry.
-- [ ] P1 Comments/mentions on execution workflow.
+- [x] **TR-Core** Run creation: include all, select specific cases, exclusions, section subtree include/exclude ([Creating new test runs](https://support.testrail.com/hc/en-us/articles/7076838639892)).
+- [x] **TR-Core** P0 **Dynamic filter** runs: auto add/remove tests when cases match filter; filter icon on new tests; single filter per run. (v1: create-time filter + manual **Sync now**; filter icon on instances deferred.)
+- [x] **TR-Core** P0 **Include all** runs: new cases in project/suite automatically added to open runs (live sync, not creation-time snapshot only). (v1: case-create hook + manual sync API.)
+- [ ] **TR-Core** P1 Filter selection modes: set selection to filter, add filter to selection, remove filter from selection. (v1 subset: create-time filter + manual sync only.)
+- [x] **TR-Core** Add/remove cases from open runs with closed-run restrictions and existing-result safeguards.
+- [x] **TR-Core** Test instance snapshots, server-side pagination/filtering, selected test URL state, and run detail component split.
+- [x] **TR-Core** Manual result entry, bulk result entry, result history pagination, run summary, close/reopen policy, and scoped cache invalidation.
+- [x] **TR-Core** Result entry: status, comments, elapsed parser/timer, defects, custom values, case-step-aware step results.
+- [x] **TR-Core** Run table status-triggered result entry dialog (compact execution).
+- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date).
+- [ ] **TR-Core** P1 Run detail views: Status, Activity, Progress sidebar modes.
+- [ ] **TR-Core** P1 Policy: Untested cannot be set again after a test has any result (TestRail default behavior).
+- [ ] **TR-Core** P1 Configurable **custom result statuses** (up to seven), colors, `is_final`, `is_untested` ([Statuses](https://support.testrail.com/hc/en-us/articles/7077935129364)).
+- [x] **TR-Core** P1 Bulk result entry uses `/results/bulk` with per-row success/failure summary in run UI.
+- [x] **TR-Core** P1 Activity/notification drilldown for run composition (`run.tests_added`, `run.test_removed`) with run + case links.
+- [ ] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation).
+- [ ] **TR-Core** P1 Test change indicator when underlying case changed after run was created.
+- [ ] **TR-Pro** P1 Time tracking beyond elapsed entry (estimates vs actuals in reports).
+- [x] **TR-Core** P1 Result comment `@mention` notification/email routing baseline.
+- [ ] **TR-Core** P1 Richer comments on execution workflow beyond result-entry comments.
+
+---
 
 ## Results And Custom Fields
 
-- [x] Result custom field scope separation from case fields.
-- [x] Result custom value persistence for manual/API/bulk result entry.
-- [x] Result custom values render in result entry, history, and result explorer.
-- [x] Result entry elapsed parser/normalizer.
-- [x] Result entry timer controls.
-- [x] Defect key chips in result entry.
-- [x] Case-step-aware multi-step result editing.
-- [x] Field-level client validation messaging.
-- [x] Result entry component split into focused subcomponents.
-- [x] Result custom values exported as `custom_{systemName}` in run result CSV and result explorer CSV.
-- [x] Result explorer active custom field exact-match filters.
-- [x] Boolean custom field type baseline for definitions, validation, forms, import parsing, exports, and filtering.
-- [ ] P1 Richer custom field types beyond text/number/select/boolean.
-- [ ] P1 Advanced result custom field filtering semantics.
-- [ ] P1 Full custom result field parity.
-- [ ] P2 Result editing or correction policy, if product decides to support it.
+- [x] **TR-Core** Result custom field scope, value persistence, validation, result history, and result explorer display.
+- [x] **TR-Core** Result custom values in run result and result explorer CSV exports.
+- [x] **TR-Core** Result explorer custom field exact-match filters.
+- [x] **TR-Core** Boolean custom field type for definitions, validation, forms, import, exports, and filtering.
+- [ ] **TR-Core** P1 Remaining TestRail field types: Checkbox, Date, Dropdown, Integer, Multi-select, String, Text, URL, User, Milestone, Rating, Steps, Step Results, Scenarios, Scenario Results ([Configuring custom fields](https://support.testrail.com/hc/en-us/articles/7373850291220)).
+- [ ] **TR-Core** P1 Advanced result custom field filtering semantics.
+- [ ] **TR-Core** P2 Result editing/correction policy (product decision; TestRail allows limited correction via new results).
+
+---
 
 ## Assignments And To-Do
 
-- [x] Run assignment baseline.
-- [x] Test assignment baseline.
-- [x] My Tests page baseline.
-- [x] Notification inbox baseline can surface assignment-related workflow.
-- [x] P1 `assigned-to-me` project-scoped view with run/status/search filters. Remaining depth: due date and milestone filters when available.
-- [x] P1 True to-do view baseline with status counts and execution shortcuts. Remaining depth: aging indicators.
-- [ ] P1 Notification-driven assignment workflow polish.
+- [x] **TR-Core** Run assignment, test assignment, My Tests page, status/run/search filters, and execution shortcuts.
+- [x] **Clone+** Assignment-related notifications in in-app inbox.
+- [ ] **TR-Core** P1 **Team to-do** view: see other members’ or whole-team to-dos for workload balancing ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028)).
+- [ ] **TR-Core** P1 Due date and milestone filters when fields are available.
+- [ ] **TR-Core** P1 Aging indicators and notification-driven assignment workflow polish.
+- [ ] **TR-Core** P1 Email when tests are assigned and when others comment or add results to your tests.
+- [x] **TR-Core** P1 Subscribe to tests (per-test **Watch** on run rows, email on assignment/failed for subscribers).
 
-## Requirements And Traceability
-
-- [x] Requirement CRUD baseline.
-- [x] Case-requirement link API baseline.
-- [x] Traceability report baseline.
-- [x] Coverage-gap report baseline.
-- [x] Defect coverage report baseline.
-- [ ] P1 Requirement import/sync.
-- [ ] P1 External requirement provider integration.
-- [ ] P1 Advanced traceability matrix UI.
-- [ ] P1 Coverage reports filtered by milestone, run, and plan.
-- [ ] P1 Source links from reports back to requirements, cases, runs, tests, results, defects, and evidence.
-
-## Reports
-
-- [x] Overview widgets baseline.
-- [x] Run summary report API/export baseline.
-- [x] Result explorer report API/export baseline.
-- [x] Result explorer page baseline with filters and source run links.
-- [x] Traceability, coverage gap, and defect coverage CSV export baseline.
-- [x] Report export job/download baseline.
-- [x] P0 Report detail pages for run summary, results, traceability, coverage gap, and defect coverage (nested routes under `/projects/:id/reports/*`).
-- [ ] P1 Standard report filter bars, summary strips, chart/table bodies, and drilldown links (baseline: shared `ReportPageHeader` / `ReportSummaryStrip` / `ReportTablePanel` on run summary, traceability, coverage gap, defect coverage, results explorer).
-- [ ] P1 Saved report definitions.
-- [ ] P1 Scheduled/email reports.
-- [ ] P1 Report history/download UI.
-- [ ] P1 Milestone summary reports.
-- [ ] P1 Plan summary reports.
-- [ ] P1 Cross-project reports.
+---
 
 ## Milestones, Plans, And Configurations
 
-- [x] Milestone CRUD baseline.
-- [x] Plan CRUD baseline.
-- [x] Configuration group/value CRUD baseline.
-- [x] Plan matrix preview baseline.
-- [x] Run-by-configuration baseline.
-- [x] Plan rollup by configuration baseline.
-- [x] Plan detail matrix/rollup web binding baseline.
-- [x] Plan detail entry-configuration mapping read baseline.
-- [ ] P1 Sub-milestones.
-- [ ] P1 Milestone forecasts and richer dashboards.
-- [ ] P1 Full plan-entry semantics.
-- [ ] P1 Assigned users per plan entry.
-- [ ] P1 Include/exclude cases in plan entries.
-- [ ] P1 Combination editing and configuration management depth.
-- [ ] P1 Plan report parity.
-- [ ] P2 `/api/v2` compatibility for plans/configurations depth.
+- [x] **TR-Core** Milestone CRUD and primary project navigation entry.
+- [x] **TR-Core** Plan CRUD, configuration group/value CRUD, matrix preview, run-by-configuration, and rollup baseline.
+- [x] **TR-Core** Plan detail matrix/rollup web binding and entry-configuration mapping read baseline.
+- [x] **TR-Core** P1 Milestone summary report API, CSV export, report page, milestone detail execution rollup.
+- [x] **TR-Core** P1 Plan summary report API, CSV export, and report page.
+- [ ] **TR-Core** P1 Milestone lifecycle: Upcoming vs Open, manual complete, parent/child milestones ([Milestones](https://support.testrail.com/hc/en-us/articles/15545364561044)).
+- [ ] **TR-Core** P1 Sub-milestones and richer milestone dashboard widgets beyond current rollup.
+- [ ] **TR-Core** P1 Full plan-entry semantics: plan-level assignee, refs, start/due dates, per-entry include/exclude and combination editing ([Plans](https://support.testrail.com/hc/en-us/articles/7077711537684)).
+- [ ] **TR-Pro** P2 Milestone forecasts and burndown-style hints.
+- [ ] **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations.
+
+---
+
+## Reporting And Traceability
+
+### Clone analysis pages (fixed routes)
+
+- [x] **Clone+** Overview widgets and project execution summary graph.
+- [x] **Clone+** Internal Requirement entity CRUD, case links, traceability, coverage gap, and defect coverage pages.
+- [x] **TR-Core** Report pages: run summary, result explorer, traceability, coverage gap, defect coverage (conceptual overlap with TestRail reference/defect reports).
+- [x] **TR-Core** Report export jobs/downloads and shared report UI primitives (filter bar, summary strip, CSV).
+- [x] **TR-Core** P1 Saved report definitions and user-authored templates (CRUD API, Save view on report pages, open with filter query params).
+- [x] **TR-Core** P1 On-demand report execution returning HTML/PDF URLs (`run_report` parity). (v1: saved report CSV execution returns export job/download URLs; HTML/PDF rendering deferred.)
+- [x] **TR-Core** P1 Scheduled reports and email link/attachment recipients ([Reports](https://support.testrail.com/hc/en-us/articles/7077825062036)). (v1: interval schedules, CSV export job + email link; attachment in email deferred.)
+- [x] **TR-Core** P1 Report export history and download UI (`ExportJob` queue + `/reports/saved` history table).
+- [ ] **TR-Ent** P2 Cross-project reports API and UI (`get_cross_project_reports`, user workload, execution summary).
+- [ ] **TR-Pro** P1 Requirement import/sync and external requirement provider integration (alongside References parity).
+
+### TestRail built-in report catalog (template parity)
+
+Track each template as saved-report or fixed-page parity. Current clone mapping:
+
+| TestRail report (support docs) | Clone target | Status |
+|--------------------------------|--------------|--------|
+| Summary - Run | Run summary page + CSV | Partial: page exists; template/scheduling not |
+| Summary - Project | Project overview/dashboard | Partial: fixed dashboard exists; report template not |
+| Cases - Activity Summary | TBD | Missing |
+| Cases - Coverage for References | Coverage gap page | Partial: internal requirements, not References |
+| Cases - Property Distribution | TBD | Missing |
+| Cases - Status Tops | TBD | Missing |
+| Defects - Summary | Defect coverage / result explorer | Partial: no milestone/plan/run defect summary template |
+| Defects - Summary for Cases | Defect coverage page | Partial |
+| Defects - Summary for References | TBD | Missing |
+| Results - Comparison for Cases | TBD | Missing (see Convenience: compare runs) |
+| Results - Comparison for References | Traceability page | Partial |
+| Results - Property Distribution | Result explorer / dashboard charts | Partial: no report template |
+| Summary - Milestone | `/reports/milestones` | Baseline done |
+| Summary - Plan | `/reports/plans` | Baseline done |
+| Users - Workload summary | My Tests / assignments | Partial: user workload report missing |
+| Cross-project: Test Execution Project Summary | TBD | Missing (Enterprise) |
+| Cross-project: Test Execution User Workload | TBD | Missing (Enterprise) |
+| Print from Cases/Runs/Plans/Milestones | TBD | Missing |
+
+- [ ] **TR-Core** P1 Activity Summary (Cases) report template.
+- [ ] **TR-Core** P1 Cases Property Distribution and Status Tops report templates.
+- [ ] **TR-Core** P1 Defects Summary report template for milestone, plan, or selected runs.
+- [ ] **TR-Core** P1 Results Comparison for Cases and Results Property Distribution report templates.
+- [ ] **TR-Core** P1 Coverage / Comparison for **References** (Cases/Results) aligned to References field, not only internal requirements.
+- [ ] **TR-Core** P1 Summary for References (Defects) report template.
+- [ ] **TR-Core** P1 Project Summary and Users Workload summary report templates.
+- [ ] **TR-Core** P1 Print-friendly exports from cases, runs, plans, and milestones ([Print reports](https://support.testrail.com/hc/en-us/articles/7101821797140)).
+
+---
 
 ## Evidence, Attachments, And Defects
 
-- [x] Result attachment metadata baseline.
-- [x] Attachment signed upload/download URL baseline.
-- [x] Run detail attachment presign upload web binding.
-- [x] Run detail attachment open/delete web binding.
-- [x] Defect link baseline.
-- [x] Defect integration settings baseline.
-- [x] URL-template defect push baseline.
-- [x] Run detail defect push provider/feedback UX baseline.
-- [x] Run detail defect unlink baseline.
-- [ ] P1 Production object storage lifecycle and authorization hardening.
-- [ ] P1 Attachment preview drawer.
-- [ ] P1 Upload progress and retry.
-- [ ] P1 Retention and cleanup policy.
-- [ ] P1 Provider validation/test connection.
-- [ ] P1 Provider-native Jira/GitHub/Azure issue create/sync.
-- [ ] P1 Provider response metadata and remote status snapshots.
-- [ ] P1 Defect integration field mapping and template preview.
-- [ ] P2 Attachment import/export.
+- [x] **TR-Core** Result attachment metadata, signed upload/download URLs, run detail upload/open/delete binding.
+- [x] **TR-Pro** Defect links, integration settings, URL-template push, provider feedback, and unlink baseline.
+- [ ] **Clone+** P1 Production object storage lifecycle and authorization hardening.
+- [x] **TR-Core** P1 Attachment preview drawer and upload progress/retry baseline for case and result evidence.
+- [ ] **TR-Core** P1 Attachment retention and cleanup policy.
+- [ ] **TR-Pro** P1 Integration test connection and validation ([Configuring defect integrations](https://support.testrail.com/hc/en-us/articles/7747085183636)).
+- [ ] **TR-Pro** P1 Push Defect dialog with provider field mapping (Jira/GitHub/Azure), including custom fields.
+- [ ] **TR-Pro** P1 Provider-native issue create/sync, remote status snapshots, template preview.
+- [ ] **TR-Pro** P2 Attachment import/export.
 
-## Automation And API Tokens
+---
 
-- [x] API token baseline.
-- [x] Automation upload baseline.
-- [x] Automation upload history/detail and failed-item retry baseline.
-- [x] Automation mapping summary/list API baseline.
-- [x] Bulk automation result API baseline.
-- [x] TestRail-compatible `/api/v2` baseline for core cases, runs, tests, add result for case, bulk results for cases, and `GET /api/v2/get_projects`.
-- [ ] P1 Token scopes and expiration enforcement.
-- [ ] P1 Clearer token creation UX.
-- [ ] P1 Automation mapping UI and mapping health beyond the API/list baseline.
-- [ ] P1 Upload retry queue semantics beyond manual failed-item retry.
-- [ ] P1 Row-level automation failure guidance.
-- [ ] P2 CI examples and compatibility examples.
-- [ ] P2 Expanded `/api/v2` categories: projects, suites, sections, milestones, plans, configurations, fields, statuses, templates, users, roles, reports, attachments, labels, groups, shared steps, datasets, variables, and BDDs.
+## Automation And API Compatibility
+
+- [x] **TR-Core** API token baseline.
+- [x] **TR-Pro** Automation upload, upload history/detail, failed-item retry, mapping summary/list, and bulk automation result API.
+- [x] **TR-Pro** `/api/v2` **partial** compatibility: cases, runs, tests, results, `get_projects`, suites, sections, milestones, plans, `get_statuses` (not full TestRail API surface).
+- [x] **TR-Core** P1 Document supported vs unsupported `/api/v2` endpoints in product docs (`GET /api/v2` index + API_SPEC matrix).
+- [x] **TR-Core** P1 `get_statuses` and custom status fields in API responses (`get_statuses?project_id=`, `custom_status_id` on status rows).
+- [ ] **TR-Core** P1 Token scopes and expiration enforcement.
+- [ ] **TR-Core** P1 Clearer token creation UX.
+- [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
+- [ ] **TR-Pro** P2 CI examples and compatibility examples.
+- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, and saved-report `run_report` CSV execution added.)
+- [ ] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports.
+- [ ] **TR-Pro** P2 API rate-limit behavior documentation (Cloud parity).
+
+---
 
 ## Import And Export
 
-- [x] Case CSV import dry-run/commit API baseline.
-- [x] Case CSV import job history baseline.
-- [x] Case CSV export baseline.
-- [x] Case custom values included in case CSV import/export baseline.
-- [x] Run result CSV export baseline.
-- [x] Import/export project tab web binding baseline.
-- [x] Report CSV export job baseline.
-- [x] Active result custom values included in result exports.
-- [ ] P1 Mapping-driven case import/export UX and richer validation guidance.
-- [ ] P1 XML/JSON import/export.
-- [ ] P1 Mapping wizard.
-- [ ] P1 Large async file lifecycle.
-- [ ] P2 TestRail-compatible export shapes beyond current CSV baselines.
+- [x] **TR-Core** Case CSV import dry-run/commit API and job history.
+- [x] **TR-Core** Case CSV export, run result CSV export, report CSV export jobs, and import/export UI.
+- [x] **TR-Core** Case and result custom values in relevant imports/exports.
+- [ ] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance.
+- [ ] **TR-Pro** P1 XML/JSON import/export.
+- [ ] **TR-Pro** P1 Mapping wizard and large async file lifecycle.
+- [ ] **TR-Pro** P2 TestRail-native export shapes beyond current CSV baselines.
+
+---
 
 ## Activity, Notifications, Audit, And Webhooks
 
-- [x] ActivityEvent persistence baseline.
-- [x] Activity writer helper baseline.
-- [x] Project activity API/UI baseline.
-- [x] Notification and notification preference persistence baseline.
-- [x] Notification inbox API/UI baseline with unread count and preference toggles.
-- [x] Audit log query UI with server-side filters and pagination baseline.
-- [x] Webhook subscription persistence with event filters and secrets.
-- [x] Activity events enqueue signed webhook delivery attempts.
-- [x] Webhook settings UI for create/toggle/delete/inspect/retry state baseline.
-- [x] Activity/notification drilldown baseline links from Activity/Notifications UI to run/case/report sources (payload-driven where available).
-- [x] Assignment and failed-result notification routing baseline targets explicit assignee when payload includes assignee context.
-- [x] Case CSV import/export and report export workflows emit activity events for validate/request/complete/download milestones.
-- [x] Project create/update/delete mutations emit project-level activity events.
-- [x] Settings mutations (`custom_fields`, `custom_statuses`, `case_templates`, `project_members`) emit activity events for create/update/delete lifecycle.
-- [x] Incremental activity coverage for case step CRUD, `run.updated` on PATCH `/api/runs/:id`, assignment drilldown payloads, `defect.unlinked`, result/defect `caseId` drilldown payloads, and matching webhook event filter options.
-- [x] Result evidence attachment add/remove activity events with run/test/case/result drilldown payloads and webhook filter options.
-- [x] Suite create/update/delete, section create/update/delete, milestone create/update/complete/delete, plan create/update/delete, plan entry create/update/delete, configuration group/configuration create/update/delete, and requirement create/update/delete + link/unlink activity events with matching webhook event filter options.
-- [ ] P0 Broader activity event coverage across remaining major case, run, result, assignment, defect, and reporting mutations.
-- [x] Activity/notification drilldown links extended to milestone, plan, plan entry, suite, section, and requirement entities (cases/runs/reports remain payload-driven).
-- [ ] P0 Notification targeting and activity drilldown links.
-- [ ] P0 Email/digest notification delivery jobs.
-- [x] P0 Webhook background HTTP delivery worker (DB-backed server; in-memory 모드에서는 미기동).
-- [x] P0 Webhook exponential backoff and response capture.
-- [x] P0 Manual webhook test-send.
-- [ ] P1 Richer webhook and audit filters.
-- [ ] P1 Disable-on-failure policy.
-- [ ] P1 Full audit event coverage, export, retention, and admin audit.
+- [x] **Clone+** Activity event persistence, writer helper, project activity API/UI.
+- [x] **Clone+** Notification inbox, preferences, unread count, and basic targeting.
+- [x] **TR-Ent** Audit log query UI with server-side filters and pagination (Enterprise audit depth still partial).
+- [x] **TR-Pro** Webhook subscriptions, signed delivery, DB-backed worker, backoff, manual test-send ([Webhooks](https://support.testrail.com/hc/en-us/articles/7169038183572)).
+- [x] **TR-Pro** P1 Global (admin) webhooks in addition to per-project webhooks.
+- [x] **Clone+** Broad activity coverage for case, run, suite, section, milestone, plan, configuration, requirement, settings, import/export, and report export mutations.
+- [x] **Clone+** Drilldown links for milestone, plan, suite, section, requirement, and payload-driven sources.
+- [ ] **TR-Core** P0 Broader activity event coverage for remaining assignment, defect, and reporting mutations (baseline expanded: bulk results, assignment payload fixes).
+- [x] **TR-Core** P0 Email and digest delivery jobs (`EmailOutbox`, console/SMTP transport, workers, `digestEnabled` on preferences).
+- [x] **TR-Core** P1 Email outbox admin UI (project settings: list, retry, digest preview).
+- [x] **TR-Core** P1 Mention routing for result comments (`@email`, `@email-local-part`, `@name`) with notification preferences and email outbox.
+- [x] **TR-Pro** P1 Webhook auto-disable after consecutive delivery failures (`disabledAt`, re-enable in UI).
+- [x] **TR-Pro** P1 Richer webhook and audit filters (webhook `disabledAt`/failure counter; audit actor email, exact match, changes contains).
+- [ ] **TR-Pro** P1 Disable-on-failure policy and delivery diagnostics UI.
+- [x] **TR-Ent** P1 Audit CSV export and retention prune baseline.
+- [x] **TR-Ent** P1 Full audit event coverage and admin-level cross-project audit. (v1: `scope=all` query/export/UI toggle plus assignment, defect, saved report, and scheduled report mutation audit rows; future work can add stricter global admin role boundaries.)
 
-## UI System And Frontend Architecture
+---
 
-- [x] Operational project shell and tab navigation baseline.
+## Clone Engineering (Not TestRail Parity)
+
+Internal quality and UI architecture; prioritize after TR-Core P0/P1 gaps unless blocking delivery.
+
 - [x] Shared loading/error/empty states baseline.
 - [x] Initial query invalidation and polling policy.
-- [ ] P1 Shared `Button`, `IconButton`, `StatusBadge`, `DataTable`, `FilterBar`, `PageHeader`, `Panel`, `Drawer`, and `Toast`.
+- [x] TestRail-like compact result entry dialog from run status badge.
+- [x] P1 Shared `StatusBadge`, `FilterBar`, `PageHeader` in `apps/web/src/shared/ui/` (migrated: run filters, reports, My Tests).
+- [ ] P1 Shared `Button`, `IconButton`, `DataTable`, `Panel`, `Drawer`, and `Toast`.
 - [ ] P1 Dense, scannable table-oriented screens for large lists.
 - [ ] P1 Centralized query keys per feature.
-- [x] P1 Notification/inbox entry in shell/header.
-- [ ] P2 Settings sidebar for lower-frequency admin categories.
+- [x] P1 UI/UX review pass per [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) default rules (analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation: [UX_BACKLOG.md](./UX_BACKLOG.md)).
 
-## Deferred Or Explicitly Not Baseline
+---
 
-- [ ] P2 Full users/groups/global roles administration.
-- [ ] P2 Provider-native defect creation beyond URL-template push baseline.
-- [ ] P2 Shared steps, labels, BDD/scenario support, and advanced TestRail migration categories.
-- [ ] P2 Large async import/export lifecycle beyond current baseline.
+## Convenience And Productivity
+
+Secondary UX depth; many items mirror TestRail but are tracked here to keep domain sections focused on data and workflow parity. Promote items to P1 in domain sections when they block daily use.
+
+### Navigation, Search, And Deep Links
+
+- [ ] P1 Global search across cases, runs, milestones, plans, and defects.
+- [ ] P1 Jump-to by entity ID (`C123`, `R45`, `M12`) from command palette.
+- [ ] P1 Recently viewed cases, runs, and milestones.
+- [ ] P1 Pinned/favorite projects (and optional suites) in project switcher.
+- [ ] P1 Copy entity link / ID to clipboard.
+- [ ] P1 Open in new tab from context menu.
+- [ ] P1 Deep links preserve list filters, sort, pagination, and selected row.
+- [ ] P2 Cross-project search.
+
+### Keyboard, Selection, And List Ergonomics
+
+- [x] P1 Keyboard shortcuts and `?` help overlay on run detail (global palette deferred).
+- [ ] P1 Shift/Ctrl range multi-select on case and run tables.
+- [ ] P1 Remember last filter, sort, and column set per page per user.
+- [ ] P1 Column width and visibility persistence.
+- [ ] P1 Inline quick-edit for safe fields.
+- [ ] P1 Hover preview for case title, steps, last result.
+- [ ] P2 Density toggle (compact vs comfortable).
+
+### Case And Run Shortcuts
+
+- [ ] P1 Quick-add case inline in section tree.
+- [ ] P1 Duplicate case with options (steps, fields, attachments).
+- [ ] P1 Print-friendly case view and multi-case print.
+- [ ] P1 Collapsed section tree state per suite.
+- [ ] P1 Select all in section / select visible filter matches.
+- [x] P1 Next/previous test, jump to failed/blocked (run detail toolbar + shortcuts; see [UX_BACKLOG.md](./UX_BACKLOG.md) Wave UX-2).
+- [x] P1 Clickable status counts in run summary/sidebar (see [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md) §5).
+- [ ] P1 Assign to me / clear assignee quick actions.
+- [ ] P1 Duplicate run for regression cycles.
+- [ ] P2 Compare two runs side-by-side (relates to Comparison for Cases report).
+
+### Reporting And Collaboration Shortcuts
+
+- [ ] P1 Export current filtered view; report filter presets.
+- [ ] P1 Copy chart/table summary to clipboard.
+- [ ] P1 @mention autocomplete; comment templates; rich text comments.
+- [ ] P1 Mark all read; inbox filters; snooze/mute categories.
+- [ ] P1 Push defect prefilled from case + comment; recent defects picker.
+- [ ] P1 User default landing page, suite, and saved view.
+- [ ] P2 Theme preference (light/dark).
+
+### API Convenience
+
+- [ ] P1 API docs panel with copyable curl examples.
+- [ ] P1 Postman/OpenAPI export for implemented `/api/v2` endpoints.
+- [ ] P2 Webhook event catalog with sample payloads.

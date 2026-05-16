@@ -29,7 +29,7 @@ export function DefectKeyInput({ defects, onChange }: DefectKeyInputProps) {
   }
 
   return (
-    <div className="flex min-h-7 w-full min-w-0 flex-wrap items-center gap-1 rounded border border-slate-300 px-1.5 py-1 sm:w-52">
+    <div className="flex min-h-8 w-full min-w-0 flex-wrap items-center gap-1 rounded border border-slate-300 px-1.5 py-1">
       {defects.map((defect) => (
         <span key={defect} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
           <span className="truncate">{defect}</span>

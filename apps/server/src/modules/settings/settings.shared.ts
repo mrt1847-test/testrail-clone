@@ -21,6 +21,7 @@ export type CustomFieldRow = {
 export type WebhookRow = {
   id: bigint;
   projectId: bigint;
+  scope?: "project" | "global";
   event: string;
   targetUrl: string;
   secret: string;
@@ -114,6 +115,7 @@ const caseTemplateIdParamSchema = z.object({
   templateId: z.coerce.bigint()
 });
 const webhookCreateSchema = z.object({
+  scope: z.enum(["project", "global"]).default("project"),
   event: z.string().trim().min(1).default("*"),
   targetUrl: z.string().trim().url(),
   secret: z.string().trim().min(8).optional(),
@@ -169,6 +171,7 @@ const webhookEvents = [
   "result.*",
   "result.created",
   "result.failed",
+  "result.bulk_created",
   "attachment.*",
   "attachment.created",
   "attachment.deleted",
@@ -205,10 +208,15 @@ const webhookEvents = [
 const auditLogsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25),
+  scope: z.enum(["project", "all"]).default("project"),
   action: z.string().trim().min(1).optional(),
   entityType: z.string().trim().min(1).optional(),
   entityId: z.string().trim().min(1).optional(),
   actorUserId: z.coerce.bigint().optional(),
+  actorEmail: z.string().trim().email().optional(),
+  actionExact: z.coerce.boolean().optional(),
+  entityTypeExact: z.coerce.boolean().optional(),
+  changesContains: z.string().trim().min(1).optional(),
   createdFrom: z.string().datetime().optional(),
   createdTo: z.string().datetime().optional(),
   q: z.string().trim().min(1).optional()
@@ -352,19 +360,28 @@ function newWebhookSecret() {
 
 function webhookToResponse(row: {
   id: bigint;
+  scope?: string;
   event: string;
   targetUrl: string;
   secret: string;
   isActive: boolean;
+  consecutiveFailures?: number;
+  disabledAt?: Date | null;
+  lastFailureAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
   return {
     id: row.id,
+    scope: row.scope === "global" ? "global" : "project",
     event: row.event,
     targetUrl: row.targetUrl,
     secretPrefix: `${row.secret.slice(0, 10)}...`,
     isActive: row.isActive,
+    consecutiveFailures: row.consecutiveFailures ?? 0,
+    disabledAt: row.disabledAt ?? null,
+    lastFailureAt: row.lastFailureAt ?? null,
+    autoDisabled: Boolean(row.disabledAt) && !row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };

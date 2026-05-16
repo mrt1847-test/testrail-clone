@@ -20,5 +20,13 @@ export const env = {
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "",
   authSecret: process.env.AUTH_SECRET ?? "dev-auth-secret",
-  useInMemoryRepository: process.env.USE_IN_MEMORY_REPOSITORY !== "false"
+  useInMemoryRepository: process.env.USE_IN_MEMORY_REPOSITORY !== "false",
+  /** console (default) | smtp | disabled */
+  emailDeliveryMode: (process.env.EMAIL_DELIVERY_MODE ?? "console") as "console" | "smtp" | "disabled",
+  emailFrom: process.env.EMAIL_FROM ?? "notifications@testrail-clone.local",
+  smtpHost: process.env.SMTP_HOST ?? "",
+  smtpPort: Number(process.env.SMTP_PORT ?? 1025),
+  smtpSecure: process.env.SMTP_SECURE === "true",
+  smtpUser: process.env.SMTP_USER ?? "",
+  smtpPass: process.env.SMTP_PASS ?? ""
 };

@@ -3,9 +3,29 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "../../common/errors/appError.js";
-import { requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { testRailStatusMap } from "../../domain/testrailMapping.js";
+import { projectRoles } from "../../domain/roles.js";
+import { canMutateProject } from "../../domain/permissions.js";
+import type { ProjectRole } from "../../domain/roles.js";
+import {
+  mapAttachmentForV2,
+  buildSystemStatuses,
+  mapCaseTemplatesForV2,
+  mapConfigurations,
+  mapCustomFieldsForV2,
+  mapCustomStatuses,
+  mapMilestone,
+  mapPlan,
+  mapRoleForV2,
+  mapSavedReportForV2,
+  mapSections,
+  mapSuite,
+  mapUserForV2,
+  statusIdForCanonical
+} from "./testrail.mappers.js";
+import { TESTRAIL_V2_DEFERRED, TESTRAIL_V2_SUPPORTED } from "./testrail.supported.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { caseIdParamSchema, sectionIdParamSchema } from "../cases/cases.schema.js";
 import type { CasesService } from "../cases/cases.service.js";
@@ -16,6 +36,7 @@ import type { RunsRepository } from "../runs/runs.repository.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import type { RunsService } from "../runs/runs.service.js";
 import type { TestStatus } from "../../domain/status.js";
+import { ImportExportService, reportExportSchema } from "../importExport/importExport.routes.js";
 
 const updateCaseBodySchema = z.object({
   title: z.string().min(1).optional(),
@@ -57,6 +78,18 @@ const bulkResultsBodySchema = z.object({
   )
 });
 
+const runReportParamSchema = z.object({
+  reportId: z.coerce.bigint()
+});
+
+function savedReportExportFilters(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const exportValue = (value as Record<string, unknown>).export;
+  return exportValue && typeof exportValue === "object" && !Array.isArray(exportValue)
+    ? (exportValue as Record<string, unknown>)
+    : {};
+}
+
 function toStatus(input: z.infer<typeof resultBodySchema>): TestStatus {
   if (input.status) return input.status;
   if (input.status_id != null) {
@@ -73,8 +106,7 @@ function splitDefects(value: string | string[] | undefined) {
 }
 
 function statusId(status: string) {
-  const found = Object.entries(testRailStatusMap).find(([, value]) => value === status);
-  return found ? Number(found[0]) : 3;
+  return statusIdForCanonical(status);
 }
 
 function mapCase(row: {
@@ -145,6 +177,16 @@ export async function registerTestRailRoutes(
     prisma?: PrismaClient;
   }
 ) {
+  app.get("/api/v2", async (_req, reply) => {
+    return reply.send(
+      toJsonSafe({
+        supported: [...TESTRAIL_V2_SUPPORTED],
+        deferred: [...TESTRAIL_V2_DEFERRED],
+        note: "Adapter returns JSON arrays for list endpoints (not TestRail 9.x pagination wrappers)."
+      })
+    );
+  });
+
   app.get("/api/v2/get_projects", async (_req, reply) => {
     const rows = await deps.catalog.listProjects();
     return reply.send(
@@ -162,6 +204,209 @@ export async function registerTestRailRoutes(
     const { caseId } = caseIdParamSchema.parse(req.params);
     const row = await deps.casesService.getCase(caseId);
     return reply.send(toJsonSafe(mapCase(row)));
+  });
+
+  app.get("/api/v2/get_suites/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const rows = await deps.catalog.listSuitesByProject(projectId);
+    return reply.send(toJsonSafe(rows.map(mapSuite)));
+  });
+
+  app.get("/api/v2/get_sections/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = req.query as { suite_id?: string } | undefined;
+    if (!query?.suite_id) {
+      throw new AppError("VALIDATION_ERROR", "suite_id query parameter is required", 400);
+    }
+    const suiteId = BigInt(query.suite_id);
+    const suites = await deps.catalog.listSuitesByProject(projectId);
+    if (!suites.some((suite) => suite.id === suiteId)) {
+      throw new AppError("NOT_FOUND", "suite not found in project", 404);
+    }
+    const rows = await deps.catalog.listSectionsBySuite(suiteId);
+    return reply.send(toJsonSafe(mapSections(rows)));
+  });
+
+  app.get("/api/v2/get_milestones/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.milestone.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 250
+      });
+      return reply.send(toJsonSafe(rows.map(mapMilestone)));
+    }
+    return reply.send(toJsonSafe([]));
+  });
+
+  app.get("/api/v2/get_plans/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.testPlan.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: { id: "desc" },
+        take: 250
+      });
+      return reply.send(toJsonSafe(rows.map(mapPlan)));
+    }
+    return reply.send(toJsonSafe([]));
+  });
+
+  app.get("/api/v2/get_statuses", async (req, reply) => {
+    const query = req.query as { project_id?: string } | undefined;
+    if (!query?.project_id) {
+      return reply.send(toJsonSafe(buildSystemStatuses()));
+    }
+    const projectId = BigInt(query.project_id);
+    if (!deps.prisma) {
+      return reply.send(toJsonSafe(buildSystemStatuses()));
+    }
+    const rows = await deps.prisma.customStatus.findMany({
+      where: { projectId, deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+    return reply.send(toJsonSafe(mapCustomStatuses(rows)));
+  });
+
+  app.get("/api/v2/get_configs/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.configurationGroup.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      include: {
+        configurations: {
+          where: { deletedAt: null },
+          orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+        }
+      }
+    });
+    return reply.send(toJsonSafe(mapConfigurations(rows)));
+  });
+
+  app.get("/api/v2/get_case_fields/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.customField.findMany({
+      where: { projectId, deletedAt: null, isActive: true, scope: "case" },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+    return reply.send(toJsonSafe(mapCustomFieldsForV2(rows)));
+  });
+
+  app.get("/api/v2/get_result_fields/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.customField.findMany({
+      where: { projectId, deletedAt: null, isActive: true, scope: "result" },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+    return reply.send(toJsonSafe(mapCustomFieldsForV2(rows)));
+  });
+
+  app.get("/api/v2/get_templates/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.caseTemplate.findMany({
+      where: { projectId, deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+    return reply.send(toJsonSafe(mapCaseTemplatesForV2(rows)));
+  });
+
+  app.get("/api/v2/get_users", async (_req, reply) => {
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.user.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map(mapUserForV2)));
+  });
+
+  app.get("/api/v2/get_users/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.projectMember.findMany({
+      where: { projectId, deletedAt: null, user: { deletedAt: null } },
+      orderBy: [{ user: { name: "asc" } }, { id: "asc" }],
+      include: { user: true },
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map((row) => mapUserForV2(row.user))));
+  });
+
+  app.get("/api/v2/get_reports/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.savedReport.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map(mapSavedReportForV2)));
+  });
+
+  app.get("/api/v2/get_roles", async (_req, reply) => {
+    return reply.send(toJsonSafe(projectRoles.map(mapRoleForV2)));
+  });
+
+  app.get("/api/v2/get_attachments_for_case/:caseId", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.attachment.findMany({
+      where: { entityType: "case", entityId: caseId, deletedAt: null },
+      orderBy: { id: "desc" },
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map(mapAttachmentForV2)));
+  });
+
+  app.get("/api/v2/get_attachments_for_result/:resultId", async (req, reply) => {
+    const { resultId } = z.object({ resultId: z.coerce.bigint() }).parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const rows = await deps.prisma.attachment.findMany({
+      where: { resultId, entityType: "result", deletedAt: null },
+      orderBy: { id: "desc" },
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map(mapAttachmentForV2)));
+  });
+
+  app.post("/api/v2/run_report/:reportId", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { reportId } = runReportParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "run_report requires prisma mode", 501);
+    const saved = await deps.prisma.savedReport.findFirst({
+      where: { id: reportId, deletedAt: null }
+    });
+    if (!saved) throw new AppError("NOT_FOUND", "report not found", 404);
+    const member = await deps.prisma.projectMember.findFirst({
+      where: { projectId: saved.projectId, userId: user.id, deletedAt: null },
+      select: { role: true }
+    });
+    if (!member || !canMutateProject(member.role as ProjectRole)) {
+      throw new AppError("FORBIDDEN", "insufficient project role for report execution", 403);
+    }
+    const exportInput = reportExportSchema.parse({
+      reportType: saved.reportType,
+      ...savedReportExportFilters(saved.filters)
+    });
+    const importExport = new ImportExportService(deps.prisma);
+    const { exported, job } = await importExport.buildAdHocReportExport(saved.projectId, user.id, exportInput);
+    return reply.send(
+      toJsonSafe({
+        report_id: Number(saved.id),
+        project_id: Number(saved.projectId),
+        job_id: Number(job.id),
+        status: "completed",
+        format: exportInput.format,
+        total_rows: exported.totalRows,
+        report_url: `/api/projects/${saved.projectId.toString()}/export-jobs/${job.id.toString()}/download`,
+        download_url: `/api/projects/${saved.projectId.toString()}/export-jobs/${job.id.toString()}/download`
+      })
+    );
   });
 
   app.get("/api/v2/get_cases/:projectId", async (req, reply) => {

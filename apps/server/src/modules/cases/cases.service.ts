@@ -1,4 +1,8 @@
 import { AppError } from "../../common/errors/appError.js";
+import {
+  findCaseVersionAttachmentSnapshot,
+  parseCaseVersionAttachmentSnapshots
+} from "./caseVersionAttachmentSnapshot.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
@@ -60,6 +64,28 @@ export class CasesService {
     const version = await this.repo.getCaseVersion(caseId, versionId);
     if (!version) throw new AppError("NOT_FOUND", `case version ${versionId.toString()} not found`, 404);
     return version;
+  }
+
+  async getCaseVersionAttachmentDownload(caseId: bigint, versionNo: number, attachmentId: string) {
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    const version = await this.repo.getCaseVersionByVersionNo(caseId, versionNo);
+    if (!version) {
+      throw new AppError("NOT_FOUND", `case version ${versionNo} not found`, 404);
+    }
+    const snapshots = parseCaseVersionAttachmentSnapshots(version.attachmentSnapshots);
+    const snapshot = findCaseVersionAttachmentSnapshot(snapshots, attachmentId);
+    if (!snapshot) {
+      throw new AppError("NOT_FOUND", "attachment not found in version snapshot", 404);
+    }
+    const now = Date.now();
+    return {
+      attachmentId: snapshot.attachmentId,
+      fileName: snapshot.fileName,
+      contentType: snapshot.contentType ?? null,
+      downloadUrl: `https://storage.local/download/${encodeURIComponent(snapshot.storageKey)}`,
+      expiresAt: new Date(now + 10 * 60 * 1000)
+    };
   }
 
   async restoreCaseVersion(caseId: bigint, versionId: bigint, expectedVersion?: number) {

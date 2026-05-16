@@ -22,6 +22,12 @@ export const caseVersionIdParamSchema = z.object({
   versionId: z.coerce.bigint()
 });
 
+export const caseVersionAttachmentDownloadParamSchema = z.object({
+  caseId: z.coerce.bigint(),
+  versionNo: z.coerce.number().int().positive(),
+  attachmentId: z.string().min(1)
+});
+
 export const restoreCaseVersionSchema = z.object({
   expectedVersion: z.coerce.number().int().positive().optional()
 });

@@ -1,10 +1,13 @@
+import { Link } from "react-router-dom";
+
 import type { ProjectOverviewDto } from "../types";
 
 type RecentFailureTableProps = {
+  projectId: string;
   rows: ProjectOverviewDto["recentFailures"];
 };
 
-export function RecentFailureTable({ rows }: RecentFailureTableProps) {
+export function RecentFailureTable({ projectId, rows }: RecentFailureTableProps) {
   if (rows.length === 0) {
     return <p className="text-sm text-slate-500">No recent failures.</p>;
   }
@@ -22,10 +25,24 @@ export function RecentFailureTable({ rows }: RecentFailureTableProps) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((r) => (
-            <tr key={`${r.caseCode}-${r.at}`}>
-              <td className="px-3 py-2 font-mono text-xs">{r.caseCode}</td>
+            <tr key={`${r.runId}-${r.caseCode}-${r.at}`}>
+              <td className="px-3 py-2 font-mono text-xs">
+                <Link
+                  to={`/projects/${projectId}/runs/${r.runId}?status=failed&q=${encodeURIComponent(r.caseCode)}`}
+                  className="text-slate-900 hover:underline"
+                >
+                  {r.caseCode}
+                </Link>
+              </td>
               <td className="px-3 py-2">{r.title}</td>
-              <td className="px-3 py-2 text-slate-600">{r.runName}</td>
+              <td className="px-3 py-2">
+                <Link
+                  to={`/projects/${projectId}/runs/${r.runId}?status=failed`}
+                  className="text-slate-700 hover:underline"
+                >
+                  {r.runName}
+                </Link>
+              </td>
               <td className="px-3 py-2 text-slate-500">{r.at}</td>
             </tr>
           ))}

@@ -1,29 +1,45 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { fetchAuditLogFilterOptions, fetchAuditLogs, type AuditLogQuery } from "../api/advancedApi";
+import {
+  downloadAuditLogsCsv,
+  fetchAuditLogFilterOptions,
+  fetchAuditLogs,
+  pruneAuditLogs,
+  type AuditLogQuery
+} from "../api/advancedApi";
 
 type AuditFilterForm = {
+  scope: "project" | "all";
   q: string;
   action: string;
   entityType: string;
   entityId: string;
   actorUserId: string;
+  actorEmail: string;
+  actionExact: boolean;
+  entityTypeExact: boolean;
+  changesContains: string;
   createdFrom: string;
   createdTo: string;
   pageSize: number;
 };
 
 const initialFilters: AuditFilterForm = {
+  scope: "project",
   q: "",
   action: "",
   entityType: "",
   entityId: "",
   actorUserId: "",
+  actorEmail: "",
+  actionExact: false,
+  entityTypeExact: false,
+  changesContains: "",
   createdFrom: "",
   createdTo: "",
   pageSize: 25
@@ -41,11 +57,16 @@ function toQuery(form: AuditFilterForm, page: number): AuditLogQuery {
   return {
     page,
     pageSize: form.pageSize,
+    scope: form.scope,
     q: form.q,
     action: form.action,
     entityType: form.entityType,
     entityId: form.entityId,
     actorUserId: form.actorUserId,
+    actorEmail: form.actorEmail,
+    actionExact: form.actionExact || undefined,
+    entityTypeExact: form.entityTypeExact || undefined,
+    changesContains: form.changesContains,
     createdFrom: toStartIso(form.createdFrom),
     createdTo: toEndIso(form.createdTo)
   };
@@ -56,11 +77,14 @@ export function AuditLogsPage() {
   const [form, setForm] = useState<AuditFilterForm>(initialFilters);
   const [applied, setApplied] = useState<AuditFilterForm>(initialFilters);
   const [page, setPage] = useState(1);
+  const [retentionDays, setRetentionDays] = useState(365);
+  const queryClient = useQueryClient();
   const query = useMemo(() => toQuery(applied, page), [applied, page]);
+  const exportQuery = useMemo(() => toQuery(applied, 1), [applied]);
 
   const optionsQuery = useQuery({
-    queryKey: ["audit-log-filter-options", projectId],
-    queryFn: () => fetchAuditLogFilterOptions(projectId),
+    queryKey: ["audit-log-filter-options", projectId, form.scope],
+    queryFn: () => fetchAuditLogFilterOptions(projectId, form.scope),
     enabled: Boolean(projectId)
   });
 
@@ -68,6 +92,18 @@ export function AuditLogsPage() {
     queryKey: ["audit-logs", projectId, query],
     queryFn: () => fetchAuditLogs(projectId, query),
     enabled: Boolean(projectId)
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => downloadAuditLogsCsv(projectId, exportQuery)
+  });
+
+  const pruneMutation = useMutation({
+    mutationFn: () => pruneAuditLogs(projectId, retentionDays),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["audit-logs", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["audit-log-filter-options", projectId] });
+    }
   });
 
   if (isLoading) return <LoadingState message="Loading audit logs..." />;
@@ -79,7 +115,7 @@ export function AuditLogsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-semibold text-slate-900">Audit Logs</h1>
-        <p className="text-sm text-slate-600">Query auditable project events by actor, entity, action, and date.</p>
+        <p className="text-sm text-slate-600">Query auditable project or cross-project events by actor, entity, action, and date.</p>
       </div>
 
       <form
@@ -90,6 +126,19 @@ export function AuditLogsPage() {
           setApplied(form);
         }}
       >
+        <label>
+          <span className="text-xs font-medium uppercase text-slate-500">Scope</span>
+          <select
+            value={form.scope}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, scope: event.target.value === "all" ? "all" : "project" }))
+            }
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="project">Current project</option>
+            <option value="all">All projects</option>
+          </select>
+        </label>
         <label className="md:col-span-2">
           <span className="text-xs font-medium uppercase text-slate-500">Search</span>
           <input
@@ -144,6 +193,40 @@ export function AuditLogsPage() {
           />
         </label>
         <label>
+          <span className="text-xs font-medium uppercase text-slate-500">Actor email</span>
+          <input
+            type="email"
+            value={form.actorEmail}
+            onChange={(event) => setForm((current) => ({ ...current, actorEmail: event.target.value }))}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="md:col-span-2">
+          <span className="text-xs font-medium uppercase text-slate-500">Changes contains</span>
+          <input
+            value={form.changesContains}
+            onChange={(event) => setForm((current) => ({ ...current, changesContains: event.target.value }))}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="JSON fragment"
+          />
+        </label>
+        <label className="flex items-end gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.actionExact}
+            onChange={(event) => setForm((current) => ({ ...current, actionExact: event.target.checked }))}
+          />
+          Exact action match
+        </label>
+        <label className="flex items-end gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.entityTypeExact}
+            onChange={(event) => setForm((current) => ({ ...current, entityTypeExact: event.target.checked }))}
+          />
+          Exact entity type
+        </label>
+        <label>
           <span className="text-xs font-medium uppercase text-slate-500">From</span>
           <input
             type="date"
@@ -195,6 +278,55 @@ export function AuditLogsPage() {
         </div>
       </form>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-900">Audit operations</p>
+          <p className="text-xs text-slate-500">Export uses the applied filters. Retention pruning keeps a summary audit row.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={exportMutation.isPending}
+            onClick={() => exportMutation.mutate()}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {exportMutation.isPending ? "Exporting..." : "Export CSV"}
+          </button>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            Keep
+            <input
+              type="number"
+              min={30}
+              max={3650}
+              value={retentionDays}
+              onChange={(event) => setRetentionDays(Number(event.target.value))}
+              className="w-24 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            />
+            days
+          </label>
+          <button
+            type="button"
+            disabled={pruneMutation.isPending || retentionDays < 30}
+            onClick={() => pruneMutation.mutate()}
+            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+          >
+            {pruneMutation.isPending ? "Pruning..." : "Prune older"}
+          </button>
+        </div>
+        {exportMutation.error instanceof Error ? (
+          <p className="w-full text-xs text-red-700">{exportMutation.error.message}</p>
+        ) : null}
+        {pruneMutation.error instanceof Error ? (
+          <p className="w-full text-xs text-red-700">{pruneMutation.error.message}</p>
+        ) : null}
+        {pruneMutation.data ? (
+          <p className="w-full text-xs text-emerald-700">
+            Deleted {pruneMutation.data.deleted} audit log{pruneMutation.data.deleted === 1 ? "" : "s"} older than{" "}
+            {pruneMutation.data.cutoff ? new Date(pruneMutation.data.cutoff).toLocaleDateString() : "the selected cutoff"}.
+          </p>
+        ) : null}
+      </div>
+
       {rows.length === 0 ? (
         <EmptyState title="No audit logs" description="No project events matched the current query." />
       ) : (
@@ -229,6 +361,12 @@ export function AuditLogsPage() {
                   <div>
                     <p className="font-semibold text-slate-900">{row.action}</p>
                     <p className="text-xs text-slate-600">
+                      {applied.scope === "all" && row.projectId ? (
+                        <>
+                          {row.projectName ?? "Project"} #{row.projectId}
+                          {" | "}
+                        </>
+                      ) : null}
                       {row.entityType}:{row.entityId}
                       {row.actorUserId ? ` | actor=${row.actorUserId}` : ""}
                       {" | "}

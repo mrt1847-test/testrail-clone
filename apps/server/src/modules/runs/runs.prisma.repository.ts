@@ -1,9 +1,37 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 
 import type { ResultInput } from "../results/results.types.js";
+import { parseRunCompositionMetadata, toMetadataJson } from "./runComposition.js";
+import { resolveDesiredCaseIds } from "./runCompositionFilter.js";
 import { assertSectionsBelongToSuite, expandSectionSubtreeIds } from "./sectionScope.js";
 import type { RunsRepository, Tx } from "./runs.repository.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
+
+function mapRunRow(r: {
+  id: bigint;
+  projectId: bigint;
+  suiteId: bigint;
+  milestoneId: bigint | null;
+  name: string;
+  includeAll: boolean;
+  status: string;
+  assignedTo: bigint | null;
+  environment: string | null;
+  metadata: Prisma.JsonValue | null;
+}): TestRun {
+  return {
+    id: r.id,
+    projectId: r.projectId,
+    suiteId: r.suiteId,
+    milestoneId: r.milestoneId ?? null,
+    name: r.name,
+    includeAll: r.includeAll,
+    status: r.status === "closed" ? "closed" : "open",
+    assignedTo: r.assignedTo ?? null,
+    environment: r.environment ?? null,
+    composition: parseRunCompositionMetadata(r.metadata)
+  };
+}
 
 function mapStatus(status: string) {
   return status as TestInstance["status"];
@@ -20,15 +48,30 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           name: input.name,
           includeAll: input.includeAll,
           assignedTo: input.assignedTo ?? null,
-          environment: input.environment ?? null
+          environment: input.environment ?? null,
+          metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
       });
-      return row as TestRun;
+      return mapRunRow(row);
     },
     async getCasesForRun(input) {
       const mergedRoots = [...(input.includedSectionIds ?? []), ...(input.excludedSectionIds ?? [])];
       if (mergedRoots.length > 0) {
         await assertSectionsBelongToSuite(tx, input.suiteId, mergedRoots);
+      }
+      if (input.compositionMode === "dynamic_filter") {
+        const ids = await resolveDesiredCaseIds(tx, {
+          projectId: input.projectId,
+          suiteId: input.suiteId,
+          includeAll: false,
+          excludedCaseIds: input.excludedCaseIds,
+          includedSectionIds: input.includedSectionIds,
+          excludedSectionIds: input.excludedSectionIds,
+          filterDefinition: input.filterDefinition
+        });
+        if (ids.length === 0) return [];
+        const rows = await tx.testCase.findMany({ where: { id: { in: ids }, deletedAt: null } });
+        return rows as TestCase[];
       }
       let allowedSectionIds: bigint[] | undefined;
       if (input.includedSectionIds?.length) {
@@ -84,17 +127,7 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         where: { id: runId, deletedAt: null }
       });
       if (!row) return null;
-      return {
-        id: row.id,
-        projectId: row.projectId,
-        suiteId: row.suiteId,
-        milestoneId: row.milestoneId ?? null,
-        name: row.name,
-        includeAll: row.includeAll,
-        status: row.status === "closed" ? "closed" : "open",
-        assignedTo: row.assignedTo ?? null,
-        environment: row.environment ?? null
-      };
+      return mapRunRow(row);
     },
     async getInstancesByRunId(runId) {
       const rows = await tx.testInstance.findMany({
@@ -212,32 +245,11 @@ export class PrismaRunsRepository implements RunsRepository {
   }
 
   async listRunsByProject(projectId: bigint): Promise<TestRun[]> {
-    type Row = {
-      id: bigint;
-      projectId: bigint;
-      suiteId: bigint;
-      milestoneId: bigint | null;
-      name: string;
-      includeAll: boolean;
-      status: string;
-      assignedTo: bigint | null;
-      environment: string | null;
-    };
-    const rows = (await this.prisma.testRun.findMany({
+    const rows = await this.prisma.testRun.findMany({
       where: { projectId, deletedAt: null },
       orderBy: { id: "desc" }
-    })) as Row[];
-    return rows.map((r) => ({
-      id: r.id,
-      projectId: r.projectId,
-      suiteId: r.suiteId,
-      milestoneId: r.milestoneId ?? null,
-      name: r.name,
-      includeAll: r.includeAll,
-      status: r.status === "closed" ? "closed" : "open",
-      assignedTo: r.assignedTo ?? null,
-      environment: r.environment ?? null
-    }));
+    });
+    return rows.map((r) => mapRunRow(r));
   }
 
   async getRun(runId: bigint): Promise<TestRun | null> {
@@ -245,17 +257,7 @@ export class PrismaRunsRepository implements RunsRepository {
       where: { id: runId, deletedAt: null }
     });
     if (!r) return null;
-    return {
-      id: r.id,
-      projectId: r.projectId,
-      suiteId: r.suiteId,
-      milestoneId: r.milestoneId ?? null,
-      name: r.name,
-      includeAll: r.includeAll,
-      status: r.status === "closed" ? "closed" : "open",
-      assignedTo: r.assignedTo ?? null,
-      environment: r.environment ?? null
-    };
+    return mapRunRow(r);
   }
 
   async listInstancesForRun(runId: bigint): Promise<TestInstance[]> {

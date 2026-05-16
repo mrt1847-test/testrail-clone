@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
+import { AttachmentPreviewDrawer } from "../../../shared/ui/AttachmentPreviewDrawer";
 import {
   deleteCaseAttachment,
   fetchCaseAttachments,
   fetchCaseAttachmentDownloadUrl,
+  fetchCaseVersionAttachmentDownloadUrl,
   fetchCaseStepAttachments,
   uploadCaseAttachmentViaPresign,
   uploadCaseStepAttachmentViaPresign
@@ -140,6 +142,12 @@ function CaseAttachmentControls({
 }) {
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<CaseAttachmentItem | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const queryKey = ["case-attachments", entityType, entityId] as const;
 
   const attachmentsQuery = useQuery({
@@ -149,9 +157,13 @@ function CaseAttachmentControls({
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>
-      entityType === "case" ? uploadCaseAttachmentViaPresign(entityId, file) : uploadCaseStepAttachmentViaPresign(entityId, file),
+      entityType === "case"
+        ? uploadCaseAttachmentViaPresign(entityId, file, setUploadProgress)
+        : uploadCaseStepAttachmentViaPresign(entityId, file, setUploadProgress),
     onSuccess: async () => {
       setSelectedFile(null);
+      setPendingFile(null);
+      setUploadProgress(100);
       await queryClient.invalidateQueries({ queryKey });
     }
   });
@@ -166,6 +178,8 @@ function CaseAttachmentControls({
   const deleteMutation = useMutation({
     mutationFn: deleteCaseAttachment,
     onSuccess: async () => {
+      setSelectedAttachment(null);
+      setPreviewUrl(null);
       await queryClient.invalidateQueries({ queryKey });
     }
   });
@@ -182,6 +196,31 @@ function CaseAttachmentControls({
           : deleteMutation.error instanceof Error
             ? deleteMutation.error.message
             : null;
+  const uploadError =
+    !uploadMutation.isPending && uploadProgress !== null && uploadProgress < 100 && pendingFile
+      ? "Upload did not complete. You can retry the selected file."
+      : null;
+
+  const uploadSelectedFile = (file: File) => {
+    setPendingFile(file);
+    setUploadProgress(0);
+    uploadMutation.mutate(file);
+  };
+
+  const selectAttachment = async (attachment: CaseAttachmentItem) => {
+    setSelectedAttachment(attachment);
+    setPreviewUrl(null);
+    setPreviewError(null);
+    if (!attachment.contentType?.startsWith("image/")) return;
+    setIsPreviewLoading(true);
+    try {
+      setPreviewUrl(await fetchCaseAttachmentDownloadUrl(attachment.id));
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Could not load attachment preview");
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
 
   if (readOnly && !attachmentsQuery.isLoading && attachments.length === 0 && !error) return null;
 
@@ -202,13 +241,31 @@ function CaseAttachmentControls({
               type="button"
               disabled={!selectedFile || isBusy}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-              onClick={() => selectedFile && uploadMutation.mutate(selectedFile)}
+              onClick={() => selectedFile && uploadSelectedFile(selectedFile)}
             >
               {uploadMutation.isPending ? "Uploading..." : "Upload"}
             </button>
           </>
         ) : null}
       </div>
+      {uploadProgress !== null && !readOnly ? (
+        <div className="mt-2">
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-slate-700 transition-all"
+              style={{ width: `${Math.max(4, uploadProgress)}%` }}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span>{uploadMutation.isPending ? `Uploading ${uploadProgress}%` : "Upload ready"}</span>
+            {uploadError && pendingFile ? (
+              <button type="button" className="font-medium text-slate-700 underline" onClick={() => uploadSelectedFile(pendingFile)}>
+                Retry
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {attachments.length > 0 ? (
         <ul className="mt-2 grid gap-1">
@@ -224,6 +281,14 @@ function CaseAttachmentControls({
                   {size ? <span className="ml-1 text-slate-400">({size})</span> : null}
                 </span>
                 <span className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => void selectAttachment(attachment)}
+                  >
+                    Preview
+                  </button>
                   <button
                     type="button"
                     disabled={isBusy}
@@ -252,7 +317,25 @@ function CaseAttachmentControls({
       ) : readOnly ? null : (
         <p className="mt-1 text-xs text-slate-500">No images attached.</p>
       )}
-      {error ? <p className="mt-1 text-xs text-red-700">{error}</p> : null}
+      {error || uploadError ? <p className="mt-1 text-xs text-red-700">{error ?? uploadError}</p> : null}
+      <AttachmentPreviewDrawer
+        open={selectedAttachment != null}
+        attachment={selectedAttachment}
+        title={label}
+        readOnly={readOnly}
+        previewUrl={previewUrl}
+        isPreviewLoading={isPreviewLoading}
+        isOpening={openMutation.isPending}
+        isDeleting={deleteMutation.isPending}
+        error={previewError}
+        onClose={() => {
+          setSelectedAttachment(null);
+          setPreviewUrl(null);
+          setPreviewError(null);
+        }}
+        onOpen={(attachmentId) => openMutation.mutate(attachmentId)}
+        onDelete={(attachmentId) => deleteMutation.mutate(attachmentId)}
+      />
     </div>
   );
 }
@@ -309,6 +392,7 @@ function toLocalSteps(steps: CaseStep[]): LocalStep[] {
 }
 
 function VersionDetailDrawer({
+  caseId,
   version,
   customFields,
   onClose,
@@ -316,6 +400,7 @@ function VersionDetailDrawer({
   onRestore,
   isRestoring
 }: {
+  caseId: number;
   version: CaseVersion | null;
   customFields: CaseAuthoringCustomFieldDefinition[];
   onClose: () => void;
@@ -323,6 +408,9 @@ function VersionDetailDrawer({
   onRestore?: () => void;
   isRestoring: boolean;
 }) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   if (!version) return null;
 
   const activeCustomFields = customFields.filter((field) => field.isActive);
@@ -455,8 +543,16 @@ function VersionDetailDrawer({
 
           <section className="mt-3 rounded-md border border-slate-200">
             <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
-              Attachment Context
+              Version attachments (snapshot)
             </div>
+            <p className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500">
+              Files captured when this version was saved. Current attachments may differ after restore or delete.
+            </p>
+            {downloadError ? (
+              <p className="px-3 py-2 text-xs text-red-700" role="alert">
+                {downloadError}
+              </p>
+            ) : null}
             {versionAttachments.length === 0 ? (
               <p className="p-3 text-sm text-slate-500">No case or step attachments captured in this version.</p>
             ) : (
@@ -469,11 +565,36 @@ function VersionDetailDrawer({
                         {attachment.entityType === "case_step" && attachment.stepOrder != null
                           ? `Step ${attachment.stepOrder}`
                           : "Case"}
+                        {" · snapshot"}
                       </span>
                     </div>
-                    <p className="break-all text-xs text-slate-500">
-                      {attachment.contentType ?? "file"} · {attachment.fileSize ?? "-"} bytes · {attachment.storagePath}
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-slate-500">
+                        {attachment.contentType ?? "file"}
+                        {attachment.fileSize ? ` · ${attachment.fileSize} bytes` : ""}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={downloadingId === attachment.id}
+                        className="rounded border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => {
+                          setDownloadError(null);
+                          setDownloadingId(attachment.id);
+                          void fetchCaseVersionAttachmentDownloadUrl(caseId, version.versionNo, attachment.id)
+                            .then((url) => {
+                              window.open(url, "_blank", "noopener,noreferrer");
+                            })
+                            .catch((err) => {
+                              setDownloadError(
+                                err instanceof Error ? err.message : "Could not download version attachment."
+                              );
+                            })
+                            .finally(() => setDownloadingId(null));
+                        }}
+                      >
+                        {downloadingId === attachment.id ? "Opening…" : "Download"}
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -973,6 +1094,7 @@ export function ExpandableCaseDetail({
       />
 
       <VersionDetailDrawer
+        caseId={data.id}
         version={detailVersion}
         customFields={customFields}
         isRestoring={isRestoring}

@@ -2,6 +2,7 @@ export type ProjectRow = {
   id: bigint;
   name: string;
   description?: string | null;
+  isArchived?: boolean;
 };
 
 export type SuiteRow = {
@@ -17,11 +18,13 @@ export type SectionRow = {
   parentSectionId?: bigint | null;
   displayOrder?: number;
   name: string;
+  description?: string | null;
 };
 
 export type CaseRow = {
   id: bigint;
   projectId?: bigint;
+  suiteId?: bigint;
   sectionId: bigint;
   displayOrder?: number;
   title: string;
@@ -116,6 +119,7 @@ export interface ProjectsRepository {
   listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
   listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]>;
   getCaseVersion(caseId: bigint, versionId: bigint): Promise<CaseVersionRow | null>;
+  getCaseVersionByVersionNo(caseId: bigint, versionNo: number): Promise<CaseVersionRow | null>;
   createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null>;
   createCaseStep(input: {
     caseId: bigint;

@@ -31,6 +31,9 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
       { label: "Overview", to: base, end: true },
       { label: "Test Cases", to: `${base}/cases` },
       { label: "Test Runs", to: `${base}/runs` },
+      { label: "My Tests", to: `${base}/my-tests` },
+      { label: "Plans", to: `${base}/plans` },
+      { label: "Milestones", to: `${base}/milestones` },
       { label: "Results", to: `${base}/results` },
       { label: "Reports", to: `${base}/reports` }
     ],
@@ -39,9 +42,6 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
 
   const secondaryTabs = useMemo<TabSpec[]>(
     () => [
-      { label: "My Tests", to: `${base}/my-tests` },
-      { label: "Milestones", to: `${base}/milestones` },
-      { label: "Plans", to: `${base}/plans` },
       { label: "Activity", to: `${base}/activity` },
       { label: "Automation", to: `${base}/automation` },
       { label: "Import/Export", to: `${base}/import-export` },

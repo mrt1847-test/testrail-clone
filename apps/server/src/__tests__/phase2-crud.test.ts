@@ -386,5 +386,24 @@ describe("phase2 CRUD flow", () => {
         totalPages: 1
       }
     });
+
+    const exportRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.data.id}/settings/audit-logs/export.csv?q=project`,
+      headers: mutationHeaders
+    });
+    expect(exportRes.statusCode).toBe(200);
+    expect(exportRes.body).toContain(
+      "id,project_id,project_name,action,actor_user_id,actor_email,entity_type,entity_id,changes,created_at"
+    );
+
+    const pruneRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/settings/audit-logs/retention-prune`,
+      headers: mutationHeaders,
+      payload: { olderThanDays: 365 }
+    });
+    expect(pruneRes.statusCode).toBe(200);
+    expect(pruneRes.json()).toMatchObject({ data: { deleted: 0 } });
   });
 });

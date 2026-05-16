@@ -21,6 +21,7 @@ export function WebhooksPage() {
   const queryClient = useQueryClient();
   const webhooksKey = useMemo(() => ["webhooks", projectId], [projectId]);
   const attemptsKey = useMemo(() => ["webhook-attempts", projectId], [projectId]);
+  const [scope, setScope] = useState<"project" | "global">("project");
   const [event, setEvent] = useState("*");
   const [targetUrl, setTargetUrl] = useState("");
   const [secret, setSecret] = useState("");
@@ -52,6 +53,7 @@ export function WebhooksPage() {
   const createMutation = useMutation({
     mutationFn: () =>
       createWebhook(projectId, {
+        scope,
         event,
         targetUrl,
         secret: secret.trim() || undefined,
@@ -101,7 +103,7 @@ export function WebhooksPage() {
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Webhooks</h2>
         <form
-          className="mt-3 grid gap-2 md:grid-cols-[160px_1fr_180px_auto]"
+          className="mt-3 grid gap-2 md:grid-cols-[140px_160px_1fr_180px_auto]"
           onSubmit={(e) => {
             e.preventDefault();
             if (!targetUrl.trim()) {
@@ -111,6 +113,15 @@ export function WebhooksPage() {
             createMutation.mutate();
           }}
         >
+          <select
+            className="rounded border border-slate-300 px-2 py-2 text-sm"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as "project" | "global")}
+            title="Webhook scope"
+          >
+            <option value="project">Project</option>
+            <option value="global">Global</option>
+          </select>
           <select
             className="rounded border border-slate-300 px-2 py-2 text-sm"
             value={event}
@@ -153,6 +164,7 @@ export function WebhooksPage() {
             <thead className="bg-slate-50 text-xs uppercase text-slate-600">
               <tr>
                 <th className="px-3 py-2">Event</th>
+                <th className="px-3 py-2">Scope</th>
                 <th className="px-3 py-2">Target</th>
                 <th className="px-3 py-2">Secret</th>
                 <th className="px-3 py-2">Status</th>
@@ -163,9 +175,20 @@ export function WebhooksPage() {
               {data.map((row) => (
                 <tr key={row.id}>
                   <td className="px-3 py-2 font-medium text-slate-900">{row.event}</td>
+                  <td className="px-3 py-2 text-slate-600">{row.scope === "global" ? "global" : "project"}</td>
                   <td className="px-3 py-2 text-slate-600">{row.targetUrl}</td>
                   <td className="px-3 py-2 font-mono text-xs text-slate-500">{row.secretPrefix ?? "-"}</td>
-                  <td className="px-3 py-2">{row.isActive ? "active" : "inactive"}</td>
+                  <td className="px-3 py-2">
+                    {row.autoDisabled ? (
+                      <span className="text-amber-800" title={row.disabledAt ? `Disabled ${row.disabledAt}` : undefined}>
+                        auto-disabled ({row.consecutiveFailures ?? 0} failures)
+                      </span>
+                    ) : row.isActive ? (
+                      "active"
+                    ) : (
+                      "inactive"
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <button
                       type="button"
@@ -181,7 +204,7 @@ export function WebhooksPage() {
                       className="mr-3 text-sm font-medium text-slate-700 underline disabled:opacity-50"
                       onClick={() => updateMutation.mutate({ id: row.id, isActive: !row.isActive })}
                     >
-                      {row.isActive ? "Disable" : "Enable"}
+                      {row.isActive ? "Disable" : row.autoDisabled ? "Re-enable" : "Enable"}
                     </button>
                     <button
                       type="button"

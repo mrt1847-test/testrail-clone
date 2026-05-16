@@ -285,6 +285,10 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     return this.caseVersions.find((v) => v.caseId === caseId && v.id === versionId) ?? null;
   }
 
+  async getCaseVersionByVersionNo(caseId: bigint, versionNo: number): Promise<CaseVersionRow | null> {
+    return this.caseVersions.find((v) => v.caseId === caseId && v.versionNo === versionNo) ?? null;
+  }
+
   async createCaseVersionSnapshot(caseId: bigint, reason?: string): Promise<CaseVersionRow | null> {
     return this.runCaseSnapshotExclusive(caseId, async () => {
       const current = this.cases.find((c) => c.id === caseId);

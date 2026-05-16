@@ -67,28 +67,41 @@ export function ProjectListPage() {
   return (
     <AppShell top={top}>
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">My projects</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">My projects</h2>
+            <p className="mt-1 text-sm text-slate-500">Project status, recent execution, and result activity at a glance.</p>
+          </div>
+          <p className="text-xs text-slate-500">{list.length} project{list.length === 1 ? "" : "s"}</p>
+        </div>
         {list.length === 0 ? (
           <div className="mt-6">
             <ProjectEmptyState onCreateClick={() => setDialogOpen(true)} />
           </div>
         ) : (
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="hidden border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-600 lg:grid lg:grid-cols-[minmax(14rem,1.2fr)_2fr_auto]">
+              <span>Project</span>
+              <span>Summary</span>
+              <span className="w-64">Activity</span>
+            </div>
+            <ul>
             {list.map((p) => (
               <li key={p.id}>
                 <ProjectCard project={p} />
               </li>
             ))}
-            <li>
+            <li className="bg-white px-4 py-4">
               <button
                 type="button"
                 onClick={() => setDialogOpen(true)}
-                className="flex h-full min-h-[140px] w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                className="flex w-full items-center justify-center rounded border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
               >
                 + New project
               </button>
             </li>
-          </ul>
+            </ul>
+          </div>
         )}
       </section>
 

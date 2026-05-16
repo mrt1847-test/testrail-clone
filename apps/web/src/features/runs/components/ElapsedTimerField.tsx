@@ -20,19 +20,22 @@ export function ElapsedTimerField({
   onReset
 }: ElapsedTimerFieldProps) {
   return (
-    <>
-      <input
-        className="w-full rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-50 sm:w-28"
-        placeholder="elapsed"
-        value={elapsed}
-        disabled={isRunning}
-        onBlur={onBlur}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <div className="flex w-full items-center gap-1 sm:w-auto">
+    <div className="space-y-1">
+      <label className="block text-xs font-medium text-slate-600">
+        Elapsed
+        <input
+          className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500 disabled:bg-slate-50"
+          placeholder="e.g. 3m 20s"
+          value={elapsed}
+          disabled={isRunning}
+          onBlur={onBlur}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </label>
+      <div className="grid grid-cols-3 gap-1.5">
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:opacity-50"
+          className="rounded border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
           disabled={isRunning}
           onClick={onStart}
         >
@@ -40,17 +43,17 @@ export function ElapsedTimerField({
         </button>
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:opacity-50"
+          className="rounded border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
           disabled={!isRunning}
           onClick={onStop}
         >
           Stop
         </button>
-        <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" onClick={onReset}>
+        <button type="button" className="rounded border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700" onClick={onReset}>
           Reset
         </button>
       </div>
-      {elapsedError ? <p className="basis-full text-xs text-red-600">{elapsedError}</p> : null}
-    </>
+      {elapsedError ? <p className="text-xs text-red-600">{elapsedError}</p> : null}
+    </div>
   );
 }

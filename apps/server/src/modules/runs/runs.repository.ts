@@ -44,6 +44,7 @@ export type Tx = {
     includeAll: boolean;
     assignedTo?: bigint | null;
     environment?: string | null;
+    metadata?: Record<string, unknown>;
   }): Promise<TestRun>;
   getCasesForRun(input: {
     projectId: bigint;
@@ -53,6 +54,8 @@ export type Tx = {
     includeAll: boolean;
     includedSectionIds?: bigint[];
     excludedSectionIds?: bigint[];
+    compositionMode?: import("./runComposition.js").CompositionMode;
+    filterDefinition?: import("./runComposition.js").RunCaseFilterDefinition;
   }): Promise<TestCase[]>;
   countResultsForTestInstance(testInstanceId: bigint): Promise<number>;
   hardDeleteTestInstance(testInstanceId: bigint): Promise<void>;

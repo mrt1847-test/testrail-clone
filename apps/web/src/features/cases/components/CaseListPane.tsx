@@ -180,6 +180,7 @@ export function CaseListPane({
   const [saveViewName, setSaveViewName] = useState("");
 
   const deferredSearch = useDeferredValue(searchDraft);
+  const validSectionIds = useMemo(() => new Set(sections.map((section) => section.id)), [sections]);
   const currentView = useMemo(
     () => ({
       sectionId: selectedSectionId,
@@ -191,7 +192,8 @@ export function CaseListPane({
   const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(
     projectId,
     user?.id,
-    currentView
+    currentView,
+    validSectionIds
   );
 
   const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
@@ -692,7 +694,9 @@ export function CaseListPane({
     onSavedViewSelect: (viewId: string) => {
       const view = savedViews.find((item) => item.id === viewId);
       if (!view) return;
-      applySavedView({ sectionId: view.sectionId, filters: view.filters, columns: view.columns });
+      const sectionId =
+        view.sectionId != null && validSectionIds.has(view.sectionId) ? view.sectionId : null;
+      applySavedView({ sectionId, filters: view.filters, columns: view.columns });
       setSaveViewOpen(false);
       setSaveViewName("");
     },

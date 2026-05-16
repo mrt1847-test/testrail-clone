@@ -15,6 +15,7 @@ import {
   bulkCopyCasesSchema,
   caseIdParamSchema,
   caseVersionIdParamSchema,
+  caseVersionAttachmentDownloadParamSchema,
   bulkDeleteCasesSchema,
   bulkMoveCasesSchema,
   bulkUpdateCasesSchema,
@@ -198,9 +199,27 @@ async function createCaseEntityAttachment(
   return mapAttachmentRow(created);
 }
 
+async function syncRunsForCaseChange(
+  compositionSync: import("../runs/runCompositionSync.service.js").RunCompositionSyncService | undefined,
+  projectId: bigint | null | undefined,
+  suiteId: bigint | null | undefined
+) {
+  if (!compositionSync || projectId == null || suiteId == null) return;
+  try {
+    await compositionSync.syncSuite(projectId, suiteId);
+  } catch {
+    // composition sync is best-effort after case mutations
+  }
+}
+
 export async function registerCasesRoutes(
   app: FastifyInstance,
-  deps: { casesService: CasesService; authService: AuthService; prisma?: PrismaClient }
+  deps: {
+    casesService: CasesService;
+    authService: AuthService;
+    prisma?: PrismaClient;
+    compositionSync?: import("../runs/runCompositionSync.service.js").RunCompositionSyncService;
+  }
 ) {
   app.get("/api/projects/:projectId/cases", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -274,6 +293,7 @@ export async function registerCasesRoutes(
           payload: { caseId: created.id.toString() }
         });
       }
+      await syncRunsForCaseChange(deps.compositionSync, created.projectId, created.suiteId);
       return reply.send(toJsonSafe(ok(created)));
     } catch (e) {
       const customFieldError = deps.casesService.customFieldErrorResponse(e);
@@ -559,6 +579,13 @@ export async function registerCasesRoutes(
     const { caseId, versionId } = caseVersionIdParamSchema.parse(req.params);
     const row = await deps.casesService.getCaseVersion(caseId, versionId);
     return reply.send(toJsonSafe(ok(row)));
+  });
+
+  app.get("/api/cases/:caseId/versions/:versionNo/attachments/:attachmentId/download", async (req, reply) => {
+    await getAuthenticatedUser(req, deps);
+    const { caseId, versionNo, attachmentId } = caseVersionAttachmentDownloadParamSchema.parse(req.params);
+    const download = await deps.casesService.getCaseVersionAttachmentDownload(caseId, versionNo, attachmentId);
+    return reply.send(toJsonSafe(ok(download)));
   });
 
   app.post("/api/cases/:caseId/versions/:versionId/restore", async (req, reply) => {

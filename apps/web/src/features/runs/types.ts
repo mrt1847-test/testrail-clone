@@ -19,8 +19,27 @@ export type TestInstanceRow = {
   assignedTo?: string | null;
 };
 
+export type RunCompositionMode = "static" | "include_all_live" | "dynamic_filter";
+
+export type RunCompositionInfo = {
+  compositionMode: RunCompositionMode;
+  filterDefinition?: {
+    priority?: "low" | "medium" | "high";
+    state?: "active" | "archived";
+    includedSectionIds?: string[];
+  };
+  lastSyncedAt?: string;
+  lastSyncAdded?: number;
+  lastSyncRemoved?: number;
+};
+
 export type RunDetailDto = {
-  run: RunSummary & { environment?: string; assignedTo?: string | null };
+  run: RunSummary & {
+    environment?: string;
+    assignedTo?: string | null;
+    includeAll?: boolean;
+    composition?: RunCompositionInfo | null;
+  };
   instances: TestInstanceRow[];
   counts: { passed: number; failed: number; blocked: number; retest: number; untested: number };
 };

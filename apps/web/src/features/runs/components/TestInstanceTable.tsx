@@ -1,40 +1,30 @@
-import type { Dispatch, SetStateAction } from "react";
-import type { ProjectMemberRow } from "../../projects/api/settingsApi";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TestInstanceRow } from "../types";
-
-function statusTone(status: string): string {
-  switch (status) {
-    case "passed":
-      return "bg-emerald-50 text-emerald-900 ring-emerald-100";
-    case "failed":
-      return "bg-red-50 text-red-900 ring-red-100";
-    case "blocked":
-      return "bg-amber-50 text-amber-900 ring-amber-100";
-    case "retest":
-      return "bg-violet-50 text-violet-900 ring-violet-100";
-    case "untested":
-    default:
-      return "bg-slate-100 text-slate-700 ring-slate-200";
-  }
-}
+import { DefectKeyInput } from "./DefectKeyInput";
+import type { ResultStatus } from "./resultEntryTypes";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
+import { normalizeElapsedInput } from "./resultEntryUtils";
 
 type Props = {
   pagedInstances: TestInstanceRow[];
   selectedInstanceId: string | null;
   onSelectInstance: (instance: TestInstanceRow) => void;
-  members: ProjectMemberRow[];
   selectedTestIds: string[];
   setSelectedTestIds: Dispatch<SetStateAction<string[]>>;
   allFilteredSelected: boolean;
-  instanceAssignees: Record<string, string>;
-  onInstanceAssigneeChange: (testId: string, value: string) => void;
-  onSaveInstanceAssignee: (testId: string) => void;
-  isSavingInstanceAssignee: boolean;
+  onQuickResultSave: (
+    testId: string,
+    payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
+  ) => void;
+  isSavingQuickResult: boolean;
   page: number;
   totalPages: number;
   total: number;
   onPrevPage: () => void;
   onNextPage: () => void;
+  subscribedTestIds?: Set<string>;
+  onToggleSubscribe?: (testId: string, subscribed: boolean) => void;
+  isSubscribePending?: boolean;
 };
 
 export function TestInstanceTable(props: Props) {
@@ -42,20 +32,58 @@ export function TestInstanceTable(props: Props) {
     pagedInstances,
     selectedInstanceId,
     onSelectInstance,
-    members,
     selectedTestIds,
     setSelectedTestIds,
     allFilteredSelected,
-    instanceAssignees,
-    onInstanceAssigneeChange,
-    onSaveInstanceAssignee,
-    isSavingInstanceAssignee,
+    onQuickResultSave,
+    isSavingQuickResult,
     page,
     totalPages,
     total,
     onPrevPage,
-    onNextPage
+    onNextPage,
+    subscribedTestIds,
+    onToggleSubscribe,
+    isSubscribePending
   } = props;
+  const [editingRow, setEditingRow] = useState<TestInstanceRow | null>(null);
+  const [draftStatus, setDraftStatus] = useState<ResultStatus>("passed");
+  const [draftComment, setDraftComment] = useState("");
+  const [draftElapsed, setDraftElapsed] = useState("");
+  const [draftElapsedError, setDraftElapsedError] = useState("");
+  const [draftVersion, setDraftVersion] = useState("");
+  const [draftDefects, setDraftDefects] = useState<string[]>([]);
+  const statusOptions: ResultStatus[] = ["passed", "failed", "blocked", "retest", "untested"];
+
+  useEffect(() => {
+    if (!editingRow) return;
+    setDraftStatus(editingRow.status as ResultStatus);
+    setDraftComment("");
+    setDraftElapsed("");
+    setDraftElapsedError("");
+    setDraftVersion("");
+    setDraftDefects([]);
+  }, [editingRow]);
+
+  function closeEditor() {
+    if (isSavingQuickResult) return;
+    setEditingRow(null);
+  }
+
+  function saveDraft() {
+    if (!editingRow) return;
+    const normalizedElapsed = normalizeElapsedInput(draftElapsed);
+    setDraftElapsedError(normalizedElapsed.error ?? "");
+    if (normalizedElapsed.error) return;
+    onQuickResultSave(editingRow.id, {
+      status: draftStatus,
+      comment: draftComment.trim() || undefined,
+      elapsed: normalizedElapsed.value,
+      version: draftVersion.trim() || undefined,
+      defects: draftDefects
+    });
+    setEditingRow(null);
+  }
 
   return (
     <>
@@ -87,11 +115,8 @@ export function TestInstanceTable(props: Props) {
               <th className="min-w-[8rem] px-3 py-2.5" scope="col">
                 Title
               </th>
-              <th className="px-3 py-2.5" scope="col">
+              <th className="w-36 px-3 py-2.5" scope="col">
                 Status
-              </th>
-              <th className="min-w-[12rem] px-3 py-2.5" scope="col">
-                Assignee
               </th>
             </tr>
           </thead>
@@ -121,37 +146,28 @@ export function TestInstanceTable(props: Props) {
                 <td className="max-w-[24rem] truncate px-3 py-2 align-middle text-slate-800" title={row.title}>
                   {row.title}
                 </td>
-                <td className="px-3 py-2 align-middle">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${statusTone(row.status)}`}
-                  >
-                    {row.status}
-                  </span>
-                </td>
                 <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <select
-                      className="min-w-[7rem] max-w-[10rem] rounded border border-slate-300 bg-white px-1 py-1 text-xs"
-                      value={instanceAssignees[row.id] ?? ""}
-                      onChange={(e) => onInstanceAssigneeChange(row.id, e.target.value)}
-                    >
-                      <option value="">Unassigned</option>
-                      {members.map((member) => (
-                        <option key={member.id} value={member.userId}>
-                          {member.name ?? member.email}
-                        </option>
-                      ))}
-                    </select>
+                  <StatusBadge
+                    status={row.status}
+                    interactive
+                    onClick={() => setEditingRow(row)}
+                  />
+                </td>
+                {onToggleSubscribe ? (
+                  <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
-                      disabled={isSavingInstanceAssignee}
-                      onClick={() => onSaveInstanceAssignee(row.id)}
+                      disabled={isSubscribePending}
+                      title={subscribedTestIds?.has(row.id) ? "Unsubscribe from email updates" : "Subscribe to email updates"}
+                      className={`text-xs font-medium underline disabled:opacity-50 ${
+                        subscribedTestIds?.has(row.id) ? "text-indigo-700" : "text-slate-600"
+                      }`}
+                      onClick={() => onToggleSubscribe(row.id, !subscribedTestIds?.has(row.id))}
                     >
-                      Save
+                      {subscribedTestIds?.has(row.id) ? "Watching" : "Watch"}
                     </button>
-                  </div>
-                </td>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
@@ -182,6 +198,97 @@ export function TestInstanceTable(props: Props) {
           </button>
         </div>
       </div>
+      {editingRow ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={closeEditor}>
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="min-w-0">
+                <p className="font-mono text-xs text-slate-500">{editingRow.caseCode}</p>
+                <h3 className="mt-1 truncate text-sm font-semibold text-slate-900">{editingRow.title}</h3>
+              </div>
+              <button type="button" className="text-xl leading-none text-slate-400 hover:text-slate-700" onClick={closeEditor}>
+                x
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-1.5">
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`rounded border px-2 py-1.5 text-xs font-medium capitalize ${
+                      draftStatus === status
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                    onClick={() => setDraftStatus(status)}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+
+              <label className="block text-xs font-medium text-slate-600">
+                Comment
+                <textarea
+                  className="mt-1 min-h-24 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+                  value={draftComment}
+                  onChange={(e) => setDraftComment(e.target.value)}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-600">
+                  Elapsed
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+                    placeholder="e.g. 3m 20s"
+                    value={draftElapsed}
+                    onBlur={() => {
+                      const normalized = normalizeElapsedInput(draftElapsed);
+                      setDraftElapsedError(normalized.error ?? "");
+                      if (normalized.value) setDraftElapsed(normalized.value);
+                    }}
+                    onChange={(e) => {
+                      setDraftElapsed(e.target.value);
+                      if (draftElapsedError) setDraftElapsedError("");
+                    }}
+                  />
+                  {draftElapsedError ? <span className="mt-1 block text-xs text-red-600">{draftElapsedError}</span> : null}
+                </label>
+                <label className="block text-xs font-medium text-slate-600">
+                  Version
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+                    value={draftVersion}
+                    onChange={(e) => setDraftVersion(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-600">Defects</p>
+                <DefectKeyInput defects={draftDefects} onChange={setDraftDefects} />
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700" onClick={closeEditor}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  disabled={isSavingQuickResult}
+                  onClick={saveDraft}
+                >
+                  {isSavingQuickResult ? "Saving..." : "Add result"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import type { TestStatus } from "../../domain/status.js";
+import type { CompositionMode, RunCaseFilterDefinition, RunCompositionMetadata } from "./runComposition.js";
 
 export type TestRun = {
   id: bigint;
@@ -10,6 +11,7 @@ export type TestRun = {
   status: "open" | "closed";
   assignedTo: bigint | null;
   environment: string | null;
+  composition?: RunCompositionMetadata | null;
 };
 
 export type TestCase = {
@@ -50,4 +52,6 @@ export type CreateRunWithInstancesInput = {
   includedSectionIds?: bigint[];
   excludedSectionIds?: bigint[];
   environment?: string | null;
+  compositionMode?: CompositionMode;
+  filterDefinition?: RunCaseFilterDefinition;
 };

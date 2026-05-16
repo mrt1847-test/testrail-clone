@@ -27,22 +27,39 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
       const rows = await deps.prisma.webhookSubscription.findMany({
-        where: { projectId, deletedAt: null },
-        orderBy: [{ isActive: "desc" }, { id: "desc" }],
+        where: {
+          deletedAt: null,
+          OR: [{ projectId, scope: "project" }, { scope: "global" }]
+        },
+        orderBy: [{ scope: "asc" }, { isActive: "desc" }, { id: "desc" }],
         take: 100,
         select: {
           id: true,
+          scope: true,
           event: true,
           targetUrl: true,
           secret: true,
           isActive: true,
+          consecutiveFailures: true,
+          disabledAt: true,
+          lastFailureAt: true,
           createdAt: true,
           updatedAt: true
         }
       });
       return reply.send(toJsonSafe(paged(rows.map(webhookToResponse), 1, 100)));
     }
-    return reply.send(toJsonSafe(paged(webhooks.filter((item) => item.projectId === projectId).map(webhookToResponse), 1, 100)));
+    return reply.send(
+      toJsonSafe(
+        paged(
+          webhooks
+            .filter((item) => item.projectId === projectId || item.scope === "global")
+            .map(webhookToResponse),
+          1,
+          100
+        )
+      )
+    );
   });
 
   app.get("/api/projects/:projectId/settings/webhook-events", async (req, reply) => {
@@ -90,6 +107,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
         const row = await tx.webhookSubscription.create({
           data: {
             projectId,
+            scope: body.scope,
             event: body.event,
             targetUrl: body.targetUrl,
             secret: body.secret ?? newWebhookSecret(),
@@ -107,6 +125,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
             entityId: row.id.toString(),
             changes: {
               event: row.event,
+              scope: row.scope,
               targetUrl: row.targetUrl,
               isActive: row.isActive
             }
@@ -120,6 +139,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
       id: BigInt(Date.now()),
       projectId,
       event: body.event,
+      scope: body.scope,
       targetUrl: body.targetUrl,
       secret: body.secret ?? newWebhookSecret(),
       isActive: body.isActive
@@ -135,17 +155,22 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       const existing = await deps.prisma.webhookSubscription.findFirst({
-        where: { id: webhookId, projectId, deletedAt: null },
+        where: { id: webhookId, deletedAt: null, OR: [{ projectId }, { scope: "global" }] },
         select: { id: true }
       });
       if (!existing) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
+      const reEnable = body.isActive === true;
       const updated = await deps.prisma.webhookSubscription.update({
         where: { id: existing.id },
         data: {
           ...(body.event !== undefined ? { event: body.event } : {}),
+          ...(body.scope !== undefined ? { scope: body.scope } : {}),
           ...(body.targetUrl !== undefined ? { targetUrl: body.targetUrl } : {}),
           ...(body.secret !== undefined ? { secret: body.secret } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          ...(reEnable
+            ? { consecutiveFailures: 0, disabledAt: null, lastFailureAt: null }
+            : {}),
           updatedBy: actor.id
         }
       });
@@ -156,15 +181,16 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
           action: "settings.webhook.updated",
           entityType: "webhook",
           entityId: updated.id.toString(),
-          changes: { event: updated.event, targetUrl: updated.targetUrl, isActive: updated.isActive }
+        changes: { event: updated.event, targetUrl: updated.targetUrl, isActive: updated.isActive, scope: updated.scope }
         }
       });
       return reply.send(toJsonSafe(ok(webhookToResponse(updated))));
     }
-    const row = webhooks.find((item) => item.projectId === projectId && item.id === webhookId);
+    const row = webhooks.find((item) => (item.projectId === projectId || item.scope === "global") && item.id === webhookId);
     if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
     Object.assign(row, {
       ...(body.event !== undefined ? { event: body.event } : {}),
+      ...(body.scope !== undefined ? { scope: body.scope } : {}),
       ...(body.targetUrl !== undefined ? { targetUrl: body.targetUrl } : {}),
       ...(body.secret !== undefined ? { secret: body.secret } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
@@ -178,7 +204,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       const existing = await deps.prisma.webhookSubscription.findFirst({
-        where: { id: webhookId, projectId, deletedAt: null },
+        where: { id: webhookId, deletedAt: null, OR: [{ projectId }, { scope: "global" }] },
         select: { id: true }
       });
       if (!existing) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
@@ -197,7 +223,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
       });
       return reply.code(204).send();
     }
-    const index = webhooks.findIndex((item) => item.projectId === projectId && item.id === webhookId);
+    const index = webhooks.findIndex((item) => (item.projectId === projectId || item.scope === "global") && item.id === webhookId);
     if (index === -1) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
     webhooks.splice(index, 1);
     return reply.code(204).send();
@@ -239,7 +265,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
       return reply.code(501).send({ code: "NOT_AVAILABLE", message: "test-send requires database mode" });
     }
     const row = await deps.prisma.webhookSubscription.findFirst({
-      where: { id: webhookId, projectId, deletedAt: null, isActive: true }
+      where: { id: webhookId, deletedAt: null, isActive: true, OR: [{ projectId }, { scope: "global" }] }
     });
     if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook not found" });
     const payload = { event: "webhook.test", message: "ping", sentAt: new Date().toISOString() };

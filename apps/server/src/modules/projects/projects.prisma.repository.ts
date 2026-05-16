@@ -10,6 +10,10 @@ import type {
   SectionRow,
   SuiteRow
 } from "./projects.repository.js";
+import {
+  parseCaseVersionAttachmentSnapshots,
+  toPersistedAttachmentSnapshots
+} from "../cases/caseVersionAttachmentSnapshot.js";
 
 function serializeCaseSnapshot(input: {
   title: string;
@@ -18,7 +22,7 @@ function serializeCaseSnapshot(input: {
   preconditions?: string | null;
   customValues?: Record<string, string | number | boolean | null>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
-  attachmentSnapshots: CaseVersionRow["attachmentSnapshots"];
+  attachmentSnapshots: unknown;
 }) {
   return JSON.stringify(input);
 }
@@ -35,25 +39,20 @@ function jsonObject(value: unknown): Record<string, string | number | boolean | 
 }
 
 function jsonAttachmentSnapshots(value: unknown): CaseVersionRow["attachmentSnapshots"] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-    const row = item as Record<string, unknown>;
-    if (row.entityType !== "case" && row.entityType !== "case_step") return [];
-    if (typeof row.id !== "string" || typeof row.entityId !== "string" || typeof row.fileName !== "string") return [];
-    if (typeof row.storagePath !== "string" || typeof row.createdAt !== "string") return [];
+  return parseCaseVersionAttachmentSnapshots(value).flatMap((row) => {
+    if (!row.entityType || !row.entityId || !row.createdAt) return [];
     return [
       {
-        id: row.id,
+        id: row.attachmentId,
         entityType: row.entityType,
         entityId: row.entityId,
-        stepOrder: typeof row.stepOrder === "number" ? row.stepOrder : null,
+        stepOrder: row.stepOrder ?? null,
         fileName: row.fileName,
-        contentType: typeof row.contentType === "string" ? row.contentType : null,
-        storagePath: row.storagePath,
-        fileSize: typeof row.fileSize === "string" ? row.fileSize : null,
+        contentType: row.contentType ?? null,
+        storagePath: row.storageKey,
+        fileSize: row.fileSize ?? null,
         createdAt: row.createdAt,
-        createdBy: typeof row.createdBy === "string" ? row.createdBy : null
+        createdBy: row.createdBy ?? null
       }
     ];
   });
@@ -565,6 +564,13 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     return row ? this.mapCaseVersionRow(row) : null;
   }
 
+  async getCaseVersionByVersionNo(caseId: bigint, versionNo: number): Promise<CaseVersionRow | null> {
+    const row = await this.prisma.testCaseVersion.findFirst({
+      where: { caseId, versionNo }
+    });
+    return row ? this.mapCaseVersionRow(row) : null;
+  }
+
   private mapCaseVersionRow(row: {
     id: bigint;
     caseId: bigint;
@@ -665,24 +671,28 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           createdBy: true
         }
       });
-      const attachmentSnapshots: CaseVersionRow["attachmentSnapshots"] = attachmentRows.flatMap((attachment) => {
-        if (attachment.entityType !== "case" && attachment.entityType !== "case_step") return [];
-        return [
-          {
-            id: attachment.id.toString(),
-            entityType: attachment.entityType,
-            entityId: attachment.entityId.toString(),
-            stepOrder:
-              attachment.entityType === "case_step" ? (stepOrderById.get(attachment.entityId.toString()) ?? null) : null,
-            fileName: attachment.fileName,
-            contentType: attachment.contentType ?? null,
-            storagePath: attachment.storagePath,
-            fileSize: attachment.fileSize?.toString() ?? null,
-            createdAt: attachment.createdAt.toISOString(),
-            createdBy: attachment.createdBy?.toString() ?? null
-          }
-        ];
-      });
+      const attachmentSnapshots = toPersistedAttachmentSnapshots(
+        attachmentRows.flatMap((attachment) => {
+          if (attachment.entityType !== "case" && attachment.entityType !== "case_step") return [];
+          return [
+            {
+              id: attachment.id.toString(),
+              entityType: attachment.entityType,
+              entityId: attachment.entityId.toString(),
+              stepOrder:
+                attachment.entityType === "case_step"
+                  ? (stepOrderById.get(attachment.entityId.toString()) ?? null)
+                  : null,
+              fileName: attachment.fileName,
+              contentType: attachment.contentType ?? null,
+              storagePath: attachment.storagePath,
+              fileSize: attachment.fileSize?.toString() ?? null,
+              createdAt: attachment.createdAt.toISOString(),
+              createdBy: attachment.createdBy?.toString() ?? null
+            }
+          ];
+        })
+      );
 
       const latest = await tx.testCaseVersion.findFirst({
         where: { caseId },

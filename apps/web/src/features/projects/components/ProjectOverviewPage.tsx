@@ -1,50 +1,79 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { AutomationCoverageCard } from "./AutomationCoverageCard";
+import { ExecutionSummaryChart } from "./ExecutionSummaryChart";
 import { ProjectSummaryCards } from "./ProjectSummaryCards";
 import { RecentFailureTable } from "./RecentFailureTable";
-import { RecentResultList } from "./RecentResultList";
 import { RecentRunList } from "./RecentRunList";
 import { useProjectOverviewQuery } from "../hooks/useProjectsApi";
+
+const MAX_RECENT_RUNS = 5;
 
 export function ProjectOverviewPage() {
   const { projectId = "" } = useParams();
   const { data, isLoading, isError, refetch } = useProjectOverviewQuery(projectId);
+  const [activityTab, setActivityTab] = useState<"runs" | "failures">("runs");
 
   if (isLoading) return <LoadingState message="Loading overview…" />;
   if (isError || !data)
     return <ErrorState title="Could not load overview" onRetry={() => refetch()} />;
 
-  return (
-    <div className="space-y-8">
-      <ProjectSummaryCards stats={data.stats} />
+  const recentRuns = data.recentRuns.slice(0, MAX_RECENT_RUNS);
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recent runs</h2>
-            <Link to={`/projects/${projectId}/runs`} className="text-sm font-medium text-slate-700 hover:underline">
-              View all
-            </Link>
-          </div>
-          <RecentRunList projectId={projectId} runs={data.recentRuns} />
-        </div>
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Automation</h2>
-          <AutomationCoverageCard pct={data.stats.automationCoveragePct} />
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <ProjectSummaryCards projectId={projectId} stats={data.stats} />
+        <div className="mt-4">
+          <ExecutionSummaryChart projectId={projectId} execution={data.execution} compact />
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recent failures</h2>
-          <RecentFailureTable rows={data.recentFailures} />
+      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setActivityTab("runs")}
+              className={
+                activityTab === "runs"
+                  ? "rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white"
+                  : "rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              }
+            >
+              Recent runs
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivityTab("failures")}
+              className={
+                activityTab === "failures"
+                  ? "rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white"
+                  : "rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              }
+            >
+              Recent failures
+            </button>
+          </div>
+          <Link
+            to={
+              activityTab === "runs"
+                ? `/projects/${projectId}/runs`
+                : `/projects/${projectId}/reports`
+            }
+            className="text-xs font-medium text-slate-700 hover:underline"
+          >
+            View all
+          </Link>
         </div>
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Recent results</h2>
-          <RecentResultList rows={data.recentResults} />
+        <div className="p-3">
+          {activityTab === "runs" ? (
+            <RecentRunList projectId={projectId} runs={recentRuns} />
+          ) : (
+            <RecentFailureTable projectId={projectId} rows={data.recentFailures} />
+          )}
         </div>
       </section>
     </div>

@@ -2,7 +2,7 @@ const TOKEN_KEY = "testrail.accessToken";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
-export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export function getAccessToken() {
   if (typeof window === "undefined") return null;

@@ -11,6 +11,7 @@ import { AppError } from "../../common/errors/appError.js";
 import { getAuthenticatedUser, requireAuthenticated, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
+import { recordAuditLog } from "../settings/auditLog.service.js";
 import {
   projectIdForTestInstance,
   resultCustomFieldErrorResponse,
@@ -476,6 +477,7 @@ export async function registerResultsRoutes(
           select: {
             id: true,
             caseId: true,
+            assignedTo: true,
             run: { select: { id: true, projectId: true } },
             titleSnapshot: true
           }
@@ -483,6 +485,20 @@ export async function registerResultsRoutes(
       }
     });
     if (context) {
+      await recordAuditLog(deps.prisma, {
+        projectId: context.instance.run.projectId,
+        actorUserId: user.id,
+        action: "defect.linked",
+        entityType: "result",
+        entityId: params.resultId,
+        changes: {
+          defectKey: body.defectKey,
+          defectLinkId: upserted.id.toString(),
+          runId: context.instance.run.id.toString(),
+          testId: context.instance.id.toString(),
+          caseId: context.instance.caseId.toString()
+        }
+      });
       await recordActivityEvent(deps.prisma, {
         projectId: context.instance.run.projectId,
         actorUserId: user.id,
@@ -497,7 +513,8 @@ export async function registerResultsRoutes(
           defectLinkId: upserted.id.toString(),
           runId: context.instance.run.id.toString(),
           testId: context.instance.id.toString(),
-          caseId: context.instance.caseId.toString()
+          caseId: context.instance.caseId.toString(),
+          assignedToUserId: context.instance.assignedTo?.toString() ?? null
         },
         notificationType: "activity"
       });
@@ -547,6 +564,20 @@ export async function registerResultsRoutes(
     });
     const inst = found.result.instance;
     const projectId = inst.run.projectId;
+    await recordAuditLog(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      action: "defect.unlinked",
+      entityType: "result",
+      entityId: params.resultId,
+      changes: {
+        defectLinkId: params.defectLinkId.toString(),
+        defectKey: found.defectKey,
+        runId: inst.run.id.toString(),
+        testId: inst.id.toString(),
+        caseId: inst.caseId.toString()
+      }
+    });
     await recordActivityEvent(deps.prisma, {
       projectId,
       actorUserId: user.id,
@@ -614,6 +645,21 @@ export async function registerResultsRoutes(
         url
       }
     });
+    await recordAuditLog(deps.prisma, {
+      projectId: result.instance.run.projectId,
+      actorUserId: user.id,
+      action: "defect.pushed",
+      entityType: "result",
+      entityId: params.resultId,
+      changes: {
+        defectKey: generatedKey,
+        defectLinkId: upserted.id.toString(),
+        provider,
+        runId: result.instance.run.id.toString(),
+        testId: result.instance.id.toString(),
+        caseId: result.instance.caseId.toString()
+      }
+    });
     await recordActivityEvent(deps.prisma, {
       projectId: result.instance.run.projectId,
       actorUserId: user.id,
@@ -629,7 +675,8 @@ export async function registerResultsRoutes(
         provider,
         runId: result.instance.run.id.toString(),
         testId: result.instance.id.toString(),
-        caseId: result.instance.caseId.toString()
+        caseId: result.instance.caseId.toString(),
+        assignedToUserId: result.instance.assignedTo?.toString() ?? null
       },
       notificationType: "activity"
     });

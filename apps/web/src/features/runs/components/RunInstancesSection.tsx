@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import type { TestInstanceRow } from "../types";
+import type { ResultStatus } from "./resultEntryTypes";
 import { TestInstanceFilterBar } from "./TestInstanceFilterBar";
 import { TestInstanceTable } from "./TestInstanceTable";
 
@@ -18,15 +19,20 @@ type Props = {
   selectedTestIds: string[];
   setSelectedTestIds: Dispatch<SetStateAction<string[]>>;
   allFilteredSelected: boolean;
-  instanceAssignees: Record<string, string>;
-  onInstanceAssigneeChange: (testId: string, value: string) => void;
-  onSaveInstanceAssignee: (testId: string) => void;
-  isSavingInstanceAssignee: boolean;
+  onQuickResultSave: (
+    testId: string,
+    payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
+  ) => void;
+  isSavingQuickResult: boolean;
   page: number;
   totalPages: number;
   total: number;
   onPrevPage: () => void;
   onNextPage: () => void;
+  subscribedTestIds?: Set<string>;
+  onToggleSubscribe?: (testId: string, subscribed: boolean) => void;
+  isSubscribePending?: boolean;
+  hideStatusFilter?: boolean;
 };
 
 export function RunInstancesSection(props: Props) {
@@ -44,15 +50,16 @@ export function RunInstancesSection(props: Props) {
     selectedTestIds,
     setSelectedTestIds,
     allFilteredSelected,
-    instanceAssignees,
-    onInstanceAssigneeChange,
-    onSaveInstanceAssignee,
-    isSavingInstanceAssignee,
+    onQuickResultSave,
+    isSavingQuickResult,
     page,
     totalPages,
     total,
     onPrevPage,
-    onNextPage
+    onNextPage,
+    subscribedTestIds,
+    onToggleSubscribe,
+    isSubscribePending
   } = props;
 
   return (
@@ -65,24 +72,25 @@ export function RunInstancesSection(props: Props) {
         assigneeFilter={assigneeFilter}
         onAssigneeFilterChange={onAssigneeFilterChange}
         members={members}
+        hideStatusFilter={hideStatusFilter}
       />
       <TestInstanceTable
         pagedInstances={pagedInstances}
         selectedInstanceId={selectedInstanceId}
         onSelectInstance={onSelectInstance}
-        members={members}
         selectedTestIds={selectedTestIds}
         setSelectedTestIds={setSelectedTestIds}
         allFilteredSelected={allFilteredSelected}
-        instanceAssignees={instanceAssignees}
-        onInstanceAssigneeChange={onInstanceAssigneeChange}
-        onSaveInstanceAssignee={onSaveInstanceAssignee}
-        isSavingInstanceAssignee={isSavingInstanceAssignee}
+        onQuickResultSave={onQuickResultSave}
+        isSavingQuickResult={isSavingQuickResult}
         page={page}
         totalPages={totalPages}
         total={total}
         onPrevPage={onPrevPage}
         onNextPage={onNextPage}
+        subscribedTestIds={subscribedTestIds}
+        onToggleSubscribe={onToggleSubscribe}
+        isSubscribePending={isSubscribePending}
       />
     </div>
   );

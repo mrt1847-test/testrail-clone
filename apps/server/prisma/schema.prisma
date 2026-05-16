@@ -38,6 +38,8 @@ model User {
   activityEvents  ActivityEvent[] @relation("ActivityActor")
   notifications   Notification[]
   notificationPreferences NotificationPreference[]
+  emailOutbox     EmailOutbox[]
+  testSubscriptions TestSubscription[]
 }
 
 model Project {
@@ -72,10 +74,14 @@ model Project {
   activityEvents ActivityEvent[]
   notifications Notification[]
   notificationPreferences NotificationPreference[]
+  emailOutbox EmailOutbox[]
   webhookSubscriptions WebhookSubscription[]
   webhookDeliveryAttempts WebhookDeliveryAttempt[]
   importJobs   ImportJob[]
   exportJobs   ExportJob[]
+  savedReports SavedReport[]
+  scheduledReports ScheduledReport[]
+  testSubscriptions TestSubscription[]
 
   @@index([deletedAt])
 }
@@ -360,6 +366,7 @@ model TestInstance {
   latestResult  TestResult? @relation("LatestResult", fields: [latestResultId], references: [id], onDelete: SetNull)
   assignee      User?       @relation("TestAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   results       TestResult[] @relation("InstanceResults")
+  subscriptions TestSubscription[]
 
   @@unique([runId, caseId])
   @@index([runId])
@@ -599,10 +606,14 @@ model ActivityEvent {
 model WebhookSubscription {
   id        BigInt   @id @default(autoincrement())
   projectId BigInt
+  scope     String   @default("project")
   event     String
   targetUrl String
   secret    String
   isActive  Boolean  @default(true)
+  consecutiveFailures Int @default(0)
+  disabledAt DateTime?
+  lastFailureAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -612,8 +623,25 @@ model WebhookSubscription {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   deliveryAttempts WebhookDeliveryAttempt[]
 
+  @@index([scope, isActive, event])
   @@index([projectId, isActive, event])
   @@index([projectId, deletedAt])
+}
+
+model TestSubscription {
+  id        BigInt   @id @default(autoincrement())
+  projectId BigInt
+  userId    BigInt
+  testId    BigInt
+  createdAt DateTime @default(now())
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test    TestInstance @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, testId])
+  @@index([testId])
+  @@index([projectId, userId])
 }
 
 model WebhookDeliveryAttempt {
@@ -645,20 +673,45 @@ model WebhookDeliveryAttempt {
 }
 
 model NotificationPreference {
-  id                  BigInt   @id @default(autoincrement())
+  id                  BigInt    @id @default(autoincrement())
   userId              BigInt
   projectId           BigInt
-  assignmentEnabled   Boolean  @default(true)
-  failedResultEnabled Boolean  @default(true)
-  mentionEnabled      Boolean  @default(true)
-  digestEnabled       Boolean  @default(false)
-  updatedAt           DateTime @updatedAt
+  assignmentEnabled   Boolean   @default(true)
+  failedResultEnabled Boolean   @default(true)
+  mentionEnabled      Boolean   @default(true)
+  digestEnabled       Boolean   @default(false)
+  lastDigestSentAt    DateTime?
+  updatedAt           DateTime  @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([userId, projectId])
   @@index([projectId])
+}
+
+model EmailOutbox {
+  id              BigInt    @id @default(autoincrement())
+  userId          BigInt
+  projectId       BigInt
+  recipientEmail  String
+  kind            String
+  subject         String
+  bodyText        String
+  status          String    @default("pending")
+  attemptNo       Int       @default(1)
+  nextRetryAt     DateTime?
+  sentAt          DateTime?
+  error           String?
+  notificationIds Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt, createdAt])
+  @@index([userId, projectId, kind, createdAt])
 }
 
 model Notification {
@@ -784,4 +837,47 @@ model ExportJob {
 
   @@index([projectId, createdAt])
   @@index([status])
+}
+
+model SavedReport {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  name        String
+  reportType  String
+  filters     Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scheduledReports  ScheduledReport[]
+
+  @@index([projectId, deletedAt, updatedAt])
+  @@index([projectId, reportType])
+}
+
+model ScheduledReport {
+  id               BigInt    @id @default(autoincrement())
+  projectId        BigInt
+  name             String
+  savedReportId    BigInt?
+  reportType       String
+  filters          Json?
+  intervalMinutes  Int
+  recipientEmails  Json
+  enabled          Boolean   @default(true)
+  lastRunAt        DateTime?
+  nextRunAt        DateTime?
+  lastExportJobId  BigInt?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdBy        BigInt?
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  savedReport SavedReport? @relation(fields: [savedReportId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, deletedAt, enabled, nextRunAt])
+  @@index([savedReportId])
 }

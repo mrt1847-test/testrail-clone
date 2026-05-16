@@ -12,9 +12,12 @@ import { ProjectSettingsPage } from "./features/projects/components/ProjectSetti
 import { ReportCoverageGapPage } from "./features/projects/components/reports/ReportCoverageGapPage";
 import { ReportDefectCoveragePage } from "./features/projects/components/reports/ReportDefectCoveragePage";
 import { ReportResultsExplorerPage } from "./features/projects/components/reports/ReportResultsExplorerPage";
+import { ReportMilestoneSummaryPage } from "./features/projects/components/reports/ReportMilestoneSummaryPage";
+import { ReportPlanSummaryPage } from "./features/projects/components/reports/ReportPlanSummaryPage";
 import { ReportRunSummaryPage } from "./features/projects/components/reports/ReportRunSummaryPage";
 import { ReportTraceabilityPage } from "./features/projects/components/reports/ReportTraceabilityPage";
 import { ReportsLayout } from "./features/projects/components/reports/ReportsLayout";
+import { ReportOperationsPage } from "./features/projects/components/reports/ReportOperationsPage";
 import { ReportsOverviewPage } from "./features/projects/components/reports/ReportsOverviewPage";
 import { BulkUploadDetailPage } from "./features/projects/components/BulkUploadDetailPage";
 import { AuditLogsPage } from "./features/projects/components/AuditLogsPage";
@@ -27,6 +30,7 @@ import { PlansPage } from "./features/projects/components/PlansPage";
 import { PlanDetailPage } from "./features/projects/components/PlanDetailPage";
 import { TokensPage } from "./features/projects/components/TokensPage";
 import { WebhooksPage } from "./features/projects/components/WebhooksPage";
+import { EmailOutboxPage } from "./features/projects/components/EmailOutboxPage";
 import { ProjectMembersPage } from "./features/projects/components/ProjectMembersPage";
 import { DefectIntegrationSettingsPage } from "./features/projects/components/DefectIntegrationSettingsPage";
 import { ImportExportPage } from "./features/projects/components/ImportExportPage";
@@ -56,10 +60,13 @@ export function App() {
           <Route path="reports" element={<ReportsLayout />}>
             <Route index element={<ReportsOverviewPage />} />
             <Route path="runs" element={<ReportRunSummaryPage />} />
+            <Route path="milestones" element={<ReportMilestoneSummaryPage />} />
+            <Route path="plans" element={<ReportPlanSummaryPage />} />
             <Route path="traceability" element={<ReportTraceabilityPage />} />
             <Route path="coverage" element={<ReportCoverageGapPage />} />
             <Route path="defects" element={<ReportDefectCoveragePage />} />
             <Route path="explorer" element={<ReportResultsExplorerPage />} />
+            <Route path="saved" element={<ReportOperationsPage />} />
           </Route>
           <Route path="activity" element={<ActivityPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -77,6 +84,7 @@ export function App() {
           <Route path="settings/statuses" element={<CustomStatusesPage />} />
           <Route path="settings/templates" element={<CaseTemplatesPage />} />
           <Route path="settings/webhooks" element={<WebhooksPage />} />
+          <Route path="settings/email-outbox" element={<EmailOutboxPage />} />
           <Route path="settings/defect-integration" element={<DefectIntegrationSettingsPage />} />
           <Route path="settings/audit-logs" element={<AuditLogsPage />} />
         </Route>

@@ -16,6 +16,8 @@ import {
   fetchRunInstancesPage,
   fetchRuns,
   fetchAssignedToMe,
+  fetchRunTestSubscriptions,
+  updateTestSubscription,
   fetchAttachmentDownloadUrl,
   fetchTestResultsPage,
   pushResultDefect,
@@ -26,7 +28,8 @@ import {
   deleteAttachment,
   reopenRun,
   addCasesToRun,
-  removeTestFromRun
+  removeTestFromRun,
+  syncRunComposition
 } from "../api/runApi";
 import type { RunDetailDto } from "../types";
 
@@ -34,6 +37,7 @@ export const runKeys = {
   all: (projectId: string) => ["runs", projectId] as const,
   list: (projectId: string) => [...runKeys.all(projectId), "list"] as const,
   detail: (projectId: string, runId: string) => [...runKeys.all(projectId), "detail", runId] as const,
+  subscriptions: (runId: string) => ["run-test-subscriptions", runId] as const,
   instancesPrefix: (projectId: string, runId: string) => [...runKeys.all(projectId), "instances", runId] as const,
   instances: (
     projectId: string,
@@ -208,6 +212,20 @@ export function useReopenRunMutation(projectId: string | undefined, runId: strin
   });
 }
 
+export function useSyncRunCompositionMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => syncRunComposition(projectId!, runId!),
+    onSuccess: () => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+    }
+  });
+}
+
 export function useAddCasesToRunMutation(projectId: string | undefined, runId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
@@ -217,6 +235,8 @@ export function useAddCasesToRunMutation(projectId: string | undefined, runId: s
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["notifications", projectId] });
     }
   });
 }
@@ -232,6 +252,8 @@ export function useRemoveTestFromRunMutation(projectId: string | undefined, runI
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["notifications", projectId] });
     }
   });
 }
@@ -291,7 +313,8 @@ export function useAssignedToMeQuery(projectId: string | undefined) {
 export function useAddResultAttachmentMutation(resultId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => uploadResultAttachmentViaPresign(resultId!, file),
+    mutationFn: (input: { file: File; onProgress?: (progress: number) => void }) =>
+      uploadResultAttachmentViaPresign(resultId!, input.file, input.onProgress),
     onSuccess: () => {
       if (!resultId) return;
       void qc.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) });
@@ -351,6 +374,26 @@ export function useDeleteAttachmentMutation(resultId: string | undefined) {
     onSuccess: () => {
       if (!resultId) return;
       void qc.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) });
+    }
+  });
+}
+
+export function useRunTestSubscriptionsQuery(runId: string | undefined) {
+  return useQuery({
+    queryKey: runKeys.subscriptions(runId ?? ""),
+    queryFn: () => fetchRunTestSubscriptions(runId!),
+    enabled: Boolean(runId)
+  });
+}
+
+export function useTestSubscriptionMutation(runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { testId: string; subscribed: boolean }) =>
+      updateTestSubscription(input.testId, input.subscribed),
+    onSuccess: () => {
+      if (!runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.subscriptions(runId) });
     }
   });
 }

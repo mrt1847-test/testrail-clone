@@ -1,13 +1,17 @@
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../../../shared/api/http";
 import type { Paged } from "../../../shared/api/types";
+import { buildValidSectionIdSet } from "../../../shared/sections/sectionCompatibility";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { useAuth } from "../../auth/context/AuthContext";
 import { fetchMilestones } from "../../projects/api/planningApi";
+import type { RunCompositionMode } from "../types";
+import { useRunCompositionDraft } from "../hooks/useRunCompositionDraft";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 
 async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 100): Promise<T[]> {
@@ -26,15 +30,21 @@ async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) 
 export function RunCreatePage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [name, setName] = useState("");
   const [suiteId, setSuiteId] = useState("");
   const [milestoneId, setMilestoneId] = useState("");
   const [environment, setEnvironment] = useState("");
   const [includeAll, setIncludeAll] = useState(true);
+  const [compositionMode, setCompositionMode] = useState<RunCompositionMode>("static");
+  const [filterPriority, setFilterPriority] = useState<"" | "low" | "medium" | "high">("");
+  const [filterState, setFilterState] = useState<"active" | "archived">("active");
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [excludedCaseIds, setExcludedCaseIds] = useState<string[]>([]);
   const [includedSectionIds, setIncludedSectionIds] = useState<string[]>([]);
   const [excludedSectionIds, setExcludedSectionIds] = useState<string[]>([]);
+  const [sectionFilterNotice, setSectionFilterNotice] = useState<string | null>(null);
+  const suiteHydratedRef = useRef<string | null>(null);
   const mutation = useCreateRunMutation(projectId);
   const suitesQuery = useQuery({
     queryKey: ["run-create-suites", projectId],
@@ -71,6 +81,51 @@ export function RunCreatePage() {
   const cases = casesQuery.data ?? [];
   const sections = sectionsQuery.data ?? [];
   const milestones = milestonesQuery.data ?? [];
+  const validSectionIds = useMemo(
+    () => buildValidSectionIdSet(sections.map((section) => Number(section.id))),
+    [sections]
+  );
+  const { loadDraftForSuite, markHydrated, pruneAgainstValidSections } = useRunCompositionDraft(
+    projectId,
+    user?.id,
+    suiteId,
+    includedSectionIds,
+    excludedSectionIds,
+    validSectionIds
+  );
+
+  useEffect(() => {
+    if (!suiteId) {
+      suiteHydratedRef.current = null;
+      return;
+    }
+    if (suiteHydratedRef.current === suiteId) return;
+    const draft = loadDraftForSuite(suiteId);
+    if (draft) {
+      setIncludedSectionIds(draft.includedSectionIds);
+      setExcludedSectionIds(draft.excludedSectionIds);
+    } else {
+      setIncludedSectionIds([]);
+      setExcludedSectionIds([]);
+    }
+    suiteHydratedRef.current = suiteId;
+    markHydrated();
+  }, [loadDraftForSuite, markHydrated, suiteId]);
+
+  useEffect(() => {
+    if (!suiteId || validSectionIds.size === 0) return;
+    const pruned = pruneAgainstValidSections(includedSectionIds, excludedSectionIds);
+    if (pruned.removedCount === 0) return;
+    setIncludedSectionIds(pruned.included);
+    setExcludedSectionIds(pruned.excluded);
+    if (pruned.message) setSectionFilterNotice(pruned.message);
+  }, [
+    excludedSectionIds,
+    includedSectionIds,
+    pruneAgainstValidSections,
+    suiteId,
+    validSectionIds
+  ]);
   const sectionDepth = useMemo(() => {
     const parentById = new Map<string, string | null>();
     for (const section of sections) {
@@ -194,27 +249,44 @@ export function RunCreatePage() {
     selectedCaseIds.length,
     suiteId
   ]);
+  const effectiveIncludeAll = compositionMode === "include_all_live" ? true : includeAll;
   const isSubmitDisabled =
     !name.trim() ||
     !suiteId ||
     mutation.isPending ||
-    (!includeAll && selectedCaseIds.length === 0) ||
-    (!includeAll && includedSectionIds.length > 0 && selectedCaseCountInScope === 0);
+    (compositionMode === "static" && !effectiveIncludeAll && selectedCaseIds.length === 0) ||
+    (compositionMode === "static" &&
+      !effectiveIncludeAll &&
+      includedSectionIds.length > 0 &&
+      selectedCaseCountInScope === 0);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !suiteId) return;
+    const filterDefinition =
+      compositionMode === "dynamic_filter"
+        ? {
+            ...(filterPriority ? { priority: filterPriority } : {}),
+            state: filterState,
+            ...(includedSectionIds.length > 0 ? { includedSectionIds } : {})
+          }
+        : undefined;
     mutation.mutate(
       {
         suiteId,
         name: name.trim(),
-        includeAll,
-        caseIds: includeAll ? undefined : selectedCaseIds,
-        excludedCaseIds: includeAll ? excludedCaseIds : undefined,
-        includedSectionIds: includedSectionIds.length > 0 ? includedSectionIds : undefined,
-        excludedSectionIds: includeAll && excludedSectionIds.length > 0 ? excludedSectionIds : undefined,
+        includeAll: effectiveIncludeAll,
+        caseIds: effectiveIncludeAll ? undefined : selectedCaseIds,
+        excludedCaseIds: effectiveIncludeAll ? excludedCaseIds : undefined,
+        includedSectionIds:
+          compositionMode !== "dynamic_filter" && includedSectionIds.length > 0
+            ? includedSectionIds
+            : undefined,
+        excludedSectionIds: effectiveIncludeAll && excludedSectionIds.length > 0 ? excludedSectionIds : undefined,
         milestoneId: milestoneId || null,
-        environment: environment.trim() || undefined
+        environment: environment.trim() || undefined,
+        compositionMode,
+        filterDefinition
       },
       {
       onSuccess: (run) => navigate(`/projects/${projectId}/runs/${run.id}`),
@@ -262,6 +334,8 @@ export function RunCreatePage() {
               setExcludedCaseIds([]);
               setIncludedSectionIds([]);
               setExcludedSectionIds([]);
+              setSectionFilterNotice(null);
+              suiteHydratedRef.current = null;
             }}
           >
             <option value="">Select suite</option>
@@ -296,29 +370,107 @@ export function RunCreatePage() {
             placeholder="e.g. staging / chrome"
           />
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={includeAll}
-            onChange={(e) => {
-              const nextIncludeAll = e.target.checked;
-              setIncludeAll(nextIncludeAll);
-              if (nextIncludeAll) {
-                setSelectedCaseIds([]);
-              } else {
-                setExcludedCaseIds([]);
-                setExcludedSectionIds([]);
-              }
-            }}
-          />
-          Include all cases in suite
-        </label>
+        <fieldset className="rounded border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-medium text-slate-700">Composition mode</legend>
+          <div className="mt-2 space-y-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="compositionMode"
+                checked={compositionMode === "static"}
+                onChange={() => setCompositionMode("static")}
+              />
+              Static snapshot (default TestRail-style selection)
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="compositionMode"
+                checked={compositionMode === "include_all_live"}
+                onChange={() => {
+                  setCompositionMode("include_all_live");
+                  setIncludeAll(true);
+                }}
+              />
+              Include all — live sync (new cases auto-added to open run)
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="compositionMode"
+                checked={compositionMode === "dynamic_filter"}
+                onChange={() => {
+                  setCompositionMode("dynamic_filter");
+                  setIncludeAll(false);
+                  setSelectedCaseIds([]);
+                }}
+              />
+              Dynamic filter — cases matching filter stay in the run
+            </label>
+          </div>
+        </fieldset>
+        {compositionMode === "static" ? (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeAll}
+              onChange={(e) => {
+                const nextIncludeAll = e.target.checked;
+                setIncludeAll(nextIncludeAll);
+                if (nextIncludeAll) {
+                  setSelectedCaseIds([]);
+                } else {
+                  setExcludedCaseIds([]);
+                  setExcludedSectionIds([]);
+                }
+              }}
+            />
+            Include all cases in suite
+          </label>
+        ) : null}
+        {compositionMode === "dynamic_filter" ? (
+          <div className="rounded border border-slate-200 p-3 text-sm">
+            <p className="font-medium text-slate-700">Filter definition</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <label className="flex flex-col gap-1 text-xs text-slate-600">
+                Priority
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value as typeof filterPriority)}
+                  className="rounded border border-slate-300 px-2 py-1"
+                >
+                  <option value="">Any</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-slate-600">
+                Case state
+                <select
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value as "active" | "archived")}
+                  className="rounded border border-slate-300 px-2 py-1"
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Optional section roots below also apply to the filter.</p>
+          </div>
+        ) : null}
         {suiteId ? (
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs font-medium text-slate-600">Section scope (optional)</p>
             <p className="mt-1 text-xs text-slate-500">
               선택한 섹션 루트와 하위 섹션에 속한 케이스만 포함합니다. 개별 케이스 선택 모드에서는 선택 케이스와의 교집합이 됩니다.
             </p>
+            {sectionFilterNotice ? (
+              <p className="mt-2 text-xs text-amber-700" role="status">
+                {sectionFilterNotice}
+              </p>
+            ) : null}
             {sectionsQuery.isLoading ? (
               <p className="mt-2 text-xs text-slate-500">Loading sections…</p>
             ) : sectionsQuery.isError ? (

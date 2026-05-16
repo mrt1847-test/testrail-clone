@@ -226,6 +226,7 @@ Case optimistic locking (phase 2 baseline):
 - `GET /api/cases/{caseId}/versions`
 - `GET /api/cases/{caseId}/versions/{versionId}`
 - `POST /api/cases/{caseId}/versions/{versionId}/restore`
+- `GET /api/cases/{caseId}/versions/{versionNo}/attachments/{attachmentId}/download` — returns `{ data: { attachmentId, fileName, contentType, downloadUrl, expiresAt } }` from the version `attachmentSnapshots` entry (uses snapshot `storageKey`, not the live attachment row). Auth required. `404` when the attachment id is absent from that version snapshot.
 - `PATCH /api/cases/{caseId}/assignee`
 
 Semantics (case steps):
@@ -291,6 +292,10 @@ Run composition baseline:
 - `POST /api/projects/{projectId}/runs` accepts:
   - `includeAll: true` — all cases in `suiteId`, optional `excludedCaseIds`, optional `excludedSectionIds` (section subtree roots), optional `includedSectionIds` (restrict to subtrees).
   - `includeAll: false` — required `caseIds`, optional `includedSectionIds` (intersect selection with subtrees).
+  - `compositionMode` (optional): `static` (default), `include_all_live`, or `dynamic_filter`.
+  - `filterDefinition` (optional, `dynamic_filter` only): `{ priority?, state?, includedSectionIds? }`.
+- `GET /api/projects/{projectId}/runs/{runId}` includes `run.composition` parsed from `TestRun.metadata`.
+- `POST /api/projects/{projectId}/runs/{runId}/sync-composition` — reconcile open runs in live modes; returns `{ skipped, added, removed, reason? }`; records activity `run.composition_synced`.
 - Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
 
 Example run creation body:
@@ -517,6 +522,8 @@ Permission baseline:
 - `DELETE /api/projects/{projectId}/settings/templates/{templateId}`
 - `GET /api/projects/{projectId}/settings/audit-logs`
 - `GET /api/projects/{projectId}/settings/audit-log-filters`
+- `GET /api/projects/{projectId}/settings/audit-logs/export.csv`
+- `POST /api/projects/{projectId}/settings/audit-logs/retention-prune`
 - `GET /api/projects/{projectId}/settings/webhooks`
 - `POST /api/projects/{projectId}/settings/webhooks`
 - `PATCH /api/projects/{projectId}/settings/webhooks/{webhookId}`
@@ -525,9 +532,16 @@ Permission baseline:
 - `GET /api/projects/{projectId}/settings/webhook-attempts`
 - `POST /api/projects/{projectId}/settings/webhook-attempts/{attemptId}/retry`
 - `POST /api/projects/{projectId}/settings/webhooks/{webhookId}/test-send` (DB mode only; synchronous probe, records `webhook_delivery_attempt`)
+- `GET /api/projects/{projectId}/settings/email-outbox` (query: `status`, `kind`, `recipientEmail`, pagination)
+- `POST /api/projects/{projectId}/settings/email-outbox/{outboxId}/retry`
+- `GET /api/projects/{projectId}/settings/email-outbox/digest-preview` (current user; read-only body for pending digest)
+- `GET /api/runs/{runId}/test-subscriptions` (current user's subscribed test IDs in run)
+- `PUT /api/tests/{testId}/subscription` body `{ subscribed: boolean }`
 
 Webhook delivery (DB-backed server process):
+- Webhook create/update accepts optional `scope: "project" | "global"`; `project` is default. Global webhooks are listed in project settings and receive matching activity from every project, while delivery attempts remain tied to the project where the event occurred.
 - When `USE_IN_MEMORY_REPOSITORY` is not enabled, a background interval processes `webhook_delivery_attempt` rows in `pending` state (respecting `nextRetryAt`), POSTs JSON to `targetUrl` with `X-Webhook-Signature` and `X-Webhook-Event`, and stores HTTP status/body or error with exponential backoff up to a capped attempt count.
+- After a delivery attempt exhausts retries, the parent `WebhookSubscription` increments `consecutiveFailures`; when the threshold is reached (default 5, `WEBHOOK_DISABLE_FAILURE_THRESHOLD`), the webhook is set `isActive=false` with `disabledAt`. Re-enabling via PATCH clears failure counters.
 
 Custom field shape:
 ```json
@@ -587,11 +601,15 @@ Rules:
 
 Audit log query parameters:
 - `page`, `pageSize`
-- `action`, `entityType`, `entityId`, `actorUserId`
+- `scope`: `project` (default) or `all`; `all` requires project mutation permission and returns cross-project audit rows.
+- `action`, `entityType`, `entityId`, `actorUserId`, `actorEmail`, `actionExact`, `entityTypeExact`, `changesContains`
 - `createdFrom`, `createdTo` as ISO datetimes
 - `q` searches action, entity type, and entity id
 
-Audit log response includes `items`, `filters`, `page`, `pageSize`, `total`, and `totalPages`.
+Audit log response includes `items`, `filters`, `page`, `pageSize`, `total`, and `totalPages`; rows include `projectId`/`projectName` when available.
+Audit CSV export applies the same filters, includes project columns, and caps export output at 5,000 rows.
+Retention prune body: `{ "olderThanDays": 365 }` with allowed range 30-3650; the prune action writes a summary audit row.
+Audited mutation groups include project/settings administration plus run/test assignment, defect link/unlink/push, saved report definition changes, and scheduled report create/update/delete/manual-run requests.
 
 ## Automation Upload Endpoints
 - `POST /api/automation/runs`
@@ -707,16 +725,46 @@ CI metadata fields (for automation endpoints and optionally run/result metadata)
 - `testId` always maps to `test_instances.id`.
 
 ## TestRail-like Adapter
+
+Index (supported vs deferred):
+
+- `GET /api/v2` — returns `supported` and `deferred` endpoint lists for migration clients.
+
+### Supported read endpoints
+
 - `GET /api/v2/get_projects`
 - `GET /api/v2/get_case/{case_id}`
-- `GET /api/v2/get_cases/{project_id}`
+- `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`)
+- `GET /api/v2/get_suites/{project_id}`
+- `GET /api/v2/get_sections/{project_id}` (query: **`suite_id` required**)
+- `GET /api/v2/get_milestones/{project_id}` (DB mode; empty array in memory mode)
+- `GET /api/v2/get_plans/{project_id}` (DB mode; empty array in memory mode)
+- `GET /api/v2/get_statuses` (query: optional `project_id` for project custom status labels)
+- `GET /api/v2/get_configs/{project_id}` (DB mode; configuration groups with `configs`)
+- `GET /api/v2/get_case_fields/{project_id}` (DB mode; active case custom fields)
+- `GET /api/v2/get_result_fields/{project_id}` (DB mode; active result custom fields)
+- `GET /api/v2/get_templates/{project_id}` (DB mode; active case templates)
+- `GET /api/v2/get_users` (DB mode; active users)
+- `GET /api/v2/get_users/{project_id}` (DB mode; project members)
+- `GET /api/v2/get_reports/{project_id}` (DB mode; saved report definitions)
+- `GET /api/v2/get_roles` (static project role catalog)
+- `GET /api/v2/get_attachments_for_case/{case_id}` (DB mode; live case attachments)
+- `GET /api/v2/get_attachments_for_result/{result_id}` (DB mode; result attachments)
+- `GET /api/v2/get_run/{run_id}`
+- `GET /api/v2/get_tests/{run_id}`
+
+### Supported write endpoints
+
 - `POST /api/v2/add_case/{section_id}`
 - `POST /api/v2/update_case/{case_id}`
-- `GET /api/v2/get_run/{run_id}`
 - `POST /api/v2/add_run/{project_id}`
-- `GET /api/v2/get_tests/{run_id}`
+- `POST /api/v2/run_report/{report_id}` (DB mode; executes a saved report as CSV export and returns job/download URLs)
 - `POST /api/v2/add_result_for_case/{run_id}/{case_id}`
 - `POST /api/v2/add_results_for_cases/{run_id}`
+
+### Deferred (not implemented)
+
+Suite/section mutations, run close/update, labels/groups/shared steps, richer role permissions, and other TestRail catalog endpoints — see `GET /api/v2` `deferred` array in the running server.
 
 Adapter rules:
 - No duplicated business logic in adapter handlers.
@@ -724,11 +772,12 @@ Adapter rules:
 - Adapter is a compatibility layer, not the canonical product API.
 
 Current baseline:
-- Implemented under `/api/v2` for the listed core case, run, test, and result endpoints.
+- Implemented under `/api/v2` for cases, runs, tests, results, suites, sections, milestones, plans, statuses, configurations, custom fields, templates, users, saved reports, roles, attachments, and saved-report CSV execution.
+- List endpoints return **JSON arrays** (not TestRail 9.x `{ offset, limit, suites: [...] }` wrappers).
 - Accepts TestRail-style `status_id`, `case_id`, `suite_id`, `include_all`, and `case_ids` where applicable.
-- Maps TestRail status IDs to internal statuses using the compatibility mapping below.
+- `get_statuses?project_id=` returns project custom statuses when DB-backed; includes `custom_status_id` on each row when mapped from `CustomStatus`.
 - Mutating adapter endpoints reuse project membership authorization and existing domain services.
-- Remaining compatibility work includes richer TestRail response parity, pagination shape parity, token-scope examples, and non-core endpoints only when needed by migration/automation clients.
+- Remaining compatibility work: pagination wrappers, token scopes, labels/groups/shared steps, richer role permissions, suite/section mutations, run close/update, and other deferred endpoints per `GET /api/v2`.
 
 ## Metadata Field Strategy
 - `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
@@ -813,6 +862,19 @@ CSV case import baseline:
 - Report export supports `run_summary`, `results_explorer`, `traceability`, `coverage_gap`, and `defect_coverage` as CSV.
 - `POST /reports/export` creates an export job and returns a download URL; the baseline generates CSV on download and marks the job completed.
 - `GET /reports/export` is a compatibility shortcut that immediately returns CSV and records a completed export job.
+
+Saved reports:
+- `GET /api/projects/{projectId}/saved-reports`
+- `POST /api/projects/{projectId}/saved-reports`
+- `PATCH /api/projects/{projectId}/saved-reports/{savedReportId}`
+- `DELETE /api/projects/{projectId}/saved-reports/{savedReportId}`
+
+Scheduled reports:
+- `GET /api/projects/{projectId}/scheduled-reports`
+- `POST /api/projects/{projectId}/scheduled-reports` — body: `name`, `intervalMinutes`, `recipientEmails[]`, optional `savedReportId`, optional `reportType`, optional `filters`.
+- `PATCH /api/projects/{projectId}/scheduled-reports/{scheduledReportId}` — `name`, `intervalMinutes`, `recipientEmails`, `enabled`.
+- `DELETE /api/projects/{projectId}/scheduled-reports/{scheduledReportId}`
+- `POST /api/projects/{projectId}/scheduled-reports/{scheduledReportId}/run` — manual run; creates export job, queues email per recipient, activity `report.schedule_run` / `report.schedule_email_sent`.
 
 ## Notifications / Activity
 - `GET /api/notifications`
