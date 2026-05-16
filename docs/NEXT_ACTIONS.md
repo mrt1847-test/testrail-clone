@@ -20,19 +20,20 @@ Last aligned: 2026-05-17
 **Checklist line (exact — done when this is `[x]`):**
 
 ```text
-- [ ] **TR-Core** P1 Clearer token creation UX.
+- [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
 ```
 
 ### Scope (only what closes the line above)
 
-1. Improve project token creation form with scope presets, expiry guidance, and validation feedback.
-2. Surface created token secret once with copy affordance and scope summary.
-3. Align with existing `scopes` / `expiresInDays` API on `POST /api/projects/{projectId}/tokens`.
+1. Improve automation mapping UI so unmatched/ambiguous automation payload rows can be reviewed and mapped to cases.
+2. Add mapping health indicators and retry queue visibility for failed upload rows.
+3. Surface row-level failure guidance with retry actions where existing automation upload APIs support it.
 
 ### Out of scope for this batch
 
-- OAuth device flow or org-wide token policies.
-- Token rotation automation.
+- New automation result ingestion formats.
+- Token/auth policy changes.
+- Full CI provider setup documentation.
 
 ---
 
@@ -42,9 +43,7 @@ Last aligned: 2026-05-17
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Import And Export | `- [ ] **TR-Pro** P1 XML/JSON import/export.` |
-| 2 | Automation And API Compatibility | `- [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.` |
-| 3 | Test Case Management | `- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).` |
-| 4 | Test Case Management | `- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).` |
+| 1 | Test Case Management | `- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).` |
+| 2 | Test Case Management | `- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).` |
 
 항목이 한 PR에 넘치면 **FEATURE_CHECKLIST에서 `[ ]`를 먼저 쪼갠다**. 쪼개기 전에는 NEXT_ACTIONS에 임의 주제를 쓰지 않는다.

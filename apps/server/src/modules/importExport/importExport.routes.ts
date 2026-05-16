@@ -34,6 +34,7 @@ import {
 type CsvRow = Record<string, string>;
 type ImportIssue = { row: number; field?: string; code: string; message: string };
 type ScalarCustomValue = string | number | boolean | null;
+type CaseImportFormat = "csv" | "json" | "xml";
 type CustomFieldDefinition = {
   systemName: string;
   fieldType: string;
@@ -49,6 +50,13 @@ const caseImportSchema = z.object({
   atomic: z.boolean().optional().default(true),
   sectionId: z.coerce.bigint().optional(),
   columnMapping: columnMappingSchema.optional()
+});
+
+const structuredCaseImportSchema = z.object({
+  content: z.string().min(1),
+  dryRun: z.boolean().optional().default(true),
+  atomic: z.boolean().optional().default(true),
+  sectionId: z.coerce.bigint().optional()
 });
 
 const suggestMappingSchema = z.object({
@@ -142,6 +150,148 @@ function toCsv(headers: string[], rows: Array<Record<string, unknown>>) {
   ].join("\n");
 }
 
+function normalizeJsonScalar(value: unknown): string {
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.map((item) => normalizeJsonScalar(item)).filter(Boolean).join("|");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function jsonCaseToCsvRow(value: unknown): CsvRow {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new AppError("VALIDATION_ERROR", "JSON case rows must be objects", 400);
+  }
+  const source = value as Record<string, unknown>;
+  const customValues =
+    source.customValues && typeof source.customValues === "object" && !Array.isArray(source.customValues)
+      ? (source.customValues as Record<string, unknown>)
+      : source.custom_values && typeof source.custom_values === "object" && !Array.isArray(source.custom_values)
+        ? (source.custom_values as Record<string, unknown>)
+        : {};
+  const steps = Array.isArray(source.steps)
+    ? source.steps
+        .map((step) => {
+          if (typeof step === "string") return step;
+          if (!step || typeof step !== "object") return "";
+          const stepRow = step as Record<string, unknown>;
+          const content = normalizeJsonScalar(stepRow.content ?? stepRow.step);
+          const expected = normalizeJsonScalar(stepRow.expectedResult ?? stepRow.expected_result ?? stepRow.expected);
+          return expected ? `${content}=>${expected}` : content;
+        })
+        .filter(Boolean)
+        .join("|")
+    : normalizeJsonScalar(source.steps);
+  return {
+    section_id: normalizeJsonScalar(source.section_id ?? source.sectionId),
+    title: normalizeJsonScalar(source.title ?? source.name),
+    preconditions: normalizeJsonScalar(source.preconditions),
+    priority: normalizeJsonScalar(source.priority),
+    type: normalizeJsonScalar(source.type ?? source.caseType ?? source.case_type),
+    [CASE_CSV_REFS_COLUMN]: Array.isArray(source.refs)
+      ? source.refs.map((item) => normalizeJsonScalar(item)).filter(Boolean).join(", ")
+      : normalizeJsonScalar(source.refs ?? source.references),
+    labels: Array.isArray(source.labels)
+      ? source.labels.map((item) => normalizeJsonScalar(item)).filter(Boolean).join("|")
+      : normalizeJsonScalar(source.labels),
+    automation_key: normalizeJsonScalar(source.automation_key ?? source.automationKey),
+    external_id: normalizeJsonScalar(source.external_id ?? source.externalId),
+    steps,
+    ...Object.fromEntries(
+      Object.entries(customValues).map(([key, customValue]) => [customColumnName(key.replace(/^custom_/, "")), normalizeJsonScalar(customValue)])
+    ),
+    ...Object.fromEntries(
+      Object.entries(source)
+        .filter(([key]) => key.startsWith("custom_"))
+        .map(([key, customValue]) => [key, normalizeJsonScalar(customValue)])
+    )
+  };
+}
+
+function parseCaseJsonImport(content: string): CsvRow[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new AppError("VALIDATION_ERROR", "JSON import must be valid JSON with a cases array or an array of case objects", 400);
+  }
+  const cases = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as { cases?: unknown }).cases)
+      ? (parsed as { cases: unknown[] }).cases
+      : null;
+  if (!cases) {
+    throw new AppError("VALIDATION_ERROR", "JSON import expects { \"cases\": [...] } or an array of case objects", 400);
+  }
+  return cases.map(jsonCaseToCsvRow);
+}
+
+function xmlEscape(value: unknown) {
+  return normalizeJsonScalar(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function xmlUnescape(value: string) {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function xmlTag(block: string, tag: string) {
+  const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i"));
+  return match ? xmlUnescape(match[1] ?? "") : "";
+}
+
+function xmlAttr(block: string, attr: string) {
+  const match = block.match(new RegExp(`${attr}="([^"]*)"`, "i"));
+  return match ? xmlUnescape(match[1] ?? "") : "";
+}
+
+function parseCaseXmlImport(content: string): CsvRow[] {
+  const caseBlocks = [...content.matchAll(/<case\b[\s\S]*?<\/case>/gi)];
+  if (caseBlocks.length === 0) {
+    throw new AppError("VALIDATION_ERROR", "XML import expects <cases><case>...</case></cases>", 400);
+  }
+  return caseBlocks.map((match) => {
+    const block = match[0];
+    const labels = [...block.matchAll(/<label>([\s\S]*?)<\/label>/gi)].map((item) => xmlUnescape(item[1] ?? ""));
+    const steps = [...block.matchAll(/<step\b[\s\S]*?<\/step>/gi)]
+      .map((stepMatch) => {
+        const stepBlock = stepMatch[0];
+        const contentText = xmlTag(stepBlock, "content") || xmlTag(stepBlock, "step");
+        const expected = xmlTag(stepBlock, "expected_result") || xmlTag(stepBlock, "expectedResult") || xmlTag(stepBlock, "expected");
+        return expected ? `${contentText}=>${expected}` : contentText;
+      })
+      .filter(Boolean)
+      .join("|");
+    const customFields = [...block.matchAll(/<custom\b([^>]*)>([\s\S]*?)<\/custom>/gi)].map((item) => {
+      const name = xmlAttr(item[1] ?? "", "name");
+      return [customColumnName(name.replace(/^custom_/, "")), xmlUnescape(item[2] ?? "")] as const;
+    });
+    return {
+      section_id: xmlAttr(block, "section_id") || xmlAttr(block, "sectionId") || xmlTag(block, "section_id"),
+      title: xmlTag(block, "title") || xmlTag(block, "name"),
+      preconditions: xmlTag(block, "preconditions"),
+      priority: xmlTag(block, "priority"),
+      type: xmlTag(block, "type") || xmlTag(block, "case_type"),
+      [CASE_CSV_REFS_COLUMN]: xmlTag(block, CASE_CSV_REFS_COLUMN) || xmlTag(block, "references"),
+      labels: labels.length > 0 ? labels.join("|") : xmlTag(block, "labels"),
+      automation_key: xmlTag(block, "automation_key") || xmlTag(block, "automationKey"),
+      external_id: xmlTag(block, "external_id") || xmlTag(block, "externalId"),
+      steps: steps || xmlTag(block, "steps"),
+      ...Object.fromEntries(customFields)
+    };
+  });
+}
+
 function normalizeReportFilters(input: z.infer<typeof reportExportSchema>) {
   return {
     reportType: input.reportType,
@@ -161,6 +311,90 @@ function normalizeReportFilters(input: z.infer<typeof reportExportSchema>) {
 function parseReportFilters(value: Prisma.JsonValue | null | undefined) {
   const raw = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
   return reportExportSchema.parse(raw);
+}
+
+type CaseExportRecord = {
+  id: string;
+  section_id: string;
+  title: string;
+  preconditions: string | null;
+  priority: string | null;
+  type: string | null;
+  refs: string;
+  labels: string[];
+  automation_key: string | null;
+  external_id: string | null;
+  customValues: Record<string, unknown>;
+  steps: Array<{ content: string; expected_result: string | null }>;
+};
+
+function caseExportRecordToCsvRow(record: CaseExportRecord, customFieldNames: string[]) {
+  return {
+    id: record.id,
+    section_id: record.section_id,
+    title: record.title,
+    preconditions: record.preconditions,
+    priority: record.priority,
+    type: record.type,
+    refs: record.refs,
+    labels: record.labels.join("|"),
+    automation_key: record.automation_key,
+    external_id: record.external_id,
+    ...Object.fromEntries(customFieldNames.map((fieldName) => [customColumnName(fieldName), record.customValues[fieldName] ?? ""])),
+    steps: record.steps.map((step) => `${step.content}${step.expected_result ? `=>${step.expected_result}` : ""}`).join("|")
+  };
+}
+
+function casesToJsonExport(projectId: bigint, cases: CaseExportRecord[]) {
+  return JSON.stringify(
+    {
+      format: "testrail-clone.cases",
+      version: 1,
+      project_id: projectId.toString(),
+      cases
+    },
+    null,
+    2
+  );
+}
+
+function casesToXmlExport(projectId: bigint, cases: CaseExportRecord[]) {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<cases format="testrail-clone.cases" version="1" project_id="${xmlEscape(projectId.toString())}">`,
+    ...cases.map((row) =>
+      [
+        `  <case id="${xmlEscape(row.id)}" section_id="${xmlEscape(row.section_id)}">`,
+        `    <title>${xmlEscape(row.title)}</title>`,
+        `    <preconditions>${xmlEscape(row.preconditions)}</preconditions>`,
+        `    <priority>${xmlEscape(row.priority)}</priority>`,
+        `    <type>${xmlEscape(row.type)}</type>`,
+        `    <refs>${xmlEscape(row.refs)}</refs>`,
+        "    <labels>",
+        ...row.labels.map((label) => `      <label>${xmlEscape(label)}</label>`),
+        "    </labels>",
+        `    <automation_key>${xmlEscape(row.automation_key)}</automation_key>`,
+        `    <external_id>${xmlEscape(row.external_id)}</external_id>`,
+        "    <custom_values>",
+        ...Object.entries(row.customValues).map(
+          ([key, value]) => `      <custom name="${xmlEscape(key)}">${xmlEscape(value)}</custom>`
+        ),
+        "    </custom_values>",
+        "    <steps>",
+        ...row.steps.map((step) =>
+          [
+            "      <step>",
+            `        <content>${xmlEscape(step.content)}</content>`,
+            `        <expected_result>${xmlEscape(step.expected_result)}</expected_result>`,
+            "      </step>"
+          ].join("\n")
+        ),
+        "    </steps>",
+        "  </case>"
+      ].join("\n")
+    ),
+    "</cases>"
+  ].join("\n");
 }
 
 function firstValue(row: CsvRow, keys: string[]) {
@@ -633,7 +867,7 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
       preconditions: firstValue(row, ["preconditions", "Preconditions"]),
       priority: firstValue(row, ["priority", "Priority"]),
       caseType: firstValue(row, ["type", "case_type", "caseType", "Type"]),
-      refs: caseRefsFromCsvCell(firstValue(row, [...caseRefsCsvAliases()])),
+      refs: caseRefsFromCsvCell(firstValue(row, [...caseRefsCsvAliases()])) ?? undefined,
       labels: splitList(firstValue(row, ["labels", "Labels"])),
       automationKey: firstValue(row, ["automation_key", "automationKey"]),
       externalId: firstValue(row, ["external_id", "externalId"]),
@@ -656,6 +890,7 @@ export class ImportExportService {
   async createCaseImportJob(input: {
     projectId: bigint;
     userId: bigint;
+    importType?: CaseImportFormat;
     dryRun: boolean;
     summary: Prisma.InputJsonValue;
     issues: Prisma.InputJsonValue;
@@ -665,7 +900,7 @@ export class ImportExportService {
     return prisma.importJob.create({
       data: {
         projectId: input.projectId,
-        type: "cases_csv",
+        type: `cases_${input.importType ?? "csv"}`,
         status: input.status,
         dryRun: input.dryRun,
         summary: input.summary,
@@ -687,7 +922,7 @@ export class ImportExportService {
     externalId?: string;
     customValues: Record<string, ScalarCustomValue>;
     steps: Array<{ content: string; expectedResult?: string | null }>;
-  }>) {
+  }>, importType: CaseImportFormat = "csv") {
     const prisma = this.getPrisma();
     return prisma.$transaction(async (tx) => {
       const created = [];
@@ -732,7 +967,7 @@ export class ImportExportService {
             preconditions: item.preconditions,
             customValuesSnapshot: item.customValues as Prisma.InputJsonValue,
             stepsSnapshot: item.steps.map((step, index) => ({ stepOrder: index + 1, ...step })) as Prisma.InputJsonValue,
-            changeReason: "csv_import"
+            changeReason: `${importType}_import`
           }
         });
         created.push(testCase.id);
@@ -821,7 +1056,7 @@ export class ImportExportService {
     return exported;
   }
 
-  async exportCasesCsv(projectId: bigint, userId: bigint) {
+  async getCaseExportRecords(projectId: bigint) {
     const prisma = this.getPrisma();
     const rows = await prisma.testCase.findMany({
       where: { projectId, archivedAt: null, deletedAt: null },
@@ -833,6 +1068,38 @@ export class ImportExportService {
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       select: { systemName: true }
     });
+    const customFieldNames = customFields.map((field) => field.systemName);
+    const records: CaseExportRecord[] = rows.map((row) => ({
+      id: row.id.toString(),
+      section_id: row.sectionId.toString(),
+      title: row.title,
+      preconditions: row.preconditions,
+      priority: row.priority,
+      type: row.caseType,
+      refs: formatCaseRefsForCsv(row.refs),
+      labels: row.labels,
+      automation_key: row.automationKey,
+      external_id: row.externalId,
+      customValues: Object.fromEntries(
+        customFieldNames.map((fieldName) => {
+          const value =
+            row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+              ? (row.customValues as Record<string, unknown>)[fieldName]
+              : undefined;
+          return [fieldName, value ?? ""];
+        })
+      ),
+      steps: row.steps.map((step) => ({
+        content: step.content,
+        expected_result: step.expectedResult
+      }))
+    }));
+    return { records, customFieldNames };
+  }
+
+  async exportCasesCsv(projectId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const { records, customFieldNames } = await this.getCaseExportRecords(projectId);
     const headers = [
       "id",
       "section_id",
@@ -844,44 +1111,52 @@ export class ImportExportService {
       "labels",
       "automation_key",
       "external_id",
-      ...customFields.map((field) => customColumnName(field.systemName)),
+      ...customFieldNames.map((fieldName) => customColumnName(fieldName)),
       "steps"
     ];
-    const csv = toCsv(
-      headers,
-      rows.map((row) => ({
-        id: row.id,
-        section_id: row.sectionId,
-        title: row.title,
-        preconditions: row.preconditions,
-        priority: row.priority,
-        type: row.caseType,
-        refs: formatCaseRefsForCsv(row.refs),
-        labels: row.labels.join("|"),
-        automation_key: row.automationKey,
-        external_id: row.externalId,
-        ...Object.fromEntries(
-          customFields.map((field) => {
-            const value =
-              row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-                ? (row.customValues as Record<string, unknown>)[field.systemName]
-                : undefined;
-            return [customColumnName(field.systemName), value ?? ""];
-          })
-        ),
-        steps: row.steps.map((step) => `${step.content}${step.expectedResult ? `=>${step.expectedResult}` : ""}`).join("|")
-      }))
-    );
+    const csv = toCsv(headers, records.map((record) => caseExportRecordToCsvRow(record, customFieldNames)));
     await prisma.exportJob.create({
       data: {
         projectId,
         type: "cases_csv",
         status: "completed",
-        summary: { totalRows: rows.length } as Prisma.InputJsonValue,
+        summary: { totalRows: records.length, contentType: "text/csv" } as Prisma.InputJsonValue,
         createdBy: userId
       }
     });
     return csv;
+  }
+
+  async exportCasesJson(projectId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const { records } = await this.getCaseExportRecords(projectId);
+    const json = casesToJsonExport(projectId, records);
+    await prisma.exportJob.create({
+      data: {
+        projectId,
+        type: "cases_json",
+        status: "completed",
+        summary: { totalRows: records.length, contentType: "application/json" } as Prisma.InputJsonValue,
+        createdBy: userId
+      }
+    });
+    return json;
+  }
+
+  async exportCasesXml(projectId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const { records } = await this.getCaseExportRecords(projectId);
+    const xml = casesToXmlExport(projectId, records);
+    await prisma.exportJob.create({
+      data: {
+        projectId,
+        type: "cases_xml",
+        status: "completed",
+        summary: { totalRows: records.length, contentType: "application/xml" } as Prisma.InputJsonValue,
+        createdBy: userId
+      }
+    });
+    return xml;
   }
 
   async exportRunResultsCsv(projectId: bigint, runId: bigint, userId: bigint) {
@@ -953,16 +1228,97 @@ export async function registerImportExportRoutes(
   deps: { prisma?: PrismaClient; authService: AuthService }
 ) {
   const importExportService = new ImportExportService(deps.prisma);
+  const runCaseImport = async (input: {
+    projectId: bigint;
+    userId: bigint;
+    rows: CsvRow[];
+    totalRows: number;
+    dryRun: boolean;
+    atomic: boolean;
+    sectionId?: bigint;
+    importType: CaseImportFormat;
+    columnMapping?: Record<string, string> | null;
+  }) => {
+    const prisma = importExportService.getPrisma();
+    const { issues, normalized } = await validateImportRows(prisma, input.projectId, input.rows, input.sectionId);
+    const summary = { totalRows: input.totalRows, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
+
+    if (input.dryRun || (input.atomic && issues.length > 0)) {
+      const job = await importExportService.createCaseImportJob({
+        projectId: input.projectId,
+        userId: input.userId,
+        importType: input.importType,
+        dryRun: input.dryRun,
+        summary: summary as Prisma.InputJsonValue,
+        issues: issues as Prisma.InputJsonValue,
+        status: issues.length > 0 ? "failed" : "completed"
+      });
+      await recordActivityEvent(deps.prisma, {
+        projectId: input.projectId,
+        actorUserId: input.userId,
+        entityType: "import",
+        entityId: job.id,
+        eventType: `import.cases_${input.importType}_validated`,
+        title: `Case ${input.importType.toUpperCase()} import validated`,
+        body: `valid ${normalized.length} - invalid ${issues.length}`,
+        payload: {
+          dryRun: input.dryRun,
+          atomic: input.atomic,
+          totalRows: input.rows.length,
+          validRows: normalized.length,
+          invalidRows: issues.length
+        }
+      });
+      return {
+        status: !input.dryRun && input.atomic && issues.length > 0 ? 400 : 200,
+        data: { job, summary, issues, columnMapping: input.columnMapping ?? null }
+      };
+    }
+
+    const imported = await importExportService.importValidatedCases(
+      input.projectId,
+      input.userId,
+      normalized,
+      input.importType
+    );
+    summary.imported = imported.length;
+    const job = await importExportService.createCaseImportJob({
+      projectId: input.projectId,
+      userId: input.userId,
+      importType: input.importType,
+      dryRun: false,
+      summary: summary as Prisma.InputJsonValue,
+      issues: issues as Prisma.InputJsonValue,
+      status: issues.length > 0 ? "completed_with_errors" : "completed"
+    });
+    await recordActivityEvent(deps.prisma, {
+      projectId: input.projectId,
+      actorUserId: input.userId,
+      entityType: "import",
+      entityId: job.id,
+      eventType: `import.cases_${input.importType}_committed`,
+      title: `Case ${input.importType.toUpperCase()} import completed`,
+      body: `imported ${imported.length} - invalid ${issues.length}`,
+      payload: {
+        imported: imported.length,
+        invalidRows: issues.length,
+        totalRows: input.rows.length
+      }
+    });
+    return { status: 200, data: { job, summary, issues, columnMapping: input.columnMapping ?? null } };
+  };
+
   app.get("/api/projects/:projectId/cases/import/csv/profile", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const customFields = deps.prisma
+    const customFieldRows = deps.prisma
       ? await deps.prisma.customField.findMany({
           where: { projectId, scope: "case", deletedAt: null, isActive: true },
           orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-          select: { systemName: true, label: true, fieldType: true, isRequired: true }
+          select: { systemName: true, name: true, fieldType: true, isRequired: true }
         })
       : [];
+    const customFields = customFieldRows.map((field) => ({ ...field, label: field.name }));
     return reply.send(toJsonSafe(ok(buildCaseCsvImportProfile(customFields))));
   });
 
@@ -974,13 +1330,14 @@ export async function registerImportExportRoutes(
     if (headers.length === 0) {
       throw new AppError("VALIDATION_ERROR", "csv or headers is required", 400);
     }
-    const customFields = deps.prisma
+    const customFieldRows = deps.prisma
       ? await deps.prisma.customField.findMany({
           where: { projectId, scope: "case", deletedAt: null, isActive: true },
           orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-          select: { systemName: true, label: true, isRequired: true }
+          select: { systemName: true, name: true, isRequired: true }
         })
       : [];
+    const customFields = customFieldRows.map((field) => ({ ...field, label: field.name }));
     const mapping = suggestCaseCsvColumnMapping(headers, customFields);
     const mappingIssues = validateCaseCsvColumnMapping(
       mapping,
@@ -1004,11 +1361,12 @@ export async function registerImportExportRoutes(
     const body = caseImportSchema.parse(req.body ?? {});
     const prisma = importExportService.getPrisma();
 
-    const customFields = await prisma.customField.findMany({
+    const customFieldRows = await prisma.customField.findMany({
       where: { projectId, scope: "case", deletedAt: null, isActive: true },
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-      select: { systemName: true, label: true, isRequired: true }
+      select: { systemName: true, name: true, isRequired: true }
     });
+    const customFields = customFieldRows.map((field) => ({ ...field, label: field.name }));
 
     const parsedRows = parseCsv(body.csv);
     const headers = extractCsvHeaders(body.csv);
@@ -1099,6 +1457,44 @@ export async function registerImportExportRoutes(
         })
       )
     );
+  });
+
+  app.post("/api/projects/:projectId/cases/import/json", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = structuredCaseImportSchema.parse(req.body ?? {});
+    const rows = parseCaseJsonImport(body.content);
+    const result = await runCaseImport({
+      projectId,
+      userId: user.id,
+      rows,
+      totalRows: rows.length,
+      dryRun: body.dryRun,
+      atomic: body.atomic,
+      sectionId: body.sectionId,
+      importType: "json"
+    });
+    return reply.status(result.status).send(toJsonSafe(ok(result.data)));
+  });
+
+  app.post("/api/projects/:projectId/cases/import/xml", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = structuredCaseImportSchema.parse(req.body ?? {});
+    const rows = parseCaseXmlImport(body.content);
+    const result = await runCaseImport({
+      projectId,
+      userId: user.id,
+      rows,
+      totalRows: rows.length,
+      dryRun: body.dryRun,
+      atomic: body.atomic,
+      sectionId: body.sectionId,
+      importType: "xml"
+    });
+    return reply.status(result.status).send(toJsonSafe(ok(result.data)));
   });
 
   app.get("/api/projects/:projectId/import-jobs", async (req, reply) => {
@@ -1229,6 +1625,26 @@ export async function registerImportExportRoutes(
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases.csv"`);
     return reply.send(csv);
+  });
+
+  app.get("/api/projects/:projectId/cases/export/json", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case export requires prisma mode", 501);
+    const json = await importExportService.exportCasesJson(projectId, user.id);
+    reply.header("content-type", "application/json; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases.json"`);
+    return reply.send(json);
+  });
+
+  app.get("/api/projects/:projectId/cases/export/xml", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case export requires prisma mode", 501);
+    const xml = await importExportService.exportCasesXml(projectId, user.id);
+    reply.header("content-type", "application/xml; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases.xml"`);
+    return reply.send(xml);
   });
 
   app.get("/api/projects/:projectId/runs/:runId/results/export/csv", async (req, reply) => {

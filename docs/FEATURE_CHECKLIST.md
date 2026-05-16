@@ -221,7 +221,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Core** P1 `get_statuses` and custom status fields in API responses (`get_statuses?project_id=`, `custom_status_id` on status rows).
 - [x] **TR-Pro** P1 `/api/v2` list endpoint pagination (`limit`/`offset`, response envelope) on high-traffic list routes (cases, runs, tests, results). (`get_cases`, `get_runs`, `get_tests`, `get_results*`, default limit 250, contract tests.)
 - [x] **TR-Core** P1 Token scopes and expiration enforcement. (`scopes` + `expiresInDays` on create; `GET .../tokens/scopes`; automation routes enforce `automation:write` and expiry; Tokens UI for scopes/expiration.)
-- [ ] **TR-Core** P1 Clearer token creation UX.
+- [x] **TR-Core** P1 Clearer token creation UX. (Scope presets, expiry guidance, validation feedback, and one-time copyable token secret summary.)
 - [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
 - [ ] **TR-Pro** P2 CI examples and compatibility examples.
 - [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, suite/section/run write endpoints; list pagination tracked separately.)
@@ -236,7 +236,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Core** Case CSV export, run result CSV export, report CSV export jobs, and import/export UI (includes `refs` column, References import aliases, empty refs cells, refs on result explorer and results CSV exports).
 - [x] **TR-Core** Case and result custom values in relevant imports/exports.
 - [x] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance. (column mapping UI with auto-suggest and per-project local save; import profile + suggest-mapping APIs; `columnMapping` on import; validation table with row/field/code; import template download; commit gated on successful dry run.)
-- [ ] **TR-Pro** P1 XML/JSON import/export.
+- [x] **TR-Pro** P1 XML/JSON import/export. (Case JSON/XML import dry-run/commit endpoints, JSON/XML case exports, job history entries, and format selection/guidance in import/export UI.)
 - [ ] **TR-Pro** P1 Mapping wizard and large async file lifecycle.
 - [ ] **TR-Pro** P2 TestRail-native export shapes beyond current CSV baselines.
 

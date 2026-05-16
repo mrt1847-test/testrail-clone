@@ -123,6 +123,35 @@ export async function importCasesCsv(input: {
   };
 }
 
+export type StructuredCaseImportFormat = "json" | "xml";
+
+export async function importCasesStructured(input: {
+  projectId: string;
+  format: StructuredCaseImportFormat;
+  content: string;
+  dryRun: boolean;
+  atomic?: boolean;
+  sectionId?: string;
+}): Promise<CaseImportResult> {
+  const res = await apiFetch<Ok<CaseImportResult>>(`/api/projects/${input.projectId}/cases/import/${input.format}`, {
+    method: "POST",
+    body: {
+      content: input.content,
+      dryRun: input.dryRun,
+      atomic: input.atomic ?? true,
+      ...(input.sectionId ? { sectionId: input.sectionId } : {})
+    }
+  });
+  return {
+    ...res.data,
+    job: {
+      ...res.data.job,
+      id: String(res.data.job.id),
+      projectId: String(res.data.job.projectId)
+    }
+  };
+}
+
 export async function fetchImportJobs(projectId: string): Promise<ImportExportJobRow[]> {
   const res = await apiFetch<Paged<ImportExportJobRow>>(`/api/projects/${projectId}/import-jobs?page=1&pageSize=20`);
   return res.data.map((row) => ({ ...row, id: String(row.id), projectId: String(row.projectId) }));
@@ -179,6 +208,10 @@ export async function downloadExportJob(projectId: string, jobId: string, filena
 }
 
 export async function downloadCsv(path: string, filename: string) {
+  await downloadFile(path, filename);
+}
+
+export async function downloadFile(path: string, filename: string) {
   const headers: Record<string, string> = {};
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -199,6 +232,14 @@ export async function downloadCsv(path: string, filename: string) {
 
 export async function downloadCasesCsv(projectId: string) {
   await downloadCsv(`/api/projects/${projectId}/cases/export/csv`, `project-${projectId}-cases.csv`);
+}
+
+export async function downloadCasesJson(projectId: string) {
+  await downloadFile(`/api/projects/${projectId}/cases/export/json`, `project-${projectId}-cases.json`);
+}
+
+export async function downloadCasesXml(projectId: string) {
+  await downloadFile(`/api/projects/${projectId}/cases/export/xml`, `project-${projectId}-cases.xml`);
 }
 
 export async function downloadRunResultsCsv(projectId: string, runId: string) {
