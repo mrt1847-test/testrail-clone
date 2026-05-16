@@ -13,6 +13,7 @@ import { StepResultEditor } from "./StepResultEditor";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
 import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
+import { UntestedPolicyHint } from "./UntestedPolicyHint";
 import type { CaseStepContext, ResultStatus, ResultSubmitPayload, StepResultDraft } from "./resultEntryTypes";
 import {
   createStepDraftsFromCaseSteps,
@@ -167,6 +168,7 @@ export function ResultEntryPanel({
           disableUntested={disableUntested}
           onSelect={setSelectedStatus}
         />
+        <UntestedPolicyHint visible={disableUntested} />
 
         <label className="block text-xs font-medium text-slate-600">
           Comment

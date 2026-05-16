@@ -593,8 +593,28 @@ export async function updateDefectIntegrationSettings(input: {
   };
 }
 
-export async function fetchProjectActivity(projectId: string, page = 1, pageSize = 25) {
-  const res = await apiFetch<Paged<ActivityEventRow>>(`/api/projects/${projectId}/activity?page=${page}&pageSize=${pageSize}`);
+export type ProjectActivityFilters = {
+  entityType?: string;
+  entityId?: string;
+  eventType?: string;
+  runId?: string;
+};
+
+export async function fetchProjectActivity(
+  projectId: string,
+  page = 1,
+  pageSize = 25,
+  filters?: ProjectActivityFilters
+) {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  if (filters?.entityType) params.set("entityType", filters.entityType);
+  if (filters?.entityId) params.set("entityId", filters.entityId);
+  if (filters?.eventType) params.set("eventType", filters.eventType);
+  if (filters?.runId) params.set("runId", filters.runId);
+  const res = await apiFetch<Paged<ActivityEventRow>>(`/api/projects/${projectId}/activity?${params.toString()}`);
   return {
     ...res,
     data: res.data.map((row) => ({

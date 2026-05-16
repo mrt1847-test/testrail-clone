@@ -4,6 +4,7 @@ import { DefectKeyInput } from "./DefectKeyInput";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
 import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
+import { UntestedPolicyHint } from "./UntestedPolicyHint";
 import type { ResultStatus } from "./resultEntryTypes";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { normalizeElapsedInput } from "./resultEntryUtils";
@@ -229,6 +230,7 @@ export function TestInstanceTable(props: Props) {
                 disableUntested={disableUntested}
                 onSelect={setSelectedStatus}
               />
+              <UntestedPolicyHint visible={disableUntested} />
 
               <label className="block text-xs font-medium text-slate-600">
                 Comment

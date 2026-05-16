@@ -1,9 +1,14 @@
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import type { BulkResultFeedback } from "../hooks/useRunBulkActions";
+import type { ProjectStatusOption } from "../utils/projectStatuses";
 import type { ResultStatus } from "./resultEntryTypes";
+import { pickDefaultStatusOption, StatusPicker } from "./StatusPicker";
+import { UntestedPolicyHint } from "./UntestedPolicyHint";
 
 type Props = {
   members: ProjectMemberRow[];
+  statusOptions: ProjectStatusOption[];
+  bulkDisableUntested: boolean;
   bulkStatus: ResultStatus;
   onBulkStatusChange: (value: ResultStatus) => void;
   bulkComment: string;
@@ -41,6 +46,8 @@ function bulkFeedbackClass(feedback: BulkResultFeedback) {
 export function RunActionsPanel(props: Props) {
   const {
     members,
+    statusOptions,
+    bulkDisableUntested,
     bulkStatus,
     onBulkStatusChange,
     bulkComment,
@@ -69,6 +76,10 @@ export function RunActionsPanel(props: Props) {
     bulkFeedback && (bulkFeedback.type === "partial" || bulkFeedback.type === "error")
       ? bulkFeedback.failures ?? []
       : [];
+
+  const bulkActiveStatus =
+    statusOptions.find((option) => option.canonicalStatus === bulkStatus) ??
+    pickDefaultStatusOption(statusOptions, bulkStatus);
 
   return (
     <div className="space-y-2">
@@ -102,25 +113,20 @@ export function RunActionsPanel(props: Props) {
           </div>
         ) : null}
         <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <select
-              className="rounded border border-slate-300 px-2 py-1"
-              value={bulkStatus}
-              onChange={(e) => onBulkStatusChange(e.target.value as ResultStatus)}
-            >
-              <option value="passed">passed</option>
-              <option value="failed">failed</option>
-              <option value="blocked">blocked</option>
-              <option value="retest">retest</option>
-              <option value="untested">untested</option>
-            </select>
-            <input
-              className="flex-1 rounded border border-slate-300 px-2 py-1"
-              placeholder="comment (optional)"
-              value={bulkComment}
-              onChange={(e) => onBulkCommentChange(e.target.value)}
-            />
-          </div>
+          <StatusPicker
+            options={statusOptions}
+            selectedId={bulkActiveStatus.id}
+            disableUntested={bulkDisableUntested}
+            columns={3}
+            onSelect={(option) => onBulkStatusChange(option.canonicalStatus)}
+          />
+          <UntestedPolicyHint visible={bulkDisableUntested} />
+          <input
+            className="w-full rounded border border-slate-300 px-2 py-1"
+            placeholder="comment (optional)"
+            value={bulkComment}
+            onChange={(e) => onBulkCommentChange(e.target.value)}
+          />
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"

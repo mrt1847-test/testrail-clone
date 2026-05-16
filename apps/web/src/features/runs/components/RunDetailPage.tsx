@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import type { TestInstanceRow } from "../types";
 import { useRunBulkActions } from "../hooks/useRunBulkActions";
 import { useRunDetailQueries } from "../hooks/useRunDetailQueries";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
 import {
   useAddResultAttachmentMutation,
@@ -34,7 +35,7 @@ import { CloseRunDialog } from "./CloseRunDialog";
 import { RunActionsPanel } from "./RunActionsPanel";
 import { RunHeader } from "./RunHeader";
 import { RunSummaryBar } from "./RunSummaryBar";
-import { RunStatusSidebar } from "./RunStatusSidebar";
+import { RunDetailSidebar } from "./RunDetailSidebar";
 import { RunExecutionToolbar } from "./RunExecutionToolbar";
 import { RunInstancesSection } from "./RunInstancesSection";
 import { RUN_DETAIL_SHORTCUTS, useRunKeyboardShortcuts } from "../hooks/useRunKeyboardShortcuts";
@@ -93,6 +94,7 @@ export function RunDetailPage() {
     attachmentsQuery,
     defectsQuery
   } = queries;
+  const statusQuery = useProjectStatuses(projectId);
   const bulkActions = useRunBulkActions({ projectId, runId, pagedInstances });
   const {
     selectedTestIds,
@@ -106,7 +108,8 @@ export function RunDetailPage() {
     setBulkFeedback,
     allFilteredSelected,
     canBulkSubmit,
-    selectedCount
+    selectedCount,
+    bulkDisableUntested
   } = bulkActions;
 
   const addResultMutation = useAddRunResultMutation(projectId, runId);
@@ -257,11 +260,13 @@ export function RunDetailPage() {
 
       <div className={`grid gap-4 ${selected ? "lg:grid-cols-[minmax(0,1fr)_min(22rem,34vw)]" : ""}`}>
         <div className="flex flex-col gap-3 lg:flex-row">
-          <RunStatusSidebar
+          <RunDetailSidebar
+            projectId={projectId}
+            runId={runId}
             counts={counts}
             activeStatus={statusFilter}
             onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
-            footer={
+            statusFooter={
               <RunExecutionToolbar
                 variant="inline"
                 isNavigating={testNavigation.isNavigating}
@@ -327,7 +332,7 @@ export function RunDetailPage() {
         {selected ? (
           <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              {selected.caseCode} ? {selected.title}
+              {selected.caseCode} · {selected.title}
             </p>
             <div className="mt-2 space-y-3 text-sm text-slate-700">
               <ResultEntryPanel
@@ -550,6 +555,8 @@ export function RunDetailPage() {
       <CollapsibleSection title="Run actions" defaultOpen={false}>
         <RunActionsPanel
           members={membersQuery.data ?? []}
+          statusOptions={statusQuery.data ?? []}
+          bulkDisableUntested={bulkDisableUntested}
           bulkStatus={bulkStatus}
           onBulkStatusChange={setBulkStatus}
           bulkComment={bulkComment}

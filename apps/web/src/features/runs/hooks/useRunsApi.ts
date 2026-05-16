@@ -224,6 +224,7 @@ export function useSyncRunCompositionMutation(projectId: string | undefined, run
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
     }
   });
 }
@@ -238,6 +239,7 @@ export function useUpdateRunCompositionMutation(projectId: string | undefined, r
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
     }
   });
 }
@@ -252,6 +254,7 @@ export function useAddCasesToRunMutation(projectId: string | undefined, runId: s
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
       void qc.invalidateQueries({ queryKey: ["notifications", projectId] });
     }
   });
@@ -269,6 +272,7 @@ export function useRemoveTestFromRunMutation(projectId: string | undefined, runI
       void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
       void qc.invalidateQueries({ queryKey: ["notifications", projectId] });
     }
   });

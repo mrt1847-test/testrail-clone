@@ -20,6 +20,11 @@ export class ProjectsService {
     if (!updated) throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
     return updated;
   }
+  async setProjectArchived(projectId: bigint, archived: boolean) {
+    const updated = await this.repo.updateProject(projectId, { isArchived: archived });
+    if (!updated) throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
+    return updated;
+  }
   async deleteProject(projectId: bigint) {
     const deleted = await this.repo.deleteProject(projectId);
     if (!deleted) throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);

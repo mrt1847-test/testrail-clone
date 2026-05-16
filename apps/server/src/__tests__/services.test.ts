@@ -70,6 +70,30 @@ describe("phase1 services", () => {
     expect(res.failed).toBe(1);
   });
 
+  it("bulkAddResults rejects untested after an existing result", async () => {
+    const repo = new InMemoryRunsRepository();
+    const runService = new RunsService(repo);
+    const resultService = new ResultsService(repo);
+    const { run } = await runService.createRunWithInstances({
+      projectId: 1n,
+      suiteId: 1n,
+      name: "Run-untested-bulk",
+      includeAll: true
+    });
+    await resultService.addResultForCaseInRun(run.id, 101n, { status: "passed" });
+    const res = await resultService.bulkAddResults({
+      runId: run.id,
+      atomic: false,
+      results: [{ caseId: 101n, status: "untested" }]
+    });
+    expect(res.saved).toBe(0);
+    expect(res.failed).toBe(1);
+    expect(res.items[0]).toMatchObject({
+      status: "failed",
+      errorCode: "UNTESTED_NOT_ALLOWED"
+    });
+  });
+
   it("rejects result writes to closed run", async () => {
     const repo = new InMemoryRunsRepository();
     const runService = new RunsService(repo);

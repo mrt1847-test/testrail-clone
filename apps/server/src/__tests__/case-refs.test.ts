@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeCaseRefsInput, parseCaseRefs } from "../domain/caseRefs.js";
+import {
+  caseRefsFromCsvCell,
+  formatCaseRefsForCsv,
+  normalizeCaseRefsInput,
+  parseCaseRefs
+} from "../domain/caseRefs.js";
 
 describe("caseRefs", () => {
   it("parses comma, semicolon, and newline separated refs", () => {
@@ -14,5 +19,13 @@ describe("caseRefs", () => {
   it("normalizes empty refs to null", () => {
     expect(normalizeCaseRefsInput("   ")).toBeNull();
     expect(normalizeCaseRefsInput("REQ-1")).toBe("REQ-1");
+  });
+
+  it("formats CSV refs cells and parses import cells", () => {
+    expect(formatCaseRefsForCsv(null)).toBe("");
+    expect(formatCaseRefsForCsv("  REQ-1  ")).toBe("REQ-1");
+    expect(caseRefsFromCsvCell("")).toBeNull();
+    expect(caseRefsFromCsvCell(undefined)).toBeUndefined();
+    expect(caseRefsFromCsvCell("REQ-2")).toBe("REQ-2");
   });
 });

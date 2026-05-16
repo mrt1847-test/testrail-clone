@@ -185,7 +185,7 @@ class ReportsQueryService {
         orderBy: { id: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { instance: { include: { run: true } } }
+        include: { instance: { include: { run: true, testCase: { select: { refs: true } } } } }
       }),
       this.prisma.testResult.count({ where })
     ]);
@@ -197,6 +197,7 @@ class ReportsQueryService {
         testId: row.testInstanceId.toString(),
         caseId: row.instance.caseId.toString(),
         title: row.instance.titleSnapshot,
+        refs: row.instance.testCase.refs ?? null,
         status: row.status,
         source: row.source,
         createdAt: row.createdAt,

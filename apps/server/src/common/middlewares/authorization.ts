@@ -123,7 +123,8 @@ async function resolveProjectId(req: FastifyRequest, prisma?: PrismaClient) {
 
 export async function requireProjectMutationRole(
   req: FastifyRequest,
-  deps: { authService: AuthService; prisma?: PrismaClient }
+  deps: { authService: AuthService; prisma?: PrismaClient },
+  options?: { skipArchivedCheck?: boolean }
 ) {
   await requireAuthenticated(req, deps);
   const token = getBearerToken(req.headers.authorization);
@@ -148,6 +149,17 @@ export async function requireProjectMutationRole(
   const role = member?.role as ProjectRole | undefined;
   if (!role || !canMutateProject(role)) {
     throw new AppError("FORBIDDEN", "insufficient project role for mutation", 403);
+  }
+
+  const project = await deps.prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { isActive: true }
+  });
+  if (!project) {
+    throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
+  }
+  if (!options?.skipArchivedCheck && !project.isActive) {
+    throw new AppError("PROJECT_ARCHIVED", "project is archived and read-only", 403);
   }
 }
 

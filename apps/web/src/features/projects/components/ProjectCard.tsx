@@ -16,9 +16,16 @@ export function ProjectCard({ project }: ProjectCardProps) {
   return (
     <div className="grid gap-4 border-b border-slate-100 bg-white px-4 py-4 transition hover:bg-slate-50/80 lg:grid-cols-[minmax(14rem,1.2fr)_2fr_auto] lg:items-center">
       <div className="min-w-0">
-        <Link to={`/projects/${project.id}`} className="text-base font-semibold text-slate-900 hover:text-slate-700">
-          {project.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to={`/projects/${project.id}`} className="text-base font-semibold text-slate-900 hover:text-slate-700">
+            {project.name}
+          </Link>
+          {project.isArchived ? (
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900">
+              Archived
+            </span>
+          ) : null}
+        </div>
         <p className="mt-1 line-clamp-2 text-sm text-slate-500">{project.description || "No description"}</p>
       </div>
 

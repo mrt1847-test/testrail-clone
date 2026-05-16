@@ -91,7 +91,7 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     return [...this.projects];
   }
   async createProject(input: Omit<ProjectRow, "id"> & { ownerUserId?: bigint }) {
-    const row: ProjectRow = { id: this.projectSeq++, ...input };
+    const row: ProjectRow = { id: this.projectSeq++, isArchived: false, ...input };
     this.projects.push(row);
     return row;
   }

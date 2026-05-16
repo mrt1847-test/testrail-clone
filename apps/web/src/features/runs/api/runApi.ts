@@ -613,6 +613,7 @@ export type ResultExplorerRow = {
   testId: string;
   caseId: string;
   title: string;
+  refs?: string | null;
   status: string;
   source: string;
   createdAt: string;

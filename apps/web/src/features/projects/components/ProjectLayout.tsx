@@ -10,6 +10,8 @@ import { ProjectSwitcher } from "../../../shared/ui/ProjectSwitcher";
 import { ProjectTabs } from "../../../shared/ui/ProjectTabs";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchNotifications } from "../api/advancedApi";
+import { ArchivedProjectBanner } from "./ArchivedProjectBanner";
+import { ProjectArchiveProvider } from "../context/ProjectArchiveContext";
 import { useProjectQuery, useProjectsQuery } from "../hooks/useProjectsApi";
 
 export function ProjectLayout() {
@@ -72,15 +74,18 @@ export function ProjectLayout() {
           </div>
         </div>
       </div>
-      <ProjectHeader projectName={project.name} subtitle={project.description} />
+      <ProjectHeader projectName={project.name} subtitle={project.description} isArchived={project.isArchived} />
+      <ArchivedProjectBanner />
       <ProjectTabs projectId={projectId} />
       <Breadcrumb projectId={projectId} projectName={project.name} />
     </>
   );
 
   return (
-    <AppShell top={top}>
-      <Outlet />
-    </AppShell>
+    <ProjectArchiveProvider isArchived={Boolean(project.isArchived)}>
+      <AppShell top={top}>
+        <Outlet />
+      </AppShell>
+    </ProjectArchiveProvider>
   );
 }

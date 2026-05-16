@@ -904,9 +904,7 @@ Scheduled reports:
 ## Notifications / Activity
 - `GET /api/notifications`
 - `PATCH /api/notifications/preferences`
-- `GET /api/projects/{projectId}/activity`
-- `GET /api/runs/{runId}/activity`
-- `GET /api/cases/{caseId}/activity`
+- `GET /api/projects/{projectId}/activity` — query: `page`, `pageSize`, optional `entityType`, `entityId`, `eventType`, **`runId`** (matches run entity rows and payload `runId`).
 
 Activity event semantics:
 - Domain events should be written for:
@@ -918,4 +916,5 @@ Activity event semantics:
   - attachment added/deleted
   - defect linked/unlinked
 - Activity endpoints return a paged feed sorted by newest first.
+- Run detail UI uses `GET /api/projects/{projectId}/activity?runId={runId}` for the sidebar Activity tab.
 - Notifications are derived from selected activity events and user preferences.

@@ -13,7 +13,8 @@ import { projectIdParamSchema } from "../projects/projects.schema.js";
 const activityQuerySchema = z.object({
   entityType: z.string().trim().min(1).optional(),
   entityId: z.string().trim().min(1).optional(),
-  eventType: z.string().trim().min(1).optional()
+  eventType: z.string().trim().min(1).optional(),
+  runId: z.coerce.bigint().optional()
 });
 
 const notificationsQuerySchema = z.object({
@@ -52,12 +53,20 @@ export async function registerActivityRoutes(
       return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
     }
 
-    const where = {
-      projectId,
-      ...(filters.entityType ? { entityType: filters.entityType } : {}),
-      ...(filters.entityId ? { entityId: filters.entityId } : {}),
-      ...(filters.eventType ? { eventType: filters.eventType } : {})
-    };
+    const where = filters.runId
+      ? {
+          projectId,
+          OR: [
+            { entityType: "run", entityId: filters.runId.toString() },
+            { payload: { path: ["runId"], equals: filters.runId.toString() } }
+          ]
+        }
+      : {
+          projectId,
+          ...(filters.entityType ? { entityType: filters.entityType } : {}),
+          ...(filters.entityId ? { entityId: filters.entityId } : {}),
+          ...(filters.eventType ? { eventType: filters.eventType } : {})
+        };
     const [items, total] = await Promise.all([
       deps.prisma.activityEvent.findMany({
         where,

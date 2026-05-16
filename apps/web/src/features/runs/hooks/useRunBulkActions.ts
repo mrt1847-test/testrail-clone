@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
@@ -50,7 +50,10 @@ function mapFailures(
       caseId: item.caseId,
       caseCode: row?.caseCode ?? `C${item.caseId}`,
       title: row?.title ?? "Unknown case",
-      message: item.message ?? item.errorCode ?? "Failed to save result"
+      message:
+        item.errorCode === "UNTESTED_NOT_ALLOWED"
+          ? "Untested cannot be set after a result exists for this test."
+          : (item.message ?? item.errorCode ?? "Failed to save result")
     };
   });
 }
@@ -79,6 +82,21 @@ export function useRunBulkActions(input: Input) {
     }
     return map;
   }, [pagedInstances]);
+
+  const bulkDisableUntested = useMemo(
+    () =>
+      selectedTestIds.some((testId) => {
+        const row = instanceByTestId.get(testId);
+        return row != null && row.status !== "untested";
+      }),
+    [selectedTestIds, instanceByTestId]
+  );
+
+  useEffect(() => {
+    if (bulkDisableUntested && bulkStatus === "untested") {
+      setBulkStatus("passed");
+    }
+  }, [bulkDisableUntested, bulkStatus]);
 
   const bulkResultMutation = useMutation({
     mutationFn: async () => {
@@ -186,6 +204,7 @@ export function useRunBulkActions(input: Input) {
     allFilteredSelected,
     canBulkSubmit,
     selectedCount,
-    defaultRerunStatuses: rerunStatuses
+    defaultRerunStatuses: rerunStatuses,
+    bulkDisableUntested
   };
 }

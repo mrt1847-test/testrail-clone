@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { useProjectArchived } from "../../projects/context/ProjectArchiveContext";
 import type {
   CaseFilterAutomation,
   CaseFilterPriority,
@@ -77,6 +78,7 @@ export function CaseListToolbar({
   onDeleteSavedView,
   onAddCase
 }: CaseListToolbarProps) {
+  const isProjectArchived = useProjectArchived();
   const [filtersOpen, setFiltersOpen] = useState(activeFilterCount > 0);
   const [viewToolsOpen, setViewToolsOpen] = useState(false);
   const columnOptions: Array<{ value: CaseListColumn; label: string }> = [
@@ -136,7 +138,9 @@ export function CaseListToolbar({
         <button
           type="button"
           onClick={onAddCase}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          disabled={isProjectArchived}
+          title={isProjectArchived ? "Archived projects are read-only" : undefined}
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add case
         </button>

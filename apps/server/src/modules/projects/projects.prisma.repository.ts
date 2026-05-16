@@ -253,11 +253,21 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   }
 
   async listProjects(): Promise<ProjectRow[]> {
-    return this.prisma.project.findMany({
+    const rows = await this.prisma.project.findMany({
       where: { deletedAt: null },
       orderBy: { id: "desc" },
-      select: { id: true, name: true, description: true }
+      select: { id: true, name: true, description: true, isActive: true }
     });
+    return rows.map((row) => this.toProjectRow(row));
+  }
+
+  private toProjectRow(row: { id: bigint; name: string; description: string | null; isActive: boolean }): ProjectRow {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      isArchived: !row.isActive
+    };
   }
 
   async createProject(input: Omit<ProjectRow, "id"> & { ownerUserId?: bigint }): Promise<ProjectRow> {
@@ -270,7 +280,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
             ? { createdBy: input.ownerUserId, updatedBy: input.ownerUserId }
             : {})
         },
-        select: { id: true, name: true, description: true }
+        select: { id: true, name: true, description: true, isActive: true }
       });
       if (input.ownerUserId !== undefined) {
         await tx.projectMember.create({
@@ -283,15 +293,16 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           }
         });
       }
-      return created;
+      return this.toProjectRow(created);
     });
   }
 
   async getProject(projectId: bigint): Promise<ProjectRow | null> {
-    return this.prisma.project.findFirst({
+    const row = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
-      select: { id: true, name: true, description: true }
+      select: { id: true, name: true, description: true, isActive: true }
     });
+    return row ? this.toProjectRow(row) : null;
   }
 
   async updateProject(
@@ -300,11 +311,16 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   ): Promise<ProjectRow | null> {
     const found = await this.getProject(projectId);
     if (!found) return null;
-    return this.prisma.project.update({
+    const updated = await this.prisma.project.update({
       where: { id: projectId },
-      data: { ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.description !== undefined ? { description: patch.description } : {}) },
-      select: { id: true, name: true, description: true }
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.isArchived !== undefined ? { isActive: !patch.isArchived } : {})
+      },
+      select: { id: true, name: true, description: true, isActive: true }
     });
+    return this.toProjectRow(updated);
   }
 
   async deleteProject(projectId: bigint): Promise<boolean> {

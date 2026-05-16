@@ -144,8 +144,9 @@ export function ImportExportPage() {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Case CSV Import</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Columns: section_id, title, preconditions, priority, type, refs, labels, automation_key, external_id,
-              custom_{"{systemName}"}, steps.
+              Columns: section_id, title, preconditions, priority, type, refs (References), labels, automation_key,
+              external_id, custom_{"{systemName}"}, steps. Import also accepts references / References headers; empty
+              refs cells import as blank.
             </p>
           </div>
           <input

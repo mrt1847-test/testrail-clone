@@ -17,6 +17,12 @@ import {
 } from "../reports/reportMetrics.service.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import {
+  CASE_CSV_REFS_COLUMN,
+  caseRefsCsvAliases,
+  caseRefsFromCsvCell,
+  formatCaseRefsForCsv
+} from "../../domain/caseRefs.js";
 
 type CsvRow = Record<string, string>;
 type ImportIssue = { row: number; field?: string; code: string; message: string };
@@ -389,12 +395,29 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
       where,
       orderBy: { createdAt: "desc" },
       take: input.maxRows,
-      include: { instance: { include: { run: true } }, defectLinks: { where: { deletedAt: null } } }
+      include: {
+        instance: { include: { run: true, testCase: { select: { refs: true } } } },
+        defectLinks: { where: { deletedAt: null } }
+      }
     });
     return {
       fileName: `project-${projectId.toString()}-results-explorer.csv`,
       csv: toCsv(
-        ["result_id", "run_id", "run_name", "test_id", "case_id", "title", "status", "source", "comment", "defects", ...customHeaders, "created_at"],
+        [
+          "result_id",
+          "run_id",
+          "run_name",
+          "test_id",
+          "case_id",
+          "title",
+          CASE_CSV_REFS_COLUMN,
+          "status",
+          "source",
+          "comment",
+          "defects",
+          ...customHeaders,
+          "created_at"
+        ],
         rows.map((row) => ({
           result_id: row.id,
           run_id: row.instance.runId,
@@ -402,6 +425,7 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
           test_id: row.testInstanceId,
           case_id: row.instance.caseId,
           title: row.instance.titleSnapshot,
+          refs: formatCaseRefsForCsv(row.instance.testCase.refs),
           status: row.status,
           source: row.source,
           comment: row.comment,
@@ -594,7 +618,7 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
       preconditions: firstValue(row, ["preconditions", "Preconditions"]),
       priority: firstValue(row, ["priority", "Priority"]),
       caseType: firstValue(row, ["type", "case_type", "caseType", "Type"]),
-      refs: firstValue(row, ["refs", "references", "References"]),
+      refs: caseRefsFromCsvCell(firstValue(row, [...caseRefsCsvAliases()])),
       labels: splitList(firstValue(row, ["labels", "Labels"])),
       automationKey: firstValue(row, ["automation_key", "automationKey"]),
       externalId: firstValue(row, ["external_id", "externalId"]),
@@ -801,7 +825,7 @@ export class ImportExportService {
       "preconditions",
       "priority",
       "type",
-      "refs",
+      CASE_CSV_REFS_COLUMN,
       "labels",
       "automation_key",
       "external_id",
@@ -817,7 +841,7 @@ export class ImportExportService {
         preconditions: row.preconditions,
         priority: row.priority,
         type: row.caseType,
-        refs: row.refs,
+        refs: formatCaseRefsForCsv(row.refs),
         labels: row.labels.join("|"),
         automation_key: row.automationKey,
         external_id: row.externalId,
@@ -852,7 +876,10 @@ export class ImportExportService {
     const rows = await prisma.testResult.findMany({
       where: { instance: { runId } },
       orderBy: { createdAt: "desc" },
-      include: { instance: true, defectLinks: { where: { deletedAt: null } } }
+      include: {
+        instance: { include: { testCase: { select: { refs: true } } } },
+        defectLinks: { where: { deletedAt: null } }
+      }
     });
     const customFields = await prisma.customField.findMany({
       where: { projectId, scope: "result", deletedAt: null, isActive: true },
@@ -861,11 +888,25 @@ export class ImportExportService {
     });
     const customHeaders = customFields.map((field) => customColumnName(field.systemName));
     const csv = toCsv(
-      ["result_id", "test_id", "case_id", "status", "comment", "elapsed", "version", "source", "defects", ...customHeaders, "created_at"],
+      [
+        "result_id",
+        "test_id",
+        "case_id",
+        CASE_CSV_REFS_COLUMN,
+        "status",
+        "comment",
+        "elapsed",
+        "version",
+        "source",
+        "defects",
+        ...customHeaders,
+        "created_at"
+      ],
       rows.map((row) => ({
         result_id: row.id,
         test_id: row.testInstanceId,
         case_id: row.instance.caseId,
+        refs: formatCaseRefsForCsv(row.instance.testCase.refs),
         status: row.status,
         comment: row.comment,
         elapsed: row.elapsed,

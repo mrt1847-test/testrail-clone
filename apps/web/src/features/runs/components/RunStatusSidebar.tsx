@@ -17,6 +17,7 @@ type Props = {
   counts: RunDetailDto["counts"];
   activeStatus: string;
   onStatusSelect: (status: string) => void;
+  headerTabs?: ReactNode;
   footer?: ReactNode;
 };
 
@@ -27,7 +28,7 @@ function countForStatus(counts: RunDetailDto["counts"], key: string): number {
   return counts[key as keyof RunDetailDto["counts"]] ?? 0;
 }
 
-export function RunStatusSidebar({ counts, activeStatus, onStatusSelect, footer }: Props) {
+export function RunStatusSidebar({ counts, activeStatus, onStatusSelect, headerTabs, footer }: Props) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "1";
@@ -68,17 +69,21 @@ export function RunStatusSidebar({ counts, activeStatus, onStatusSelect, footer 
       className="shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:w-52"
       aria-label="Filter tests by status"
     >
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
-        <button
-          type="button"
-          title="Collapse status sidebar"
-          onClick={() => setCollapsed(true)}
-          className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200"
-          aria-expanded
-        >
-          «
-        </button>
+      <div className="border-b border-slate-100 bg-slate-50 px-2 py-2">
+        <div className="flex items-start gap-1">
+          <div className="min-w-0 flex-1">
+            {headerTabs ?? <p className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>}
+          </div>
+          <button
+            type="button"
+            title="Collapse status sidebar"
+            onClick={() => setCollapsed(true)}
+            className="shrink-0 rounded px-1 text-xs text-slate-500 hover:bg-slate-200"
+            aria-expanded
+          >
+            «
+          </button>
+        </div>
       </div>
       <ul className="divide-y divide-slate-100 p-1">
         {STATUS_ITEMS.map((item) => {

@@ -205,6 +205,7 @@ export function ResultExplorerPage() {
                     <th className="px-3 py-2">Result</th>
                     <th className="px-3 py-2">Run</th>
                     <th className="px-3 py-2">Case</th>
+                    <th className="px-3 py-2">Refs</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Source</th>
                     <th className="px-3 py-2">Custom values</th>
@@ -225,6 +226,7 @@ export function ResultExplorerPage() {
                         <td className="px-3 py-2">
                           C{row.caseId} - {row.title}
                         </td>
+                        <td className="px-3 py-2 text-xs text-slate-600">{row.refs?.trim() ? row.refs : "-"}</td>
                         <td className="px-3 py-2">{row.status}</td>
                         <td className="px-3 py-2">{row.source}</td>
                         <td className="px-3 py-2 text-xs text-slate-600">

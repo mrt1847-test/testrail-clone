@@ -1,15 +1,54 @@
 import { Link, useParams } from "react-router-dom";
 
-import { EmptyState } from "../../../shared/ui/EmptyState";
+import { useProjectQuery, useArchiveProjectMutation, useRestoreProjectMutation } from "../hooks/useProjectsApi";
 
 export function ProjectSettingsPage() {
   const { projectId = "" } = useParams();
+  const projectQuery = useProjectQuery(projectId);
+  const archiveMutation = useArchiveProjectMutation(projectId);
+  const restoreMutation = useRestoreProjectMutation(projectId);
+  const project = projectQuery.data;
+  const isArchived = Boolean(project?.isArchived);
+  const isBusy = archiveMutation.isPending || restoreMutation.isPending;
+
   return (
     <div className="space-y-6">
-      <EmptyState
-        title="Project settings"
-        description="General project options and danger zone will live here. Some pages are currently read-only."
-      />
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900">Project settings</h1>
+        <p className="mt-1 text-sm text-slate-600">General options, archive state, and admin shortcuts.</p>
+      </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Archive</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Archived projects stay visible for reporting but block case, run, and result changes until restored.
+        </p>
+        {isArchived ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
+              Archived · read-only
+            </span>
+            <button
+              type="button"
+              className="rounded-md border border-emerald-700 px-3 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+              disabled={isBusy}
+              onClick={() => void restoreMutation.mutateAsync()}
+            >
+              {restoreMutation.isPending ? "Restoring…" : "Restore project"}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mt-4 rounded-md border border-amber-700 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+            disabled={isBusy || !project}
+            onClick={() => void archiveMutation.mutateAsync()}
+          >
+            {archiveMutation.isPending ? "Archiving…" : "Archive project"}
+          </button>
+        )}
+      </section>
+
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-900">Shortcuts</h3>
         <ul className="mt-2 space-y-2 text-sm">

@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createProject, fetchProject, fetchProjectOverview, fetchProjects } from "../api/projectApi";
+import {
+  archiveProject,
+  createProject,
+  fetchProject,
+  fetchProjectOverview,
+  fetchProjects,
+  restoreProject
+} from "../api/projectApi";
 
 export const projectKeys = {
   all: ["projects"] as const,
@@ -39,5 +46,27 @@ export function useCreateProjectMutation() {
   return useMutation({
     mutationFn: (name: string) => createProject(name),
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.list() }),
+  });
+}
+
+export function useArchiveProjectMutation(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveProject(projectId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: projectKeys.list() });
+      void qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    }
+  });
+}
+
+export function useRestoreProjectMutation(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => restoreProject(projectId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: projectKeys.list() });
+      void qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    }
   });
 }

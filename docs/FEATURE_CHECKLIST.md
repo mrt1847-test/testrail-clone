@@ -27,6 +27,19 @@ Strategy and phase intent live in [ROADMAP.md](./ROADMAP.md).
 
 Official reference hub: [TestRail Support Center](https://support.testrail.com/hc/en-us/).
 
+## Working with [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
+
+Use this file as the **progress meter**: each development batch should advance **exactly one** checklist line from `[ ]` to `[x]`.
+
+| Rule | Detail |
+|------|--------|
+| One batch → one line | [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) **Current batch** must quote the target line below verbatim (section + full bullet text). |
+| No extra bullets | Do not add new checklist lines to record polish inside an already `[x]` area. Extend that line’s parenthetical when closing a remaining gap, or split a `[ ]` line first, then run a batch against it. |
+| Done means `[x]` | When the batch ships, flip **only** the named line to `[x]` and add a short `(…)` note for what shipped. |
+| Pick work from `[ ]` | Batch candidates are unchecked lines here, not free-form themes. |
+
+If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** here first, then queue one line per batch.
+
 ---
 
 ## Product Foundation
@@ -34,7 +47,7 @@ Official reference hub: [TestRail Support Center](https://support.testrail.com/h
 - [x] **TR-Core** Projects, suites, sections, and auth baseline.
 - [x] **TR-Core** Project membership, role guards, member management, and last-owner protection.
 - [x] **TR-Core** Operational project shell, project switcher, primary tabs, inbox entry, and project dashboard baseline.
-- [ ] **TR-Core** P1 Project archive/read-only mode.
+- [x] **TR-Core** P1 Project archive/read-only mode. (`POST .../archive|restore`, `PROJECT_ARCHIVED` on mutations, settings UI + archived banner.)
 - [ ] **TR-Core** P1 Global default access model.
 - [ ] **TR-Core** P1 Users, groups, global roles, custom roles, and permission matrix.
 - [ ] **TR-Core** P1 Project types: single repository, single repository with baselines, multiple test suites ([Projects and their types](https://support.testrail.com/hc/en-us/articles/7076923860244)).
@@ -82,8 +95,8 @@ Official reference hub: [TestRail Support Center](https://support.testrail.com/h
 - [x] **TR-Core** Result entry: status, comments, elapsed parser/timer, defects, custom values, case-step-aware step results.
 - [x] **TR-Core** Run table status-triggered result entry dialog (compact execution).
 - [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date). (partial: `startedAt` on create, `closedAt` on close/reopen, PATCH while open, run header display.)
-- [ ] **TR-Core** P1 Run detail views: Status, Activity, Progress sidebar modes.
-- [x] **TR-Core** P1 Policy: Untested cannot be set again after a test has any result (TestRail default behavior).
+- [x] **TR-Core** P1 Run detail views: Status, Activity, Progress sidebar modes.
+- [x] **TR-Core** P1 Policy: Untested cannot be set again after a test has any result (TestRail default behavior); run entry, quick entry, and bulk picker use project statuses with disable rules and inline policy copy.
 - [x] **TR-Core** P1 Configurable **custom result statuses** (up to seven), colors, `is_final`, `is_untested` ([Statuses](https://support.testrail.com/hc/en-us/articles/7077935129364)). (settings CRUD + `GET /api/projects/{id}/statuses` + run result/quick-entry status chips.)
 - [x] **TR-Core** P1 Bulk result entry uses `/results/bulk` with per-row success/failure summary in run UI.
 - [x] **TR-Core** P1 Activity/notification drilldown for run composition (`run.tests_added`, `run.test_removed`) with run + case links.
@@ -206,11 +219,12 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Pro** `/api/v2` **partial** compatibility: cases, runs, tests, results, single-resource reads (`get_project`, `get_suite`, `get_section`, `get_milestone`, `get_plan`), result listing (`get_results*`), `get_case_types`, `get_priorities`, suites/sections lists, milestones, plans, `get_statuses` (not full TestRail API surface).
 - [x] **TR-Core** P1 Document supported vs unsupported `/api/v2` endpoints in product docs (`GET /api/v2` index + API_SPEC matrix).
 - [x] **TR-Core** P1 `get_statuses` and custom status fields in API responses (`get_statuses?project_id=`, `custom_status_id` on status rows).
+- [ ] **TR-Pro** P1 `/api/v2` list endpoint pagination (`limit`/`offset`, response envelope) on high-traffic list routes (cases, runs, tests, results).
 - [ ] **TR-Core** P1 Token scopes and expiration enforcement.
 - [ ] **TR-Core** P1 Clearer token creation UX.
 - [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
 - [ ] **TR-Pro** P2 CI examples and compatibility examples.
-- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, and suite/section/run write endpoints `add_suite`, `update_suite`, `add_section`, `update_section`, `delete_section`, `close_run`, `update_run`.)
+- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, suite/section/run write endpoints; list pagination tracked separately.)
 - [ ] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports.
 - [ ] **TR-Pro** P2 API rate-limit behavior documentation (Cloud parity).
 
@@ -219,7 +233,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 ## Import And Export
 
 - [x] **TR-Core** Case CSV import dry-run/commit API and job history.
-- [x] **TR-Core** Case CSV export, run result CSV export, report CSV export jobs, and import/export UI.
+- [x] **TR-Core** Case CSV export, run result CSV export, report CSV export jobs, and import/export UI (includes `refs` column, References import aliases, empty refs cells, refs on result explorer and results CSV exports).
 - [x] **TR-Core** Case and result custom values in relevant imports/exports.
 - [ ] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance.
 - [ ] **TR-Pro** P1 XML/JSON import/export.

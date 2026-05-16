@@ -2,6 +2,7 @@ export type ProjectSummary = {
   id: string;
   name: string;
   description?: string;
+  isArchived?: boolean;
 };
 
 export type ProjectOverviewDto = {
