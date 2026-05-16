@@ -5,7 +5,13 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchRuns } from "../../runs/api/runApi";
-import { fetchAutomationSummary, fetchAutomationUploads, uploadAutomationResults } from "../api/advancedApi";
+import {
+  fetchAutomationRetryQueue,
+  fetchAutomationSummary,
+  fetchAutomationUploads,
+  uploadAutomationResults
+} from "../api/advancedApi";
+import { AutomationMappingSection } from "./AutomationMappingSection";
 
 export function AutomationPage() {
   const { projectId = "" } = useParams();
@@ -116,6 +122,11 @@ export function AutomationPage() {
     queryFn: () => fetchAutomationUploads(projectId),
     enabled: Boolean(projectId)
   });
+  const retryQueueQuery = useQuery({
+    queryKey: ["automation-retry-queue", projectId],
+    queryFn: () => fetchAutomationRetryQueue(projectId),
+    enabled: Boolean(projectId)
+  });
   const runsQuery = useQuery({
     queryKey: ["runs", projectId],
     queryFn: () => fetchRuns(projectId),
@@ -206,7 +217,9 @@ export function AutomationPage() {
     onSuccess: async (result) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["automation-summary", projectId] }),
-        qc.invalidateQueries({ queryKey: ["automation-uploads", projectId] })
+        qc.invalidateQueries({ queryKey: ["automation-uploads", projectId] }),
+        qc.invalidateQueries({ queryKey: ["automation-retry-queue", projectId] }),
+        qc.invalidateQueries({ queryKey: ["automation-mappings", projectId] })
       ]);
       navigate(`/projects/${projectId}/automation/uploads/${result.runId}`);
     }
@@ -260,20 +273,65 @@ export function AutomationPage() {
     <div className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Automation Summary</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div className="rounded border border-slate-200 p-3">
-            <p className="text-xs text-slate-500">Mapped cases</p>
-            <p className="text-xl font-semibold text-slate-900">{data.mappedCases}</p>
+            <p className="text-xs text-slate-500">Mapping coverage</p>
+            <p className="text-xl font-semibold text-slate-900">{data.coveragePercent}%</p>
+            <p className="text-xs text-slate-500">
+              {data.mappedCases} / {data.totalCases} mapped
+            </p>
+          </div>
+          <div className="rounded border border-slate-200 p-3">
+            <p className="text-xs text-slate-500">Unmapped cases</p>
+            <p className="text-xl font-semibold text-slate-900">{data.unmappedCases}</p>
+          </div>
+          <div className="rounded border border-slate-200 p-3">
+            <p className="text-xs text-slate-500">Pending retries</p>
+            <p className="text-xl font-semibold text-slate-900">{data.pendingRetryCount}</p>
           </div>
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs text-slate-500">Uploads</p>
             <p className="text-xl font-semibold text-slate-900">{data.uploadedRuns}</p>
           </div>
-          <div className="rounded border border-slate-200 p-3">
+          <div className="rounded border border-slate-200 p-3 sm:col-span-2 lg:col-span-2">
             <p className="text-xs text-slate-500">Last upload</p>
-            <p className="text-sm font-medium text-slate-800">{data.lastUploadAt ?? "—"}</p>
+            <p className="text-sm font-medium text-slate-800">
+              {data.lastUploadAt ? new Date(data.lastUploadAt).toLocaleString() : "—"}
+            </p>
           </div>
         </div>
+      </div>
+      <AutomationMappingSection projectId={projectId} />
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Retry queue</h3>
+        <p className="mt-1 text-xs text-slate-500">Upload batches with failed automation rows awaiting review or retry.</p>
+        {retryQueueQuery.isLoading ? (
+          <p className="mt-2 text-sm text-slate-500">Loading retry queue…</p>
+        ) : retryQueueQuery.isError ? (
+          <p className="mt-2 text-sm text-rose-600">Could not load retry queue.</p>
+        ) : (retryQueueQuery.data ?? []).length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No failed upload batches in the queue.</p>
+        ) : (
+          <ul className="mt-2 space-y-2 text-sm">
+            {(retryQueueQuery.data ?? []).map((row) => (
+              <li
+                key={row.uploadId}
+                className="flex items-center justify-between rounded border border-amber-200 bg-amber-50 px-3 py-2"
+              >
+                <span>
+                  Upload #{row.uploadId} · failed {row.failed} / {row.total} ·{" "}
+                  {new Date(row.uploadedAt).toLocaleString()}
+                </span>
+                <Link
+                  to={`/projects/${projectId}/automation/uploads/${row.uploadId}`}
+                  className="text-slate-700 underline"
+                >
+                  Review failures
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Run upload</h3>
@@ -356,10 +414,20 @@ export function AutomationPage() {
           {uploadErrorText ? <span className="text-xs text-rose-600">{uploadErrorText}</span> : null}
         </div>
         {uploadMutation.data ? (
-          <p className="mt-2 text-xs text-emerald-700">
-            Uploaded: total {uploadMutation.data.total} / saved {uploadMutation.data.saved} / failed{" "}
-            {uploadMutation.data.failed}
-          </p>
+          <div className="mt-2 space-y-2 text-xs">
+            <p className="text-emerald-700">
+              Uploaded: total {uploadMutation.data.total} / saved {uploadMutation.data.saved} / failed{" "}
+              {uploadMutation.data.failed}
+            </p>
+            {uploadMutation.data.items
+              .filter((item) => item.status === "failed")
+              .slice(0, 5)
+              .map((item) => (
+                <p key={`${item.index}-${item.caseId}`} className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-rose-800">
+                  C{item.caseId}: {item.message} ({item.errorCode})
+                </p>
+              ))}
+          </div>
         ) : null}
       </div>
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

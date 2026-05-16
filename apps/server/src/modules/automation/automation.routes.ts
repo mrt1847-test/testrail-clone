@@ -19,6 +19,98 @@ import type { ResultsService } from "../results/results.service.js";
 import type { RunsService } from "../runs/runs.service.js";
 import { byCaseSchema, resultSchema } from "../results/results.schema.js";
 import { runIdParamSchema, createRunSchema } from "../runs/runs.schema.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
+import { paginationQuerySchema } from "../../common/types/pagination.js";
+import { resolveAutomationFailureGuidance } from "./automation.failureGuidance.js";
+
+const automationMappingsQuerySchema = paginationQuerySchema.extend({
+  coverage: z.enum(["mapped", "unmapped", "all"]).default("mapped"),
+  q: z.string().optional()
+});
+
+const updateAutomationMappingSchema = z.object({
+  automationKey: z.string().trim().min(1).max(250)
+});
+
+function mapUploadItem(row: {
+  resultId: bigint;
+  testInstanceId: bigint;
+  caseId: bigint;
+  status: string;
+  comment: string | null;
+}) {
+  const guidance = resolveAutomationFailureGuidance(row.comment, row.status);
+  return {
+    resultId: row.resultId,
+    testId: row.testInstanceId,
+    caseId: row.caseId,
+    status: row.status,
+    comment: row.comment,
+    errorCode: guidance?.errorCode ?? null,
+    guidance: guidance?.guidance ?? null
+  };
+}
+
+async function buildAutomationSummary(
+  projectId: bigint,
+  prisma: PrismaClient | undefined,
+  catalog: ProjectsRepository | undefined,
+  uploadCount: number,
+  lastUploadAt: string | null
+) {
+  if (prisma) {
+    const [mappedCases, totalCases, pendingRetryCount, uploadedRuns, latest] = await Promise.all([
+      prisma.testCase.count({
+        where: { projectId, deletedAt: null, automationKey: { not: null } }
+      }),
+      prisma.testCase.count({ where: { projectId, deletedAt: null } }),
+      prisma.testResult.count({
+        where: {
+          source: "automation",
+          status: "failed",
+          instance: { run: { projectId, deletedAt: null } }
+        }
+      }),
+      prisma.testResult.groupBy({
+        by: ["testInstanceId"],
+        where: { source: "automation", instance: { run: { projectId, deletedAt: null } } }
+      }),
+      prisma.testResult.findFirst({
+        where: { source: "automation", instance: { run: { projectId, deletedAt: null } } },
+        orderBy: { id: "desc" },
+        select: { createdAt: true }
+      })
+    ]);
+    const unmappedCases = Math.max(0, totalCases - mappedCases);
+    const coveragePercent = totalCases > 0 ? Math.round((mappedCases / totalCases) * 100) : 0;
+    return {
+      mappedCases,
+      totalCases,
+      unmappedCases,
+      coveragePercent,
+      pendingRetryCount,
+      uploadedRuns: uploadedRuns.length,
+      lastUploadAt: latest?.createdAt.toISOString() ?? lastUploadAt
+    };
+  }
+
+  const cases = catalog
+    ? await catalog.listCases({ projectId, state: "active" })
+    : [];
+  const mappedCases = cases.filter((row) => Boolean(row.automationKey?.trim())).length;
+  const totalCases = cases.length;
+  const unmappedCases = Math.max(0, totalCases - mappedCases);
+  const coveragePercent = totalCases > 0 ? Math.round((mappedCases / totalCases) * 100) : 0;
+  return {
+    mappedCases,
+    totalCases,
+    unmappedCases,
+    coveragePercent,
+    pendingRetryCount: uploadRows.reduce((sum, row) => sum + row.failed, 0),
+    uploadedRuns: uploadCount,
+    lastUploadAt
+  };
+}
 
 type UploadRow = {
   id: bigint;
@@ -179,7 +271,12 @@ const automationBulkSchema = z.preprocess(
 
 export async function registerAutomationRoutes(
   app: FastifyInstance,
-  deps: { prisma?: PrismaClient; runsService: RunsService; resultsService: ResultsService }
+  deps: {
+    prisma?: PrismaClient;
+    catalog?: ProjectsRepository;
+    runsService: RunsService;
+    resultsService: ResultsService;
+  }
 ) {
   const retryFailedForRun = async (projectId: bigint, uploadId: bigint) => {
     if (deps.prisma) {
@@ -225,62 +322,183 @@ export async function registerAutomationRoutes(
 
   app.get("/api/projects/:projectId/automation/summary", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    if (deps.prisma) {
-      const [mappedCases, uploadedRuns, latest] = await Promise.all([
-        deps.prisma.testCase.count({
-          where: { projectId, deletedAt: null, automationKey: { not: null } }
-        }),
-        deps.prisma.testResult.groupBy({
-          by: ["testInstanceId"],
-          where: { source: "automation", instance: { run: { projectId, deletedAt: null } } }
-        }),
-        deps.prisma.testResult.findFirst({
-          where: { source: "automation", instance: { run: { projectId, deletedAt: null } } },
-          orderBy: { id: "desc" },
-          select: { createdAt: true }
-        })
-      ]);
-      return reply.send(
-        ok({
-          mappedCases,
-          uploadedRuns: uploadedRuns.length,
-          lastUploadAt: latest?.createdAt.toISOString() ?? null
-        })
-      );
-    }
-    return reply.send(
-      ok({
-        mappedCases: 0,
-        uploadedRuns: uploadRows.length,
-        lastUploadAt: uploadRows[0]?.uploadedAt ?? null
-      })
+    const summary = await buildAutomationSummary(
+      projectId,
+      deps.prisma,
+      deps.catalog,
+      uploadRows.length,
+      uploadRows[0]?.uploadedAt ?? null
     );
+    return reply.send(ok(summary));
   });
 
   app.get("/api/projects/:projectId/automation/mappings", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = automationMappingsQuerySchema.parse(req.query ?? {});
+    const search = query.q?.trim().toLowerCase();
+
     if (deps.prisma) {
+      const where =
+        query.coverage === "mapped"
+          ? { projectId, deletedAt: null, automationKey: { not: null } }
+          : query.coverage === "unmapped"
+            ? { projectId, deletedAt: null, OR: [{ automationKey: null }, { automationKey: "" }] }
+            : { projectId, deletedAt: null };
       const rows = await deps.prisma.testCase.findMany({
-        where: { projectId, deletedAt: null, automationKey: { not: null } },
+        where,
         select: { id: true, title: true, automationKey: true },
         orderBy: { id: "asc" },
-        take: 100
+        take: 500
       });
-      return reply.send(
-        toJsonSafe(
-          paged(
-            rows.map((row: (typeof rows)[number]) => ({
-              caseId: row.id,
-              title: row.title,
-              automationKey: row.automationKey
-            })),
-            1,
-            50
-          )
-        )
+      const filtered = rows
+        .filter((row) => {
+          if (!search) return true;
+          const haystack = `${row.id} ${row.title} ${row.automationKey ?? ""}`.toLowerCase();
+          return haystack.includes(search);
+        })
+        .map((row) => ({
+          caseId: row.id,
+          title: row.title,
+          automationKey: row.automationKey
+        }));
+      return reply.send(toJsonSafe(paged(filtered, query.page, query.pageSize)));
+    }
+
+    if (!deps.catalog) {
+      return reply.send(paged([], query.page, query.pageSize));
+    }
+    const automationFilter =
+      query.coverage === "mapped" ? "automated" : query.coverage === "unmapped" ? "manual" : undefined;
+    const rows = (
+      await deps.catalog.listCases({
+        projectId,
+        state: "active",
+        ...(automationFilter ? { automation: automationFilter } : {}),
+        q: query.q
+      })
+    ).map((row) => ({
+      caseId: row.id,
+      title: row.title,
+      automationKey: row.automationKey ?? null
+    }));
+    return reply.send(toJsonSafe(paged(rows, query.page, query.pageSize)));
+  });
+
+  app.patch("/api/projects/:projectId/automation/mappings/:caseId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const caseId = z.coerce.bigint().parse((req.params as { caseId: string }).caseId);
+    const body = updateAutomationMappingSchema.parse(req.body);
+
+    if (deps.prisma) {
+      const existing = await deps.prisma.testCase.findFirst({
+        where: { id: caseId, projectId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!existing) {
+        throw new AppError("NOT_FOUND", "case not found", 404);
+      }
+      try {
+        const updated = await deps.prisma.testCase.update({
+          where: { id: caseId },
+          data: { automationKey: body.automationKey, lockVersion: { increment: 1 } },
+          select: { id: true, title: true, automationKey: true }
+        });
+        return reply.send(
+          ok({
+            caseId: updated.id,
+            title: updated.title,
+            automationKey: updated.automationKey
+          })
+        );
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "P2002") {
+          throw new AppError(
+            "CONFLICT",
+            "automation key is already used by another case in this project",
+            409
+          );
+        }
+        throw error;
+      }
+    }
+
+    if (!deps.catalog) {
+      throw new AppError("NOT_FOUND", "case not found", 404);
+    }
+    const existing = await deps.catalog.getCase(caseId);
+    if (!existing) {
+      throw new AppError("NOT_FOUND", "case not found", 404);
+    }
+    const projectCases = await deps.catalog.listCases({ projectId, state: "active" });
+    const duplicate = projectCases.find(
+      (row) => row.id !== caseId && (row.automationKey ?? "").trim() === body.automationKey
+    );
+    if (duplicate) {
+      throw new AppError(
+        "CONFLICT",
+        "automation key is already used by another case in this project",
+        409
       );
     }
-    return reply.send(paged([], 1, 50));
+    const updated = await deps.catalog.updateCase(caseId, { automationKey: body.automationKey });
+    if (!updated || updated === "conflict") {
+      throw new AppError("NOT_FOUND", "case not found", 404);
+    }
+    return reply.send(
+      ok({
+        caseId: updated.id,
+        title: updated.title,
+        automationKey: updated.automationKey ?? null
+      })
+    );
+  });
+
+  app.get("/api/projects/:projectId/automation/retry-queue", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.testResult.findMany({
+        where: { source: "automation", instance: { run: { projectId, deletedAt: null } } },
+        include: { instance: { include: { run: true } } },
+        orderBy: { id: "desc" },
+        take: 200
+      });
+      const grouped = new Map<
+        bigint,
+        { uploadId: bigint; uploadedAt: string; total: number; saved: number; failed: number }
+      >();
+      for (const row of rows) {
+        const runId = row.instance.runId;
+        const current = grouped.get(runId);
+        if (!current) {
+          grouped.set(runId, {
+            uploadId: runId,
+            uploadedAt: row.createdAt.toISOString(),
+            total: 1,
+            saved: row.status === "failed" ? 0 : 1,
+            failed: row.status === "failed" ? 1 : 0
+          });
+        } else {
+          current.total += 1;
+          if (row.status === "failed") current.failed += 1;
+          else current.saved += 1;
+        }
+      }
+      const queue = Array.from(grouped.values())
+        .filter((row) => row.failed > 0)
+        .sort((left, right) => right.uploadedAt.localeCompare(left.uploadedAt));
+      return reply.send(toJsonSafe(ok(queue)));
+    }
+    const queue = uploadRows
+      .filter((row) => row.failed > 0)
+      .map((row) => ({
+        uploadId: row.id,
+        uploadedAt: row.uploadedAt,
+        total: row.total,
+        saved: row.saved,
+        failed: row.failed
+      }));
+    return reply.send(toJsonSafe(ok(queue)));
   });
 
   app.get("/api/projects/:projectId/automation/uploads", async (req, reply) => {
@@ -341,13 +559,15 @@ export async function registerAutomationRoutes(
           total: rows.length,
           saved: rows.length - failed,
           failed,
-          items: rows.map((row: (typeof rows)[number]) => ({
-            resultId: row.id,
-            testId: row.testInstanceId,
-            caseId: row.instance.caseId,
-            status: row.status,
-            comment: row.comment
-          })),
+          items: rows.map((row: (typeof rows)[number]) =>
+            mapUploadItem({
+              resultId: row.id,
+              testInstanceId: row.testInstanceId,
+              caseId: row.instance.caseId,
+              status: row.status,
+              comment: row.comment
+            })
+          ),
           metadata: {
             external_run_id: latestMetadata?.external_run_id ?? uploadId.toString(),
             ci_provider: latestMetadata?.ci_provider ?? null,

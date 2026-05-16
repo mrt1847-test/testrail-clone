@@ -8,6 +8,24 @@ export type AutomationSummary = {
   mappedCases: number;
   uploadedRuns: number;
   lastUploadAt: string | null;
+  totalCases: number;
+  unmappedCases: number;
+  coveragePercent: number;
+  pendingRetryCount: number;
+};
+
+export type AutomationMappingRow = {
+  caseId: string;
+  title: string;
+  automationKey: string | null;
+};
+
+export type AutomationRetryQueueRow = {
+  uploadId: string;
+  uploadedAt: string;
+  total: number;
+  saved: number;
+  failed: number;
 };
 
 export type AutomationUploadRow = {
@@ -32,6 +50,8 @@ export type AutomationUploadDetail = {
     caseId: string;
     status: string;
     comment?: string | null;
+    errorCode?: string | null;
+    guidance?: string | null;
   }>;
   metadata: {
     external_run_id: string | null;
@@ -88,7 +108,64 @@ export type AutomationBulkUploadResponse = {
 
 export async function fetchAutomationSummary(projectId: string): Promise<AutomationSummary> {
   const res = await apiFetch<Ok<AutomationSummary>>(`/api/projects/${projectId}/automation/summary`);
-  return res.data;
+  const data = res.data;
+  return {
+    ...data,
+    totalCases: data.totalCases ?? data.mappedCases,
+    unmappedCases: data.unmappedCases ?? 0,
+    coveragePercent: data.coveragePercent ?? 0,
+    pendingRetryCount: data.pendingRetryCount ?? 0
+  };
+}
+
+export async function fetchAutomationMappings(
+  projectId: string,
+  params: { coverage?: "mapped" | "unmapped" | "all"; q?: string; page?: number; pageSize?: number } = {}
+): Promise<{ rows: AutomationMappingRow[]; total: number }> {
+  const search = new URLSearchParams();
+  if (params.coverage) search.set("coverage", params.coverage);
+  if (params.q?.trim()) search.set("q", params.q.trim());
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("pageSize", String(params.pageSize));
+  const query = search.toString();
+  const res = await apiFetch<Paged<AutomationMappingRow>>(
+    `/api/projects/${projectId}/automation/mappings${query ? `?${query}` : ""}`
+  );
+  return {
+    rows: res.data.map((row) => ({
+      caseId: String(row.caseId),
+      title: row.title,
+      automationKey: row.automationKey ?? null
+    })),
+    total: res.total
+  };
+}
+
+export async function updateAutomationMapping(
+  projectId: string,
+  caseId: string,
+  automationKey: string
+): Promise<AutomationMappingRow> {
+  const res = await apiFetch<Ok<AutomationMappingRow>>(
+    `/api/projects/${projectId}/automation/mappings/${caseId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ automationKey })
+    }
+  );
+  return {
+    caseId: String(res.data.caseId),
+    title: res.data.title,
+    automationKey: res.data.automationKey ?? null
+  };
+}
+
+export async function fetchAutomationRetryQueue(projectId: string): Promise<AutomationRetryQueueRow[]> {
+  const res = await apiFetch<Ok<AutomationRetryQueueRow[]>>(`/api/projects/${projectId}/automation/retry-queue`);
+  return res.data.map((row) => ({
+    ...row,
+    uploadId: String(row.uploadId)
+  }));
 }
 
 export async function fetchAutomationUploads(projectId: string): Promise<AutomationUploadRow[]> {
@@ -120,7 +197,9 @@ export async function fetchAutomationUploadDetail(projectId: string, uploadId: s
       testId: String(item.testId),
       caseId: String(item.caseId),
       status: item.status,
-      comment: item.comment ?? null
+      comment: item.comment ?? null,
+      errorCode: item.errorCode ?? null,
+      guidance: item.guidance ?? null
     })),
     metadata: {
       external_run_id: metadata.external_run_id ?? null,

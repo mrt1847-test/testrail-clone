@@ -222,7 +222,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Pro** P1 `/api/v2` list endpoint pagination (`limit`/`offset`, response envelope) on high-traffic list routes (cases, runs, tests, results). (`get_cases`, `get_runs`, `get_tests`, `get_results*`, default limit 250, contract tests.)
 - [x] **TR-Core** P1 Token scopes and expiration enforcement. (`scopes` + `expiresInDays` on create; `GET .../tokens/scopes`; automation routes enforce `automation:write` and expiry; Tokens UI for scopes/expiration.)
 - [x] **TR-Core** P1 Clearer token creation UX. (Scope presets, expiry guidance, validation feedback, and one-time copyable token secret summary.)
-- [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
+- [x] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance. (Mapping table with unmapped/mapped filters and PATCH mapping; summary health metrics; retry queue list; upload detail row guidance and bulk upload failure preview.)
 - [ ] **TR-Pro** P2 CI examples and compatibility examples.
 - [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, suite/section/run write endpoints; list pagination tracked separately.)
 - [ ] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports.
