@@ -148,6 +148,16 @@ export class ResultsService {
   }
 
   private async writeResultTx(tx: Tx, testInstanceId: bigint, input: ResultInput) {
+    if (input.status === "untested") {
+      const priorResults = await tx.countResultsForTestInstance(testInstanceId);
+      if (priorResults > 0) {
+        throw new AppError(
+          "UNTESTED_NOT_ALLOWED",
+          "cannot set status to untested after a result exists for this test",
+          400
+        );
+      }
+    }
     const created = await tx.createResult(testInstanceId, input);
     if (input.stepResults && input.stepResults.length > 0) {
       await tx.createResultSteps(created.id, input.stepResults);

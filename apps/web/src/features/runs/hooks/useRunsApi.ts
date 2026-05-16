@@ -29,7 +29,9 @@ import {
   reopenRun,
   addCasesToRun,
   removeTestFromRun,
-  syncRunComposition
+  syncRunComposition,
+  updateRunComposition,
+  type UpdateRunCompositionInput
 } from "../api/runApi";
 import type { RunDetailDto } from "../types";
 
@@ -216,6 +218,20 @@ export function useSyncRunCompositionMutation(projectId: string | undefined, run
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => syncRunComposition(projectId!, runId!),
+    onSuccess: () => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
+    }
+  });
+}
+
+export function useUpdateRunCompositionMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateRunCompositionInput) => updateRunComposition(projectId!, runId!, input),
     onSuccess: () => {
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });

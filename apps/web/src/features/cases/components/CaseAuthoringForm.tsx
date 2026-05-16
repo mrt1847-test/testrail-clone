@@ -18,6 +18,7 @@ type CaseAuthoringFormProps = {
   valueKey: string;
   initialTitle: string;
   initialPreconditions: string;
+  initialReferences?: string;
   initialCustomValues: Record<string, ScalarCustomValue>;
   customFields: CaseAuthoringCustomFieldDefinition[];
   templates?: CaseAuthoringTemplateDefinition[];
@@ -29,6 +30,7 @@ type CaseAuthoringFormProps = {
   onSubmit: (input: {
     title: string;
     preconditions: string;
+    references: string;
     customValues: Record<string, ScalarCustomValue>;
     templateId: string | null;
   }) => Promise<void> | void;
@@ -71,6 +73,7 @@ export function CaseAuthoringForm({
   valueKey,
   initialTitle,
   initialPreconditions,
+  initialReferences = "",
   initialCustomValues,
   customFields,
   templates = [],
@@ -104,6 +107,7 @@ export function CaseAuthoringForm({
 
   const [title, setTitle] = useState(initialTitle);
   const [preconditions, setPreconditions] = useState(initialPreconditions);
+  const [references, setReferences] = useState(initialReferences);
   const [customValues, setCustomValues] = useState<Record<string, ScalarCustomValue>>(initialCustomValues);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -111,6 +115,7 @@ export function CaseAuthoringForm({
   useEffect(() => {
     setTitle(initialTitle);
     setPreconditions(initialPreconditions);
+    setReferences(initialReferences);
     setCustomValues(initialCustomValues);
     setSelectedTemplateId(preferredTemplateId(activeTemplates));
     setFieldErrors({});
@@ -214,6 +219,20 @@ export function CaseAuthoringForm({
       </label>
     );
 
+    const referencesNode = (
+      <label className="grid gap-1 text-sm text-slate-700">
+        <span>References</span>
+        <input
+          type="text"
+          value={references}
+          onChange={(event) => setReferences(event.target.value)}
+          placeholder="REQ-1, REQ-2"
+          className={inputClassName(false)}
+        />
+        <span className="text-xs text-slate-500">Comma-separated requirement or story IDs.</span>
+      </label>
+    );
+
     const stepsNode = stepsSection ? <div className="grid gap-2">{stepsSection}</div> : null;
 
     const renderCustomField = (field: CaseAuthoringCustomFieldDefinition) => {
@@ -300,6 +319,10 @@ export function CaseAuthoringForm({
         pushBlock("preconditions", preconditionsNode);
         continue;
       }
+      if (normalized === "references" || normalized === "refs") {
+        pushBlock("references", referencesNode);
+        continue;
+      }
       if (normalized === "steps" || normalized === "expectedresult") {
         if (stepsNode) pushBlock("steps", stepsNode);
         continue;
@@ -312,12 +335,23 @@ export function CaseAuthoringForm({
 
     pushBlock("title", titleNode);
     pushBlock("preconditions", preconditionsNode);
+    pushBlock("references", referencesNode);
     if (stepsNode) pushBlock("steps", stepsNode);
     for (const field of activeCustomFields) {
       pushBlock(`custom:${field.systemName}`, renderCustomField(field));
     }
     return blocks;
-  }, [activeCustomFields, customFieldMap, customValues, fieldErrors, preconditions, selectedTemplate?.fields, stepsSection, title]);
+  }, [
+    activeCustomFields,
+    customFieldMap,
+    customValues,
+    fieldErrors,
+    preconditions,
+    references,
+    selectedTemplate?.fields,
+    stepsSection,
+    title
+  ]);
 
   async function handleSubmit() {
     const nextErrors = validate();
@@ -335,6 +369,7 @@ export function CaseAuthoringForm({
       await onSubmit({
         title: title.trim(),
         preconditions: preconditions.trim(),
+        references: references.trim(),
         customValues: normalizedCustomValues,
         templateId: selectedTemplateId || null
       });

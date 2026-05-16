@@ -18,8 +18,25 @@ import {
   type SettingsRouteDeps
 } from "./settings.shared.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import { MAX_PROJECT_CUSTOM_STATUSES, resolveStatusFlags } from "../../domain/customStatusPolicy.js";
+import { AppError } from "../../common/errors/appError.js";
 
 export async function registerStatusesRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
+  app.get("/api/projects/:projectId/statuses", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const rows = await deps.prisma.customStatus.findMany({
+        where: { projectId, deletedAt: null, isActive: true },
+        orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+      });
+      const items = rows.length > 0 ? rows.map(statusToResponse) : defaultStatusRows(projectId).map(statusToResponse);
+      return reply.send(toJsonSafe(ok(items)));
+    }
+    const rows = customStatuses.filter((item) => item.projectId === projectId && item.isActive);
+    const items = rows.length > 0 ? rows : defaultStatusRows(projectId);
+    return reply.send(toJsonSafe(ok(items)));
+  });
+
   app.get("/api/projects/:projectId/settings/statuses", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
@@ -42,10 +59,24 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
     if (!systemName) {
       return reply.code(400).send({ code: "INVALID_CUSTOM_STATUS", message: "systemName must contain a letter or number" });
     }
+    const flags = resolveStatusFlags(body.canonicalStatus, {
+      isFinal: body.isFinal,
+      isUntested: body.isUntested
+    });
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
       try {
         const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const customCount = await tx.customStatus.count({
+            where: { projectId, isSystem: false, deletedAt: null }
+          });
+          if (customCount >= MAX_PROJECT_CUSTOM_STATUSES) {
+            throw new AppError(
+              "CUSTOM_STATUS_LIMIT",
+              `projects may define at most ${MAX_PROJECT_CUSTOM_STATUSES} custom statuses`,
+              400
+            );
+          }
           const created = await tx.customStatus.create({
             data: {
               projectId,
@@ -53,6 +84,8 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
               systemName,
               canonicalStatus: body.canonicalStatus,
               color: body.color,
+              isFinal: flags.isFinal,
+              isUntested: flags.isUntested,
               isSystem: false,
               isActive: body.isActive,
               displayOrder: body.displayOrder,
@@ -93,6 +126,12 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
     if (customStatuses.some((item) => item.projectId === projectId && item.systemName === systemName)) {
       return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
     }
+    const customCount = customStatuses.filter((item) => item.projectId === projectId && !item.isSystem).length;
+    if (customCount >= MAX_PROJECT_CUSTOM_STATUSES) {
+      return reply
+        .code(400)
+        .send({ code: "CUSTOM_STATUS_LIMIT", message: `projects may define at most ${MAX_PROJECT_CUSTOM_STATUSES} custom statuses` });
+    }
     const row: CustomStatusRow = {
       id: BigInt(Date.now()),
       projectId,
@@ -100,6 +139,8 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
       systemName,
       canonicalStatus: body.canonicalStatus,
       color: body.color,
+      isFinal: flags.isFinal,
+      isUntested: flags.isUntested,
       isSystem: false,
       isActive: body.isActive,
       displayOrder: body.displayOrder
@@ -127,6 +168,15 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
           if (!existing) {
             throw new Error("CUSTOM_STATUS_NOT_FOUND");
           }
+          const current = await tx.customStatus.findFirst({
+            where: { id: existing.id },
+            select: { canonicalStatus: true, isFinal: true, isUntested: true }
+          });
+          const nextCanonical = (body.canonicalStatus ?? current?.canonicalStatus ?? "untested") as CustomStatusRow["canonicalStatus"];
+          const nextFlags = resolveStatusFlags(nextCanonical, {
+            isFinal: body.isFinal ?? current?.isFinal,
+            isUntested: body.isUntested ?? current?.isUntested
+          });
           const updated = await tx.customStatus.update({
             where: { id: existing.id },
             data: {
@@ -134,6 +184,12 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
               ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
               ...(body.canonicalStatus !== undefined ? { canonicalStatus: body.canonicalStatus } : {}),
               ...(body.color !== undefined ? { color: body.color } : {}),
+              ...(body.isFinal !== undefined || body.canonicalStatus !== undefined
+                ? { isFinal: nextFlags.isFinal }
+                : {}),
+              ...(body.isUntested !== undefined || body.canonicalStatus !== undefined
+                ? { isUntested: nextFlags.isUntested }
+                : {}),
               ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
               ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
               updatedBy: actor.id
@@ -180,11 +236,18 @@ export async function registerStatusesRoutes(app: FastifyInstance, deps: Setting
     ) {
       return reply.code(409).send({ code: "CUSTOM_STATUS_EXISTS", message: "custom status systemName already exists" });
     }
+    const nextCanonical = body.canonicalStatus ?? row.canonicalStatus;
+    const nextFlags = resolveStatusFlags(nextCanonical, {
+      isFinal: body.isFinal ?? row.isFinal,
+      isUntested: body.isUntested ?? row.isUntested
+    });
     Object.assign(row, {
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
       ...(body.canonicalStatus !== undefined ? { canonicalStatus: body.canonicalStatus } : {}),
       ...(body.color !== undefined ? { color: body.color } : {}),
+      ...(body.isFinal !== undefined || body.canonicalStatus !== undefined ? { isFinal: nextFlags.isFinal } : {}),
+      ...(body.isUntested !== undefined || body.canonicalStatus !== undefined ? { isUntested: nextFlags.isUntested } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
       ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {})
     });

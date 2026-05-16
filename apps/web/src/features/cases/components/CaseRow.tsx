@@ -42,6 +42,7 @@ type CaseRowProps = {
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
   renderDetailInline?: boolean;
+  opensInDetailPage?: boolean;
   draggable?: boolean;
   isDraggingThis?: boolean;
   dropIndicator?: "before" | "after" | null;
@@ -79,6 +80,7 @@ export function CaseRow({
   onDeleteStep,
   isStepsBusy,
   renderDetailInline = true,
+  opensInDetailPage = false,
   draggable = false,
   isDraggingThis = false,
   dropIndicator = null,
@@ -206,7 +208,8 @@ export function CaseRow({
             ) : null}
           </span>
           <span className="shrink-0 text-right text-xs text-slate-500">
-            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode} {isExpanded ? "▾" : "▸"}
+            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode}{" "}
+            {opensInDetailPage ? "Open →" : isExpanded ? "▾" : "▸"}
           </span>
         </button>
       </div>

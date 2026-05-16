@@ -22,6 +22,8 @@ export type CustomStatusRow = {
   systemName: string;
   canonicalStatus: TestStatus;
   color: string;
+  isFinal: boolean;
+  isUntested: boolean;
   isSystem: boolean;
   isActive: boolean;
   displayOrder: number;

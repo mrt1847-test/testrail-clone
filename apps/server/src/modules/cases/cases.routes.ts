@@ -271,6 +271,7 @@ export async function registerCasesRoutes(
       priority: raw.priority,
       caseType: raw.caseType,
       preconditions: raw.preconditions,
+      refs: raw.refs,
       customValues: raw.customValues
     });
     try {

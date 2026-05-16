@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useCaseListDnD, type PendingMoveCopy } from "../hooks/useCaseListDnD";
+import { buildCaseDetailPath } from "../caseRoute";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
 import { CaseListPane } from "./CaseListPane";
@@ -11,13 +12,25 @@ import { SectionTreePane } from "./SectionTreePane";
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
+  const navigate = useNavigate();
   const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(projectId);
   const sections = bundle?.sections ?? [];
-  const { selectedSectionId, setExpandedCase, setSelectedSection } = useExpandedCase();
+  const { selectedSectionId, expandedCaseId, mode, setSelectedSection } = useExpandedCase();
   const dnd = useCaseListDnD();
   const [pendingMoveCopy, setPendingMoveCopy] = useState<PendingMoveCopy | null>(null);
   const selectedSectionSuiteId =
     selectedSectionId != null ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? "") : "";
+
+  useEffect(() => {
+    if (expandedCaseId == null) return;
+    navigate(
+      buildCaseDetailPath(projectId, expandedCaseId, {
+        sectionId: selectedSectionId,
+        mode: mode === "edit" ? "edit" : "view"
+      }),
+      { replace: true }
+    );
+  }, [expandedCaseId, mode, navigate, projectId, selectedSectionId]);
 
   useEffect(() => {
     if (sectionsLoading || sections.length === 0) return;
@@ -57,7 +70,7 @@ export function TestCaseWorkspace() {
           sections={sections}
           selectedSectionId={selectedSectionId}
           onSelectSection={setSelectedSection}
-          onClearExpand={() => setExpandedCase(null)}
+          onClearExpand={() => {}}
           dnd={{
             isDragging: dnd.isDragging,
             draggingCount: dnd.draggingCount,

@@ -20,6 +20,7 @@ This document tracks the actual frontend route tree in `apps/web/src/App.tsx`.
   ProjectLayout
   index                              ProjectOverviewPage
   cases                              TestCaseWorkspacePage
+  cases/:caseId                      CaseDetailPage
   runs                               RunListPage
   runs/new                           RunCreatePage
   runs/:runId                        RunDetailPage
@@ -53,7 +54,7 @@ Unknown routes redirect to `/projects`.
 
 - All `/projects/:projectId/*` routes render inside `ProjectLayout`.
 - Unauthenticated users are redirected through `RequireAuth`.
-- Case details stay inline in the case workspace; there is no standalone case detail route.
+- Case details open at `/projects/:projectId/cases/:caseId` (read-only page + `?mode=edit` drawer). Legacy `?caseId=` on the workspace redirects to the detail route.
 - Project-wide result exploration uses `/projects/:projectId/results`.
 - Run-scoped result exploration uses `/projects/:projectId/runs/:runId/results`.
 - Project activity feed uses `/projects/:projectId/activity`.
@@ -65,14 +66,13 @@ Unknown routes redirect to `/projects`.
 ### Cases
 
 - `sectionId`: selected section context.
-- `caseId`: expanded case row.
-- `mode`: detail mode, usually `view` or `edit`.
+- `sectionId`: selected section on the workspace list.
 
 Examples:
 
 - `/projects/1/cases?sectionId=10`
-- `/projects/1/cases?sectionId=10&caseId=101`
-- `/projects/1/cases?sectionId=10&caseId=101&mode=edit`
+- `/projects/1/cases/101?sectionId=10`
+- `/projects/1/cases/101?sectionId=10&mode=edit`
 
 ## Related Docs
 

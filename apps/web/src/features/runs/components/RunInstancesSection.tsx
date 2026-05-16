@@ -6,6 +6,7 @@ import { TestInstanceFilterBar } from "./TestInstanceFilterBar";
 import { TestInstanceTable } from "./TestInstanceTable";
 
 type Props = {
+  projectId: string;
   pagedInstances: TestInstanceRow[];
   selectedInstanceId: string | null;
   onSelectInstance: (instance: TestInstanceRow) => void;
@@ -37,6 +38,7 @@ type Props = {
 
 export function RunInstancesSection(props: Props) {
   const {
+    projectId,
     pagedInstances,
     selectedInstanceId,
     onSelectInstance,
@@ -59,7 +61,8 @@ export function RunInstancesSection(props: Props) {
     onNextPage,
     subscribedTestIds,
     onToggleSubscribe,
-    isSubscribePending
+    isSubscribePending,
+    hideStatusFilter
   } = props;
 
   return (
@@ -75,6 +78,7 @@ export function RunInstancesSection(props: Props) {
         hideStatusFilter={hideStatusFilter}
       />
       <TestInstanceTable
+        projectId={projectId}
         pagedInstances={pagedInstances}
         selectedInstanceId={selectedInstanceId}
         onSelectInstance={onSelectInstance}

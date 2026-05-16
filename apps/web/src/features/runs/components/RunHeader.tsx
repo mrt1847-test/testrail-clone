@@ -13,6 +13,12 @@ export function RunHeader({ run, milestoneName, counts }: Props) {
   if (run.environment) meta.push(run.environment);
   if (run.milestoneId) meta.push(milestoneName ?? `Milestone #${run.milestoneId}`);
   meta.push(run.assignedTo?.trim() ? run.assignedTo : "Unassigned");
+  if (run.startedAt) {
+    meta.push(`Started ${new Date(run.startedAt).toLocaleDateString()}`);
+  }
+  if (run.closedAt) {
+    meta.push(`Closed ${new Date(run.closedAt).toLocaleDateString()}`);
+  }
 
   return (
     <header className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">

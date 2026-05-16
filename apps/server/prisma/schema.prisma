@@ -766,6 +766,8 @@ model CustomStatus {
   systemName      String
   canonicalStatus String
   color           String    @default("#64748b")
+  isFinal         Boolean   @default(false)
+  isUntested      Boolean   @default(false)
   isSystem        Boolean   @default(false)
   isActive        Boolean   @default(true)
   displayOrder    Int       @default(0)

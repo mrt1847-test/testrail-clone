@@ -28,6 +28,12 @@ type Props = {
   projectId: string;
   compositionMode?: "static" | "include_all_live" | "dynamic_filter";
   compositionSummary?: string | null;
+  filterPriority?: "" | "low" | "medium" | "high";
+  filterState?: "active" | "archived";
+  onFilterPriorityChange?: (value: "" | "low" | "medium" | "high") => void;
+  onFilterStateChange?: (value: "active" | "archived") => void;
+  isApplyingFilter?: boolean;
+  onApplyFilter?: (mode: "set" | "add" | "remove") => void;
   addCasesInput: string;
   onAddCasesInputChange: (value: string) => void;
   isAdding: boolean;
@@ -47,6 +53,12 @@ export function RunCompositionPanel(props: Props) {
     projectId,
     compositionMode = "static",
     compositionSummary,
+    filterPriority = "",
+    filterState = "active",
+    onFilterPriorityChange,
+    onFilterStateChange,
+    isApplyingFilter = false,
+    onApplyFilter,
     addCasesInput,
     onAddCasesInputChange,
     isAdding,
@@ -84,6 +96,50 @@ export function RunCompositionPanel(props: Props) {
           </button>
         ) : null}
       </div>
+      {liveMode && onApplyFilter ? (
+        <div className="mt-3 rounded border border-slate-100 bg-slate-50 p-2">
+          <p className="text-xs font-medium text-slate-700">Filter selection</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <label className="flex flex-col gap-1 text-[11px] text-slate-600">
+              Priority
+              <select
+                value={filterPriority}
+                onChange={(e) => onFilterPriorityChange?.(e.target.value as typeof filterPriority)}
+                className="rounded border border-slate-300 px-2 py-1 text-xs"
+              >
+                <option value="">Any</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-slate-600">
+              Case state
+              <select
+                value={filterState}
+                onChange={(e) => onFilterStateChange?.(e.target.value as "active" | "archived")}
+                className="rounded border border-slate-300 px-2 py-1 text-xs"
+              >
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(["set", "add", "remove"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                disabled={isApplyingFilter}
+                onClick={() => onApplyFilter(mode)}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              >
+                {mode === "set" ? "Set to filter" : mode === "add" ? "Add filter" : "Remove filter"}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <p className="mt-2 text-slate-500">Comma-separated case IDs to add manually.</p>
 
       {feedback ? (

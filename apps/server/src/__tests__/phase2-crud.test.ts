@@ -275,6 +275,14 @@ describe("phase2 CRUD flow", () => {
       canonicalStatus: "retest"
     });
 
+    const executionStatusesRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.data.id}/statuses`
+    });
+    expect(executionStatusesRes.statusCode).toBe(200);
+    const executionStatuses = (executionStatusesRes.json() as { data: Array<{ name: string; isFinal?: boolean }> }).data;
+    expect(executionStatuses.some((status) => status.name === "Needs Investigation")).toBe(true);
+
     const updateRes = await app.inject({
       method: "PATCH",
       url: `/api/projects/${project.data.id}/settings/statuses/${created.data.id}`,
@@ -286,6 +294,73 @@ describe("phase2 CRUD flow", () => {
       canonicalStatus: "failed",
       isActive: false
     });
+  });
+
+  it("rejects untested result after an existing result", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Untested policy project" }
+    });
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/suites`,
+      headers,
+      payload: { name: "Suite" }
+    });
+    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Section" }
+    });
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+    const caseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Case", priority: "medium" }
+    });
+    const caseId = (caseRes.json() as { data: { id: string } }).data.id;
+
+    const runRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      headers,
+      payload: { suiteId, name: "Run", includeAll: true }
+    });
+    const runId = (runRes.json() as { run: { id: string } }).run.id;
+
+    const firstResultRes = await app.inject({
+      method: "POST",
+      url: `/api/runs/${runId}/results`,
+      headers,
+      payload: { caseId, status: "passed" }
+    });
+    expect(firstResultRes.statusCode).toBe(200);
+
+    const untestedRes = await app.inject({
+      method: "POST",
+      url: `/api/runs/${runId}/results`,
+      headers,
+      payload: { caseId, status: "untested" }
+    });
+    expect(untestedRes.statusCode).toBe(400);
+    expect(untestedRes.json()).toMatchObject({ error: { code: "UNTESTED_NOT_ALLOWED" } });
   });
 
   it("creates and updates project case templates", async () => {

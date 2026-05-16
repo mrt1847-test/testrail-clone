@@ -1,11 +1,15 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TestInstanceRow } from "../types";
 import { DefectKeyInput } from "./DefectKeyInput";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import type { ProjectStatusOption } from "../utils/projectStatuses";
+import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
 import type { ResultStatus } from "./resultEntryTypes";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { normalizeElapsedInput } from "./resultEntryUtils";
 
 type Props = {
+  projectId: string;
   pagedInstances: TestInstanceRow[];
   selectedInstanceId: string | null;
   onSelectInstance: (instance: TestInstanceRow) => void;
@@ -29,6 +33,7 @@ type Props = {
 
 export function TestInstanceTable(props: Props) {
   const {
+    projectId,
     pagedInstances,
     selectedInstanceId,
     onSelectInstance,
@@ -47,23 +52,29 @@ export function TestInstanceTable(props: Props) {
     isSubscribePending
   } = props;
   const [editingRow, setEditingRow] = useState<TestInstanceRow | null>(null);
-  const [draftStatus, setDraftStatus] = useState<ResultStatus>("passed");
+  const statusQuery = useProjectStatuses(projectId);
+  const statusOptions = statusQuery.data ?? [];
+  const [selectedStatus, setSelectedStatus] = useState<ProjectStatusOption | null>(null);
   const [draftComment, setDraftComment] = useState("");
   const [draftElapsed, setDraftElapsed] = useState("");
   const [draftElapsedError, setDraftElapsedError] = useState("");
   const [draftVersion, setDraftVersion] = useState("");
   const [draftDefects, setDraftDefects] = useState<string[]>([]);
-  const statusOptions: ResultStatus[] = ["passed", "failed", "blocked", "retest", "untested"];
-
   useEffect(() => {
     if (!editingRow) return;
-    setDraftStatus(editingRow.status as ResultStatus);
+    const match =
+      statusOptions.find((option) => option.canonicalStatus === editingRow.status) ??
+      pickDefaultStatusOption(statusOptions, editingRow.status as ResultStatus);
+    setSelectedStatus(match);
     setDraftComment("");
     setDraftElapsed("");
     setDraftElapsedError("");
     setDraftVersion("");
     setDraftDefects([]);
-  }, [editingRow]);
+  }, [editingRow, statusOptions]);
+
+  const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions);
+  const disableUntested = editingRow != null && editingRow.status !== "untested";
 
   function closeEditor() {
     if (isSavingQuickResult) return;
@@ -76,7 +87,7 @@ export function TestInstanceTable(props: Props) {
     setDraftElapsedError(normalizedElapsed.error ?? "");
     if (normalizedElapsed.error) return;
     onQuickResultSave(editingRow.id, {
-      status: draftStatus,
+      status: activeStatus.canonicalStatus,
       comment: draftComment.trim() || undefined,
       elapsed: normalizedElapsed.value,
       version: draftVersion.trim() || undefined,
@@ -212,22 +223,12 @@ export function TestInstanceTable(props: Props) {
             </div>
 
             <div className="mt-4 space-y-3">
-              <div className="grid grid-cols-2 gap-1.5">
-                {statusOptions.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    className={`rounded border px-2 py-1.5 text-xs font-medium capitalize ${
-                      draftStatus === status
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                    onClick={() => setDraftStatus(status)}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
+              <StatusPicker
+                options={statusOptions}
+                selectedId={activeStatus.id}
+                disableUntested={disableUntested}
+                onSelect={setSelectedStatus}
+              />
 
               <label className="block text-xs font-medium text-slate-600">
                 Comment

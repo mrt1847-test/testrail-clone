@@ -35,6 +35,8 @@ export type CustomStatusRow = {
   systemName: string;
   canonicalStatus: TestStatus;
   color: string;
+  isFinal: boolean;
+  isUntested: boolean;
   isSystem: boolean;
   isActive: boolean;
   displayOrder: number;
@@ -93,6 +95,8 @@ const customStatusCreateSchema = z.object({
   systemName: z.string().trim().min(1).optional(),
   canonicalStatus: canonicalStatusSchema.default("untested"),
   color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/).default("#64748b"),
+  isFinal: z.boolean().optional(),
+  isUntested: z.boolean().optional(),
   isActive: z.boolean().default(true),
   displayOrder: z.number().int().default(0)
 });
@@ -302,6 +306,8 @@ function statusToResponse(row: {
   systemName: string;
   canonicalStatus: string;
   color: string;
+  isFinal: boolean;
+  isUntested: boolean;
   isSystem: boolean;
   isActive: boolean;
   displayOrder: number;
@@ -314,6 +320,8 @@ function statusToResponse(row: {
       ? (row.canonicalStatus as TestStatus)
       : "untested",
     color: row.color,
+    isFinal: row.isFinal,
+    isUntested: row.isUntested,
     isSystem: row.isSystem,
     isActive: row.isActive,
     displayOrder: row.displayOrder
@@ -421,11 +429,11 @@ function webhookAttemptToResponse(row: {
 
 function defaultStatusRows(projectId: bigint): CustomStatusRow[] {
   return [
-    { id: 1n, projectId, name: "Untested", systemName: "untested", canonicalStatus: "untested", color: "#64748b", isSystem: true, isActive: true, displayOrder: 0 },
-    { id: 2n, projectId, name: "Passed", systemName: "passed", canonicalStatus: "passed", color: "#15803d", isSystem: true, isActive: true, displayOrder: 10 },
-    { id: 3n, projectId, name: "Failed", systemName: "failed", canonicalStatus: "failed", color: "#b91c1c", isSystem: true, isActive: true, displayOrder: 20 },
-    { id: 4n, projectId, name: "Blocked", systemName: "blocked", canonicalStatus: "blocked", color: "#a16207", isSystem: true, isActive: true, displayOrder: 30 },
-    { id: 5n, projectId, name: "Retest", systemName: "retest", canonicalStatus: "retest", color: "#0369a1", isSystem: true, isActive: true, displayOrder: 40 }
+    { id: 1n, projectId, name: "Untested", systemName: "untested", canonicalStatus: "untested", color: "#64748b", isFinal: false, isUntested: true, isSystem: true, isActive: true, displayOrder: 0 },
+    { id: 2n, projectId, name: "Passed", systemName: "passed", canonicalStatus: "passed", color: "#15803d", isFinal: true, isUntested: false, isSystem: true, isActive: true, displayOrder: 10 },
+    { id: 3n, projectId, name: "Failed", systemName: "failed", canonicalStatus: "failed", color: "#b91c1c", isFinal: true, isUntested: false, isSystem: true, isActive: true, displayOrder: 20 },
+    { id: 4n, projectId, name: "Blocked", systemName: "blocked", canonicalStatus: "blocked", color: "#a16207", isFinal: true, isUntested: false, isSystem: true, isActive: true, displayOrder: 30 },
+    { id: 5n, projectId, name: "Retest", systemName: "retest", canonicalStatus: "retest", color: "#0369a1", isFinal: false, isUntested: false, isSystem: true, isActive: true, displayOrder: 40 }
   ];
 }
 

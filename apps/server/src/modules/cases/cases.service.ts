@@ -5,6 +5,7 @@ import {
 } from "./caseVersionAttachmentSnapshot.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
+import { normalizeCaseRefsInput } from "../../domain/caseRefs.js";
 import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
 
 type ScalarCustomValue = string | number | boolean | null;
@@ -40,9 +41,14 @@ export class CasesService {
     priority?: string;
     caseType?: string;
     preconditions?: string;
+    refs?: string | null;
+    labels?: string[];
     customValues?: Record<string, string | number | boolean | null>;
   }) {
-    const created = await this.repo.createCase(input);
+    const created = await this.repo.createCase({
+      ...input,
+      refs: input.refs !== undefined ? normalizeCaseRefsInput(input.refs) : input.refs
+    });
     await this.repo.createCaseVersionSnapshot(created.id, "case_created");
     return created;
   }
@@ -128,12 +134,17 @@ export class CasesService {
       priority?: string;
       caseType?: string;
       preconditions?: string | null;
+      refs?: string | null;
       customValues?: Record<string, string | number | boolean | null>;
       expectedUpdatedAt?: string;
       expectedVersion?: number;
     }
   ) {
-    const { expectedUpdatedAt: _legacy, expectedVersion, ...nextPatch } = patch;
+    const { expectedUpdatedAt: _legacy, expectedVersion, refs, ...rest } = patch;
+    const nextPatch = {
+      ...rest,
+      ...(refs !== undefined ? { refs: normalizeCaseRefsInput(refs) } : {})
+    };
     const updated = await this.repo.updateCase(caseId, nextPatch, expectedVersion);
     if (updated === "conflict") {
       throw new AppError("CONFLICT", "case has been modified by another user", 409);

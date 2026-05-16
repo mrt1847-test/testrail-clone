@@ -70,7 +70,7 @@ export function buildApp() {
   void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
   void registerResultsRoutes(app, { resultsService, prisma, authService });
   void registerAutomationRoutes(app, { prisma, runsService, resultsService });
-  void registerReportsRoutes(app, { repo, prisma });
+  void registerReportsRoutes(app, { repo, prisma, catalog: catalogRepo });
   void registerSavedReportsRoutes(app, { prisma, authService });
   void registerScheduledReportsRoutes(app, { prisma, authService });
   void registerRequirementsRoutes(app, { prisma, authService });

@@ -23,7 +23,20 @@ export const createProjectRunSchema = createRunSchema.omit({ projectId: true });
 
 export const updateRunSchema = z.object({
   name: z.string().min(1).optional(),
-  assignedTo: z.coerce.bigint().nullable().optional()
+  assignedTo: z.coerce.bigint().nullable().optional(),
+  startedAt: z.coerce.date().nullable().optional(),
+  closedAt: z.coerce.date().nullable().optional()
+});
+
+export const filterSelectionModeSchema = z.enum(["set", "add", "remove"]);
+
+export const updateRunCompositionSchema = z.object({
+  filterDefinition: runCaseFilterSchema.optional(),
+  filterSelectionMode: filterSelectionModeSchema.optional(),
+  excludedCaseIds: z.array(z.coerce.bigint()).optional(),
+  includedSectionIds: z.array(z.coerce.bigint()).optional(),
+  excludedSectionIds: z.array(z.coerce.bigint()).optional(),
+  sync: z.boolean().optional().default(true)
 });
 
 export const rerunSchema = z.object({

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
@@ -18,6 +19,28 @@ import {
   type CaseAuthoringCustomFieldDefinition,
   type CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
+import { parseCaseRefs } from "../utils/caseRefs";
+
+function CaseRefTokens({ refsValue }: { refsValue: string }) {
+  const { projectId = "" } = useParams();
+  const tokens = parseCaseRefs(refsValue);
+  if (!projectId || tokens.length === 0) return <>{refsValue}</>;
+  return (
+    <>
+      {tokens.map((token, index) => (
+        <span key={token}>
+          {index > 0 ? ", " : null}
+          <Link
+            to={`/projects/${projectId}/cases?q=${encodeURIComponent(token)}`}
+            className="text-indigo-800 hover:underline"
+          >
+            {token}
+          </Link>
+        </span>
+      ))}
+    </>
+  );
+}
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -30,6 +53,7 @@ type ExpandableCaseDetailProps = {
   onSave: (patch: {
     title: string;
     preconditions: string;
+    references: string;
     customValues: Record<string, string | number | boolean | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -46,6 +70,8 @@ type ExpandableCaseDetailProps = {
   ) => Promise<void>;
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
+  layout?: "embedded" | "page";
+  showHeading?: boolean;
 };
 
 type LocalStep = { id?: number; description: string; expected: string };
@@ -625,7 +651,9 @@ export function ExpandableCaseDetail({
   onCreateStep,
   onUpdateStep,
   onDeleteStep,
-  isStepsBusy = false
+  isStepsBusy = false,
+  layout = "embedded",
+  showHeading = true
 }: ExpandableCaseDetailProps) {
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
@@ -685,11 +713,18 @@ export function ExpandableCaseDetail({
     }
   }
 
+  const rootClassName =
+    layout === "page"
+      ? "px-0 py-0"
+      : "border-t border-slate-100 bg-slate-50 px-4 py-4";
+
   return (
-    <div className="border-t border-slate-100 bg-slate-50 px-4 py-4">
-      <h4 className="text-sm font-semibold text-slate-900">
-        {data.caseCode} {data.title}
-      </h4>
+    <div className={rootClassName}>
+      {showHeading ? (
+        <h4 className="text-sm font-semibold text-slate-900">
+          {data.caseCode} {data.title}
+        </h4>
+      ) : null}
       {data.archivedAt ? (
         <p className="mt-1 text-xs font-medium text-amber-700">
           Archived on {new Date(data.archivedAt).toLocaleString()}
@@ -703,6 +738,7 @@ export function ExpandableCaseDetail({
             valueKey={`${data.id}:${data.lockVersion}:${mode}`}
             initialTitle={title}
             initialPreconditions={preconditions}
+            initialReferences={data.references}
             initialCustomValues={customValues}
             customFields={customFields}
             templates={caseTemplates}
@@ -804,6 +840,7 @@ export function ExpandableCaseDetail({
               await onSave({
                 title: input.title,
                 preconditions: input.preconditions,
+                references: input.references,
                 customValues: input.customValues
               });
             }}
@@ -817,8 +854,13 @@ export function ExpandableCaseDetail({
             {data.priority} / <span className="font-medium">Estimate:</span> {data.estimate}
           </p>
           <p className="text-sm text-slate-700">
-            <span className="font-medium">References:</span> {data.references || "-"} /{" "}
-            <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
+            <span className="font-medium">References:</span>{" "}
+            {data.references.trim().length > 0 ? (
+              <CaseRefTokens refsValue={data.references} />
+            ) : (
+              "-"
+            )}{" "}
+            / <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
           </p>
           <p className="text-sm text-slate-700">
             <span className="font-medium">Labels:</span> {data.labels.length > 0 ? data.labels.join(", ") : "-"}

@@ -19,6 +19,8 @@ type StatusForm = {
   systemName: string;
   canonicalStatus: CustomStatusRow["canonicalStatus"];
   color: string;
+  isFinal: boolean;
+  isUntested: boolean;
   isActive: boolean;
   displayOrder: number;
 };
@@ -28,9 +30,18 @@ const emptyForm: StatusForm = {
   systemName: "",
   canonicalStatus: "untested",
   color: "#64748b",
+  isFinal: false,
+  isUntested: true,
   isActive: true,
   displayOrder: 0
 };
+
+function flagsForCanonical(canonical: CustomStatusRow["canonicalStatus"]) {
+  return {
+    isUntested: canonical === "untested",
+    isFinal: canonical === "passed" || canonical === "failed" || canonical === "blocked"
+  };
+}
 
 const canonicalStatuses: Array<CustomStatusRow["canonicalStatus"]> = [
   "untested",
@@ -55,6 +66,8 @@ function formFromStatus(row: CustomStatusRow): StatusForm {
     systemName: row.systemName,
     canonicalStatus: row.canonicalStatus,
     color: row.color,
+    isFinal: row.isFinal,
+    isUntested: row.isUntested,
     isActive: row.isActive,
     displayOrder: row.displayOrder
   };
@@ -66,6 +79,8 @@ function payloadFromForm(form: StatusForm): Omit<CustomStatusRow, "id" | "isSyst
     systemName: toSystemName(form.systemName || form.name),
     canonicalStatus: form.canonicalStatus,
     color: form.color,
+    isFinal: form.isFinal,
+    isUntested: form.isUntested,
     isActive: form.isActive,
     displayOrder: form.displayOrder
   };
@@ -169,12 +184,16 @@ export function CustomStatusesPage() {
           <span className="text-xs font-medium uppercase text-slate-500">Maps to</span>
           <select
             value={form.canonicalStatus}
-            onChange={(event) =>
+            onChange={(event) => {
+              const canonicalStatus = event.target.value as CustomStatusRow["canonicalStatus"];
+              const defaults = flagsForCanonical(canonicalStatus);
               setForm((current) => ({
                 ...current,
-                canonicalStatus: event.target.value as CustomStatusRow["canonicalStatus"]
-              }))
-            }
+                canonicalStatus,
+                isFinal: defaults.isFinal,
+                isUntested: defaults.isUntested
+              }));
+            }}
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           >
             {canonicalStatuses.map((status) => (
@@ -202,6 +221,22 @@ export function CustomStatusesPage() {
               className="h-8 w-10 rounded border border-slate-300"
             />
             Color
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.isFinal}
+              onChange={(event) => setForm((current) => ({ ...current, isFinal: event.target.checked }))}
+            />
+            Final
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.isUntested}
+              onChange={(event) => setForm((current) => ({ ...current, isUntested: event.target.checked }))}
+            />
+            Untested
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input

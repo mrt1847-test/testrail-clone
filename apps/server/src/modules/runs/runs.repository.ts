@@ -2,6 +2,8 @@ import { AppError } from "../../common/errors/appError.js";
 import type { ResultInput } from "../results/results.types.js";
 import { testStatuses, type TestStatus } from "../../domain/status.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
+import { parseRunCompositionMetadata, type RunCompositionMetadata } from "./runComposition.js";
+import type { RunCompositionScope } from "./runCompositionFilter.js";
 import { expandSectionSubtreeIdsPure } from "./sectionScope.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 
@@ -71,7 +73,10 @@ export type Tx = {
   createResultSteps(resultId: bigint, steps: NonNullable<ResultInput["stepResults"]>): Promise<void>;
   updateInstanceStatus(testInstanceId: bigint, status: TestStatus): Promise<void>;
   closeRun(runId: bigint): Promise<void>;
-  updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<void>;
+  updateRun(
+    runId: bigint,
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+  ): Promise<void>;
   updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<void>;
   getResultsByTestInstanceId(testId: bigint): Promise<
     Array<{
@@ -159,7 +164,16 @@ export interface RunsRepository {
   >;
   closeRun(runId: bigint): Promise<TestRun | null>;
   reopenRun(runId: bigint): Promise<TestRun | null>;
-  updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null>;
+  updateRun(
+    runId: bigint,
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+  ): Promise<TestRun | null>;
+  updateRunComposition(
+    runId: bigint,
+    metadata: import("./runComposition.js").RunCompositionMetadata
+  ): Promise<TestRun | null>;
+  resolveFilterCaseIds(input: import("./runCompositionFilter.js").RunCompositionScope): Promise<bigint[]>;
+  listSuiteCaseIds(projectId: bigint, suiteId: bigint): Promise<bigint[]>;
   updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null>;
   listAssignedTests(input: {
     projectId: bigint;
@@ -279,13 +293,18 @@ export class InMemoryRunsRepository implements RunsRepository {
   async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return fn({
       createRun: async (input) => {
+        const { metadata, ...rest } = input;
         const run: TestRun = {
           id: this.runSeq++,
           status: "open",
-          milestoneId: input.milestoneId ?? null,
-          assignedTo: input.assignedTo ?? null,
-          environment: input.environment ?? null,
-          ...input
+          milestoneId: rest.milestoneId ?? null,
+          assignedTo: rest.assignedTo ?? null,
+          environment: rest.environment ?? null,
+          startedAt: new Date(),
+          closedAt: null,
+          createdAt: new Date(),
+          composition: parseRunCompositionMetadata(metadata ?? null),
+          ...rest
         };
         this.runs.push(run);
         return run;
@@ -402,12 +421,15 @@ export class InMemoryRunsRepository implements RunsRepository {
         const run = this.runs.find((r) => r.id === runId);
         if (!run) return;
         run.status = "closed";
+        run.closedAt = new Date();
       },
       updateRun: async (runId, input) => {
         const run = this.runs.find((r) => r.id === runId);
         if (!run) return;
         if (input.name !== undefined) run.name = input.name;
         if (input.assignedTo !== undefined) run.assignedTo = input.assignedTo;
+        if (input.startedAt !== undefined) run.startedAt = input.startedAt;
+        if (input.closedAt !== undefined) run.closedAt = input.closedAt;
       },
       updateTestAssignee: async (testId, assignedTo) => {
         const instance = this.instances.find((i) => i.id === testId);
@@ -450,6 +472,7 @@ export class InMemoryRunsRepository implements RunsRepository {
     const run = this.runs.find((item) => item.id === runId);
     if (!run) return null;
     run.status = "closed";
+    run.closedAt = new Date();
     return run;
   }
 
@@ -457,10 +480,14 @@ export class InMemoryRunsRepository implements RunsRepository {
     const run = this.runs.find((item) => item.id === runId);
     if (!run) return null;
     run.status = "open";
+    run.closedAt = null;
     return run;
   }
 
-  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null> {
+  async updateRun(
+    runId: bigint,
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+  ): Promise<TestRun | null> {
     const run = this.runs.find((item) => item.id === runId);
     if (!run) return null;
     if (input.name !== undefined) {
@@ -469,7 +496,45 @@ export class InMemoryRunsRepository implements RunsRepository {
     if (input.assignedTo !== undefined) {
       run.assignedTo = input.assignedTo;
     }
+    if (input.startedAt !== undefined) {
+      run.startedAt = input.startedAt;
+    }
+    if (input.closedAt !== undefined) {
+      run.closedAt = input.closedAt;
+    }
     return run;
+  }
+
+  async updateRunComposition(runId: bigint, metadata: RunCompositionMetadata): Promise<TestRun | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    if (!run) return null;
+    run.composition = metadata;
+    return run;
+  }
+
+  async resolveFilterCaseIds(input: RunCompositionScope): Promise<bigint[]> {
+    let rows: TestCase[] = this.cases.filter(
+      (row) => row.projectId === input.projectId && row.suiteId === input.suiteId
+    );
+    if (this.catalog) {
+      const catalogRows = await this.catalog.listCasesForSuite(input.projectId, input.suiteId);
+      rows = catalogRows.map((row) => mapCatalogCaseToTestCase(row, input.projectId, input.suiteId));
+    }
+    const filter = input.filterDefinition;
+    return rows
+      .filter((row) => {
+        if (filter?.priority && row.priority !== filter.priority) return false;
+        return true;
+      })
+      .map((row) => row.id);
+  }
+
+  async listSuiteCaseIds(projectId: bigint, suiteId: bigint): Promise<bigint[]> {
+    if (this.catalog) {
+      const rows = await this.catalog.listCasesForSuite(projectId, suiteId);
+      return rows.map((row) => row.id);
+    }
+    return this.cases.filter((row) => row.projectId === projectId && row.suiteId === suiteId).map((row) => row.id);
   }
 
   async updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null> {

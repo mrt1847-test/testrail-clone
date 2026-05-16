@@ -32,6 +32,21 @@ export function mapSuite(row: SuiteRow) {
   };
 }
 
+export function mapSectionForV2(row: SectionRow, peers: SectionRow[]) {
+  const mapped = mapSections(peers);
+  return (
+    mapped.find((item) => item.id === Number(row.id)) ?? {
+      id: Number(row.id),
+      suite_id: Number(row.suiteId),
+      parent_id: row.parentSectionId ? Number(row.parentSectionId) : null,
+      name: row.name,
+      description: null,
+      display_order: row.displayOrder ?? 0,
+      depth: 0
+    }
+  );
+}
+
 export function mapSections(rows: SectionRow[]) {
   const byId = new Map(rows.map((row) => [row.id.toString(), row]));
   const depthFor = (row: SectionRow): number => {
@@ -122,6 +137,8 @@ export function mapCustomStatuses(
     systemName: string;
     canonicalStatus: string;
     color: string;
+    isFinal: boolean;
+    isUntested: boolean;
     isSystem: boolean;
     displayOrder: number;
   }>
@@ -139,7 +156,8 @@ export function mapCustomStatuses(
       color_medium: hexToTestRailColor(row.color),
       color_bright: hexToTestRailColor(row.color),
       is_system: row.isSystem,
-      is_final: canonical === "passed" || canonical === "failed" || canonical === "blocked",
+      is_final: row.isFinal,
+      is_untested: row.isUntested,
       custom_status_id: Number(row.id)
     };
   });
@@ -288,4 +306,92 @@ export function mapRoleForV2(role: string, index: number) {
       project_admin: role === "owner" || role === "manager"
     }
   };
+}
+
+/** Stable synthetic label id from title (no first-class Label table yet). */
+export function labelIdFromTitle(title: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < title.length; i += 1) {
+    hash ^= title.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const normalized = Math.abs(hash % 2_147_483_647);
+  return normalized === 0 ? 1 : normalized;
+}
+
+export function mapLabelForV2(title: string) {
+  return {
+    id: labelIdFromTitle(title),
+    title,
+    created_by: null,
+    created_on: null
+  };
+}
+
+export function mapLabelsForV2(titles: string[]) {
+  return titles.map(mapLabelForV2);
+}
+
+export function mapProjectForV2(row: { id: bigint; name: string }) {
+  return {
+    id: Number(row.id),
+    name: row.name,
+    is_completed: false,
+    suite_mode: 1,
+    url: null
+  };
+}
+
+export function mapResultForV2(row: {
+  id: bigint;
+  testInstanceId: bigint;
+  status: string;
+  comment?: string;
+  elapsed?: string;
+  version?: string;
+  defects: string[];
+  createdAt: Date;
+}) {
+  return {
+    id: Number(row.id),
+    test_id: Number(row.testInstanceId),
+    status_id: statusIdForCanonical(row.status),
+    created_on: Math.floor(row.createdAt.getTime() / 1000),
+    assignedto_id: null,
+    comment: row.comment ?? "",
+    version: row.version ?? null,
+    elapsed: row.elapsed ?? null,
+    defects: row.defects.length > 0 ? row.defects.join(", ") : null,
+    custom_step_results: [],
+    attachment_ids: []
+  };
+}
+
+const CASE_TYPE_CATALOG = [
+  { id: 1, name: "acceptance", is_default: false },
+  { id: 2, name: "accessibility", is_default: false },
+  { id: 3, name: "automated", is_default: false },
+  { id: 4, name: "compatibility", is_default: false },
+  { id: 5, name: "functional", is_default: true },
+  { id: 6, name: "other", is_default: false },
+  { id: 7, name: "performance", is_default: false },
+  { id: 8, name: "regression", is_default: false },
+  { id: 9, name: "security", is_default: false },
+  { id: 10, name: "smoke", is_default: false },
+  { id: 11, name: "usability", is_default: false }
+] as const;
+
+const PRIORITY_CATALOG = [
+  { id: 1, name: "low", is_default: false, short_name: "L" },
+  { id: 2, name: "medium", is_default: false, short_name: "M" },
+  { id: 3, name: "high", is_default: false, short_name: "H" },
+  { id: 4, name: "critical", is_default: true, short_name: "C" }
+] as const;
+
+export function buildCaseTypesCatalog() {
+  return CASE_TYPE_CATALOG.map((row) => ({ ...row }));
+}
+
+export function buildPrioritiesCatalog() {
+  return PRIORITY_CATALOG.map((row) => ({ ...row }));
 }

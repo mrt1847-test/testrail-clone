@@ -25,7 +25,7 @@ Status legend:
 
 ## Cases
 
-- `implemented`: `TestCaseWorkspacePage`, `TestCaseWorkspace`, `CaseListPane`, `CaseListToolbar`, `CaseRow`, `ExpandableCaseDetail`, `SectionTreePane`, `useCases`, `useCaseDetail`, `useExpandedCase`, `useSections`.
+- `implemented`: `TestCaseWorkspacePage`, `TestCaseWorkspace`, `CaseDetailPage`, `CaseEditDrawer`, `CaseListPane`, `CaseListToolbar`, `CaseRow`, `ExpandableCaseDetail`, `SectionTreePane`, `useCases`, `useCaseDetail`, `useCaseEditorActions`, `useExpandedCase`, `useSections`.
 - `partial`: case custom field rendering and version snapshot inclusion exist; compare/restore UI is still missing.
 - `planned`: `CaseVersionHistoryPanel`, `CaseVersionCompareView`, `CaseRestoreDialog`, reusable section CRUD dialogs.
 

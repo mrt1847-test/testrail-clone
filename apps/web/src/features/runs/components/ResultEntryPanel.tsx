@@ -10,6 +10,9 @@ import {
   valueForSubmit
 } from "./ResultCustomFields";
 import { StepResultEditor } from "./StepResultEditor";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import type { ProjectStatusOption } from "../utils/projectStatuses";
+import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
 import type { CaseStepContext, ResultStatus, ResultSubmitPayload, StepResultDraft } from "./resultEntryTypes";
 import {
   createStepDraftsFromCaseSteps,
@@ -27,6 +30,7 @@ type ResultEntryPanelProps = {
   caseSteps?: CaseStepContext[];
   isCaseStepsLoading?: boolean;
   isSubmitting: boolean;
+  disableUntested?: boolean;
   onSubmit: (payload: ResultSubmitPayload) => void;
 };
 
@@ -36,9 +40,13 @@ export function ResultEntryPanel({
   caseSteps = [],
   isCaseStepsLoading = false,
   isSubmitting,
+  disableUntested = false,
   onSubmit
 }: ResultEntryPanelProps) {
-  const [nextStatus, setNextStatus] = useState<ResultStatus>("passed");
+  const statusQuery = useProjectStatuses(projectId);
+  const statusOptions = statusQuery.data ?? [];
+  const [selectedStatus, setSelectedStatus] = useState<ProjectStatusOption | null>(null);
+  const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions);
   const [comment, setComment] = useState("");
   const [elapsed, setElapsed] = useState("");
   const [elapsedError, setElapsedError] = useState("");
@@ -116,7 +124,7 @@ export function ResultEntryPanel({
       activeResultFields.map((field) => [field.systemName, valueForSubmit(field, customValues[field.systemName] ?? "")])
     );
     onSubmit({
-      status: nextStatus,
+      status: activeStatus.canonicalStatus,
       comment: comment.trim() || undefined,
       elapsed: normalizedElapsed.value,
       version: version.trim() || undefined,
@@ -141,7 +149,6 @@ export function ResultEntryPanel({
     setCustomValueErrors({});
   }
 
-  const statusOptions: ResultStatus[] = ["passed", "failed", "blocked", "retest", "untested"];
   const detailsCount = [elapsed, version, defects.length > 0 ? defects.join(",") : "", activeResultFields.length > 0 ? "fields" : ""].filter(
     Boolean
   ).length;
@@ -154,22 +161,12 @@ export function ResultEntryPanel({
       </div>
 
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-1.5">
-          {statusOptions.map((status) => (
-            <button
-              key={status}
-              type="button"
-              className={`rounded border px-2 py-1.5 text-xs font-medium capitalize transition ${
-                nextStatus === status
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-              onClick={() => setNextStatus(status)}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
+        <StatusPicker
+          options={statusOptions}
+          selectedId={activeStatus.id}
+          disableUntested={disableUntested}
+          onSelect={setSelectedStatus}
+        />
 
         <label className="block text-xs font-medium text-slate-600">
           Comment

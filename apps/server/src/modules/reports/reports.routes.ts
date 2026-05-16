@@ -6,7 +6,9 @@ import { ok } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
+import { parseCaseRefs } from "../../domain/caseRefs.js";
 import {
   latestByCreatedAt,
   toCoverageStatus,
@@ -221,6 +223,7 @@ class ReportsQueryService {
               select: {
                 id: true,
                 title: true,
+                refs: true,
                 instances: {
                   where: { run: { projectId, deletedAt: null } },
                   include: {
@@ -253,6 +256,7 @@ class ReportsQueryService {
           requirementTitle: reqRow.title,
           caseId: link.testCase.id.toString(),
           caseTitle: link.testCase.title,
+          caseRefs: link.testCase.refs ?? null,
           runId: latest?.runId?.toString() ?? null,
           runName: latest?.runName ?? null,
           testId: latest?.testId?.toString() ?? null,
@@ -262,6 +266,63 @@ class ReportsQueryService {
         };
       })
     );
+  }
+
+  async listRefsTraceability(projectId: bigint) {
+    if (!this.prisma) return null;
+    const cases = await this.prisma.testCase.findMany({
+      where: {
+        projectId,
+        deletedAt: null,
+        archivedAt: null,
+        refs: { not: null }
+      },
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        title: true,
+        refs: true,
+        instances: {
+          where: { run: { projectId, deletedAt: null } },
+          include: {
+            run: { select: { id: true, name: true } },
+            results: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              include: { defectLinks: { where: { deletedAt: null }, select: { defectKey: true } } }
+            }
+          }
+        }
+      }
+    });
+
+    return cases.flatMap((testCase) => {
+      const refKeys = parseCaseRefs(testCase.refs);
+      if (refKeys.length === 0) return [];
+      const latest = latestByCreatedAt(
+        testCase.instances
+          .map((inst) => ({
+            runId: inst.run.id,
+            runName: inst.run.name,
+            testId: inst.id,
+            result: inst.results[0]
+          }))
+          .filter((row) => row.result)
+          .map((row) => ({ ...row, createdAt: row.result!.createdAt }))
+      );
+      return refKeys.map((refKey) => ({
+        refKey,
+        caseId: testCase.id.toString(),
+        caseTitle: testCase.title,
+        caseRefs: testCase.refs ?? null,
+        runId: latest?.runId?.toString() ?? null,
+        runName: latest?.runName ?? null,
+        testId: latest?.testId?.toString() ?? null,
+        latestStatus: latest?.result?.status ?? "untested",
+        latestResultAt: latest?.result?.createdAt ?? null,
+        defects: latest?.result?.defectLinks.map((d) => d.defectKey) ?? []
+      }));
+    });
   }
 
   async listCoverageGap(projectId: bigint) {
@@ -484,9 +545,83 @@ async function buildPlanSummaryItems(projectId: bigint, deps: { repo: RunsReposi
   return [];
 }
 
+async function buildInMemoryRefsTraceability(
+  projectId: bigint,
+  catalog: ProjectsRepository,
+  runsRepo: RunsRepository
+) {
+  const cases = await catalog.listCases({ projectId, state: "active" });
+  const runs = await runsRepo.listRunsByProject(projectId);
+  const items: Array<{
+    refKey: string;
+    caseId: string;
+    caseTitle: string;
+    caseRefs: string | null;
+    runId: string | null;
+    runName: string | null;
+    testId: string | null;
+    latestStatus: string;
+    latestResultAt: Date | null;
+    defects: string[];
+  }> = [];
+
+  for (const testCase of cases) {
+    const refKeys = parseCaseRefs(testCase.refs);
+    if (refKeys.length === 0) continue;
+
+    let latest:
+      | {
+          runId: bigint;
+          runName: string;
+          testId: bigint;
+          status: string;
+          createdAt: Date;
+          defects: string[];
+        }
+      | undefined;
+
+    for (const run of runs) {
+      const instances = await runsRepo.listInstancesForRun(run.id);
+      for (const instance of instances) {
+        if (instance.caseId !== testCase.id) continue;
+        const results = await runsRepo.listResultsForTestInstance(instance.id);
+        const newest = results[0];
+        if (!newest) continue;
+        if (!latest || newest.createdAt > latest.createdAt) {
+          latest = {
+            runId: run.id,
+            runName: run.name,
+            testId: instance.id,
+            status: newest.status,
+            createdAt: newest.createdAt,
+            defects: newest.defects ?? []
+          };
+        }
+      }
+    }
+
+    for (const refKey of refKeys) {
+      items.push({
+        refKey,
+        caseId: testCase.id.toString(),
+        caseTitle: testCase.title,
+        caseRefs: testCase.refs ?? null,
+        runId: latest?.runId.toString() ?? null,
+        runName: latest?.runName ?? null,
+        testId: latest?.testId.toString() ?? null,
+        latestStatus: latest?.status ?? "untested",
+        latestResultAt: latest?.createdAt ?? null,
+        defects: latest?.defects ?? []
+      });
+    }
+  }
+
+  return items;
+}
+
 export async function registerReportsRoutes(
   app: FastifyInstance,
-  deps: { repo: RunsRepository; prisma?: PrismaClient }
+  deps: { repo: RunsRepository; prisma?: PrismaClient; catalog?: ProjectsRepository }
 ) {
   const reportsQueryService = new ReportsQueryService(deps.prisma);
   const resultExplorerQuerySchema = z.object({
@@ -737,6 +872,19 @@ export async function registerReportsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await reportsQueryService.listTraceability(projectId);
     return reply.send(toJsonSafe(ok({ items: items ?? [] })));
+  });
+
+  app.get("/api/projects/:projectId/reports/refs-traceability", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const prismaItems = await reportsQueryService.listRefsTraceability(projectId);
+    if (prismaItems) {
+      return reply.send(toJsonSafe(ok({ items: prismaItems })));
+    }
+    if (deps.catalog) {
+      const items = await buildInMemoryRefsTraceability(projectId, deps.catalog, deps.repo);
+      return reply.send(toJsonSafe(ok({ items })));
+    }
+    return reply.send(toJsonSafe(ok({ items: [] })));
   });
 
   app.get("/api/projects/:projectId/reports/coverage-gap", async (req, reply) => {

@@ -230,6 +230,7 @@ Case optimistic locking (phase 2 baseline):
 - `PATCH /api/cases/{caseId}/assignee`
 
 Semantics (case steps):
+- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept optional `refs` (comma-separated external reference IDs; empty string clears to `null`).
 - `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept `customValues` as an object keyed by custom field `systemName`.
 - Case create/update validate `customValues` against the project's active case custom field definitions; create rejects missing required active fields, and create/update reject unknown fields or invalid option/number values.
 - `GET /api/cases/{caseId}` and case list responses include `customValues`; current baseline stores scalar values (`string`, `number`, `boolean`, or `null`).
@@ -296,6 +297,8 @@ Run composition baseline:
   - `filterDefinition` (optional, `dynamic_filter` only): `{ priority?, state?, includedSectionIds? }`.
 - `GET /api/projects/{projectId}/runs/{runId}` includes `run.composition` parsed from `TestRun.metadata`.
 - `POST /api/projects/{projectId}/runs/{runId}/sync-composition` — reconcile open runs in live modes; returns `{ skipped, added, removed, reason? }`; records activity `run.composition_synced`.
+- `PATCH /api/projects/{projectId}/runs/{runId}/composition` — update live-run filter metadata with optional `filterSelectionMode` (`set` | `add` | `remove`); runs `sync` by default for live modes.
+- `PATCH /api/runs/{runId}` — optional `startedAt` / `closedAt` (ISO dates) while run is open.
 - Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
 
 Example run creation body:
@@ -513,7 +516,8 @@ Permission baseline:
 - `PATCH /api/projects/{projectId}/settings/custom-fields/{fieldId}`
 - `DELETE /api/projects/{projectId}/settings/custom-fields/{fieldId}`
 - `GET /api/projects/{projectId}/settings/statuses`
-- `POST /api/projects/{projectId}/settings/statuses`
+- `GET /api/projects/{projectId}/statuses` — active statuses for run execution UI (same shape as settings list items)
+- `POST /api/projects/{projectId}/settings/statuses` (max 7 non-system custom statuses per project; body supports `isFinal`, `isUntested`)
 - `PATCH /api/projects/{projectId}/settings/statuses/{statusId}`
 - `DELETE /api/projects/{projectId}/settings/statuses/{statusId}`
 - `GET /api/projects/{projectId}/settings/templates`
@@ -733,6 +737,13 @@ Index (supported vs deferred):
 ### Supported read endpoints
 
 - `GET /api/v2/get_projects`
+- `GET /api/v2/get_project/{project_id}`
+- `GET /api/v2/get_suite/{suite_id}`
+- `GET /api/v2/get_section/{section_id}`
+- `GET /api/v2/get_milestone/{milestone_id}` (DB mode)
+- `GET /api/v2/get_plan/{plan_id}` (DB mode)
+- `GET /api/v2/get_case_types` (static catalog)
+- `GET /api/v2/get_priorities` (static catalog)
 - `GET /api/v2/get_case/{case_id}`
 - `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`)
 - `GET /api/v2/get_suites/{project_id}`
@@ -748,23 +759,36 @@ Index (supported vs deferred):
 - `GET /api/v2/get_users/{project_id}` (DB mode; project members)
 - `GET /api/v2/get_reports/{project_id}` (DB mode; saved report definitions)
 - `GET /api/v2/get_roles` (static project role catalog)
+- `GET /api/v2/get_labels/{project_id}` (distinct case label titles aggregated from active cases; synthetic stable `id` per title)
+- `GET /api/v2/get_groups` (empty array until user-group administration exists)
+- `GET /api/v2/get_shared_steps/{project_id}` (empty array until SharedStep entity ships)
 - `GET /api/v2/get_attachments_for_case/{case_id}` (DB mode; live case attachments)
 - `GET /api/v2/get_attachments_for_result/{result_id}` (DB mode; result attachments)
 - `GET /api/v2/get_run/{run_id}`
 - `GET /api/v2/get_tests/{run_id}`
+- `GET /api/v2/get_results/{test_id}` (JSON array of result rows)
+- `GET /api/v2/get_results_for_case/{run_id}/{case_id}`
+- `GET /api/v2/get_results_for_run/{run_id}`
 
 ### Supported write endpoints
 
 - `POST /api/v2/add_case/{section_id}`
 - `POST /api/v2/update_case/{case_id}`
 - `POST /api/v2/add_run/{project_id}`
+- `POST /api/v2/add_suite/{project_id}` (body: `name`, optional `description`)
+- `POST /api/v2/update_suite/{suite_id}` (body: optional `name`, `description`)
+- `POST /api/v2/add_section/{project_id}` (body: **`suite_id` required**, `name`, optional `parent_id`)
+- `POST /api/v2/update_section/{section_id}` (body: optional `name`, `parent_id`)
+- `POST /api/v2/delete_section/{section_id}` (empty section only; returns `{}`)
+- `POST /api/v2/close_run/{run_id}`
+- `POST /api/v2/update_run/{run_id}` (body: optional `name`, `assignedto_id`)
 - `POST /api/v2/run_report/{report_id}` (DB mode; executes a saved report as CSV export and returns job/download URLs)
 - `POST /api/v2/add_result_for_case/{run_id}/{case_id}`
 - `POST /api/v2/add_results_for_cases/{run_id}`
 
 ### Deferred (not implemented)
 
-Suite/section mutations, run close/update, labels/groups/shared steps, richer role permissions, and other TestRail catalog endpoints — see `GET /api/v2` `deferred` array in the running server.
+First-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, TestRail 9.x pagination wrappers, and other catalog endpoints — see `GET /api/v2` `deferred` array in the running server (empty when all planned single-resource reads are shipped).
 
 Adapter rules:
 - No duplicated business logic in adapter handlers.
@@ -777,7 +801,7 @@ Current baseline:
 - Accepts TestRail-style `status_id`, `case_id`, `suite_id`, `include_all`, and `case_ids` where applicable.
 - `get_statuses?project_id=` returns project custom statuses when DB-backed; includes `custom_status_id` on each row when mapped from `CustomStatus`.
 - Mutating adapter endpoints reuse project membership authorization and existing domain services.
-- Remaining compatibility work: pagination wrappers, token scopes, labels/groups/shared steps, richer role permissions, suite/section mutations, run close/update, and other deferred endpoints per `GET /api/v2`.
+- Remaining compatibility work: pagination wrappers, token scopes, first-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, and other deferred endpoints per `GET /api/v2`.
 
 ## Metadata Field Strategy
 - `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
@@ -807,7 +831,8 @@ Current baseline:
 - Requirement CRUD is project-scoped with soft-delete behavior.
 - Requirement status uses `active`, `changed`, `deprecated`.
 - Case-requirement linking validates that both entities belong to the same project.
-- `GET /api/projects/{projectId}/reports/traceability` baseline returns requirement -> case -> latest run/test/result context (including defect keys).
+- `GET /api/projects/{projectId}/reports/traceability` baseline returns requirement -> case -> latest run/test/result context (including defect keys and `caseRefs`).
+- `GET /api/projects/{projectId}/reports/refs-traceability` expands each case `refs` token into rows with latest run/test/result context for reference-based drilldown.
 - `GET /api/projects/{projectId}/reports/coverage-gap` baseline returns requirement coverage classification (`uncovered`, `untested`, `covered`, `at_risk`).
 - `GET /api/projects/{projectId}/reports/defect-coverage` baseline returns requirement-level defect linkage summary (`atRiskResultCount`, `linkedDefectCount`, `defectCoverage`).
 

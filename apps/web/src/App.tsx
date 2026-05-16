@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "./features/auth/components/LoginPage";
 import { RequireAuth } from "./features/auth/components/RequireAuth";
+import { CaseDetailPage } from "./features/cases/components/CaseDetailPage";
 import { TestCaseWorkspacePage } from "./features/cases/components/TestCaseWorkspacePage";
 import { AutomationPage } from "./features/projects/components/AutomationPage";
 import { ActivityPage } from "./features/projects/components/ActivityPage";
@@ -51,6 +52,7 @@ export function App() {
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<ProjectOverviewPage />} />
           <Route path="cases" element={<TestCaseWorkspacePage />} />
+          <Route path="cases/:caseId" element={<CaseDetailPage />} />
           <Route path="runs" element={<RunListPage />} />
           <Route path="runs/new" element={<RunCreatePage />} />
           <Route path="runs/:runId" element={<RunDetailPage />} />

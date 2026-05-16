@@ -18,6 +18,9 @@ type ApiRun = {
   environment?: string | null;
   assignedTo?: string | null;
   milestoneId?: string | null;
+  startedAt?: string | null;
+  closedAt?: string | null;
+  createdAt?: string | null;
   composition?: {
     compositionMode: "static" | "include_all_live" | "dynamic_filter";
     filterDefinition?: {
@@ -88,9 +91,11 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         assignedTo: run.assignedTo ? String(run.assignedTo) : null,
         includeAll: run.includeAll,
         composition: run.composition ?? null,
+        startedAt: run.startedAt ?? null,
+        closedAt: run.closedAt ?? null,
         progress,
         failed,
-        createdAt: "—"
+        createdAt: run.createdAt ?? "—"
       },
       instances: [],
       counts: { passed, failed, blocked, retest, untested }
@@ -272,6 +277,29 @@ export type CreateRunInput = {
     includedSectionIds?: string[];
   };
 };
+
+export type UpdateRunCompositionInput = {
+  filterDefinition?: {
+    priority?: "low" | "medium" | "high";
+    state?: "active" | "archived";
+    includedSectionIds?: string[];
+  };
+  filterSelectionMode?: "set" | "add" | "remove";
+  sync?: boolean;
+};
+
+export async function updateRunComposition(projectId: string, runId: string, input: UpdateRunCompositionInput) {
+  const res = await apiFetch<
+    Ok<{
+      run: ApiRun;
+      sync: { skipped: boolean; added: number; removed: number; reason?: string } | null;
+    }>
+  >(`/api/projects/${projectId}/runs/${runId}/composition`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+  return res.data;
+}
 
 export async function syncRunComposition(projectId: string, runId: string) {
   const res = await apiFetch<

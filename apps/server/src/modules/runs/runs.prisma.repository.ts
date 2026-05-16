@@ -18,6 +18,9 @@ function mapRunRow(r: {
   assignedTo: bigint | null;
   environment: string | null;
   metadata: Prisma.JsonValue | null;
+  startedAt?: Date | null;
+  closedAt?: Date | null;
+  createdAt?: Date;
 }): TestRun {
   return {
     id: r.id,
@@ -29,6 +32,9 @@ function mapRunRow(r: {
     status: r.status === "closed" ? "closed" : "open",
     assignedTo: r.assignedTo ?? null,
     environment: r.environment ?? null,
+    startedAt: r.startedAt ?? null,
+    closedAt: r.closedAt ?? null,
+    createdAt: r.createdAt ?? null,
     composition: parseRunCompositionMetadata(r.metadata)
   };
 }
@@ -49,6 +55,7 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           includeAll: input.includeAll,
           assignedTo: input.assignedTo ?? null,
           environment: input.environment ?? null,
+          startedAt: new Date(),
           metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
       });
@@ -364,20 +371,13 @@ export class PrismaRunsRepository implements RunsRepository {
       where: { id: runId },
       data: { status: "closed", closedAt: new Date() }
     });
-    return {
-      id: updated.id,
-      projectId: updated.projectId,
-      suiteId: updated.suiteId,
-      milestoneId: updated.milestoneId ?? null,
-      name: updated.name,
-      includeAll: updated.includeAll,
-      status: "closed",
-      assignedTo: updated.assignedTo ?? null,
-      environment: updated.environment ?? null
-    };
+    return mapRunRow(updated);
   }
 
-  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }): Promise<TestRun | null> {
+  async updateRun(
+    runId: bigint,
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+  ): Promise<TestRun | null> {
     const row = await this.prisma.testRun.findFirst({
       where: { id: runId, deletedAt: null }
     });
@@ -386,20 +386,37 @@ export class PrismaRunsRepository implements RunsRepository {
       where: { id: runId },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {})
+        ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {}),
+        ...(input.startedAt !== undefined ? { startedAt: input.startedAt } : {}),
+        ...(input.closedAt !== undefined ? { closedAt: input.closedAt } : {})
       }
     });
-    return {
-      id: updated.id,
-      projectId: updated.projectId,
-      suiteId: updated.suiteId,
-      milestoneId: updated.milestoneId ?? null,
-      name: updated.name,
-      includeAll: updated.includeAll,
-      status: updated.status === "closed" ? "closed" : "open",
-      assignedTo: updated.assignedTo ?? null,
-      environment: updated.environment ?? null
-    };
+    return mapRunRow(updated);
+  }
+
+  async updateRunComposition(runId: bigint, metadata: import("./runComposition.js").RunCompositionMetadata): Promise<TestRun | null> {
+    const row = await this.prisma.testRun.findFirst({
+      where: { id: runId, deletedAt: null }
+    });
+    if (!row) return null;
+    const updated = await this.prisma.testRun.update({
+      where: { id: runId },
+      data: { metadata: toMetadataJson(metadata) as Prisma.InputJsonValue }
+    });
+    return mapRunRow(updated);
+  }
+
+  async resolveFilterCaseIds(input: import("./runCompositionFilter.js").RunCompositionScope): Promise<bigint[]> {
+    return resolveDesiredCaseIds(this.prisma, input);
+  }
+
+  async listSuiteCaseIds(projectId: bigint, suiteId: bigint): Promise<bigint[]> {
+    const rows = await this.prisma.testCase.findMany({
+      where: { projectId, suiteId, deletedAt: null, archivedAt: null },
+      select: { id: true },
+      orderBy: { id: "asc" }
+    });
+    return rows.map((row) => row.id);
   }
 
   async updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null> {
@@ -511,17 +528,7 @@ export class PrismaRunsRepository implements RunsRepository {
       where: { id: runId },
       data: { status: "open", closedAt: null }
     });
-    return {
-      id: updated.id,
-      projectId: updated.projectId,
-      suiteId: updated.suiteId,
-      milestoneId: updated.milestoneId ?? null,
-      name: updated.name,
-      includeAll: updated.includeAll,
-      status: "open",
-      assignedTo: updated.assignedTo ?? null,
-      environment: updated.environment ?? null
-    };
+    return mapRunRow(updated);
   }
 
   async listResultStepsByResultId(resultId: bigint) {

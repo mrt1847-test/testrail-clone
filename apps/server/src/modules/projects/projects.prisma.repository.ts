@@ -879,6 +879,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
           ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
           ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+          ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
+          ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
           ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
           lockVersion: { increment: 1 }
         }
@@ -895,6 +897,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
         ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+        ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
+        ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
         ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
         lockVersion: { increment: 1 }
       },

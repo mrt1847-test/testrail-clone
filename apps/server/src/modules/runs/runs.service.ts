@@ -1,6 +1,14 @@
 import { AppError } from "../../common/errors/appError.js";
 import { assertRunCreationInput } from "../../domain/invariants.js";
-import { defaultCompositionMetadata, toMetadataJson, type RunCompositionMetadata } from "./runComposition.js";
+import {
+  compositionNeedsLiveSync,
+  defaultCompositionMetadata,
+  toMetadataJson,
+  type RunCaseFilterDefinition,
+  type RunCompositionMetadata
+} from "./runComposition.js";
+import type { FilterSelectionMode } from "./runFilterSelection.js";
+import { applyExcludedSelectionMode, applyIdSelectionMode } from "./runFilterSelection.js";
 import type { CreateRunWithInstancesInput, TestInstance } from "./runs.types.js";
 import type { RunsRepository } from "./runs.repository.js";
 
@@ -179,12 +187,97 @@ export class RunsService {
     });
   }
 
-  async updateRun(runId: bigint, input: { name?: string; assignedTo?: bigint | null }) {
+  async updateRun(
+    runId: bigint,
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+  ) {
     const updated = await this.repo.updateRun(runId, input);
     if (!updated) {
       throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`);
     }
     return updated;
+  }
+
+  async updateRunComposition(
+    runId: bigint,
+    input: {
+      filterDefinition?: RunCaseFilterDefinition;
+      filterSelectionMode?: FilterSelectionMode;
+      excludedCaseIds?: bigint[];
+      includedSectionIds?: bigint[];
+      excludedSectionIds?: bigint[];
+      sync?: boolean;
+    }
+  ) {
+    const run = await this.repo.getRun(runId);
+    if (!run) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`, 404);
+    }
+    if (run.status === "closed") {
+      throw new AppError("RUN_CLOSED", "cannot update composition on a closed run", 409);
+    }
+
+    const current = run.composition ?? defaultCompositionMetadata(run.includeAll);
+    const next: RunCompositionMetadata = { ...current };
+
+    if (input.filterDefinition !== undefined) {
+      next.filterDefinition = input.filterDefinition;
+    }
+    if (input.includedSectionIds !== undefined) {
+      next.includedSectionIds = input.includedSectionIds.map((id) => id.toString());
+    }
+    if (input.excludedSectionIds !== undefined) {
+      next.excludedSectionIds = input.excludedSectionIds.map((id) => id.toString());
+    }
+
+    const mode = input.filterSelectionMode;
+    const filter = input.filterDefinition ?? next.filterDefinition;
+    if (mode && filter) {
+      const matching = await this.repo.resolveFilterCaseIds({
+        projectId: run.projectId,
+        suiteId: run.suiteId,
+        includeAll: false,
+        filterDefinition: filter,
+        includedSectionIds: input.includedSectionIds ?? (next.includedSectionIds ?? []).map((id) => BigInt(id)),
+        excludedSectionIds: input.excludedSectionIds ?? (next.excludedSectionIds ?? []).map((id) => BigInt(id))
+      });
+      const matchingIds = matching.map((id) => id.toString());
+
+      if (current.compositionMode === "static" && !run.includeAll) {
+        const instances = await this.repo.listInstancesForRun(runId);
+        const currentCaseIds = instances.map((row) => row.caseId.toString());
+        const selected = applyIdSelectionMode(mode, currentCaseIds, matchingIds);
+        const selectedSet = new Set(selected);
+        const toAdd = selected.filter((id) => !currentCaseIds.includes(id)).map((id) => BigInt(id));
+        if (toAdd.length > 0) {
+          await this.addCasesToOpenRun(runId, toAdd);
+        }
+        for (const inst of instances) {
+          if (selectedSet.has(inst.caseId.toString())) continue;
+          const resultCount = await this.repo.listResultsForTestInstance(inst.id);
+          if (resultCount.length > 0) continue;
+          await this.removeTestFromOpenRun(runId, inst.id, true);
+        }
+      } else {
+        const allCaseIds = (await this.repo.listSuiteCaseIds(run.projectId, run.suiteId)).map((id) => id.toString());
+        const currentExcluded = (next.excludedCaseIds ?? []).map(String);
+        const directExcluded = input.excludedCaseIds?.map((id) => id.toString());
+        const baseExcluded = directExcluded ?? currentExcluded;
+        next.excludedCaseIds = applyExcludedSelectionMode(mode, allCaseIds, baseExcluded, matchingIds);
+      }
+    } else if (input.excludedCaseIds !== undefined) {
+      next.excludedCaseIds = input.excludedCaseIds.map((id) => id.toString());
+    }
+
+    const updated = await this.repo.updateRunComposition(runId, next);
+    if (!updated) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`, 404);
+    }
+
+    if (input.sync !== false && compositionNeedsLiveSync(next)) {
+      return { run: updated, sync: await this.syncRunComposition(runId) };
+    }
+    return { run: updated, sync: null };
   }
 
   async rerunByStatuses(runId: bigint, statuses: Array<"passed" | "failed" | "blocked" | "retest" | "untested">) {

@@ -10,6 +10,7 @@ export const createCaseSchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   preconditions: z.string().optional(),
+  refs: z.string().nullable().optional(),
   customValues: customValuesSchema.optional()
 });
 
@@ -60,6 +61,7 @@ export const updateCaseSchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   preconditions: z.string().nullable().optional(),
+  refs: z.string().nullable().optional(),
   customValues: customValuesSchema.optional(),
   expectedUpdatedAt: z.string().datetime().optional(),
   expectedVersion: z.coerce.number().int().positive().optional()

@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-16 (/api/v2 attachments roles run_report)
+Last aligned: 2026-05-16 (custom result statuses)
 
 This file tracks implemented, partial, and missing capabilities. It should not contain the roadmap narrative or the execution queue.
 
@@ -58,6 +58,7 @@ Official reference hub: [TestRail Support Center](https://support.testrail.com/h
 - [x] **TR-Core** Bulk delete, move, copy, archive/restore, priority/type update, saved views, rich filters, optional list columns, and metadata chips.
 - [x] **TR-Core** Case and section drag/drop move/copy/reorder with persisted ordering and position APIs.
 - [x] **TR-Core** Case/case-step attachment API and basic case detail upload/open/delete UI.
+- [x] **TR-Core** P1 Dedicated case detail route (`/projects/:projectId/cases/:caseId`) with read-only page and edit drawer; legacy `?caseId=` redirects ([UX_BACKLOG.md](./UX_BACKLOG.md) UX-4).
 - [ ] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)).
 - [x] **TR-Core** P1 Section move/copy compatibility with saved views, run composition filters, and stale drilldown links.
 - [ ] **TR-Core** P1 Deeper field edits, labels/refs/custom field list presentation, and partial-failure polish.
@@ -74,19 +75,19 @@ Official reference hub: [TestRail Support Center](https://support.testrail.com/h
 - [x] **TR-Core** Run creation: include all, select specific cases, exclusions, section subtree include/exclude ([Creating new test runs](https://support.testrail.com/hc/en-us/articles/7076838639892)).
 - [x] **TR-Core** P0 **Dynamic filter** runs: auto add/remove tests when cases match filter; filter icon on new tests; single filter per run. (v1: create-time filter + manual **Sync now**; filter icon on instances deferred.)
 - [x] **TR-Core** P0 **Include all** runs: new cases in project/suite automatically added to open runs (live sync, not creation-time snapshot only). (v1: case-create hook + manual sync API.)
-- [ ] **TR-Core** P1 Filter selection modes: set selection to filter, add filter to selection, remove filter from selection. (v1 subset: create-time filter + manual sync only.)
+- [x] **TR-Core** P1 Filter selection modes: set selection to filter, add filter to selection, remove filter from selection. (create UI + open-run `PATCH .../composition` with sync.)
 - [x] **TR-Core** Add/remove cases from open runs with closed-run restrictions and existing-result safeguards.
 - [x] **TR-Core** Test instance snapshots, server-side pagination/filtering, selected test URL state, and run detail component split.
 - [x] **TR-Core** Manual result entry, bulk result entry, result history pagination, run summary, close/reopen policy, and scoped cache invalidation.
 - [x] **TR-Core** Result entry: status, comments, elapsed parser/timer, defects, custom values, case-step-aware step results.
 - [x] **TR-Core** Run table status-triggered result entry dialog (compact execution).
-- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date).
+- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date). (partial: `startedAt` on create, `closedAt` on close/reopen, PATCH while open, run header display.)
 - [ ] **TR-Core** P1 Run detail views: Status, Activity, Progress sidebar modes.
-- [ ] **TR-Core** P1 Policy: Untested cannot be set again after a test has any result (TestRail default behavior).
-- [ ] **TR-Core** P1 Configurable **custom result statuses** (up to seven), colors, `is_final`, `is_untested` ([Statuses](https://support.testrail.com/hc/en-us/articles/7077935129364)).
+- [x] **TR-Core** P1 Policy: Untested cannot be set again after a test has any result (TestRail default behavior).
+- [x] **TR-Core** P1 Configurable **custom result statuses** (up to seven), colors, `is_final`, `is_untested` ([Statuses](https://support.testrail.com/hc/en-us/articles/7077935129364)). (settings CRUD + `GET /api/projects/{id}/statuses` + run result/quick-entry status chips.)
 - [x] **TR-Core** P1 Bulk result entry uses `/results/bulk` with per-row success/failure summary in run UI.
 - [x] **TR-Core** P1 Activity/notification drilldown for run composition (`run.tests_added`, `run.test_removed`) with run + case links.
-- [ ] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation).
+- [x] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation; [UX_BACKLOG.md](./UX_BACKLOG.md) UX-2).
 - [ ] **TR-Core** P1 Test change indicator when underlying case changed after run was created.
 - [ ] **TR-Pro** P1 Time tracking beyond elapsed entry (estimates vs actuals in reports).
 - [x] **TR-Core** P1 Result comment `@mention` notification/email routing baseline.
@@ -164,7 +165,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 | Defects - Summary for Cases | Defect coverage page | Partial |
 | Defects - Summary for References | TBD | Missing |
 | Results - Comparison for Cases | TBD | Missing (see Convenience: compare runs) |
-| Results - Comparison for References | Traceability page | Partial |
+| Results - Comparison for References | Traceability page (Case references tab + refs drilldown) | Partial |
 | Results - Property Distribution | Result explorer / dashboard charts | Partial: no report template |
 | Summary - Milestone | `/reports/milestones` | Baseline done |
 | Summary - Plan | `/reports/plans` | Baseline done |
@@ -202,14 +203,14 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 
 - [x] **TR-Core** API token baseline.
 - [x] **TR-Pro** Automation upload, upload history/detail, failed-item retry, mapping summary/list, and bulk automation result API.
-- [x] **TR-Pro** `/api/v2` **partial** compatibility: cases, runs, tests, results, `get_projects`, suites, sections, milestones, plans, `get_statuses` (not full TestRail API surface).
+- [x] **TR-Pro** `/api/v2` **partial** compatibility: cases, runs, tests, results, single-resource reads (`get_project`, `get_suite`, `get_section`, `get_milestone`, `get_plan`), result listing (`get_results*`), `get_case_types`, `get_priorities`, suites/sections lists, milestones, plans, `get_statuses` (not full TestRail API surface).
 - [x] **TR-Core** P1 Document supported vs unsupported `/api/v2` endpoints in product docs (`GET /api/v2` index + API_SPEC matrix).
 - [x] **TR-Core** P1 `get_statuses` and custom status fields in API responses (`get_statuses?project_id=`, `custom_status_id` on status rows).
 - [ ] **TR-Core** P1 Token scopes and expiration enforcement.
 - [ ] **TR-Core** P1 Clearer token creation UX.
 - [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.
 - [ ] **TR-Pro** P2 CI examples and compatibility examples.
-- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, and saved-report `run_report` CSV execution added.)
+- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, and suite/section/run write endpoints `add_suite`, `update_suite`, `add_section`, `update_section`, `delete_section`, `close_run`, `update_run`.)
 - [ ] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports.
 - [ ] **TR-Pro** P2 API rate-limit behavior documentation (Cloud parity).
 
@@ -259,7 +260,7 @@ Internal quality and UI architecture; prioritize after TR-Core P0/P1 gaps unless
 - [ ] P1 Shared `Button`, `IconButton`, `DataTable`, `Panel`, `Drawer`, and `Toast`.
 - [ ] P1 Dense, scannable table-oriented screens for large lists.
 - [ ] P1 Centralized query keys per feature.
-- [x] P1 UI/UX review pass per [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) default rules (analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation: [UX_BACKLOG.md](./UX_BACKLOG.md)).
+- [x] P1 UI/UX review pass (analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation waves: [UX_BACKLOG.md](./UX_BACKLOG.md); execution queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) for TR-Core/API items only).
 
 ---
 

@@ -21,6 +21,7 @@ import {
   runInstancesQuerySchema,
   runIdParamSchema,
   testIdParamSchema,
+  updateRunCompositionSchema,
   updateRunSchema,
   updateTestAssigneeSchema
 } from "./runs.schema.js";
@@ -146,7 +147,11 @@ export async function registerRunsRoutes(
     if (!updated) {
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
-    const hasPatch = body.name !== undefined || body.assignedTo !== undefined;
+    const hasPatch =
+      body.name !== undefined ||
+      body.assignedTo !== undefined ||
+      body.startedAt !== undefined ||
+      body.closedAt !== undefined;
     if (hasPatch) {
       await recordAuditLog(deps.prisma, {
         projectId: updated.projectId,
@@ -156,7 +161,9 @@ export async function registerRunsRoutes(
         entityId: updated.id,
         changes: {
           ...(body.name !== undefined ? { name: body.name } : {}),
-          ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {})
+          ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {}),
+          ...(body.startedAt !== undefined ? { startedAt: body.startedAt?.toISOString() ?? null } : {}),
+          ...(body.closedAt !== undefined ? { closedAt: body.closedAt?.toISOString() ?? null } : {})
         }
       });
       await recordActivityEvent(deps.prisma, {
@@ -361,6 +368,35 @@ export async function registerRunsRoutes(
         added: result.added,
         removed: result.removed,
         reason: result.reason ?? null
+      }
+    });
+    return reply.send(toJsonSafe(ok(result)));
+  });
+
+  app.patch("/api/projects/:projectId/runs/:runId/composition", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = updateRunCompositionSchema.parse(req.body ?? {});
+    const run = await deps.repo.getRun(runId);
+    if (!run || run.projectId !== projectId) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const result = await deps.runsService.updateRunComposition(runId, body);
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: runId,
+      eventType: "run.composition_updated",
+      title: "Run composition updated",
+      body: result.run.name,
+      payload: {
+        runId: runId.toString(),
+        compositionMode: result.run.composition?.compositionMode ?? "static",
+        filterSelectionMode: body.filterSelectionMode ?? null,
+        synced: result.sync != null && !result.sync.skipped
       }
     });
     return reply.send(toJsonSafe(ok(result)));

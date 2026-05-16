@@ -5,6 +5,8 @@ export type RunSummary = {
   progress: number;
   failed: number;
   createdAt: string;
+  startedAt?: string | null;
+  closedAt?: string | null;
   milestone?: string;
   milestoneId?: string | null;
   assignedTo?: string | null;

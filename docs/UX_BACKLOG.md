@@ -68,7 +68,7 @@ Implementation waves are **separate PRs**; update [SCREEN_INVENTORY.md](./SCREEN
 - Option A: `/cases/:caseId` read-only detail + edit drawer.
 - Option B: Widen expandable panel to full-width overlay on desktop.
 
-**Defer** until UX-1/2 validated with users.
+**Status:** Shipped (2026-05-16) — Option A: `CaseDetailPage` + `CaseEditDrawer`; list rows navigate to `/projects/:projectId/cases/:caseId`; legacy `?caseId=` redirects from workspace.
 
 ---
 

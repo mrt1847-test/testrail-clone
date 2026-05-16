@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 type CollapsibleSectionProps = {
   title: string;
@@ -15,10 +15,13 @@ export function CollapsibleSection({
   badge,
   className = ""
 }: CollapsibleSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
     <details
       className={`group rounded-lg border border-slate-200 bg-white shadow-sm ${className}`.trim()}
-      defaultOpen={defaultOpen}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-slate-800 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2">

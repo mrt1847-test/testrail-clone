@@ -25,6 +25,7 @@ import {
   useRerunMutation,
   useUpdateRunAssigneeMutation,
   useSyncRunCompositionMutation,
+  useUpdateRunCompositionMutation,
   useRunTestSubscriptionsQuery,
   useTestSubscriptionMutation,
 } from "../hooks/useRunsApi";
@@ -114,6 +115,9 @@ export function RunDetailPage() {
   const addCasesMutation = useAddCasesToRunMutation(projectId, runId);
   const removeTestMutation = useRemoveTestFromRunMutation(projectId, runId);
   const syncCompositionMutation = useSyncRunCompositionMutation(projectId, runId);
+  const updateCompositionMutation = useUpdateRunCompositionMutation(projectId, runId);
+  const [filterPriority, setFilterPriority] = useState<"" | "low" | "medium" | "high">("");
+  const [filterState, setFilterState] = useState<"active" | "archived">("active");
   const assigneeMutation = useUpdateRunAssigneeMutation(projectId, runId);
   const rerunMutation = useRerunMutation(projectId, runId);
   const addAttachmentMutation = useAddResultAttachmentMutation(selectedResultId ?? undefined);
@@ -168,6 +172,13 @@ export function RunDetailPage() {
   useEffect(() => {
     setAssigneeInput(run?.assignedTo ?? "");
   }, [run?.assignedTo]);
+
+  useEffect(() => {
+    const filter = runDetailQuery.data?.run.composition?.filterDefinition;
+    if (!filter) return;
+    setFilterPriority(filter.priority ?? "");
+    setFilterState(filter.state ?? "active");
+  }, [runDetailQuery.data?.run.composition?.filterDefinition]);
 
   const rerunStatuses = useMemo(
     () => rerunSelectedStatuses as Array<"passed" | "failed" | "blocked" | "retest" | "untested">,
@@ -264,6 +275,7 @@ export function RunDetailPage() {
           />
             <div id="run-tests-section" className="min-w-0 flex-1">
               <RunInstancesSection
+          projectId={projectId}
           pagedInstances={pagedInstances}
           selectedInstanceId={selected?.id ?? null}
           onSelectInstance={setSelected}
@@ -330,6 +342,7 @@ export function RunDetailPage() {
                 caseSteps={selectedCaseDetail.data?.steps ?? []}
                 isCaseStepsLoading={selectedCaseDetail.isLoading}
                 isSubmitting={addResultMutation.isPending}
+                disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
                 onSubmit={(payload) => {
                   void addResultMutation.mutateAsync({
                     testId: selected.id,
@@ -386,6 +399,50 @@ export function RunDetailPage() {
                   projectId={projectId}
                   compositionMode={composition?.compositionMode ?? "static"}
                   compositionSummary={compositionSummary}
+                  filterPriority={filterPriority}
+                  filterState={filterState}
+                  onFilterPriorityChange={setFilterPriority}
+                  onFilterStateChange={setFilterState}
+                  isApplyingFilter={updateCompositionMutation.isPending}
+                  onApplyFilter={(mode) => {
+                    void updateCompositionMutation
+                      .mutateAsync({
+                        filterDefinition: {
+                          ...(filterPriority ? { priority: filterPriority } : {}),
+                          state: filterState
+                        },
+                        filterSelectionMode: mode,
+                        sync: true
+                      })
+                      .then((res) => {
+                        if (res.sync && !res.sync.skipped) {
+                          setCompositionFeedback({
+                            kind: "synced",
+                            added: res.sync.added,
+                            removed: res.sync.removed
+                          });
+                          return;
+                        }
+                        if (res.sync?.skipped && res.sync.reason) {
+                          setCompositionFeedback({
+                            kind: "error",
+                            message: `Sync skipped: ${res.sync.reason}`
+                          });
+                          return;
+                        }
+                        setCompositionFeedback({
+                          kind: "synced",
+                          added: 0,
+                          removed: 0
+                        });
+                      })
+                      .catch((err) => {
+                        setCompositionFeedback({
+                          kind: "error",
+                          message: err instanceof Error ? err.message : "Could not apply filter."
+                        });
+                      });
+                  }}
                   isSyncing={syncCompositionMutation.isPending}
                   onSyncComposition={() => {
                     void syncCompositionMutation

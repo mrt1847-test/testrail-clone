@@ -13,6 +13,11 @@ import { fetchMilestones } from "../../projects/api/planningApi";
 import type { RunCompositionMode } from "../types";
 import { useRunCompositionDraft } from "../hooks/useRunCompositionDraft";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
+import {
+  applyIdSelectionMode,
+  matchCasesByCreateFilter,
+  type FilterSelectionMode
+} from "../utils/runFilterSelection";
 
 async function fetchAllPagedRows<T>(buildPath: (page: number, pageSize: number) => string, pageSize = 100): Promise<T[]> {
   const out: T[] = [];
@@ -259,6 +264,23 @@ export function RunCreatePage() {
       !effectiveIncludeAll &&
       includedSectionIds.length > 0 &&
       selectedCaseCountInScope === 0);
+
+  const applyCreateFilterSelection = (mode: FilterSelectionMode) => {
+    const matching = matchCasesByCreateFilter(
+      cases.map((row) => ({
+        id: String(row.id),
+        priority: (row as { priority?: string | null }).priority ?? null,
+        sectionId: row.sectionId
+      })),
+      {
+        priority: filterPriority,
+        state: filterState,
+        includedSectionIds,
+        includedScopedCaseIds
+      }
+    );
+    setSelectedCaseIds((current) => applyIdSelectionMode(mode, current, matching));
+  };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -570,6 +592,31 @@ export function RunCreatePage() {
         {!includeAll ? (
           <div className="rounded border border-slate-200 p-3">
             <p className="text-xs font-medium text-slate-600">Select cases</p>
+            {compositionMode === "static" ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => applyCreateFilterSelection("set")}
+                >
+                  Set to filter
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => applyCreateFilterSelection("add")}
+                >
+                  Add filter
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => applyCreateFilterSelection("remove")}
+                >
+                  Remove filter
+                </button>
+              </div>
+            ) : null}
             <div className="mt-2 max-h-48 space-y-1 overflow-auto">
               {!suiteId ? (
                 <p className="text-xs text-slate-500">Select a suite first.</p>

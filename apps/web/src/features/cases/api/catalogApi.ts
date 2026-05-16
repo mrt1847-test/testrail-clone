@@ -282,6 +282,7 @@ export async function createCase(
     priority?: string;
     caseType?: string;
     preconditions?: string;
+    refs?: string | null;
     customValues?: Record<string, string | number | boolean | null>;
   }
 ): Promise<TestCase> {
@@ -297,6 +298,7 @@ export async function updateCase(
   patch: {
     title?: string;
     preconditions?: string | null;
+    refs?: string | null;
     priority?: string;
     caseType?: string;
     expectedUpdatedAt?: string;

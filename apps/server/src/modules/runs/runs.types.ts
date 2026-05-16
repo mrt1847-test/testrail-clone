@@ -11,6 +11,9 @@ export type TestRun = {
   status: "open" | "closed";
   assignedTo: bigint | null;
   environment: string | null;
+  startedAt?: Date | null;
+  closedAt?: Date | null;
+  createdAt?: Date | null;
   composition?: RunCompositionMetadata | null;
 };
 

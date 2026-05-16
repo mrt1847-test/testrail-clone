@@ -18,16 +18,26 @@ import {
   mapCustomStatuses,
   mapMilestone,
   mapPlan,
+  buildCaseTypesCatalog,
+  buildPrioritiesCatalog,
+  mapLabelsForV2,
+  mapProjectForV2,
+  mapResultForV2,
   mapRoleForV2,
   mapSavedReportForV2,
+  mapSectionForV2,
   mapSections,
   mapSuite,
   mapUserForV2,
   statusIdForCanonical
 } from "./testrail.mappers.js";
+import { SectionsService } from "../sections/sections.service.js";
+import { SuitesService } from "../suites/suites.service.js";
+import { sectionIdParamSchema } from "../sections/sections.schema.js";
+import { suiteIdParamSchema } from "../suites/suites.schema.js";
 import { TESTRAIL_V2_DEFERRED, TESTRAIL_V2_SUPPORTED } from "./testrail.supported.js";
 import type { AuthService } from "../auth/auth.service.js";
-import { caseIdParamSchema, sectionIdParamSchema } from "../cases/cases.schema.js";
+import { caseIdParamSchema } from "../cases/cases.schema.js";
 import type { CasesService } from "../cases/cases.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
@@ -48,7 +58,8 @@ const updateCaseBodySchema = z.object({
 });
 
 const addCaseBodySchema = updateCaseBodySchema.extend({
-  title: z.string().min(1)
+  title: z.string().min(1),
+  labels: z.array(z.string()).optional()
 });
 
 const addRunBodySchema = z.object({
@@ -80,6 +91,49 @@ const bulkResultsBodySchema = z.object({
 
 const runReportParamSchema = z.object({
   reportId: z.coerce.bigint()
+});
+
+const addSuiteBodySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional()
+});
+
+const updateSuiteBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional()
+});
+
+const addSectionBodySchema = z.object({
+  suite_id: z.coerce.bigint().optional(),
+  suiteId: z.coerce.bigint().optional(),
+  parent_id: z.coerce.bigint().nullable().optional(),
+  parentId: z.coerce.bigint().nullable().optional(),
+  name: z.string().min(1)
+});
+
+const updateSectionBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  parent_id: z.coerce.bigint().nullable().optional(),
+  parentId: z.coerce.bigint().nullable().optional()
+});
+
+const updateRunBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  assignedto_id: z.coerce.bigint().nullable().optional(),
+  assigned_to_id: z.coerce.bigint().nullable().optional(),
+  assignedTo: z.coerce.bigint().nullable().optional()
+});
+
+const milestoneIdParamSchema = z.object({
+  milestoneId: z.coerce.bigint()
+});
+
+const planIdParamSchema = z.object({
+  planId: z.coerce.bigint()
+});
+
+const testIdParamSchema = z.object({
+  testId: z.coerce.bigint()
 });
 
 function savedReportExportFilters(value: unknown) {
@@ -116,15 +170,45 @@ function mapCase(row: {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
+  labels?: string[];
 }) {
+  const labels = (row.labels ?? []).map((label) => label.trim()).filter(Boolean);
   return {
     id: Number(row.id),
     section_id: Number(row.sectionId),
     title: row.title,
     priority: row.priority ?? null,
     type: row.caseType ?? null,
-    custom_preconds: row.preconditions ?? null
+    custom_preconds: row.preconditions ?? null,
+    labels: mapLabelsForV2(labels)
   };
+}
+
+async function listProjectLabelTitles(
+  projectId: bigint,
+  deps: {
+    prisma?: PrismaClient;
+    casesService: CasesService;
+  }
+): Promise<string[]> {
+  if (deps.prisma) {
+    const rows = await deps.prisma.$queryRaw<Array<{ title: string }>>`
+      SELECT DISTINCT btrim(label) AS title
+      FROM "TestCase", unnest(labels) AS label
+      WHERE "projectId" = ${projectId} AND "deletedAt" IS NULL AND btrim(label) <> ''
+      ORDER BY title
+    `;
+    return rows.map((row) => row.title);
+  }
+  const cases = await deps.casesService.listCases({ projectId });
+  const titles = new Set<string>();
+  for (const row of cases) {
+    for (const label of row.labels ?? []) {
+      const trimmed = label.trim();
+      if (trimmed) titles.add(trimmed);
+    }
+  }
+  return [...titles].sort((a, b) => a.localeCompare(b));
 }
 
 function mapRun(row: {
@@ -177,6 +261,9 @@ export async function registerTestRailRoutes(
     prisma?: PrismaClient;
   }
 ) {
+  const suitesService = new SuitesService(deps.catalog);
+  const sectionsService = new SectionsService(deps.catalog);
+
   app.get("/api/v2", async (_req, reply) => {
     return reply.send(
       toJsonSafe({
@@ -189,15 +276,57 @@ export async function registerTestRailRoutes(
 
   app.get("/api/v2/get_projects", async (_req, reply) => {
     const rows = await deps.catalog.listProjects();
-    return reply.send(
-      toJsonSafe(
-        rows.map((p) => ({
-          id: Number(p.id),
-          name: p.name,
-          is_completed: false
-        }))
-      )
-    );
+    return reply.send(toJsonSafe(rows.map((p) => mapProjectForV2(p))));
+  });
+
+  app.get("/api/v2/get_project/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const row = await deps.catalog.getProject(projectId);
+    if (!row) throw new AppError("NOT_FOUND", "project not found", 404);
+    return reply.send(toJsonSafe(mapProjectForV2(row)));
+  });
+
+  app.get("/api/v2/get_suite/:suiteId", async (req, reply) => {
+    const { suiteId } = suiteIdParamSchema.parse(req.params);
+    const row = await deps.catalog.getSuite(suiteId);
+    if (!row) throw new AppError("NOT_FOUND", "suite not found", 404);
+    return reply.send(toJsonSafe(mapSuite(row)));
+  });
+
+  app.get("/api/v2/get_section/:sectionId", async (req, reply) => {
+    const { sectionId } = sectionIdParamSchema.parse(req.params);
+    const row = await deps.catalog.getSection(sectionId);
+    if (!row) throw new AppError("NOT_FOUND", "section not found", 404);
+    const peers = await deps.catalog.listSectionsBySuite(row.suiteId);
+    return reply.send(toJsonSafe(mapSectionForV2(row, peers)));
+  });
+
+  app.get("/api/v2/get_milestone/:milestoneId", async (req, reply) => {
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "milestone not found", 404);
+    const row = await deps.prisma.milestone.findFirst({
+      where: { id: milestoneId, deletedAt: null }
+    });
+    if (!row) throw new AppError("NOT_FOUND", "milestone not found", 404);
+    return reply.send(toJsonSafe(mapMilestone(row)));
+  });
+
+  app.get("/api/v2/get_plan/:planId", async (req, reply) => {
+    const { planId } = planIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "plan not found", 404);
+    const row = await deps.prisma.testPlan.findFirst({
+      where: { id: planId, deletedAt: null }
+    });
+    if (!row) throw new AppError("NOT_FOUND", "plan not found", 404);
+    return reply.send(toJsonSafe(mapPlan(row)));
+  });
+
+  app.get("/api/v2/get_case_types", async (_req, reply) => {
+    return reply.send(toJsonSafe(buildCaseTypesCatalog()));
+  });
+
+  app.get("/api/v2/get_priorities", async (_req, reply) => {
+    return reply.send(toJsonSafe(buildPrioritiesCatalog()));
   });
 
   app.get("/api/v2/get_case/:caseId", async (req, reply) => {
@@ -352,6 +481,21 @@ export async function registerTestRailRoutes(
     return reply.send(toJsonSafe(projectRoles.map(mapRoleForV2)));
   });
 
+  app.get("/api/v2/get_labels/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const titles = await listProjectLabelTitles(projectId, deps);
+    return reply.send(toJsonSafe(mapLabelsForV2(titles)));
+  });
+
+  app.get("/api/v2/get_groups", async (_req, reply) => {
+    return reply.send(toJsonSafe([]));
+  });
+
+  app.get("/api/v2/get_shared_steps/:projectId", async (req, reply) => {
+    projectIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe([]));
+  });
+
   app.get("/api/v2/get_attachments_for_case/:caseId", async (req, reply) => {
     const { caseId } = caseIdParamSchema.parse(req.params);
     if (!deps.prisma) return reply.send(toJsonSafe([]));
@@ -429,7 +573,8 @@ export async function registerTestRailRoutes(
       title: body.title,
       priority: body.priority,
       caseType: body.caseType,
-      preconditions: body.preconditions ?? undefined
+      preconditions: body.preconditions ?? undefined,
+      labels: body.labels
     });
     return reply.send(toJsonSafe(mapCase(created)));
   });
@@ -454,6 +599,72 @@ export async function registerTestRailRoutes(
     return reply.send(toJsonSafe(mapRun(run)));
   });
 
+  app.post("/api/v2/add_suite/:projectId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = addSuiteBodySchema.parse(req.body ?? {});
+    const created = await suitesService.createSuite({
+      projectId,
+      name: body.name,
+      description: body.description
+    });
+    return reply.send(toJsonSafe(mapSuite(created)));
+  });
+
+  app.post("/api/v2/update_suite/:suiteId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { suiteId } = suiteIdParamSchema.parse(req.params);
+    const body = updateSuiteBodySchema.parse(req.body ?? {});
+    const updated = await suitesService.updateSuite(suiteId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.description !== undefined ? { description: body.description ?? undefined } : {})
+    });
+    return reply.send(toJsonSafe(mapSuite(updated)));
+  });
+
+  app.post("/api/v2/add_section/:projectId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = addSectionBodySchema.parse(req.body ?? {});
+    const suiteId = body.suite_id ?? body.suiteId;
+    if (!suiteId) {
+      throw new AppError("VALIDATION_ERROR", "suite_id is required", 400);
+    }
+    const suites = await deps.catalog.listSuitesByProject(projectId);
+    if (!suites.some((suite) => suite.id === suiteId)) {
+      throw new AppError("NOT_FOUND", "suite not found in project", 404);
+    }
+    const parentSectionId = body.parent_id ?? body.parentId ?? null;
+    const created = await sectionsService.createSection({
+      suiteId,
+      parentSectionId,
+      name: body.name
+    });
+    const peers = await deps.catalog.listSectionsBySuite(suiteId);
+    return reply.send(toJsonSafe(mapSectionForV2(created, peers)));
+  });
+
+  app.post("/api/v2/update_section/:sectionId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { sectionId } = sectionIdParamSchema.parse(req.params);
+    const body = updateSectionBodySchema.parse(req.body ?? {});
+    const parentSectionId =
+      body.parent_id !== undefined ? body.parent_id : body.parentId !== undefined ? body.parentId : undefined;
+    const updated = await sectionsService.updateSection(sectionId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(parentSectionId !== undefined ? { parentSectionId } : {})
+    });
+    const peers = await deps.catalog.listSectionsBySuite(updated.suiteId);
+    return reply.send(toJsonSafe(mapSectionForV2(updated, peers)));
+  });
+
+  app.post("/api/v2/delete_section/:sectionId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { sectionId } = sectionIdParamSchema.parse(req.params);
+    await sectionsService.deleteSection(sectionId);
+    return reply.send(toJsonSafe({}));
+  });
+
   app.post("/api/v2/add_run/:projectId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -476,6 +687,58 @@ export async function registerTestRailRoutes(
     const { runId } = runIdParamSchema.parse(req.params);
     const rows = await deps.repo.listInstancesForRun(runId);
     return reply.send(toJsonSafe(rows.map(mapTest)));
+  });
+
+  app.get("/api/v2/get_results/:testId", async (req, reply) => {
+    const { testId } = testIdParamSchema.parse(req.params);
+    const rows = await deps.resultsService.listResultsForTestInstance(testId);
+    return reply.send(toJsonSafe(rows.map(mapResultForV2)));
+  });
+
+  app.get("/api/v2/get_results_for_case/:runId/:caseId", async (req, reply) => {
+    const { runId } = runIdParamSchema.parse(req.params);
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const run = await deps.repo.getRun(runId);
+    if (!run) throw new AppError("NOT_FOUND", "run not found", 404);
+    const instance = await deps.repo.transaction(async (tx) => tx.getTestInstanceByCaseInRun(runId, caseId));
+    if (!instance) {
+      throw new AppError("NOT_FOUND", "case not found in run", 404);
+    }
+    const rows = await deps.repo.listResultsForTestInstance(instance.id);
+    return reply.send(toJsonSafe(rows.map(mapResultForV2)));
+  });
+
+  app.get("/api/v2/get_results_for_run/:runId", async (req, reply) => {
+    const { runId } = runIdParamSchema.parse(req.params);
+    const run = await deps.repo.getRun(runId);
+    if (!run) throw new AppError("NOT_FOUND", "run not found", 404);
+    const instances = await deps.repo.listInstancesForRun(runId);
+    const rows = [];
+    for (const instance of instances) {
+      const results = await deps.repo.listResultsForTestInstance(instance.id);
+      rows.push(...results.map(mapResultForV2));
+    }
+    rows.sort((left, right) => right.created_on - left.created_on);
+    return reply.send(toJsonSafe(rows));
+  });
+
+  app.post("/api/v2/close_run/:runId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const closed = await deps.runsService.closeRun(runId);
+    return reply.send(toJsonSafe(mapRun(closed)));
+  });
+
+  app.post("/api/v2/update_run/:runId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = updateRunBodySchema.parse(req.body ?? {});
+    const assignedTo = body.assignedto_id ?? body.assigned_to_id ?? body.assignedTo;
+    const updated = await deps.runsService.updateRun(runId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(assignedTo !== undefined ? { assignedTo } : {})
+    });
+    return reply.send(toJsonSafe(mapRun(updated)));
   });
 
   app.post("/api/v2/add_result_for_case/:runId/:caseId", async (req, reply) => {
