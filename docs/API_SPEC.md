@@ -650,6 +650,14 @@ Audit CSV export applies the same filters, includes project columns, and caps ex
 Retention prune body: `{ "olderThanDays": 365 }` with allowed range 30-3650; the prune action writes a summary audit row.
 Audited mutation groups include project/settings administration plus run/test assignment, defect link/unlink/push, saved report definition changes, and scheduled report create/update/delete/manual-run requests.
 
+## Automation Dashboard (project UI)
+- `GET /api/projects/{projectId}/automation/summary` — `mappedCases`, `totalCases`, `unmappedCases`, `coveragePercent`, `pendingRetryCount`, `uploadedRuns`, `lastUploadAt`.
+- `GET /api/projects/{projectId}/automation/mappings` — query: `coverage` (`mapped` | `unmapped` | `all`), `q`, `page`, `pageSize`.
+- `PATCH /api/projects/{projectId}/automation/mappings/{caseId}` — body: `{ "automationKey": "unique-key" }` (409 when key conflicts within project).
+- `GET /api/projects/{projectId}/automation/retry-queue` — upload batches (`uploadId` = run id) with `failed > 0`.
+- `GET /api/projects/{projectId}/automation/uploads` and `GET .../uploads/{uploadId}` — upload history/detail; failed rows include `errorCode` and `guidance`.
+- `POST /api/projects/{projectId}/automation/uploads/{uploadId}/retry-failed` — queues retest for failed automation rows in the upload batch.
+
 ## Automation Upload Endpoints
 - `POST /api/automation/runs`
 - `POST /api/automation/runs/{runId}/results`

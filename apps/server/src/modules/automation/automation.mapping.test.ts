@@ -35,9 +35,40 @@ describe("automation mapping dashboard APIs", () => {
     const token = await login();
     const headers = { authorization: `Bearer ${token}` };
 
-    const projectsRes = await app.inject({ method: "GET", url: "/api/projects", headers });
-    const projectId = (projectsRes.json() as { data: Array<{ id: string }> }).data[0]?.id;
-    expect(projectId).toBeTruthy();
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Automation mapping project" }
+    });
+    expect(projectRes.statusCode).toBe(200);
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const suitesRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/suites`,
+      headers
+    });
+    expect(suitesRes.statusCode).toBe(200);
+    const suiteId = (suitesRes.json() as { data: Array<{ id: string }> }).data[0]?.id;
+    expect(suiteId).toBeTruthy();
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Section" }
+    });
+    expect(sectionRes.statusCode).toBe(200);
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+    const caseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Unmapped automation case" }
+    });
+    expect(caseRes.statusCode).toBe(200);
 
     const summaryRes = await app.inject({
       method: "GET",

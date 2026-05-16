@@ -20,13 +20,22 @@ import type { RunsService } from "../runs/runs.service.js";
 import { byCaseSchema, resultSchema } from "../results/results.schema.js";
 import { runIdParamSchema, createRunSchema } from "../runs/runs.schema.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
-import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { resolveAutomationFailureGuidance } from "./automation.failureGuidance.js";
 
-const automationMappingsQuerySchema = paginationQuerySchema.extend({
-  coverage: z.enum(["mapped", "unmapped", "all"]).default("mapped"),
-  q: z.string().optional()
-});
+const automationMappingsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).optional(),
+    page_size: z.coerce.number().int().min(1).max(100).optional(),
+    coverage: z.enum(["mapped", "unmapped", "all"]).default("mapped"),
+    q: z.string().optional()
+  })
+  .transform((raw) => ({
+    page: raw.page,
+    pageSize: raw.pageSize ?? raw.page_size ?? 50,
+    coverage: raw.coverage,
+    q: raw.q
+  }));
 
 const updateAutomationMappingSchema = z.object({
   automationKey: z.string().trim().min(1).max(250)
@@ -404,11 +413,13 @@ export async function registerAutomationRoutes(
           select: { id: true, title: true, automationKey: true }
         });
         return reply.send(
-          ok({
-            caseId: updated.id,
-            title: updated.title,
-            automationKey: updated.automationKey
-          })
+          toJsonSafe(
+            ok({
+              caseId: updated.id,
+              title: updated.title,
+              automationKey: updated.automationKey
+            })
+          )
         );
       } catch (error) {
         const code = (error as { code?: string }).code;
@@ -446,11 +457,13 @@ export async function registerAutomationRoutes(
       throw new AppError("NOT_FOUND", "case not found", 404);
     }
     return reply.send(
-      ok({
-        caseId: updated.id,
-        title: updated.title,
-        automationKey: updated.automationKey ?? null
-      })
+      toJsonSafe(
+        ok({
+          caseId: updated.id,
+          title: updated.title,
+          automationKey: updated.automationKey ?? null
+        })
+      )
     );
   });
 
