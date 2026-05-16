@@ -745,7 +745,8 @@ Index (supported vs deferred):
 - `GET /api/v2/get_case_types` (static catalog)
 - `GET /api/v2/get_priorities` (static catalog)
 - `GET /api/v2/get_case/{case_id}`
-- `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`)
+- `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`, `limit`, `offset` — TestRail envelope with `cases[]`)
+- `GET /api/v2/get_runs/{project_id}` (query: `limit`, `offset` — envelope with `runs[]`)
 - `GET /api/v2/get_suites/{project_id}`
 - `GET /api/v2/get_sections/{project_id}` (query: **`suite_id` required**)
 - `GET /api/v2/get_milestones/{project_id}` (DB mode; empty array in memory mode)
@@ -765,10 +766,10 @@ Index (supported vs deferred):
 - `GET /api/v2/get_attachments_for_case/{case_id}` (DB mode; live case attachments)
 - `GET /api/v2/get_attachments_for_result/{result_id}` (DB mode; result attachments)
 - `GET /api/v2/get_run/{run_id}`
-- `GET /api/v2/get_tests/{run_id}`
-- `GET /api/v2/get_results/{test_id}` (JSON array of result rows)
-- `GET /api/v2/get_results_for_case/{run_id}/{case_id}`
-- `GET /api/v2/get_results_for_run/{run_id}`
+- `GET /api/v2/get_tests/{run_id}` (query: `limit`, `offset` — envelope with `tests[]`)
+- `GET /api/v2/get_results/{test_id}` (query: `limit`, `offset` — envelope with `results[]`)
+- `GET /api/v2/get_results_for_case/{run_id}/{case_id}` (query: `limit`, `offset` — envelope with `results[]`)
+- `GET /api/v2/get_results_for_run/{run_id}` (query: `limit`, `offset` — envelope with `results[]`)
 
 ### Supported write endpoints
 
@@ -788,7 +789,9 @@ Index (supported vs deferred):
 
 ### Deferred (not implemented)
 
-First-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, TestRail 9.x pagination wrappers, and other catalog endpoints — see `GET /api/v2` `deferred` array in the running server (empty when all planned single-resource reads are shipped).
+First-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, pagination on remaining catalog list routes (suites, sections, milestones, …), and other catalog endpoints — see `GET /api/v2` `deferred` array in the running server (empty when all planned single-resource reads are shipped).
+
+**Paginated list envelope** (cases, runs, tests, results): `{ offset, limit, size, _links: { next, prev }, <collection>: [...] }`. Default `limit=250`, max `250`.
 
 Adapter rules:
 - No duplicated business logic in adapter handlers.

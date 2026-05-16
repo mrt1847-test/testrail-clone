@@ -12,6 +12,7 @@ export const TESTRAIL_V2_SUPPORTED = [
   "GET get_priorities",
   "GET get_case/{case_id}",
   "GET get_cases/{project_id}",
+  "GET get_runs/{project_id}",
   "GET get_suites/{project_id}",
   "GET get_sections/{project_id}",
   "GET get_milestones/{project_id}",

@@ -15,24 +15,24 @@ Last aligned: 2026-05-16
 
 ## Current batch
 
-**Section:** Automation And API Compatibility
+**Section:** Product Foundation
 
 **Checklist line (exact — done when this is `[x]`):**
 
 ```text
-- [ ] **TR-Pro** P1 `/api/v2` list endpoint pagination (`limit`/`offset`, response envelope) on high-traffic list routes (cases, runs, tests, results).
+- [ ] **TR-Core** P1 Global default access model.
 ```
 
 ### Scope (only what closes the line above)
 
-1. Inventory list-style `/api/v2` routes that still return unpaginated full arrays.
-2. Add TestRail-style `limit`/`offset` (or agreed envelope) + document in `API_SPEC.md` / `testrail.supported.ts`.
-3. Contract tests for at least cases and runs (and tests/results if in scope of the line).
+1. Define product default for new projects / new members (role or access template).
+2. Persist and expose via settings API + admin UI baseline.
+3. Tests and checklist note on what is in vs out of full permission matrix (line 39).
 
 ### Out of scope for this batch
 
-- Token scopes, new v2 resources, UI work — other checklist lines.
-- Bumping the large “Expanded `/api/v2`” line except removing pagination from its remaining partial note after this line ships.
+- Full custom roles matrix (checklist line 39).
+- SSO/MFA.
 
 ---
 
@@ -42,10 +42,10 @@ Last aligned: 2026-05-16
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Product Foundation | `- [ ] **TR-Core** P1 Global default access model.` |
-| 2 | Test Case Management | `- [ ] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)).` |
-| 3 | Run Composition And Execution | `- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date). (partial: …)` — *finish remaining partial only; then `[x]`.* |
-| 4 | Import And Export | `- [ ] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance.` |
-| 5 | Automation And API Compatibility | `- [ ] **TR-Core** P1 Token scopes and expiration enforcement.` |
+| 1 | Test Case Management | `- [ ] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)).` |
+| 2 | Run Composition And Execution | `- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date). (partial: …)` |
+| 3 | Import And Export | `- [ ] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance.` |
+| 4 | Automation And API Compatibility | `- [ ] **TR-Core** P1 Token scopes and expiration enforcement.` |
+| 5 | Product Foundation | `- [ ] **TR-Core** P1 Users, groups, global roles, custom roles, and permission matrix.` |
 
 항목이 한 PR에 넘치면 **FEATURE_CHECKLIST에서 `[ ]`를 먼저 쪼갠다**. 쪼개기 전에는 NEXT_ACTIONS에 임의 주제를 쓰지 않는다.

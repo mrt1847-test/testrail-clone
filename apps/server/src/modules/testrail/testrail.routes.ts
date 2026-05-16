@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
@@ -47,6 +47,11 @@ import { runIdParamSchema } from "../runs/runs.schema.js";
 import type { RunsService } from "../runs/runs.service.js";
 import type { TestStatus } from "../../domain/status.js";
 import { ImportExportService, reportExportSchema } from "../importExport/importExport.routes.js";
+import {
+  buildTestRailListResponse,
+  parseTestRailPagination,
+  testRailQuerySuffix
+} from "./testrail.pagination.js";
 
 const updateCaseBodySchema = z.object({
   title: z.string().min(1).optional(),
@@ -229,6 +234,27 @@ function mapRun(row: {
   };
 }
 
+function sendPaginatedList<T>(
+  reply: FastifyReply,
+  query: Record<string, unknown>,
+  input: { items: T[]; collectionKey: string; basePath: string }
+) {
+  const { limit, offset } = parseTestRailPagination(query);
+  const suffix = testRailQuerySuffix(query);
+  return reply.send(
+    toJsonSafe(
+      buildTestRailListResponse({
+        items: input.items,
+        limit,
+        offset,
+        collectionKey: input.collectionKey,
+        basePath: input.basePath,
+        querySuffix: suffix
+      })
+    )
+  );
+}
+
 function mapTest(row: {
   id: bigint;
   caseId: bigint;
@@ -269,7 +295,7 @@ export async function registerTestRailRoutes(
       toJsonSafe({
         supported: [...TESTRAIL_V2_SUPPORTED],
         deferred: [...TESTRAIL_V2_DEFERRED],
-        note: "Adapter returns JSON arrays for list endpoints (not TestRail 9.x pagination wrappers)."
+        note: "High-traffic list endpoints (cases, runs, tests, results) return TestRail-style limit/offset envelopes; other list routes may still return bare arrays."
       })
     );
   });
@@ -555,13 +581,31 @@ export async function registerTestRailRoutes(
 
   app.get("/api/v2/get_cases/:projectId", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const query = req.query as { suite_id?: string; section_id?: string } | undefined;
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const suiteId = query.suite_id != null && String(query.suite_id) !== "" ? BigInt(String(query.suite_id)) : undefined;
+    const sectionId =
+      query.section_id != null && String(query.section_id) !== "" ? BigInt(String(query.section_id)) : undefined;
     const rows = await deps.casesService.listCases({
       projectId,
-      suiteId: query?.suite_id ? BigInt(query.suite_id) : undefined,
-      sectionId: query?.section_id ? BigInt(query.section_id) : undefined
+      suiteId,
+      sectionId
     });
-    return reply.send(toJsonSafe(rows.map(mapCase)));
+    return sendPaginatedList(reply, query, {
+      items: rows.map(mapCase),
+      collectionKey: "cases",
+      basePath: `/api/v2/get_cases/${projectId.toString()}`
+    });
+  });
+
+  app.get("/api/v2/get_runs/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const rows = await deps.repo.listRunsByProject(projectId);
+    return sendPaginatedList(reply, query, {
+      items: rows.map(mapRun),
+      collectionKey: "runs",
+      basePath: `/api/v2/get_runs/${projectId.toString()}`
+    });
   });
 
   app.post("/api/v2/add_case/:sectionId", async (req, reply) => {
@@ -685,19 +729,30 @@ export async function registerTestRailRoutes(
 
   app.get("/api/v2/get_tests/:runId", async (req, reply) => {
     const { runId } = runIdParamSchema.parse(req.params);
+    const query = (req.query ?? {}) as Record<string, unknown>;
     const rows = await deps.repo.listInstancesForRun(runId);
-    return reply.send(toJsonSafe(rows.map(mapTest)));
+    return sendPaginatedList(reply, query, {
+      items: rows.map(mapTest),
+      collectionKey: "tests",
+      basePath: `/api/v2/get_tests/${runId.toString()}`
+    });
   });
 
   app.get("/api/v2/get_results/:testId", async (req, reply) => {
     const { testId } = testIdParamSchema.parse(req.params);
+    const query = (req.query ?? {}) as Record<string, unknown>;
     const rows = await deps.resultsService.listResultsForTestInstance(testId);
-    return reply.send(toJsonSafe(rows.map(mapResultForV2)));
+    return sendPaginatedList(reply, query, {
+      items: rows.map(mapResultForV2),
+      collectionKey: "results",
+      basePath: `/api/v2/get_results/${testId.toString()}`
+    });
   });
 
   app.get("/api/v2/get_results_for_case/:runId/:caseId", async (req, reply) => {
     const { runId } = runIdParamSchema.parse(req.params);
     const { caseId } = caseIdParamSchema.parse(req.params);
+    const query = (req.query ?? {}) as Record<string, unknown>;
     const run = await deps.repo.getRun(runId);
     if (!run) throw new AppError("NOT_FOUND", "run not found", 404);
     const instance = await deps.repo.transaction(async (tx) => tx.getTestInstanceByCaseInRun(runId, caseId));
@@ -705,11 +760,16 @@ export async function registerTestRailRoutes(
       throw new AppError("NOT_FOUND", "case not found in run", 404);
     }
     const rows = await deps.repo.listResultsForTestInstance(instance.id);
-    return reply.send(toJsonSafe(rows.map(mapResultForV2)));
+    return sendPaginatedList(reply, query, {
+      items: rows.map(mapResultForV2),
+      collectionKey: "results",
+      basePath: `/api/v2/get_results_for_case/${runId.toString()}/${caseId.toString()}`
+    });
   });
 
   app.get("/api/v2/get_results_for_run/:runId", async (req, reply) => {
     const { runId } = runIdParamSchema.parse(req.params);
+    const query = (req.query ?? {}) as Record<string, unknown>;
     const run = await deps.repo.getRun(runId);
     if (!run) throw new AppError("NOT_FOUND", "run not found", 404);
     const instances = await deps.repo.listInstancesForRun(runId);
@@ -719,7 +779,11 @@ export async function registerTestRailRoutes(
       rows.push(...results.map(mapResultForV2));
     }
     rows.sort((left, right) => right.created_on - left.created_on);
-    return reply.send(toJsonSafe(rows));
+    return sendPaginatedList(reply, query, {
+      items: rows,
+      collectionKey: "results",
+      basePath: `/api/v2/get_results_for_run/${runId.toString()}`
+    });
   });
 
   app.post("/api/v2/close_run/:runId", async (req, reply) => {

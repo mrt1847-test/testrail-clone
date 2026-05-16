@@ -20,6 +20,7 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { supported: string[] };
     expect(body.supported).toContain("GET get_project/{project_id}");
+    expect(body.supported).toContain("GET get_runs/{project_id}");
     expect(body.supported).toContain("GET get_suite/{suite_id}");
     expect(body.supported).toContain("GET get_section/{section_id}");
     expect(body.supported).toContain("GET get_results/{test_id}");
@@ -58,7 +59,118 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(TESTRAIL_V2_SUPPORTED).toContain("POST close_run/{run_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("POST update_run/{run_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_project/{project_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_runs/{project_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_results_for_run/{run_id}");
+  });
+
+  it("paginates get_cases with limit and offset envelope", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "V2 Pagination Project" }
+    });
+    const project = projectRes.json() as { data: { id: string } };
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/suites`,
+      headers,
+      payload: { name: "Suite" }
+    });
+    const suite = suiteRes.json() as { data: { id: string } };
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suite.data.id}/sections`,
+      headers,
+      payload: { name: "Section" }
+    });
+    const section = sectionRes.json() as { data: { id: string } };
+
+    for (let i = 0; i < 5; i += 1) {
+      await app.inject({
+        method: "POST",
+        url: `/api/sections/${section.data.id}/cases`,
+        headers,
+        payload: { title: `Case ${i + 1}` }
+      });
+    }
+
+    const pageRes = await app.inject({
+      method: "GET",
+      url: `/api/v2/get_cases/${project.data.id}?limit=2&offset=1`
+    });
+    expect(pageRes.statusCode).toBe(200);
+    const body = pageRes.json() as {
+      offset: number;
+      limit: number;
+      size: number;
+      cases: Array<{ id: number }>;
+      _links: { next: string | null; prev: string | null };
+    };
+    expect(body.offset).toBe(1);
+    expect(body.limit).toBe(2);
+    expect(body.size).toBe(2);
+    expect(body.cases).toHaveLength(2);
+    expect(body._links.next).toEqual(expect.stringContaining("offset=3"));
+    expect(body._links.prev).toEqual(expect.stringContaining("offset=0"));
+  });
+
+  it("paginates get_runs for a project", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "V2 Runs Pagination" }
+    });
+    const project = projectRes.json() as { data: { id: string } };
+
+    const suiteRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.data.id}/suites`,
+      headers,
+      payload: { name: "Suite" }
+    });
+    const suite = suiteRes.json() as { data: { id: string } };
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v2/add_run/${project.data.id}`,
+      headers,
+      payload: { suite_id: suite.data.id, name: "Run A" }
+    });
+
+    const runsRes = await app.inject({
+      method: "GET",
+      url: `/api/v2/get_runs/${project.data.id}?limit=10&offset=0`
+    });
+    expect(runsRes.statusCode).toBe(200);
+    const body = runsRes.json() as { runs: Array<{ name: string }> };
+    expect(body.runs.length).toBeGreaterThan(0);
+    expect(body.runs[0]?.name).toBe("Run A");
+  });
+
+  it("rejects invalid limit on paginated list endpoints", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v2/get_cases/1?limit=999" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
   });
 
   it("exposes get_projects as a JSON array", async () => {
@@ -302,9 +414,9 @@ describe("/api/v2 TestRail adapter contract", () => {
       method: "GET",
       url: `/api/v2/get_tests/${run.id}`
     });
-    const tests = testsRes.json() as Array<{ id: number; case_id: number }>;
-    expect(tests.length).toBeGreaterThan(0);
-    const firstTest = tests[0]!;
+    const testsBody = testsRes.json() as { tests: Array<{ id: number; case_id: number }> };
+    expect(testsBody.tests.length).toBeGreaterThan(0);
+    const firstTest = testsBody.tests[0]!;
 
     const addResultRes = await app.inject({
       method: "POST",
@@ -319,21 +431,21 @@ describe("/api/v2 TestRail adapter contract", () => {
       url: `/api/v2/get_results_for_case/${run.id}/${firstTest.case_id}`
     });
     expect(resultsForCaseRes.statusCode).toBe(200);
-    expect((resultsForCaseRes.json() as unknown[]).length).toBeGreaterThan(0);
+    expect((resultsForCaseRes.json() as { results: unknown[] }).results.length).toBeGreaterThan(0);
 
     const resultsForRunRes = await app.inject({
       method: "GET",
       url: `/api/v2/get_results_for_run/${run.id}`
     });
     expect(resultsForRunRes.statusCode).toBe(200);
-    expect((resultsForRunRes.json() as unknown[]).length).toBeGreaterThan(0);
+    expect((resultsForRunRes.json() as { results: unknown[] }).results.length).toBeGreaterThan(0);
 
     const resultsForTestRes = await app.inject({
       method: "GET",
       url: `/api/v2/get_results/${firstTest.id}`
     });
     expect(resultsForTestRes.statusCode).toBe(200);
-    expect((resultsForTestRes.json() as unknown[]).length).toBeGreaterThan(0);
+    expect((resultsForTestRes.json() as { results: unknown[] }).results.length).toBeGreaterThan(0);
 
     const closeRunRes = await app.inject({
       method: "POST",
