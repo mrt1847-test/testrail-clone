@@ -3,7 +3,12 @@ import { z } from "zod";
 export const createSuiteSchema = z.object({
   projectId: z.coerce.bigint(),
   name: z.string().min(1),
-  description: z.string().optional()
+  description: z.string().optional(),
+  isBaseline: z.boolean().optional()
+});
+
+export const createBaselineSuiteSchema = z.object({
+  name: z.string().trim().min(1)
 });
 
 export const projectIdParamSchema = z.object({

@@ -1,16 +1,26 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Ok, Paged } from "../../../shared/api/types";
 
+export type TokenScopeOption = {
+  scope: string;
+  label: string;
+};
+
 export type TokenRow = {
   id: string;
   name: string;
+  scopes: string[];
+  expiresAt: string | null;
   lastUsedAt: string | null;
+  createdAt?: string;
 };
 
 export type MilestoneRow = {
   id: string;
   name: string;
   isCompleted: boolean;
+  startDate?: string | null;
+  dueDate?: string | null;
 };
 
 export type MilestoneRunRow = {
@@ -78,15 +88,27 @@ export type PlanEntryConfigurationMapping = {
   }>;
 };
 
+export async function fetchTokenScopes(projectId: string): Promise<TokenScopeOption[]> {
+  const res = await apiFetch<{ data: TokenScopeOption[] }>(`/api/projects/${projectId}/tokens/scopes`);
+  return res.data;
+}
+
 export async function fetchTokens(projectId: string): Promise<TokenRow[]> {
   const res = await apiFetch<Paged<TokenRow>>(`/api/projects/${projectId}/tokens`);
   return res.data.map((row) => ({ ...row, id: String(row.id) }));
 }
 
-export async function createToken(projectId: string, name: string) {
+export async function createToken(
+  projectId: string,
+  input: { name: string; scopes: string[]; expiresInDays: number | null }
+) {
   const res = await apiFetch<{ data: TokenRow; rawToken: string }>(`/api/projects/${projectId}/tokens`, {
     method: "POST",
-    body: { name }
+    body: {
+      name: input.name,
+      scopes: input.scopes,
+      expiresInDays: input.expiresInDays
+    }
   });
   return {
     token: { ...res.data, id: String(res.data.id) },

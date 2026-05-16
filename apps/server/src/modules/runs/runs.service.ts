@@ -54,6 +54,8 @@ export class RunsService {
         name: input.name,
         includeAll,
         environment: input.environment ?? null,
+        startedAt: input.startedAt ?? null,
+        dueOn: input.dueOn ?? null,
         metadata: toMetadataJson(metadata)
       });
 
@@ -189,8 +191,19 @@ export class RunsService {
 
   async updateRun(
     runId: bigint,
-    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; dueOn?: Date | null; closedAt?: Date | null }
   ) {
+    const existing = await this.repo.getRun(runId);
+    if (!existing) {
+      throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`, 404);
+    }
+    if (existing.status === "open" && input.closedAt !== undefined) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "use POST /api/runs/:runId/close to close a run; set dueOn for the planned end date",
+        400
+      );
+    }
     const updated = await this.repo.updateRun(runId, input);
     if (!updated) {
       throw new AppError("RUN_NOT_FOUND", `run ${runId.toString()} not found`);

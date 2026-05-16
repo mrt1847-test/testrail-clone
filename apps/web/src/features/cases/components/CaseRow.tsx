@@ -25,6 +25,9 @@ type CaseRowProps = {
   onSave: (patch: {
     title: string;
     preconditions: string;
+    references: string;
+    expectedResult: string;
+    templateId: string | null;
     customValues: Record<string, string | number | boolean | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;

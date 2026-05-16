@@ -35,6 +35,8 @@ import { AuthService } from "./modules/auth/auth.service.js";
 import { registerIntegrationsRoutes } from "./modules/integrations/integrations.routes.js";
 import { registerImportExportRoutes } from "./modules/importExport/importExport.routes.js";
 import { registerTestRailRoutes } from "./modules/testrail/testrail.routes.js";
+import { registerAdminAccessDefaultsRoutes } from "./modules/admin/accessDefaults.routes.js";
+import { registerAdminUsersRoutes } from "./modules/admin/users.routes.js";
 
 export function buildApp() {
   const app = Fastify({ logger: false });
@@ -88,7 +90,9 @@ export function buildApp() {
   void registerMilestonesRoutes(app, { prisma, authService });
   void registerPlansRoutes(app, { prisma, authService, runsService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });
-  void registerTokensRoutes(app, { prisma });
+  void registerAdminAccessDefaultsRoutes(app, { authService, prisma });
+  void registerAdminUsersRoutes(app, { authService, prisma });
+  void registerTokensRoutes(app, { prisma, authService });
 
   return app;
 }

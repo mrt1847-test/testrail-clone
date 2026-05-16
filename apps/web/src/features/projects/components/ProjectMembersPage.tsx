@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
+import { fetchAccessDefaults } from "../../admin/api/adminApi";
 import {
   addProjectMember,
   fetchProjectMembers,
@@ -39,12 +40,20 @@ export function ProjectMembersPage() {
     void load();
   }, [projectId]);
 
+  useEffect(() => {
+    void fetchAccessDefaults()
+      .then((row) => setRole(row.defaultProjectMemberRole))
+      .catch(() => undefined);
+  }, []);
+
   async function onAdd() {
     if (!email.trim()) return;
     await addProjectMember({ projectId, email, name: name || undefined, role });
     setEmail("");
     setName("");
-    setRole("viewer");
+    void fetchAccessDefaults()
+      .then((row) => setRole(row.defaultProjectMemberRole))
+      .catch(() => setRole("viewer"));
     await load();
   }
 
@@ -63,6 +72,13 @@ export function ProjectMembersPage() {
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        Built-in roles use the{" "}
+        <Link to={`/projects/${projectId}/settings/custom-roles`} className="underline">
+          permission matrix
+        </Link>
+        .
+      </p>
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-900">Add member</h2>
         <div className="mt-3 grid gap-2 md:grid-cols-4">

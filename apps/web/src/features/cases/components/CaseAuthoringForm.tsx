@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { CaseTemplateRow, CustomFieldRow } from "../../projects/api/settingsApi";
+import { ReferencesInput } from "./ReferencesInput";
 
 type ScalarCustomValue = string | number | boolean | null;
 
@@ -15,13 +16,17 @@ export type CaseAuthoringTemplateDefinition = Pick<
 >;
 
 type CaseAuthoringFormProps = {
+  projectId?: string;
   valueKey: string;
   initialTitle: string;
   initialPreconditions: string;
   initialReferences?: string;
+  initialExpectedResult?: string;
+  initialCaseTemplateId?: string | null;
   initialCustomValues: Record<string, ScalarCustomValue>;
   customFields: CaseAuthoringCustomFieldDefinition[];
   templates?: CaseAuthoringTemplateDefinition[];
+  onTemplateChange?: (info: { templateId: string; usesSteps: boolean }) => void;
   submitLabel: string;
   cancelLabel?: string;
   isSubmitting?: boolean;
@@ -31,6 +36,7 @@ type CaseAuthoringFormProps = {
     title: string;
     preconditions: string;
     references: string;
+    expectedResult: string;
     customValues: Record<string, ScalarCustomValue>;
     templateId: string | null;
   }) => Promise<void> | void;
@@ -41,7 +47,40 @@ function normalizeTemplateFieldKey(value: string) {
   return value.trim().toLowerCase();
 }
 
-function preferredTemplateId(templates: CaseAuthoringTemplateDefinition[]) {
+const BUILTIN_TEMPLATE_FIELD_LABELS: Record<string, string> = {
+  mission: "Mission",
+  goals: "Goals",
+  scenario: "Scenario",
+  ai_input: "Input",
+  ai_expected_output: "Expected output",
+  ai_quality_rating: "Quality rating",
+  ai_latency_ms: "Latency (ms)",
+  ai_traces: "Traces"
+};
+
+function templateUsesSteps(fields: string[]) {
+  return fields.some((field) => normalizeTemplateFieldKey(field) === "steps");
+}
+
+function templateUsesExpectedResult(fields: string[]) {
+  return fields.some((field) => normalizeTemplateFieldKey(field) === "expectedresult");
+}
+
+function isBuiltinTemplateField(key: string) {
+  const normalized = normalizeTemplateFieldKey(key);
+  return normalized in BUILTIN_TEMPLATE_FIELD_LABELS || normalized === "expectedresult";
+}
+
+function builtinTemplateFieldLabel(key: string) {
+  const normalized = normalizeTemplateFieldKey(key);
+  if (normalized === "expectedresult") return "Expected result";
+  return BUILTIN_TEMPLATE_FIELD_LABELS[normalized] ?? key;
+}
+
+function preferredTemplateId(templates: CaseAuthoringTemplateDefinition[], initialCaseTemplateId?: string | null) {
+  if (initialCaseTemplateId && templates.some((template) => template.id === initialCaseTemplateId)) {
+    return initialCaseTemplateId;
+  }
   return templates.find((template) => template.isDefault)?.id ?? templates[0]?.id ?? "";
 }
 
@@ -70,13 +109,17 @@ function inputClassName(hasError: boolean) {
 }
 
 export function CaseAuthoringForm({
+  projectId = "",
   valueKey,
   initialTitle,
   initialPreconditions,
   initialReferences = "",
+  initialExpectedResult = "",
+  initialCaseTemplateId = null,
   initialCustomValues,
   customFields,
   templates = [],
+  onTemplateChange,
   submitLabel,
   cancelLabel = "Cancel",
   isSubmitting = false,
@@ -108,6 +151,7 @@ export function CaseAuthoringForm({
   const [title, setTitle] = useState(initialTitle);
   const [preconditions, setPreconditions] = useState(initialPreconditions);
   const [references, setReferences] = useState(initialReferences);
+  const [expectedResult, setExpectedResult] = useState(initialExpectedResult);
   const [customValues, setCustomValues] = useState<Record<string, ScalarCustomValue>>(initialCustomValues);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -116,10 +160,11 @@ export function CaseAuthoringForm({
     setTitle(initialTitle);
     setPreconditions(initialPreconditions);
     setReferences(initialReferences);
+    setExpectedResult(initialExpectedResult);
     setCustomValues(initialCustomValues);
-    setSelectedTemplateId(preferredTemplateId(activeTemplates));
+    setSelectedTemplateId(preferredTemplateId(activeTemplates, initialCaseTemplateId));
     setFieldErrors({});
-  }, [valueKey]);
+  }, [valueKey, initialCaseTemplateId, initialExpectedResult, initialCustomValues, initialPreconditions, initialReferences, initialTitle, activeTemplates]);
 
   useEffect(() => {
     if (activeTemplates.length === 0) {
@@ -132,11 +177,14 @@ export function CaseAuthoringForm({
   }, [activeTemplates, selectedTemplateId]);
 
   const selectedTemplate = activeTemplates.find((template) => template.id === selectedTemplateId) ?? null;
-  const templateIncludesSteps =
-    selectedTemplate?.fields.some((field) => {
-      const normalized = normalizeTemplateFieldKey(field);
-      return normalized === "steps" || normalized === "expectedresult";
-    }) ?? false;
+  const selectedTemplateFields = selectedTemplate?.fields ?? [];
+  const templateShowsSteps = templateUsesSteps(selectedTemplateFields);
+  const templateShowsExpectedResult = templateUsesExpectedResult(selectedTemplateFields);
+
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+    onTemplateChange?.({ templateId: selectedTemplateId, usesSteps: templateShowsSteps });
+  }, [onTemplateChange, selectedTemplateId, templateShowsSteps]);
 
   function setCustomValue(systemName: string, value: ScalarCustomValue) {
     setCustomValues((current) => {
@@ -219,7 +267,12 @@ export function CaseAuthoringForm({
       </label>
     );
 
-    const referencesNode = (
+    const referencesNode = projectId ? (
+      <label className="grid gap-1 text-sm text-slate-700">
+        <span>References</span>
+        <ReferencesInput projectId={projectId} value={references} onChange={setReferences} disabled={isSubmitting} />
+      </label>
+    ) : (
       <label className="grid gap-1 text-sm text-slate-700">
         <span>References</span>
         <input
@@ -233,7 +286,46 @@ export function CaseAuthoringForm({
       </label>
     );
 
-    const stepsNode = stepsSection ? <div className="grid gap-2">{stepsSection}</div> : null;
+    const stepsNode = stepsSection && templateShowsSteps ? <div className="grid gap-2">{stepsSection}</div> : null;
+
+    const expectedResultNode = templateShowsExpectedResult ? (
+      <label className="grid gap-1 text-sm text-slate-700">
+        <span>{builtinTemplateFieldLabel("expectedResult")}</span>
+        <textarea
+          value={expectedResult}
+          onChange={(event) => setExpectedResult(event.target.value)}
+          className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+        />
+      </label>
+    ) : null;
+
+    const renderBuiltinTemplateField = (fieldKey: string) => {
+      const normalized = normalizeTemplateFieldKey(fieldKey);
+      if (normalized === "expectedresult") {
+        return expectedResultNode;
+      }
+      const multiline =
+        normalized === "scenario" || normalized === "ai_traces" || normalized === "ai_input" || normalized === "goals";
+      return (
+        <label key={normalized} className="grid gap-1 text-sm text-slate-700">
+          <span>{builtinTemplateFieldLabel(fieldKey)}</span>
+          {multiline ? (
+            <textarea
+              value={String(customValues[normalized] ?? "")}
+              onChange={(event) => setCustomValue(normalized, event.target.value)}
+              className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            />
+          ) : (
+            <input
+              type="text"
+              value={String(customValues[normalized] ?? "")}
+              onChange={(event) => setCustomValue(normalized, event.target.value)}
+              className={inputClassName(false)}
+            />
+          )}
+        </label>
+      );
+    };
 
     const renderCustomField = (field: CaseAuthoringCustomFieldDefinition) => {
       const error = fieldErrors[field.systemName];
@@ -323,8 +415,16 @@ export function CaseAuthoringForm({
         pushBlock("references", referencesNode);
         continue;
       }
-      if (normalized === "steps" || normalized === "expectedresult") {
+      if (normalized === "steps") {
         if (stepsNode) pushBlock("steps", stepsNode);
+        continue;
+      }
+      if (normalized === "expectedresult") {
+        if (expectedResultNode) pushBlock("expectedResult", expectedResultNode);
+        continue;
+      }
+      if (isBuiltinTemplateField(fieldKey)) {
+        pushBlock(`builtin:${normalized}`, renderBuiltinTemplateField(fieldKey));
         continue;
       }
       const customField = customFieldMap.get(normalized);
@@ -333,23 +433,29 @@ export function CaseAuthoringForm({
       }
     }
 
-    pushBlock("title", titleNode);
-    pushBlock("preconditions", preconditionsNode);
-    pushBlock("references", referencesNode);
-    if (stepsNode) pushBlock("steps", stepsNode);
-    for (const field of activeCustomFields) {
-      pushBlock(`custom:${field.systemName}`, renderCustomField(field));
+    if ((selectedTemplate?.fields ?? []).length === 0) {
+      pushBlock("title", titleNode);
+      pushBlock("preconditions", preconditionsNode);
+      pushBlock("references", referencesNode);
+      if (expectedResultNode) pushBlock("expectedResult", expectedResultNode);
+      if (stepsNode) pushBlock("steps", stepsNode);
+      for (const field of activeCustomFields) {
+        pushBlock(`custom:${field.systemName}`, renderCustomField(field));
+      }
     }
     return blocks;
   }, [
     activeCustomFields,
     customFieldMap,
     customValues,
+    expectedResult,
     fieldErrors,
     preconditions,
     references,
     selectedTemplate?.fields,
     stepsSection,
+    templateShowsExpectedResult,
+    templateShowsSteps,
     title
   ]);
 
@@ -370,6 +476,7 @@ export function CaseAuthoringForm({
         title: title.trim(),
         preconditions: preconditions.trim(),
         references: references.trim(),
+        expectedResult: expectedResult.trim(),
         customValues: normalizedCustomValues,
         templateId: selectedTemplateId || null
       });
@@ -400,7 +507,7 @@ export function CaseAuthoringForm({
           {selectedTemplate?.description ? (
             <p className="mt-2 text-xs text-slate-600">{selectedTemplate.description}</p>
           ) : null}
-          {templateIncludesSteps && !stepsSection ? (
+          {templateShowsSteps && !stepsSection ? (
             <p className="mt-2 text-xs text-amber-700">This template expects steps. Add them after creating the case.</p>
           ) : null}
         </div>

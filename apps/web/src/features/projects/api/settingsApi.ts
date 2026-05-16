@@ -31,6 +31,7 @@ export type CustomStatusRow = {
 
 export type CaseTemplateRow = {
   id: string;
+  systemKey: string | null;
   name: string;
   description: string | null;
   fields: string[];
@@ -116,6 +117,17 @@ export type ProjectMemberRow = {
   email: string;
   name: string | null;
   role: "owner" | "manager" | "tester" | "viewer";
+  customRoleId?: string | null;
+  customRoleName?: string | null;
+};
+
+export type CustomRoleRow = {
+  id: string;
+  projectId: string;
+  name: string;
+  systemName: string;
+  permissions: string[];
+  isActive: boolean;
 };
 
 export type AuditLogRow = {
@@ -311,6 +323,7 @@ export async function fetchCaseTemplates(projectId: string): Promise<CaseTemplat
   return res.data.map((row) => ({
     ...row,
     id: String(row.id),
+    systemKey: row.systemKey ?? null,
     description: row.description ?? null,
     fields: row.fields ?? [],
     isDefault: row.isDefault ?? false,
@@ -528,15 +541,36 @@ export async function fetchProjectMembers(projectId: string): Promise<ProjectMem
   return res.data.map((row) => ({ ...row, id: String(row.id), userId: String(row.userId) }));
 }
 
+export async function fetchCustomRoles(projectId: string): Promise<CustomRoleRow[]> {
+  const res = await apiFetch<Paged<CustomRoleRow>>(`/api/projects/${projectId}/settings/custom-roles`);
+  return res.data.map((row) => ({ ...row, id: String(row.id), projectId: String(row.projectId) }));
+}
+
+export async function createCustomRole(
+  projectId: string,
+  input: { name: string; systemName?: string; permissions: string[]; isActive?: boolean }
+) {
+  const res = await apiFetch<Ok<CustomRoleRow>>(`/api/projects/${projectId}/settings/custom-roles`, {
+    method: "POST",
+    body: input
+  });
+  return { ...res.data, id: String(res.data.id), projectId: String(res.data.projectId) };
+}
+
+export async function deleteCustomRole(projectId: string, roleId: string) {
+  await apiFetch<void>(`/api/projects/${projectId}/settings/custom-roles/${roleId}`, { method: "DELETE" });
+}
+
 export async function addProjectMember(input: {
   projectId: string;
   email: string;
   name?: string;
   role: ProjectMemberRow["role"];
+  customRoleId?: string | null;
 }) {
   const res = await apiFetch<Ok<ProjectMemberRow>>(`/api/projects/${input.projectId}/settings/members`, {
     method: "POST",
-    body: { email: input.email, name: input.name, role: input.role }
+    body: { email: input.email, name: input.name, role: input.role, customRoleId: input.customRoleId ?? null }
   });
   return { ...res.data, id: String(res.data.id), userId: String(res.data.userId) };
 }
@@ -544,11 +578,12 @@ export async function addProjectMember(input: {
 export async function updateProjectMemberRole(input: {
   projectId: string;
   memberId: string;
-  role: ProjectMemberRow["role"];
+  role?: ProjectMemberRow["role"];
+  customRoleId?: string | null;
 }) {
   const res = await apiFetch<Ok<ProjectMemberRow>>(`/api/projects/${input.projectId}/settings/members/${input.memberId}`, {
     method: "PATCH",
-    body: { role: input.role }
+    body: { role: input.role, customRoleId: input.customRoleId }
   });
   return { ...res.data, id: String(res.data.id), userId: String(res.data.userId) };
 }

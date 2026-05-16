@@ -447,7 +447,8 @@ describe("phase3 runs/results flow", () => {
     const createRes = await app.inject({
       method: "POST",
       url: "/api/tokens",
-      payload: { projectId, name: "compat token" }
+      headers,
+      payload: { projectId, name: "compat token", scopes: ["automation:read", "automation:write"], expiresInDays: 30 }
     });
     expect(createRes.statusCode).toBe(200);
     const created = createRes.json() as { data: { id: string; projectId: string; name: string }; rawToken: string };
@@ -457,7 +458,8 @@ describe("phase3 runs/results flow", () => {
 
     const listRes = await app.inject({
       method: "GET",
-      url: `/api/tokens?projectId=${projectId}`
+      url: `/api/tokens?projectId=${projectId}`,
+      headers
     });
     expect(listRes.statusCode).toBe(200);
     const listPayload = listRes.json() as { data: Array<{ id: string; projectId: string }> };
@@ -465,7 +467,8 @@ describe("phase3 runs/results flow", () => {
 
     const deleteRes = await app.inject({
       method: "DELETE",
-      url: `/api/tokens/${created.data.id}?projectId=${projectId}`
+      url: `/api/tokens/${created.data.id}?projectId=${projectId}`,
+      headers
     });
     expect(deleteRes.statusCode).toBe(204);
   });

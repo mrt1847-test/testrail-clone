@@ -10,6 +10,7 @@ import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchMilestones } from "../../projects/api/planningApi";
+import { dateInputToIso, toDateInputValue } from "../utils/runDates";
 import type { RunCompositionMode } from "../types";
 import { useRunCompositionDraft } from "../hooks/useRunCompositionDraft";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
@@ -39,6 +40,8 @@ export function RunCreatePage() {
   const [name, setName] = useState("");
   const [suiteId, setSuiteId] = useState("");
   const [milestoneId, setMilestoneId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [environment, setEnvironment] = useState("");
   const [includeAll, setIncludeAll] = useState(true);
   const [compositionMode, setCompositionMode] = useState<RunCompositionMode>("static");
@@ -98,6 +101,14 @@ export function RunCreatePage() {
     excludedSectionIds,
     validSectionIds
   );
+
+  useEffect(() => {
+    if (!milestoneId) return;
+    const milestone = milestones.find((item) => String(item.id) === milestoneId);
+    if (!milestone) return;
+    if (milestone.startDate) setStartDate(toDateInputValue(milestone.startDate));
+    if (milestone.dueDate) setEndDate(toDateInputValue(milestone.dueDate));
+  }, [milestoneId, milestones]);
 
   useEffect(() => {
     if (!suiteId) {
@@ -306,6 +317,8 @@ export function RunCreatePage() {
             : undefined,
         excludedSectionIds: effectiveIncludeAll && excludedSectionIds.length > 0 ? excludedSectionIds : undefined,
         milestoneId: milestoneId || null,
+        startedAt: dateInputToIso(startDate),
+        dueOn: dateInputToIso(endDate),
         environment: environment.trim() || undefined,
         compositionMode,
         filterDefinition
@@ -382,7 +395,30 @@ export function RunCreatePage() {
               </option>
             ))}
           </select>
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Selecting a milestone can prefill start/end dates from its schedule.
+          </span>
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Start date (optional)
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            End date (optional)
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
         <label className="block text-sm font-medium text-slate-700">
           Environment
           <input

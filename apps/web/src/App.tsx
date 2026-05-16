@@ -41,6 +41,9 @@ import { RunDetailPage } from "./features/runs/components/RunDetailPage";
 import { RunListPage } from "./features/runs/components/RunListPage";
 import { ResultExplorerPage } from "./features/runs/components/ResultExplorerPage";
 import { MyTestsPage } from "./features/runs/components/MyTestsPage";
+import { AdminAccessDefaultsPage } from "./features/admin/components/AdminAccessDefaultsPage";
+import { AdminUsersPage } from "./features/admin/components/AdminUsersPage";
+import { ProjectCustomRolesPage } from "./features/projects/components/ProjectCustomRolesPage";
 
 export function App() {
   return (
@@ -49,6 +52,8 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/projects" element={<ProjectListPage />} />
+        <Route path="/admin/access-defaults" element={<AdminAccessDefaultsPage />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<ProjectOverviewPage />} />
           <Route path="cases" element={<TestCaseWorkspacePage />} />
@@ -82,6 +87,7 @@ export function App() {
           <Route path="settings" element={<ProjectSettingsPage />} />
           <Route path="settings/tokens" element={<TokensPage />} />
           <Route path="settings/members" element={<ProjectMembersPage />} />
+          <Route path="settings/custom-roles" element={<ProjectCustomRolesPage />} />
           <Route path="settings/custom-fields" element={<CustomFieldsPage />} />
           <Route path="settings/statuses" element={<CustomStatusesPage />} />
           <Route path="settings/templates" element={<CaseTemplatesPage />} />

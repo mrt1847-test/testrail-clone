@@ -13,6 +13,7 @@ import {
   type SettingsRouteDeps
 } from "./settings.shared.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import { getAccessDefaults } from "../admin/accessDefaults.service.js";
 
 export async function registerMembersRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/members", async (req, reply) => {
@@ -27,6 +28,8 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
       select: {
         id: true,
         role: true,
+        customRoleId: true,
+        customRole: { select: { id: true, name: true } },
         user: { select: { id: true, email: true, name: true } }
       }
     });
@@ -38,7 +41,9 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
             userId: row.user.id,
             email: row.user.email,
             name: row.user.name,
-            role: row.role
+            role: row.role,
+            customRoleId: row.customRoleId,
+            customRoleName: row.customRole?.name ?? null
           })),
           1,
           100
@@ -48,13 +53,24 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
   });
 
   app.post("/api/projects/:projectId/settings/members", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: "members.manage" });
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (!deps.prisma) {
       return reply.code(501).send({ code: "NOT_IMPLEMENTED", message: "members API needs prisma mode" });
     }
     const body = addMemberSchema.parse(req.body);
     const actor = await getAuthenticatedUser(req, deps);
+    const accessDefaults = await getAccessDefaults(deps.prisma);
+    const role = body.role ?? accessDefaults.defaultProjectMemberRole;
+    const customRoleId = body.customRoleId ?? null;
+    if (customRoleId) {
+      const customRole = await deps.prisma.customRole.findFirst({
+        where: { id: customRoleId, projectId, deletedAt: null, isActive: true }
+      });
+      if (!customRole) {
+        return reply.code(400).send({ code: "VALIDATION_ERROR", message: "custom role not found" });
+      }
+    }
     const normalizedEmail = body.email.trim().toLowerCase();
     const result = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.upsert({
@@ -64,11 +80,12 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
       });
       const member = await tx.projectMember.upsert({
         where: { projectId_userId: { projectId, userId: user.id } },
-        update: { role: body.role, deletedAt: null, updatedBy: actor.id },
+        update: { role, customRoleId, deletedAt: null, updatedBy: actor.id },
         create: {
           projectId,
           userId: user.id,
-          role: body.role,
+          role,
+          customRoleId,
           createdBy: actor.id,
           updatedBy: actor.id
         }
@@ -83,7 +100,14 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
           changes: { role: member.role, email: user.email }
         }
       });
-      return { id: member.id, userId: user.id, email: user.email, name: user.name, role: member.role };
+      return {
+        id: member.id,
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: member.role,
+        customRoleId: member.customRoleId
+      };
     });
     await recordActivityEvent(deps.prisma, {
       projectId,
@@ -99,7 +123,7 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
   });
 
   app.patch("/api/projects/:projectId/settings/members/:memberId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: "members.manage" });
     const { projectId, memberId } = memberIdParamSchema.parse(req.params);
     if (!deps.prisma) {
       return reply.code(501).send({ code: "NOT_IMPLEMENTED", message: "members API needs prisma mode" });
@@ -108,14 +132,35 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
     const actor = await getAuthenticatedUser(req, deps);
     try {
       const updated = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const checked = await enforceNotLastOwner(tx, { projectId, memberId, nextRole: body.role });
-        if (!checked.exists) {
+        const existing = await tx.projectMember.findFirst({
+          where: { id: memberId, projectId, deletedAt: null },
+          select: { role: true }
+        });
+        if (!existing) {
           throw new Error("MEMBER_NOT_FOUND");
+        }
+        const nextRole = body.role ?? existing.role;
+        const checked = await enforceNotLastOwner(tx, { projectId, memberId, nextRole });
+        if (body.customRoleId) {
+          const customRole = await tx.customRole.findFirst({
+            where: { id: body.customRoleId, projectId, deletedAt: null, isActive: true }
+          });
+          if (!customRole) throw new Error("CUSTOM_ROLE_NOT_FOUND");
         }
         const row = await tx.projectMember.update({
           where: { id: memberId },
-          data: { role: body.role, updatedBy: actor.id },
-          select: { id: true, role: true, user: { select: { id: true, email: true, name: true } } }
+          data: {
+            ...(body.role ? { role: body.role } : {}),
+            ...(body.customRoleId !== undefined ? { customRoleId: body.customRoleId } : {}),
+            updatedBy: actor.id
+          },
+          select: {
+            id: true,
+            role: true,
+            customRoleId: true,
+            customRole: { select: { name: true } },
+            user: { select: { id: true, email: true, name: true } }
+          }
         });
         await tx.auditLog.create({
           data: {
@@ -146,13 +191,18 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
             userId: updated.user.id,
             email: updated.user.email,
             name: updated.user.name,
-            role: updated.role
+            role: updated.role,
+            customRoleId: updated.customRoleId,
+            customRoleName: updated.customRole?.name ?? null
           })
         )
       );
     } catch (e) {
       if (e instanceof Error && e.message === "MEMBER_NOT_FOUND") {
         return reply.code(404).send({ code: "NOT_FOUND", message: "member not found" });
+      }
+      if (e instanceof Error && e.message === "CUSTOM_ROLE_NOT_FOUND") {
+        return reply.code(400).send({ code: "VALIDATION_ERROR", message: "custom role not found" });
       }
       if (e instanceof Error && e.message === "LAST_OWNER_PROTECTED") {
         return reply.code(409).send({ code: "LAST_OWNER_PROTECTED", message: "at least one owner is required" });
@@ -162,7 +212,7 @@ export async function registerMembersRoutes(app: FastifyInstance, deps: Settings
   });
 
   app.delete("/api/projects/:projectId/settings/members/:memberId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: "members.manage" });
     const { projectId, memberId } = memberIdParamSchema.parse(req.params);
     if (!deps.prisma) {
       return reply.code(501).send({ code: "NOT_IMPLEMENTED", message: "members API needs prisma mode" });

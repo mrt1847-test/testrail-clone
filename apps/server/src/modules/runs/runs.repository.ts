@@ -47,6 +47,8 @@ export type Tx = {
     assignedTo?: bigint | null;
     environment?: string | null;
     metadata?: Record<string, unknown>;
+    startedAt?: Date | null;
+    dueOn?: Date | null;
   }): Promise<TestRun>;
   getCasesForRun(input: {
     projectId: bigint;
@@ -75,7 +77,7 @@ export type Tx = {
   closeRun(runId: bigint): Promise<void>;
   updateRun(
     runId: bigint,
-    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; dueOn?: Date | null; closedAt?: Date | null }
   ): Promise<void>;
   updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<void>;
   getResultsByTestInstanceId(testId: bigint): Promise<
@@ -166,7 +168,7 @@ export interface RunsRepository {
   reopenRun(runId: bigint): Promise<TestRun | null>;
   updateRun(
     runId: bigint,
-    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; dueOn?: Date | null; closedAt?: Date | null }
   ): Promise<TestRun | null>;
   updateRunComposition(
     runId: bigint,
@@ -300,7 +302,8 @@ export class InMemoryRunsRepository implements RunsRepository {
           milestoneId: rest.milestoneId ?? null,
           assignedTo: rest.assignedTo ?? null,
           environment: rest.environment ?? null,
-          startedAt: new Date(),
+          startedAt: rest.startedAt ?? null,
+          dueOn: rest.dueOn ?? null,
           closedAt: null,
           createdAt: new Date(),
           composition: parseRunCompositionMetadata(metadata ?? null),
@@ -429,6 +432,7 @@ export class InMemoryRunsRepository implements RunsRepository {
         if (input.name !== undefined) run.name = input.name;
         if (input.assignedTo !== undefined) run.assignedTo = input.assignedTo;
         if (input.startedAt !== undefined) run.startedAt = input.startedAt;
+        if (input.dueOn !== undefined) run.dueOn = input.dueOn;
         if (input.closedAt !== undefined) run.closedAt = input.closedAt;
       },
       updateTestAssignee: async (testId, assignedTo) => {
@@ -486,7 +490,7 @@ export class InMemoryRunsRepository implements RunsRepository {
 
   async updateRun(
     runId: bigint,
-    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; dueOn?: Date | null; closedAt?: Date | null }
   ): Promise<TestRun | null> {
     const run = this.runs.find((item) => item.id === runId);
     if (!run) return null;
@@ -498,6 +502,9 @@ export class InMemoryRunsRepository implements RunsRepository {
     }
     if (input.startedAt !== undefined) {
       run.startedAt = input.startedAt;
+    }
+    if (input.dueOn !== undefined) {
+      run.dueOn = input.dueOn;
     }
     if (input.closedAt !== undefined) {
       run.closedAt = input.closedAt;

@@ -16,7 +16,9 @@ export const createRunSchema = z.object({
   /** includeAll일 때 제외할 섹션 서브트리 루트 */
   excludedSectionIds: z.array(z.coerce.bigint()).optional(),
   compositionMode: compositionModeSchema.optional(),
-  filterDefinition: runCaseFilterSchema.optional()
+  filterDefinition: runCaseFilterSchema.optional(),
+  startedAt: z.coerce.date().nullable().optional(),
+  dueOn: z.coerce.date().nullable().optional()
 });
 
 export const createProjectRunSchema = createRunSchema.omit({ projectId: true });
@@ -25,6 +27,7 @@ export const updateRunSchema = z.object({
   name: z.string().min(1).optional(),
   assignedTo: z.coerce.bigint().nullable().optional(),
   startedAt: z.coerce.date().nullable().optional(),
+  dueOn: z.coerce.date().nullable().optional(),
   closedAt: z.coerce.date().nullable().optional()
 });
 

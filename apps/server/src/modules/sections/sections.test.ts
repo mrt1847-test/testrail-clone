@@ -6,8 +6,11 @@ import { SectionsService } from "./sections.service.js";
 async function seedSections() {
   const repo = new ProjectsMemoryRepository();
   const service = new SectionsService(repo);
-  const project = await repo.createProject({ name: "Demo", description: null });
-  const suite = await repo.createSuite({ projectId: project.id, name: "Suite", description: null });
+  const project = await repo.createProject({ name: "Demo", description: null, projectType: "multi_suite" });
+  const suite = (await repo.listSuitesByProject(project.id))[0]!;
+  for (const section of await repo.listSectionsBySuite(suite.id)) {
+    await repo.deleteSection(section.id);
+  }
   return { repo, service, project, suite };
 }
 

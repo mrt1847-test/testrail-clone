@@ -232,17 +232,23 @@ export function CaseListPane({
     void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
   };
 
+  const [createUsesSteps, setCreateUsesSteps] = useState(false);
+
   const createCaseMutation = useMutation({
     mutationFn: async (input: {
       title: string;
       preconditions: string;
       references: string;
+      expectedResult: string;
+      templateId: string | null;
       customValues: Record<string, string | number | boolean | null>;
       draftSteps: Array<{ description: string; expected: string }>;
     }) => {
       const created = await createCase(selectedSectionId!, {
         title: input.title,
         preconditions: input.preconditions,
+        expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
+        caseTemplateId: input.templateId ? Number(input.templateId) : null,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
         customValues: input.customValues
       });
@@ -644,16 +650,18 @@ export function CaseListPane({
             <div className="border-b border-slate-200 bg-slate-50 p-4">
               <h3 className="mb-3 text-lg font-semibold text-slate-900">New test case</h3>
               <CaseAuthoringForm
+                projectId={projectId}
                 valueKey={`create:${selectedSectionId ?? "none"}:${createFormVersion}`}
                 initialTitle=""
                 initialPreconditions=""
                 initialCustomValues={{}}
                 customFields={customFields}
                 templates={caseTemplates}
+                onTemplateChange={({ usesSteps }) => setCreateUsesSteps(usesSteps)}
                 submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
                 isSubmitting={createCaseMutation.isPending}
                 submitError={createFormError}
-                stepsSection={
+                stepsSection={createUsesSteps ? (
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-slate-800">Steps</span>
@@ -719,15 +727,19 @@ export function CaseListPane({
                       ))}
                     </ol>
                   </>
-                }
+                ) : undefined}
                 onSubmit={async (input) => {
                   setCreateFormError(null);
                   await createCaseMutation.mutateAsync({
                     title: input.title,
                     preconditions: input.preconditions,
                     references: input.references,
+                    expectedResult: input.expectedResult,
+                    templateId: input.templateId,
                     customValues: input.customValues,
-                    draftSteps: createDraftSteps.map(({ description, expected }) => ({ description, expected }))
+                    draftSteps: createUsesSteps
+                      ? createDraftSteps.map(({ description, expected }) => ({ description, expected }))
+                      : []
                   });
                 }}
                 onCancel={() => {

@@ -3,9 +3,18 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { requireAuthenticated, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { ok } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import { parseCaseRefs } from "../../domain/caseRefs.js";
+import { resolveReferenceUrls } from "../../domain/referenceUrls.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { AuthService } from "../auth/auth.service.js";
+import {
+  loadDefectIntegration,
+  searchIssueKeys,
+  setInMemoryDefectIntegration,
+  type DefectIntegrationRow
+} from "./defectIntegration.service.js";
 
 const updateDefectIntegrationBodySchema = z.object({
   provider: z.string().trim().min(1).optional(),
@@ -14,23 +23,22 @@ const updateDefectIntegrationBodySchema = z.object({
   defaultProjectKey: z.string().trim().min(1).optional().nullable()
 });
 
-type InMemoryDefectIntegrationSetting = {
-  projectId: bigint;
-  provider: string;
-  isEnabled: boolean;
-  issueUrlTemplate: string | null;
-  defaultProjectKey: string | null;
-};
+const referenceUrlsQuerySchema = z.object({
+  keys: z.string().trim().min(1)
+});
 
-const inMemorySettings = new Map<string, InMemoryDefectIntegrationSetting>();
+const issueSearchQuerySchema = z.object({
+  q: z.string().default(""),
+  limit: z.coerce.number().int().positive().max(25).default(10)
+});
 
-function defaultSetting(projectId: bigint): InMemoryDefectIntegrationSetting {
+function toSettingResponse(row: DefectIntegrationRow) {
   return {
-    projectId,
-    provider: "custom",
-    isEnabled: false,
-    issueUrlTemplate: null,
-    defaultProjectKey: null
+    projectId: row.projectId,
+    provider: row.provider,
+    isEnabled: row.isEnabled,
+    issueUrlTemplate: row.issueUrlTemplate,
+    defaultProjectKey: row.defaultProjectKey
   };
 }
 
@@ -41,25 +49,8 @@ export async function registerIntegrationsRoutes(
   app.get("/api/projects/:projectId/integrations/defects", async (req, reply) => {
     await requireAuthenticated(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    if (!deps.prisma) {
-      const row = inMemorySettings.get(projectId.toString()) ?? defaultSetting(projectId);
-      return reply.send(toJsonSafe({ data: row }));
-    }
-
-    const row = await deps.prisma.defectIntegrationSetting.findFirst({
-      where: { projectId, deletedAt: null }
-    });
-    return reply.send(
-      toJsonSafe({
-        data: {
-          projectId,
-          provider: row?.provider ?? "custom",
-          isEnabled: row?.isEnabled ?? false,
-          issueUrlTemplate: row?.issueUrlTemplate ?? null,
-          defaultProjectKey: row?.defaultProjectKey ?? null
-        }
-      })
-    );
+    const row = await loadDefectIntegration(projectId, deps.prisma);
+    return reply.send(toJsonSafe({ data: toSettingResponse(row) }));
   });
 
   app.patch("/api/projects/:projectId/integrations/defects", async (req, reply) => {
@@ -67,16 +58,16 @@ export async function registerIntegrationsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = updateDefectIntegrationBodySchema.parse(req.body ?? {});
     if (!deps.prisma) {
-      const current = inMemorySettings.get(projectId.toString()) ?? defaultSetting(projectId);
-      const updated: InMemoryDefectIntegrationSetting = {
+      const current = await loadDefectIntegration(projectId, deps.prisma);
+      const updated: DefectIntegrationRow = {
         projectId,
         provider: body.provider ?? current.provider,
         isEnabled: body.isEnabled ?? current.isEnabled,
         issueUrlTemplate: body.issueUrlTemplate !== undefined ? body.issueUrlTemplate : current.issueUrlTemplate,
         defaultProjectKey: body.defaultProjectKey !== undefined ? body.defaultProjectKey : current.defaultProjectKey
       };
-      inMemorySettings.set(projectId.toString(), updated);
-      return reply.send(toJsonSafe({ data: updated }));
+      setInMemoryDefectIntegration(updated);
+      return reply.send(toJsonSafe({ data: toSettingResponse(updated) }));
     }
 
     const updated = await deps.prisma.defectIntegrationSetting.upsert({
@@ -98,14 +89,33 @@ export async function registerIntegrationsRoutes(
     });
     return reply.send(
       toJsonSafe({
-        data: {
+        data: toSettingResponse({
           projectId: updated.projectId,
           provider: updated.provider,
           isEnabled: updated.isEnabled,
           issueUrlTemplate: updated.issueUrlTemplate ?? null,
           defaultProjectKey: updated.defaultProjectKey ?? null
-        }
+        })
       })
     );
+  });
+
+  app.get("/api/projects/:projectId/integrations/defects/reference-urls", async (req, reply) => {
+    await requireAuthenticated(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { keys } = referenceUrlsQuerySchema.parse(req.query ?? {});
+    const setting = await loadDefectIntegration(projectId, deps.prisma);
+    const tokens = parseCaseRefs(keys);
+    const items = resolveReferenceUrls(tokens, setting);
+    return reply.send(toJsonSafe(ok({ items, integrationEnabled: setting.isEnabled })));
+  });
+
+  app.get("/api/projects/:projectId/integrations/defects/issues/search", async (req, reply) => {
+    await requireAuthenticated(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { q, limit } = issueSearchQuerySchema.parse(req.query ?? {});
+    const setting = await loadDefectIntegration(projectId, deps.prisma);
+    const items = await searchIssueKeys(projectId, q, limit, deps.prisma, setting);
+    return reply.send(toJsonSafe(ok({ items, integrationEnabled: setting.isEnabled })));
   });
 }

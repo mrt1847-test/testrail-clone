@@ -1,4 +1,5 @@
 import { AppError } from "../../common/errors/appError.js";
+import { normalizeProjectType, type ProjectType } from "../../domain/projectTypes.js";
 import type { ProjectsRepository } from "./projects.repository.js";
 
 export class ProjectsService {
@@ -7,15 +8,28 @@ export class ProjectsService {
   async listProjects() {
     return this.repo.listProjects();
   }
-  async createProject(input: { name: string; description?: string; ownerUserId?: bigint }) {
-    return this.repo.createProject(input);
+  async createProject(input: {
+    name: string;
+    description?: string;
+    projectType?: ProjectType;
+    ownerUserId?: bigint;
+  }) {
+    return this.repo.createProject({
+      name: input.name,
+      description: input.description ?? null,
+      projectType: normalizeProjectType(input.projectType),
+      ownerUserId: input.ownerUserId
+    });
   }
   async getProject(projectId: bigint) {
     const found = await this.repo.getProject(projectId);
     if (!found) throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
     return found;
   }
-  async updateProject(projectId: bigint, patch: { name?: string; description?: string }) {
+  async updateProject(
+    projectId: bigint,
+    patch: { name?: string; description?: string; projectType?: ProjectType }
+  ) {
     const updated = await this.repo.updateProject(projectId, patch);
     if (!updated) throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
     return updated;

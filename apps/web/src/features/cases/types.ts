@@ -51,6 +51,8 @@ export interface TestCase {
   labels: string[];
   automationKey: string;
   preconditions: string;
+  expectedResult: string;
+  caseTemplateId: number | null;
   customValues: Record<string, string | number | boolean | null>;
   steps: CaseStep[];
   sectionId: number;

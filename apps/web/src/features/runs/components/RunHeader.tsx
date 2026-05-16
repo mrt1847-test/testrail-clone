@@ -14,7 +14,10 @@ export function RunHeader({ run, milestoneName, counts }: Props) {
   if (run.milestoneId) meta.push(milestoneName ?? `Milestone #${run.milestoneId}`);
   meta.push(run.assignedTo?.trim() ? run.assignedTo : "Unassigned");
   if (run.startedAt) {
-    meta.push(`Started ${new Date(run.startedAt).toLocaleDateString()}`);
+    meta.push(`Start ${new Date(run.startedAt).toLocaleDateString()}`);
+  }
+  if (run.dueOn) {
+    meta.push(`End ${new Date(run.dueOn).toLocaleDateString()}`);
   }
   if (run.closedAt) {
     meta.push(`Closed ${new Date(run.closedAt).toLocaleDateString()}`);

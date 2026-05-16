@@ -6,6 +6,7 @@ export type RunSummary = {
   failed: number;
   createdAt: string;
   startedAt?: string | null;
+  dueOn?: string | null;
   closedAt?: string | null;
   milestone?: string;
   milestoneId?: string | null;
@@ -35,13 +36,15 @@ export type RunCompositionInfo = {
   lastSyncRemoved?: number;
 };
 
+export type RunDetail = RunSummary & {
+  environment?: string;
+  includeAll?: boolean;
+  composition?: RunCompositionInfo | null;
+};
+
 export type RunDetailDto = {
-  run: RunSummary & {
-    environment?: string;
-    assignedTo?: string | null;
-    includeAll?: boolean;
-    composition?: RunCompositionInfo | null;
-  };
+  run: RunDetail;
+  dateWarnings?: string[];
   instances: TestInstanceRow[];
   counts: { passed: number; failed: number; blocked: number; retest: number; untested: number };
 };

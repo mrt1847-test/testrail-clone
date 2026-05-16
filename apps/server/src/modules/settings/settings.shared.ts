@@ -45,6 +45,7 @@ export type CustomStatusRow = {
 export type CaseTemplateRow = {
   id: bigint;
   projectId: bigint;
+  systemKey?: string | null;
   name: string;
   description: string | null;
   fields: string[];
@@ -229,10 +230,14 @@ const memberRoleSchema = z.enum(["owner", "manager", "tester", "viewer"]);
 const addMemberSchema = z.object({
   email: z.string().email(),
   name: z.string().optional(),
-  role: memberRoleSchema.default("viewer")
+  role: memberRoleSchema.optional(),
+  customRoleId: z.coerce.bigint().nullable().optional()
 });
 const updateMemberRoleSchema = z.object({
-  role: memberRoleSchema
+  role: memberRoleSchema.optional(),
+  customRoleId: z.coerce.bigint().nullable().optional()
+}).refine((body) => body.role !== undefined || body.customRoleId !== undefined, {
+  message: "role or customRoleId is required"
 });
 const memberIdParamSchema = z.object({
   projectId: z.coerce.bigint(),
@@ -337,6 +342,7 @@ function statusAuditChanges(row: ReturnType<typeof statusToResponse>) {
 
 function templateToResponse(row: {
   id: bigint;
+  systemKey?: string | null;
   name: string;
   description: string | null;
   fields: Prisma.JsonValue;
@@ -346,6 +352,7 @@ function templateToResponse(row: {
 }) {
   return {
     id: row.id,
+    systemKey: row.systemKey ?? null,
     name: row.name,
     description: row.description,
     fields: Array.isArray(row.fields) ? row.fields.filter((item): item is string => typeof item === "string") : [],

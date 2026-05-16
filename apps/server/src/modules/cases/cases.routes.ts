@@ -9,6 +9,11 @@ import { AppError } from "../../common/errors/appError.js";
 import { CasesService } from "./cases.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
+  resolveInMemoryCaseTemplateId,
+  resolveProjectCaseTemplateId
+} from "../settings/caseTemplates.service.js";
+import { caseTemplates } from "../settings/settings.shared.js";
+import {
   caseAttachmentBodySchema,
   caseAttachmentPresignBodySchema,
   bulkArchiveCasesSchema,
@@ -31,6 +36,33 @@ import {
   updateCaseSchema,
   updateCaseStepSchema
 } from "./cases.schema.js";
+
+function parseOptionalBigint(value: unknown): bigint | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return BigInt(Math.trunc(value));
+  if (typeof value === "string" && value.trim().length > 0) return BigInt(value);
+  return undefined;
+}
+
+async function resolveCaseTemplateIdForProject(
+  deps: { prisma?: PrismaClient },
+  projectId: bigint,
+  caseTemplateId: bigint | null | undefined
+): Promise<bigint | null> {
+  try {
+    if (deps.prisma) {
+      return await resolveProjectCaseTemplateId(deps.prisma, projectId, caseTemplateId ?? undefined);
+    }
+    return resolveInMemoryCaseTemplateId(projectId, caseTemplates, caseTemplateId ?? undefined);
+  } catch (e) {
+    if (e instanceof Error && e.message === "CASE_TEMPLATE_NOT_FOUND") {
+      throw new AppError("NOT_FOUND", "case template not found", 404);
+    }
+    throw e;
+  }
+}
 
 function parseIfMatchVersion(value?: string | string[]): number | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -262,7 +294,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/sections/:sectionId/cases", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { sectionId } = sectionIdParamSchema.parse(req.params);
     const raw = (req.body ?? {}) as Record<string, unknown>;
     const body = createCaseSchema.parse({
@@ -271,17 +303,29 @@ export async function registerCasesRoutes(
       priority: raw.priority,
       caseType: raw.caseType,
       preconditions: raw.preconditions,
+      expectedResult: raw.expectedResult,
+      caseTemplateId: parseOptionalBigint(raw.caseTemplateId),
       refs: raw.refs,
       customValues: raw.customValues
     });
     try {
       const user = await getAuthenticatedUser(req, deps);
+      const projectId = await deps.casesService.projectIdForSection(deps.prisma, sectionId);
       const customValues = await deps.casesService.validateCaseCustomValues(
         deps.prisma,
-        await deps.casesService.projectIdForSection(deps.prisma, sectionId),
+        projectId,
         asCustomValues(body.customValues) ?? {}
       );
-      const created = await deps.casesService.createCase({ ...body, customValues });
+      const caseTemplateId = await resolveCaseTemplateIdForProject(
+        deps,
+        projectId,
+        body.caseTemplateId ?? undefined
+      );
+      const created = await deps.casesService.createCase({
+        ...body,
+        customValues,
+        caseTemplateId
+      });
       if (created.projectId) {
         await recordActivityEvent(deps.prisma, {
           projectId: created.projectId,
@@ -314,7 +358,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/cases/:caseId/attachments", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = caseAttachmentBodySchema.parse(req.body ?? {});
@@ -331,7 +375,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/cases/:caseId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
     const now = Date.now();
@@ -350,7 +394,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/bulk-delete", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkDeleteCasesSchema.parse(req.body ?? {});
@@ -380,7 +424,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/bulk-move", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkMoveCasesSchema.parse(req.body ?? {});
@@ -416,7 +460,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/bulk-copy", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkCopyCasesSchema.parse(req.body ?? {});
@@ -455,7 +499,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/bulk-update", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkUpdateCasesSchema.parse(req.body ?? {});
@@ -488,7 +532,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/bulk-archive", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkArchiveCasesSchema.parse(req.body ?? {});
@@ -523,7 +567,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/reorder", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = reorderCasesSchema.parse(req.body ?? {});
@@ -545,7 +589,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/projects/:projectId/cases/position", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = positionCasesSchema.parse(req.body ?? {});
@@ -590,7 +634,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/cases/:caseId/versions/:versionId/restore", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId, versionId } = caseVersionIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = restoreCaseVersionSchema.parse(req.body ?? {});
@@ -612,14 +656,16 @@ export async function registerCasesRoutes(
   });
 
   app.patch("/api/cases/:caseId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
+    const raw = (req.body ?? {}) as Record<string, unknown>;
     const body = updateCaseSchema.parse(req.body);
     const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
+    const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
     const customValues = await deps.casesService.validateCaseCustomValues(
       deps.prisma,
-      await deps.casesService.projectIdForCase(deps.prisma, caseId),
+      projectId,
       asCustomValues(body.customValues)
     ).catch((e) => {
       const customFieldError = deps.casesService.customFieldErrorResponse(e);
@@ -627,9 +673,14 @@ export async function registerCasesRoutes(
       throw e;
     });
     if (customValues && "code" in customValues) return reply.code(400).send(customValues);
+    const caseTemplateId =
+      raw.caseTemplateId !== undefined
+        ? await resolveCaseTemplateIdForProject(deps, projectId, parseOptionalBigint(raw.caseTemplateId))
+        : undefined;
     const updated = await deps.casesService.updateCase(caseId, {
       ...body,
-      customValues,
+      ...(customValues !== undefined ? { customValues } : {}),
+      ...(caseTemplateId !== undefined ? { caseTemplateId } : {}),
       expectedVersion: body.expectedVersion ?? ifMatchVersion
     });
     if (updated.projectId) {
@@ -648,7 +699,7 @@ export async function registerCasesRoutes(
   });
 
   app.delete("/api/cases/:caseId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
@@ -667,7 +718,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/cases/:caseId/steps", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { caseId } = caseIdParamSchema.parse(req.params);
     const body = createCaseStepSchema.parse(req.body ?? {});
@@ -698,7 +749,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/case-steps/:stepId/attachments", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { stepId } = stepIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = caseAttachmentBodySchema.parse(req.body ?? {});
@@ -715,7 +766,7 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/case-steps/:stepId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { stepId } = stepIdParamSchema.parse(req.params);
     const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
     const now = Date.now();
@@ -734,7 +785,7 @@ export async function registerCasesRoutes(
   });
 
   app.patch("/api/case-steps/:stepId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { stepId } = stepIdParamSchema.parse(req.params);
     const body = updateCaseStepSchema.parse(req.body ?? {});
@@ -763,7 +814,7 @@ export async function registerCasesRoutes(
   });
 
   app.delete("/api/case-steps/:stepId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { stepId } = stepIdParamSchema.parse(req.params);
     let stepContext: { caseId: bigint; projectId: bigint } | null = null;
@@ -790,3 +841,4 @@ export async function registerCasesRoutes(
     return reply.status(204).send();
   });
 }
+

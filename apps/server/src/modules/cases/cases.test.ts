@@ -6,8 +6,11 @@ import { CasesService } from "./cases.service.js";
 async function seedCatalog() {
   const repo = new ProjectsMemoryRepository();
   const service = new CasesService(repo);
-  const project = await repo.createProject({ name: "Demo", description: null });
-  const suite = await repo.createSuite({ projectId: project.id, name: "Suite", description: null });
+  const project = await repo.createProject({ name: "Demo", description: null, projectType: "single_repo" });
+  const suite = (await repo.listSuitesByProject(project.id))[0]!;
+  for (const section of await repo.listSectionsBySuite(suite.id)) {
+    await repo.deleteSection(section.id);
+  }
   const sourceSection = await repo.createSection({ suiteId: suite.id, parentSectionId: null, name: "Source" });
   const targetSection = await repo.createSection({ suiteId: suite.id, parentSectionId: null, name: "Target" });
   const firstCase = await service.createCase({
@@ -220,8 +223,8 @@ describe("cases service", () => {
 
   it("rejects target sections outside the project", async () => {
     const { repo, service, project } = await seedCatalog();
-    const otherProject = await repo.createProject({ name: "Other", description: null });
-    const otherSuite = await repo.createSuite({ projectId: otherProject.id, name: "Other Suite", description: null });
+    const otherProject = await repo.createProject({ name: "Other", description: null, projectType: "multi_suite" });
+    const otherSuite = (await repo.listSuitesByProject(otherProject.id))[0]!;
     const otherSection = await repo.createSection({ suiteId: otherSuite.id, parentSectionId: null, name: "Other Section" });
 
     await expect(service.assertProjectScopedSection(project.id, otherSection.id)).rejects.toMatchObject({

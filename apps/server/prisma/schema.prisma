@@ -18,15 +18,17 @@ enum TestStatus {
 }
 
 model User {
-  id        BigInt    @id @default(autoincrement())
-  email     String    @unique
-  name      String
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id         BigInt    @id @default(autoincrement())
+  email      String    @unique
+  name       String
+  globalRole String    @default("user")
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 
   projectMembers ProjectMember[]
+  groupMembers   UserGroupMember[]
   apiTokens      ApiToken[]
   auditLogs      AuditLog[]      @relation("AuditActor")
   assignedRuns   TestRun[]       @relation("RunAssignee")
@@ -40,12 +42,43 @@ model User {
   notificationPreferences NotificationPreference[]
   emailOutbox     EmailOutbox[]
   testSubscriptions TestSubscription[]
+  updatedAccessDefaults InstanceAccessDefaults[] @relation("InstanceAccessDefaultsUpdatedBy")
+  createdGroups         UserGroup[] @relation("UserGroupCreatedBy")
+}
+
+model UserGroup {
+  id          BigInt    @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   BigInt?
+
+  createdByUser User? @relation("UserGroupCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  members       UserGroupMember[]
+
+  @@index([deletedAt])
+}
+
+model UserGroupMember {
+  id        BigInt   @id @default(autoincrement())
+  groupId   BigInt
+  userId    BigInt
+  createdAt DateTime @default(now())
+
+  group UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
 }
 
 model Project {
   id          BigInt    @id @default(autoincrement())
   name        String
   description String?
+  projectType String    @default("single_repo")
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -82,47 +115,77 @@ model Project {
   savedReports SavedReport[]
   scheduledReports ScheduledReport[]
   testSubscriptions TestSubscription[]
+  customRoles      CustomRole[]
 
   @@index([deletedAt])
 }
 
-model ProjectMember {
-  id        BigInt    @id @default(autoincrement())
-  projectId BigInt
-  userId    BigInt
-  role      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  createdBy BigInt?
-  updatedBy BigInt?
+model CustomRole {
+  id          BigInt    @id @default(autoincrement())
+  projectId   BigInt
+  name        String
+  systemName  String
+  permissions String[]
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectMembers ProjectMember[]
+
+  @@unique([projectId, systemName])
+  @@index([projectId])
+}
+
+model ProjectMember {
+  id           BigInt    @id @default(autoincrement())
+  projectId    BigInt
+  userId       BigInt
+  role         String
+  customRoleId BigInt?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    BigInt?
+  updatedBy    BigInt?
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  customRole CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, userId])
   @@index([projectId])
   @@index([userId])
+  @@index([customRoleId])
 }
 
 model TestSuite {
-  id          BigInt    @id @default(autoincrement())
-  projectId   BigInt
-  name        String
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  createdBy   BigInt?
-  updatedBy   BigInt?
+  id            BigInt    @id @default(autoincrement())
+  projectId     BigInt
+  name          String
+  description   String?
+  isMaster      Boolean   @default(false)
+  isBaseline    Boolean   @default(false)
+  parentSuiteId BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  createdBy     BigInt?
+  updatedBy     BigInt?
 
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  sections  Section[]
-  cases     TestCase[]
-  runs      TestRun[]
-  planEntries TestPlanEntry[]
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  parentSuite  TestSuite? @relation("SuiteBaselineTree", fields: [parentSuiteId], references: [id], onDelete: SetNull)
+  childSuites  TestSuite[] @relation("SuiteBaselineTree")
+  sections     Section[]
+  cases        TestCase[]
+  runs         TestRun[]
+  planEntries  TestPlanEntry[]
 
   @@index([projectId])
+  @@index([projectId, isMaster])
+  @@index([projectId, isBaseline])
+  @@index([parentSuiteId])
   @@index([deletedAt])
 }
 
@@ -165,6 +228,7 @@ model TestCase {
   automationKey  String?
   externalId     String?
   customValues   Json      @default("{}")
+  caseTemplateId BigInt?
   lockVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -173,10 +237,11 @@ model TestCase {
   createdBy      BigInt?
   updatedBy      BigInt?
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  suite     TestSuite @relation(fields: [suiteId], references: [id], onDelete: Restrict)
-  section   Section   @relation(fields: [sectionId], references: [id], onDelete: Restrict)
-  steps     TestCaseStep[]
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  suite        TestSuite     @relation(fields: [suiteId], references: [id], onDelete: Restrict)
+  section      Section       @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  caseTemplate CaseTemplate? @relation(fields: [caseTemplateId], references: [id], onDelete: SetNull)
+  steps        TestCaseStep[]
   instances TestInstance[]
   versions  TestCaseVersion[]
   requirements CaseRequirement[]
@@ -190,6 +255,7 @@ model TestCase {
   @@index([projectId, archivedAt, deletedAt])
   @@index([automationKey])
   @@index([externalId])
+  @@index([caseTemplateId])
 }
 
 model Requirement {
@@ -319,6 +385,7 @@ model TestRun {
   environment String?
   metadata    Json?
   startedAt   DateTime?
+  dueOn       DateTime?
   closedAt    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -787,6 +854,7 @@ model CustomStatus {
 model CaseTemplate {
   id           BigInt    @id @default(autoincrement())
   projectId    BigInt
+  systemKey    String?
   name         String
   description  String?
   fields       Json
@@ -799,9 +867,11 @@ model CaseTemplate {
   createdBy    BigInt?
   updatedBy    BigInt?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCases TestCase[]
 
   @@unique([projectId, name])
+  @@unique([projectId, systemKey])
   @@index([projectId, isActive, displayOrder])
   @@index([projectId, deletedAt])
 }
@@ -857,6 +927,16 @@ model SavedReport {
 
   @@index([projectId, deletedAt, updatedAt])
   @@index([projectId, reportType])
+}
+
+model InstanceAccessDefaults {
+  id                       Int      @id @default(1)
+  defaultProjectMemberRole String   @default("viewer")
+  newProjectAccessMode     String   @default("creator_only")
+  updatedAt                DateTime @updatedAt
+  updatedBy                BigInt?
+
+  updatedByUser User? @relation("InstanceAccessDefaultsUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 }
 
 model ScheduledReport {

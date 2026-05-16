@@ -33,6 +33,8 @@ import {
   setTestSubscription
 } from "../subscriptions/testSubscriptions.service.js";
 import { recordAuditLog } from "../settings/auditLog.service.js";
+import { inheritRunDatesFromMilestone } from "../../domain/runDates.js";
+import { runDateWarningsForRun } from "./runSchedule.js";
 
 const testSubscriptionBodySchema = z.object({
   subscribed: z.boolean()
@@ -79,7 +81,8 @@ export async function registerRunsRoutes(
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
     const instances = includeInstances === false ? [] : await deps.repo.listInstancesForRun(runId);
-    return reply.send(toJsonSafe(ok({ run, instances })));
+    const dateWarnings = await runDateWarningsForRun(deps.prisma, run);
+    return reply.send(toJsonSafe(ok({ run, instances, dateWarnings })));
   });
 
   app.get("/api/projects/:projectId/runs/:runId/instances", async (req, reply) => {
@@ -111,11 +114,25 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/projects/:projectId/runs", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const raw = createProjectRunSchema.parse(req.body);
-    const body = { ...raw, projectId };
+    let startedAt = raw.startedAt ?? null;
+    let dueOn = raw.dueOn ?? null;
+    if (deps.prisma && raw.milestoneId) {
+      const milestone = await deps.prisma.milestone.findFirst({
+        where: { id: raw.milestoneId, projectId, deletedAt: null },
+        select: { startDate: true, dueDate: true }
+      });
+      const inherited = inheritRunDatesFromMilestone(
+        { startedAt: raw.startedAt, dueOn: raw.dueOn },
+        milestone ? { startDate: milestone.startDate, dueDate: milestone.dueDate } : null
+      );
+      startedAt = inherited.startedAt;
+      dueOn = inherited.dueOn;
+    }
+    const body = { ...raw, projectId, startedAt, dueOn };
     const created = await deps.runsService.createRunWithInstances(body);
     await recordActivityEvent(deps.prisma, {
       projectId,
@@ -139,7 +156,7 @@ export async function registerRunsRoutes(
   });
 
   app.patch("/api/runs/:runId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
@@ -151,6 +168,7 @@ export async function registerRunsRoutes(
       body.name !== undefined ||
       body.assignedTo !== undefined ||
       body.startedAt !== undefined ||
+      body.dueOn !== undefined ||
       body.closedAt !== undefined;
     if (hasPatch) {
       await recordAuditLog(deps.prisma, {
@@ -163,6 +181,7 @@ export async function registerRunsRoutes(
           ...(body.name !== undefined ? { name: body.name } : {}),
           ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo?.toString() ?? null } : {}),
           ...(body.startedAt !== undefined ? { startedAt: body.startedAt?.toISOString() ?? null } : {}),
+          ...(body.dueOn !== undefined ? { dueOn: body.dueOn?.toISOString() ?? null } : {}),
           ...(body.closedAt !== undefined ? { closedAt: body.closedAt?.toISOString() ?? null } : {})
         }
       });
@@ -191,7 +210,7 @@ export async function registerRunsRoutes(
   });
 
   app.patch("/api/runs/:runId/assignee", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunSchema.parse(req.body);
@@ -223,7 +242,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/results/by-case", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const params = runIdParamSchema.parse(req.params);
     const body = byCaseSchema.parse(req.body);
@@ -241,7 +260,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/results/bulk", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const params = runIdParamSchema.parse(req.params);
     const body = bulkSchema.parse(req.body);
@@ -293,7 +312,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/results", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = runResultSchema.parse(req.body);
@@ -328,7 +347,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/close", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const closed = await deps.runsService.closeRun(runId);
@@ -345,7 +364,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/projects/:projectId/runs/:runId/sync-composition", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { runId } = runIdParamSchema.parse(req.params);
@@ -374,7 +393,7 @@ export async function registerRunsRoutes(
   });
 
   app.patch("/api/projects/:projectId/runs/:runId/composition", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { runId } = runIdParamSchema.parse(req.params);
@@ -403,7 +422,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/reopen", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const reopened = await deps.runsService.reopenRun(runId);
@@ -420,7 +439,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/tests", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = addCasesToRunBodySchema.parse(req.body ?? {});
@@ -446,7 +465,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/remove-test", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = removeTestFromRunBodySchema.parse(req.body ?? {});
@@ -480,7 +499,7 @@ export async function registerRunsRoutes(
   });
 
   app.post("/api/runs/:runId/rerun", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const { statuses } = rerunSchema.parse(req.body);
@@ -499,7 +518,7 @@ export async function registerRunsRoutes(
   });
 
   app.patch("/api/tests/:testId/assignee", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'runs.write' });
     const user = await getAuthenticatedUser(req, deps);
     const { testId } = testIdParamSchema.parse(req.params);
     const { assignedTo } = updateTestAssigneeSchema.parse(req.body);
@@ -596,3 +615,4 @@ export async function registerRunsRoutes(
     }
   });
 }
+

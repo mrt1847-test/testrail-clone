@@ -8,6 +8,7 @@ import {
   fetchProjects,
   restoreProject
 } from "../api/projectApi";
+import type { ProjectType } from "../types/projectTypes";
 
 export const projectKeys = {
   all: ["projects"] as const,
@@ -44,7 +45,7 @@ export function useProjectOverviewQuery(projectId: string | undefined) {
 export function useCreateProjectMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => createProject(name),
+    mutationFn: (input: { name: string; projectType: ProjectType }) => createProject(input.name, input.projectType),
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.list() }),
   });
 }

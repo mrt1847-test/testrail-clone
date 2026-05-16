@@ -18,6 +18,13 @@ import {
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
+  applyCaseCsvColumnMapping,
+  buildCaseCsvImportProfile,
+  extractCsvHeaders,
+  suggestCaseCsvColumnMapping,
+  validateCaseCsvColumnMapping
+} from "../../domain/caseCsvMapping.js";
+import {
   CASE_CSV_REFS_COLUMN,
   caseRefsCsvAliases,
   caseRefsFromCsvCell,
@@ -34,11 +41,19 @@ type CustomFieldDefinition = {
   isRequired: boolean;
 };
 
+const columnMappingSchema = z.record(z.string(), z.string());
+
 const caseImportSchema = z.object({
   csv: z.string().min(1),
   dryRun: z.boolean().optional().default(true),
   atomic: z.boolean().optional().default(true),
-  sectionId: z.coerce.bigint().optional()
+  sectionId: z.coerce.bigint().optional(),
+  columnMapping: columnMappingSchema.optional()
+});
+
+const suggestMappingSchema = z.object({
+  headers: z.array(z.string().min(1)).min(1).optional(),
+  csv: z.string().min(1).optional()
 });
 
 export const reportExportSchema = z.object({
@@ -938,6 +953,50 @@ export async function registerImportExportRoutes(
   deps: { prisma?: PrismaClient; authService: AuthService }
 ) {
   const importExportService = new ImportExportService(deps.prisma);
+  app.get("/api/projects/:projectId/cases/import/csv/profile", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const customFields = deps.prisma
+      ? await deps.prisma.customField.findMany({
+          where: { projectId, scope: "case", deletedAt: null, isActive: true },
+          orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+          select: { systemName: true, label: true, fieldType: true, isRequired: true }
+        })
+      : [];
+    return reply.send(toJsonSafe(ok(buildCaseCsvImportProfile(customFields))));
+  });
+
+  app.post("/api/projects/:projectId/cases/import/csv/suggest-mapping", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = suggestMappingSchema.parse(req.body ?? {});
+    const headers = body.headers ?? extractCsvHeaders(body.csv ?? "");
+    if (headers.length === 0) {
+      throw new AppError("VALIDATION_ERROR", "csv or headers is required", 400);
+    }
+    const customFields = deps.prisma
+      ? await deps.prisma.customField.findMany({
+          where: { projectId, scope: "case", deletedAt: null, isActive: true },
+          orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+          select: { systemName: true, label: true, isRequired: true }
+        })
+      : [];
+    const mapping = suggestCaseCsvColumnMapping(headers, customFields);
+    const mappingIssues = validateCaseCsvColumnMapping(
+      mapping,
+      customFields.map((field) => ({ systemName: field.systemName, isRequired: field.isRequired }))
+    );
+    return reply.send(
+      toJsonSafe(
+        ok({
+          headers,
+          mapping,
+          mappingIssues: mappingIssues.map((issue) => ({ ...issue, row: 1 }))
+        })
+      )
+    );
+  });
+
   app.post("/api/projects/:projectId/cases/import/csv", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const user = await getAuthenticatedUser(req, deps);
@@ -945,9 +1004,27 @@ export async function registerImportExportRoutes(
     const body = caseImportSchema.parse(req.body ?? {});
     const prisma = importExportService.getPrisma();
 
-    const rows = parseCsv(body.csv);
-    const { issues, normalized } = await validateImportRows(prisma, projectId, rows, body.sectionId);
-    const summary = { totalRows: rows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
+    const customFields = await prisma.customField.findMany({
+      where: { projectId, scope: "case", deletedAt: null, isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { systemName: true, label: true, isRequired: true }
+    });
+
+    const parsedRows = parseCsv(body.csv);
+    const headers = extractCsvHeaders(body.csv);
+    const columnMapping =
+      body.columnMapping ??
+      (headers.length > 0 ? suggestCaseCsvColumnMapping(headers, customFields) : undefined);
+    const rows = applyCaseCsvColumnMapping(parsedRows, columnMapping);
+
+    const mappingIssues = validateCaseCsvColumnMapping(
+      columnMapping ?? {},
+      customFields.map((field) => ({ systemName: field.systemName, isRequired: field.isRequired }))
+    ).map((issue) => ({ row: 1, field: issue.field, code: issue.code, message: issue.message }));
+
+    const { issues: rowIssues, normalized } = await validateImportRows(prisma, projectId, rows, body.sectionId);
+    const issues = [...mappingIssues, ...rowIssues];
+    const summary = { totalRows: parsedRows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
 
     if (body.dryRun || (body.atomic && issues.length > 0)) {
       const job = await importExportService.createCaseImportJob({
@@ -975,7 +1052,16 @@ export async function registerImportExportRoutes(
           invalidRows: issues.length
         }
       });
-      return reply.status(status).send(toJsonSafe(ok({ job, summary, issues })));
+      return reply.status(status).send(
+        toJsonSafe(
+          ok({
+            job,
+            summary,
+            issues,
+            columnMapping: columnMapping ?? null
+          })
+        )
+      );
     }
 
     const imported = await importExportService.importValidatedCases(projectId, user.id, normalized);
@@ -1003,7 +1089,16 @@ export async function registerImportExportRoutes(
         totalRows: rows.length
       }
     });
-    return reply.send(toJsonSafe(ok({ job, summary, issues })));
+    return reply.send(
+      toJsonSafe(
+        ok({
+          job,
+          summary,
+          issues,
+          columnMapping: columnMapping ?? null
+        })
+      )
+    );
   });
 
   app.get("/api/projects/:projectId/import-jobs", async (req, reply) => {

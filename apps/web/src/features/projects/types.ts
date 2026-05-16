@@ -1,8 +1,21 @@
+import type { ProjectType } from "./types/projectTypes";
+
 export type ProjectSummary = {
   id: string;
   name: string;
   description?: string;
+  projectType: ProjectType;
   isArchived?: boolean;
+};
+
+export type SuiteSummary = {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  isMaster: boolean;
+  isBaseline: boolean;
+  parentSuiteId: string | null;
 };
 
 export type ProjectOverviewDto = {

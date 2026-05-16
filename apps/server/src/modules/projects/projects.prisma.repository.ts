@@ -1,5 +1,6 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 
+import { normalizeProjectType } from "../../domain/projectTypes.js";
 import type {
   CaseRow,
   CasePresenceFilter,
@@ -10,6 +11,7 @@ import type {
   SectionRow,
   SuiteRow
 } from "./projects.repository.js";
+import { bootstrapProjectCatalog } from "./projectBootstrap.service.js";
 import {
   parseCaseVersionAttachmentSnapshots,
   toPersistedAttachmentSnapshots
@@ -85,6 +87,8 @@ const caseSelect = {
   automationKey: true,
   externalId: true,
   preconditions: true,
+  expectedResult: true,
+  caseTemplateId: true,
   customValues: true,
   lockVersion: true,
   updatedAt: true,
@@ -192,6 +196,8 @@ function mapCaseRow(row: {
   automationKey: string | null;
   externalId: string | null;
   preconditions: string | null;
+  expectedResult: string | null;
+  caseTemplateId: bigint | null;
   customValues: unknown;
   lockVersion: number;
   updatedAt: Date;
@@ -211,6 +217,8 @@ function mapCaseRow(row: {
     automationKey: row.automationKey,
     externalId: row.externalId,
     preconditions: row.preconditions,
+    expectedResult: row.expectedResult,
+    caseTemplateId: row.caseTemplateId,
     customValues: jsonObject(row.customValues),
     lockVersion: row.lockVersion,
     updatedAt: row.updatedAt,
@@ -256,31 +264,39 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     const rows = await this.prisma.project.findMany({
       where: { deletedAt: null },
       orderBy: { id: "desc" },
-      select: { id: true, name: true, description: true, isActive: true }
+      select: { id: true, name: true, description: true, projectType: true, isActive: true }
     });
     return rows.map((row) => this.toProjectRow(row));
   }
 
-  private toProjectRow(row: { id: bigint; name: string; description: string | null; isActive: boolean }): ProjectRow {
+  private toProjectRow(row: {
+    id: bigint;
+    name: string;
+    description: string | null;
+    projectType: string;
+    isActive: boolean;
+  }): ProjectRow {
     return {
       id: row.id,
       name: row.name,
       description: row.description,
+      projectType: normalizeProjectType(row.projectType),
       isArchived: !row.isActive
     };
   }
 
-  async createProject(input: Omit<ProjectRow, "id"> & { ownerUserId?: bigint }): Promise<ProjectRow> {
+  async createProject(input: Omit<ProjectRow, "id" | "isArchived"> & { ownerUserId?: bigint }): Promise<ProjectRow> {
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.project.create({
         data: {
           name: input.name,
           description: input.description,
+          projectType: input.projectType,
           ...(input.ownerUserId !== undefined
             ? { createdBy: input.ownerUserId, updatedBy: input.ownerUserId }
             : {})
         },
-        select: { id: true, name: true, description: true, isActive: true }
+        select: { id: true, name: true, description: true, projectType: true, isActive: true }
       });
       if (input.ownerUserId !== undefined) {
         await tx.projectMember.create({
@@ -293,6 +309,11 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           }
         });
       }
+      await bootstrapProjectCatalog(tx, {
+        projectId: created.id,
+        projectType: normalizeProjectType(created.projectType),
+        actorUserId: input.ownerUserId
+      });
       return this.toProjectRow(created);
     });
   }
@@ -300,7 +321,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   async getProject(projectId: bigint): Promise<ProjectRow | null> {
     const row = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
-      select: { id: true, name: true, description: true, isActive: true }
+      select: { id: true, name: true, description: true, projectType: true, isActive: true }
     });
     return row ? this.toProjectRow(row) : null;
   }
@@ -316,9 +337,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.description !== undefined ? { description: patch.description } : {}),
-        ...(patch.isArchived !== undefined ? { isActive: !patch.isArchived } : {})
+        ...(patch.isArchived !== undefined ? { isActive: !patch.isArchived } : {}),
+        ...(patch.projectType !== undefined ? { projectType: patch.projectType } : {})
       },
-      select: { id: true, name: true, description: true, isActive: true }
+      select: { id: true, name: true, description: true, projectType: true, isActive: true }
     });
     return this.toProjectRow(updated);
   }
@@ -336,22 +358,53 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
   async listSuitesByProject(projectId: bigint): Promise<SuiteRow[]> {
     return this.prisma.testSuite.findMany({
       where: { projectId, deletedAt: null },
-      orderBy: { id: "asc" },
-      select: { id: true, projectId: true, name: true, description: true }
+      orderBy: [{ isMaster: "desc" }, { isBaseline: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+        description: true,
+        isMaster: true,
+        isBaseline: true,
+        parentSuiteId: true
+      }
     });
   }
 
   async createSuite(input: Omit<SuiteRow, "id">): Promise<SuiteRow> {
     return this.prisma.testSuite.create({
-      data: { projectId: input.projectId, name: input.name, description: input.description },
-      select: { id: true, projectId: true, name: true, description: true }
+      data: {
+        projectId: input.projectId,
+        name: input.name,
+        description: input.description,
+        isMaster: input.isMaster,
+        isBaseline: input.isBaseline,
+        parentSuiteId: input.parentSuiteId ?? null
+      },
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+        description: true,
+        isMaster: true,
+        isBaseline: true,
+        parentSuiteId: true
+      }
     });
   }
 
   async getSuite(suiteId: bigint): Promise<SuiteRow | null> {
     return this.prisma.testSuite.findFirst({
       where: { id: suiteId, deletedAt: null },
-      select: { id: true, projectId: true, name: true, description: true }
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+        description: true,
+        isMaster: true,
+        isBaseline: true,
+        parentSuiteId: true
+      }
     });
   }
 
@@ -363,8 +416,19 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     if (!found) return null;
     return this.prisma.testSuite.update({
       where: { id: suiteId },
-      data: { ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.description !== undefined ? { description: patch.description } : {}) },
-      select: { id: true, projectId: true, name: true, description: true }
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.description !== undefined ? { description: patch.description } : {})
+      },
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+        description: true,
+        isMaster: true,
+        isBaseline: true,
+        parentSuiteId: true
+      }
     });
   }
 
@@ -541,6 +605,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(input.preconditions !== undefined && input.preconditions !== null
           ? { preconditions: input.preconditions }
           : {}),
+        ...(input.expectedResult !== undefined ? { expectedResult: input.expectedResult } : {}),
+        ...(input.caseTemplateId !== undefined ? { caseTemplateId: input.caseTemplateId } : {}),
         customValues: input.customValues ?? {}
       },
       select: caseSelect
@@ -895,6 +961,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
           ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
           ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+          ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {}),
+          ...(patch.caseTemplateId !== undefined ? { caseTemplateId: patch.caseTemplateId } : {}),
           ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
           ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
           ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),
@@ -913,6 +981,8 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
         ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
+        ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {}),
+        ...(patch.caseTemplateId !== undefined ? { caseTemplateId: patch.caseTemplateId } : {}),
         ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
         ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
         ...(patch.customValues !== undefined ? { customValues: patch.customValues } : {}),

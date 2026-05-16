@@ -1,8 +1,15 @@
 import { apiFetch } from "../../../shared/api/http";
 import type { Paged } from "../../../shared/api/types";
+import { normalizeProjectType, type ProjectType } from "../types/projectTypes";
 import type { ProjectOverviewDto, ProjectSummary } from "../types";
 
-type ProjectRow = { id: string; name: string; description?: string; isArchived?: boolean };
+type ProjectRow = {
+  id: string;
+  name: string;
+  description?: string;
+  projectType?: string;
+  isArchived?: boolean;
+};
 
 type RunRow = { id: string; name: string; status: string };
 type RunSummaryRow = {
@@ -29,59 +36,58 @@ async function fetchFirstSuiteId(projectId: string): Promise<string | null> {
   return res.data[0]?.id ?? null;
 }
 
-async function bootstrapDefaultCatalog(projectId: string): Promise<void> {
-  const suiteRes = await apiFetch<{ data: { id: string } }>(`/api/projects/${projectId}/suites`, {
-    method: "POST",
-    body: { name: "Main suite" }
-  });
-  const suiteId = suiteRes.data.id;
-  await apiFetch(`/api/suites/${suiteId}/sections`, {
-    method: "POST",
-    body: { name: "General" }
-  });
+function mapProject(row: ProjectRow): ProjectSummary {
+  return {
+    id: String(row.id),
+    name: row.name,
+    description: row.description,
+    projectType: normalizeProjectType(row.projectType),
+    isArchived: Boolean(row.isArchived)
+  };
 }
 
 export async function fetchProjects(): Promise<ProjectSummary[]> {
   const res = await apiFetch<Paged<ProjectRow>>("/api/projects?page=1&pageSize=100");
-  return res.data.map((p: ProjectRow) => ({
-    id: String(p.id),
-    name: p.name,
-    description: p.description,
-    isArchived: Boolean(p.isArchived)
-  }));
+  return res.data.map(mapProject);
 }
 
 export async function fetchProject(projectId: string): Promise<ProjectSummary | null> {
   try {
     const res = await apiFetch<{ data: ProjectRow }>(`/api/projects/${projectId}`);
     const p = res.data;
-    return { id: String(p.id), name: p.name, description: p.description, isArchived: Boolean(p.isArchived) };
+    return mapProject(p);
   } catch {
     return null;
   }
 }
 
-export async function createProject(name: string): Promise<ProjectSummary> {
+export async function updateProject(
+  projectId: string,
+  patch: { name?: string; description?: string; projectType?: ProjectType }
+): Promise<ProjectSummary> {
+  const res = await apiFetch<{ data: ProjectRow }>(`/api/projects/${projectId}`, {
+    method: "PATCH",
+    body: patch
+  });
+  return mapProject(res.data);
+}
+
+export async function createProject(name: string, projectType: ProjectType = "single_repo"): Promise<ProjectSummary> {
   const res = await apiFetch<{ data: ProjectRow }>("/api/projects", {
     method: "POST",
-    body: { name }
+    body: { name, projectType }
   });
-  const created = res.data;
-  const id = String(created.id);
-  await bootstrapDefaultCatalog(id);
-  return { id, name: created.name, description: created.description, isArchived: Boolean(created.isArchived) };
+  return mapProject(res.data);
 }
 
 export async function archiveProject(projectId: string): Promise<ProjectSummary> {
   const res = await apiFetch<{ data: ProjectRow }>(`/api/projects/${projectId}/archive`, { method: "POST" });
-  const row = res.data;
-  return { id: String(row.id), name: row.name, description: row.description, isArchived: Boolean(row.isArchived) };
+  return mapProject(res.data);
 }
 
 export async function restoreProject(projectId: string): Promise<ProjectSummary> {
   const res = await apiFetch<{ data: ProjectRow }>(`/api/projects/${projectId}/restore`, { method: "POST" });
-  const row = res.data;
-  return { id: String(row.id), name: row.name, description: row.description, isArchived: Boolean(row.isArchived) };
+  return mapProject(res.data);
 }
 
 export async function fetchProjectOverview(projectId: string): Promise<ProjectOverviewDto> {

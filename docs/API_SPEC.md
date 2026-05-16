@@ -84,14 +84,15 @@
 
 ## Projects
 - `GET /api/projects`
-- `POST /api/projects`
-- `GET /api/projects/{projectId}`
-- `PATCH /api/projects/{projectId}`
+- `POST /api/projects` — body: `name`, optional `description`, optional `projectType` (`single_repo` | `single_repo_baselines` | `multi_suite`, default `single_repo`); creates master suite + `General` section.
+- `GET /api/projects/{projectId}` — includes `projectType`; list responses use the same shape.
+- `PATCH /api/projects/{projectId}` — optional `name`, `description`, `projectType`.
 - `DELETE /api/projects/{projectId}`
 
 ## Suites
-- `GET /api/projects/{projectId}/suites`
-- `POST /api/projects/{projectId}/suites`
+- `GET /api/projects/{projectId}/suites` — rows include `isMaster`, `isBaseline`, `parentSuiteId`.
+- `POST /api/projects/{projectId}/suites` — enforces project-type suite limits (`409` `PROJECT_SUITE_LIMIT` on single-repo second suite); optional `isBaseline` on baseline projects.
+- `POST /api/projects/{projectId}/suites/baselines` — baseline projects only; creates baseline suite and copies master section tree (no cases).
 - `GET /api/suites/{suiteId}`
 - `PATCH /api/suites/{suiteId}`
 - `DELETE /api/suites/{suiteId}`
@@ -232,6 +233,7 @@ Case optimistic locking (phase 2 baseline):
 Semantics (case steps):
 - `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept optional `refs` (comma-separated external reference IDs; empty string clears to `null`).
 - `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept `customValues` as an object keyed by custom field `systemName`.
+- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept optional `caseTemplateId` (project template; omitted/null resolves to the project default) and `expectedResult` (text-template field).
 - Case create/update validate `customValues` against the project's active case custom field definitions; create rejects missing required active fields, and create/update reject unknown fields or invalid option/number values.
 - `GET /api/cases/{caseId}` and case list responses include `customValues`; current baseline stores scalar values (`string`, `number`, `boolean`, or `null`).
 - `GET /api/cases/{caseId}` includes an ordered `steps` array. Each step exposes `id`, `stepOrder`, `content`, and `expectedResult` (nullable). Soft-deleted steps are omitted.
@@ -298,7 +300,9 @@ Run composition baseline:
 - `GET /api/projects/{projectId}/runs/{runId}` includes `run.composition` parsed from `TestRun.metadata`.
 - `POST /api/projects/{projectId}/runs/{runId}/sync-composition` — reconcile open runs in live modes; returns `{ skipped, added, removed, reason? }`; records activity `run.composition_synced`.
 - `PATCH /api/projects/{projectId}/runs/{runId}/composition` — update live-run filter metadata with optional `filterSelectionMode` (`set` | `add` | `remove`); runs `sync` by default for live modes.
-- `PATCH /api/runs/{runId}` — optional `startedAt` / `closedAt` (ISO dates) while run is open.
+- `PATCH /api/runs/{runId}` — optional `startedAt` / `dueOn` (ISO dates) while run is open. Use `POST /api/runs/{runId}/close` to set completion; `closedAt` on PATCH is rejected for open runs (`400`).
+- `GET /api/runs/{runId}` (and project-scoped run detail) includes `dateWarnings: string[]` when schedule conflicts with milestone/plan or end date has passed (informational only — runs are not auto-closed).
+- `POST /api/projects/{projectId}/runs` accepts optional `startedAt` / `dueOn`; when `milestoneId` is set and dates are omitted, server inherits milestone `startDate` / `dueDate`.
 - Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
 
 Example run creation body:
@@ -490,12 +494,19 @@ Attachment semantics:
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
+- `GET /api/projects/{projectId}/tokens/scopes` — scope catalog with labels for token creation UI.
 - `GET /api/projects/{projectId}/tokens` (canonical)
-- `POST /api/projects/{projectId}/tokens` (canonical)
+- `POST /api/projects/{projectId}/tokens` (canonical) — body: `name?`, `scopes?` (`automation:read`, `automation:write`, `data:read`, `data:write`), `expiresInDays?` (omit or `null` = no expiration).
 - `DELETE /api/projects/{projectId}/tokens/{tokenId}` (canonical)
 - `GET /api/tokens` (compatibility)
 - `POST /api/tokens` (compatibility)
 - `DELETE /api/tokens/{tokenId}` (compatibility)
+
+API token baseline:
+- Project tokens are returned once on create (`rawToken`); only a SHA-256 hash is stored.
+- Revoked or expired tokens are rejected on automation routes (`401` invalid/expired, `403` missing scope).
+- Automation POST routes require `automation:write`; `data:*` scopes are defined for future `/api/v2` enforcement.
+- Token list responses include `scopes`, `expiresAt`, `lastUsedAt`, and `createdAt`.
 
 ## Membership / Permissions
 - `GET /api/projects/{projectId}/members`
@@ -510,6 +521,30 @@ Permission baseline:
 - `viewer`: read-only access.
 - Last active project owner cannot be removed or demoted.
 
+Permission matrix (project-scoped):
+- Permissions: `cases.read`, `cases.write`, `runs.read`, `runs.write`, `results.write`, `settings.read`, `settings.write`, `members.manage`.
+- Built-in roles map to a default permission set; project members may optionally reference a `CustomRole` with an explicit permission list.
+- `GET /api/admin/permission-matrix` returns the catalog and built-in role mappings.
+- Mutation routes enforce permissions when Prisma is enabled (e.g. case mutations require `cases.write`, settings CRUD requires `settings.write`, member admin requires `members.manage`).
+
+Users, groups, and global roles:
+- `GET /api/admin/users`, `PATCH /api/admin/users/{userId}` — directory with `globalRole` (`user` | `instance_admin`).
+- `GET /api/admin/groups`, `POST /api/admin/groups`, `PATCH /api/admin/groups/{groupId}`, group member add/remove.
+- `GET /api/projects/{projectId}/settings/custom-roles`, `POST`/`PATCH`/`DELETE` custom role CRUD.
+- Project members accept optional `customRoleId` on invite/update.
+
+Instance access defaults:
+- `GET /api/admin/access-defaults` — read singleton defaults (authenticated).
+- `PATCH /api/admin/access-defaults` — update defaults (requires owner role on at least one project when using Prisma).
+- Fields: `defaultProjectMemberRole` (`manager` | `tester` | `viewer`), `newProjectAccessMode` (`creator_only` | `all_active_users`), plus `scopeNote` describing out-of-scope permission-matrix work.
+- New project creators always receive `owner`. When `newProjectAccessMode` is `all_active_users`, every active user is upserted as a project member with `defaultProjectMemberRole`.
+- Member invite without an explicit `role` uses `defaultProjectMemberRole`.
+
+Defect integration reference helpers (case References field):
+- `GET /api/projects/{projectId}/integrations/defects/reference-urls?keys=REQ-1,REQ-2` — resolves View Reference URLs when integration is enabled and `issueUrlTemplate` contains `{key}`.
+- `GET /api/projects/{projectId}/integrations/defects/issues/search?q=QA&limit=10` — autocomplete suggestions from project case refs plus default project key prefix when integration is active.
+- Case `refs` input is validated (max length/tokens) and normalized to deduped comma-separated IDs on create/update.
+
 ## Project Settings
 - `GET /api/projects/{projectId}/settings/custom-fields`
 - `POST /api/projects/{projectId}/settings/custom-fields`
@@ -520,7 +555,7 @@ Permission baseline:
 - `POST /api/projects/{projectId}/settings/statuses` (max 7 non-system custom statuses per project; body supports `isFinal`, `isUntested`)
 - `PATCH /api/projects/{projectId}/settings/statuses/{statusId}`
 - `DELETE /api/projects/{projectId}/settings/statuses/{statusId}`
-- `GET /api/projects/{projectId}/settings/templates`
+- `GET /api/projects/{projectId}/settings/templates` — ensures five built-in TestRail templates per project (`systemKey`: `test_case_text`, `test_case_steps`, `exploratory_session`, `behaviour_driven_development`, `ai_evaluation`) when missing
 - `POST /api/projects/{projectId}/settings/templates`
 - `PATCH /api/projects/{projectId}/settings/templates/{templateId}`
 - `DELETE /api/projects/{projectId}/settings/templates/{templateId}`
@@ -870,6 +905,8 @@ Defect integration semantics:
   - `DELETE /api/results/{resultId}/defects/{defectLinkId}` soft-deletes the canonical link.
 
 ## Import / Export
+- `GET /api/projects/{projectId}/cases/import/csv/profile` — canonical case import fields, active custom fields, and export header list.
+- `POST /api/projects/{projectId}/cases/import/csv/suggest-mapping` — body: `{ headers: string[] }` or `{ csv: string }`; returns suggested `columnMapping` and header-level `mappingIssues`.
 - `POST /api/projects/{projectId}/cases/import/csv`
 - `GET /api/projects/{projectId}/import-jobs`
 - `GET /api/projects/{projectId}/cases/export/csv`
@@ -881,9 +918,10 @@ Defect integration semantics:
 
 CSV case import baseline:
 - Supports section path, title, preconditions, priority, type, refs, labels, automation key, external id, steps.
-- Current API baseline accepts JSON body with `csv`, `dryRun`, `atomic`, and optional `sectionId`.
+- Current API baseline accepts JSON body with `csv`, `dryRun`, `atomic`, optional `sectionId`, and optional `columnMapping` (CSV header → canonical field key; empty string ignores a column).
+- When `columnMapping` is omitted, the server auto-suggests mappings from CSV headers (same rules as `suggest-mapping`).
 - Supports dry-run validation before commit.
-- Returns row-level validation errors.
+- Returns row-level validation errors with `row`, `field`, `code`, and `message` (row `1` for mapping-level issues such as missing Title mapping).
 - Does not partially import invalid rows unless `atomic=false` is explicitly provided.
 - Case export and run result export return `text/csv` and create completed export job records.
 - Case and result custom values are exported as `custom_{systemName}` columns where active custom fields exist; result custom columns are included in run result CSV exports and `results_explorer` report CSV exports.

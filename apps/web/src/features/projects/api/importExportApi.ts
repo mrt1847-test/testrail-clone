@@ -13,6 +13,33 @@ export type ImportExportJobRow = {
   createdAt: string;
 };
 
+export type CaseImportIssue = {
+  row: number;
+  field?: string;
+  code: string;
+  message: string;
+};
+
+export type CaseCsvFieldProfile = {
+  key: string;
+  label: string;
+  required: boolean;
+  description: string | null;
+  aliases: string[];
+};
+
+export type CaseImportProfile = {
+  coreFields: CaseCsvFieldProfile[];
+  customFields: Array<{
+    key: string;
+    systemName: string;
+    label: string;
+    fieldType: string;
+    required: boolean;
+  }>;
+  exportHeaders: string[];
+};
+
 export type CaseImportResult = {
   job: ImportExportJobRow;
   summary: {
@@ -21,13 +48,52 @@ export type CaseImportResult = {
     invalidRows: number;
     imported: number;
   };
-  issues: Array<{
-    row: number;
-    field?: string;
-    code: string;
-    message: string;
-  }>;
+  issues: CaseImportIssue[];
+  columnMapping?: Record<string, string> | null;
 };
+
+const CASE_CSV_MAPPING_STORAGE_PREFIX = "case-csv-mapping:";
+
+export function caseCsvMappingStorageKey(projectId: string) {
+  return `${CASE_CSV_MAPPING_STORAGE_PREFIX}${projectId}`;
+}
+
+export function loadSavedCaseCsvMapping(projectId: string): Record<string, string> | null {
+  try {
+    const raw = localStorage.getItem(caseCsvMappingStorageKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCaseCsvMapping(projectId: string, mapping: Record<string, string>) {
+  localStorage.setItem(caseCsvMappingStorageKey(projectId), JSON.stringify(mapping));
+}
+
+export function clearSavedCaseCsvMapping(projectId: string) {
+  localStorage.removeItem(caseCsvMappingStorageKey(projectId));
+}
+
+export async function fetchCaseImportProfile(projectId: string): Promise<CaseImportProfile> {
+  const res = await apiFetch<Ok<CaseImportProfile>>(`/api/projects/${projectId}/cases/import/csv/profile`);
+  return res.data;
+}
+
+export async function suggestCaseCsvMapping(
+  projectId: string,
+  input: { headers?: string[]; csv?: string }
+): Promise<{ headers: string[]; mapping: Record<string, string>; mappingIssues: CaseImportIssue[] }> {
+  const res = await apiFetch<
+    Ok<{ headers: string[]; mapping: Record<string, string>; mappingIssues: CaseImportIssue[] }>
+  >(`/api/projects/${projectId}/cases/import/csv/suggest-mapping`, {
+    method: "POST",
+    body: input
+  });
+  return res.data;
+}
 
 export async function importCasesCsv(input: {
   projectId: string;
@@ -35,6 +101,7 @@ export async function importCasesCsv(input: {
   dryRun: boolean;
   atomic?: boolean;
   sectionId?: string;
+  columnMapping?: Record<string, string>;
 }): Promise<CaseImportResult> {
   const res = await apiFetch<Ok<CaseImportResult>>(`/api/projects/${input.projectId}/cases/import/csv`, {
     method: "POST",
@@ -42,7 +109,8 @@ export async function importCasesCsv(input: {
       csv: input.csv,
       dryRun: input.dryRun,
       atomic: input.atomic ?? true,
-      ...(input.sectionId ? { sectionId: input.sectionId } : {})
+      ...(input.sectionId ? { sectionId: input.sectionId } : {}),
+      ...(input.columnMapping ? { columnMapping: input.columnMapping } : {})
     }
   });
   return {

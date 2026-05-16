@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/context/AuthContext";
 import { AppShell } from "../../../shared/ui/AppShell";
@@ -16,6 +16,7 @@ export function ProjectListPage() {
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const createMutation = useCreateProjectMutation();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const isInstanceAdmin = memberships.some((m) => m.role === "owner") || memberships.length === 0;
 
   const top = (
     <div className="border-b border-slate-200 bg-white px-4 py-4">
@@ -27,6 +28,20 @@ export function ProjectListPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isInstanceAdmin ? (
+            <Link
+              to="/admin/users"
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Users & groups
+            </Link>
+            <Link
+              to="/admin/access-defaults"
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Access defaults
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => setDialogOpen(true)}
@@ -109,8 +124,8 @@ export function ProjectListPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         isSubmitting={createMutation.isPending}
-        onSubmit={(name) => {
-          createMutation.mutate(name, {
+        onSubmit={(input) => {
+          createMutation.mutate(input, {
             onSuccess: (created) => {
               setDialogOpen(false);
               navigate(`/projects/${created.id}`);

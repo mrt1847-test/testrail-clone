@@ -25,6 +25,8 @@ type ApiCase = {
   automationKey?: string | null;
   externalId?: string | null;
   preconditions?: string | null;
+  expectedResult?: string | null;
+  caseTemplateId?: string | null;
   customValues?: Record<string, string | number | boolean | null>;
   lockVersion?: number;
   updatedAt?: string;
@@ -104,6 +106,8 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
     labels: row.labels ?? [],
     automationKey: row.automationKey ?? "",
     preconditions: row.preconditions ?? "",
+    expectedResult: row.expectedResult ?? "",
+    caseTemplateId: row.caseTemplateId ? asNum(row.caseTemplateId) : null,
     customValues: row.customValues ?? {},
     steps: [],
     sectionId: asNum(row.sectionId),
@@ -143,23 +147,24 @@ function mapApiCaseAttachment(row: ApiCaseAttachment): CaseAttachmentItem {
   };
 }
 
-export async function fetchSectionsForProject(projectId: string): Promise<SectionsBundle> {
-  const suites = await fetchAllPagedRows<{ id: string }>(
+export async function fetchSectionsForProject(
+  projectId: string,
+  options?: { suiteId?: string }
+): Promise<SectionsBundle> {
+  const suites = await fetchAllPagedRows<{ id: string; isMaster?: boolean }>(
     (page, pageSize) => `/api/projects/${projectId}/suites?page=${page}&pageSize=${pageSize}`
   );
-  const first = suites[0];
-  if (!first) return { suiteId: "", sections: [] };
-  const sectionsBySuite = await Promise.all(
-    suites.map((suite) =>
-      fetchAllPagedRows<ApiSection>(
-        (page, pageSize) => `/api/suites/${suite.id}/sections?page=${page}&pageSize=${pageSize}`
-      )
-    )
+  const activeSuite =
+    (options?.suiteId ? suites.find((suite) => String(suite.id) === options.suiteId) : null) ??
+    suites.find((suite) => suite.isMaster) ??
+    suites[0];
+  if (!activeSuite) return { suiteId: "", sections: [] };
+  const sections = await fetchAllPagedRows<ApiSection>(
+    (page, pageSize) => `/api/suites/${activeSuite.id}/sections?page=${page}&pageSize=${pageSize}`
   );
-  const allSections = sectionsBySuite.flat();
   return {
-    suiteId: String(first.id),
-    sections: allSections.map((section) => ({
+    suiteId: String(activeSuite.id),
+    sections: sections.map((section) => ({
       id: asNum(section.id),
       suiteId: asNum(section.suiteId),
       name: section.name,
@@ -168,6 +173,8 @@ export async function fetchSectionsForProject(projectId: string): Promise<Sectio
     }))
   };
 }
+
+export { fetchSectionsForProject as fetchSectionsForSuite };
 
 export async function createSection(suiteId: string, name: string, parentSectionId?: number | null): Promise<SectionNode> {
   const res = await apiFetch<Ok<ApiSection>>(`/api/suites/${suiteId}/sections`, {
@@ -282,13 +289,18 @@ export async function createCase(
     priority?: string;
     caseType?: string;
     preconditions?: string;
+    expectedResult?: string | null;
+    caseTemplateId?: number | null;
     refs?: string | null;
     customValues?: Record<string, string | number | boolean | null>;
   }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/sections/${sectionId}/cases`, {
     method: "POST",
-    body: input
+    body: {
+      ...input,
+      caseTemplateId: input.caseTemplateId ?? null
+    }
   });
   return mapApiCaseToTestCase(res.data);
 }
@@ -298,6 +310,8 @@ export async function updateCase(
   patch: {
     title?: string;
     preconditions?: string | null;
+    expectedResult?: string | null;
+    caseTemplateId?: number | null;
     refs?: string | null;
     priority?: string;
     caseType?: string;
@@ -308,7 +322,10 @@ export async function updateCase(
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/cases/${caseId}`, {
     method: "PATCH",
-    body: patch
+    body: {
+      ...patch,
+      ...(patch.caseTemplateId !== undefined ? { caseTemplateId: patch.caseTemplateId } : {})
+    }
   });
   return mapApiCaseToTestCase(res.data);
 }

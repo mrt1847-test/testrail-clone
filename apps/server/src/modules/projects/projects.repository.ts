@@ -1,7 +1,10 @@
+import type { ProjectType } from "../../domain/projectTypes.js";
+
 export type ProjectRow = {
   id: bigint;
   name: string;
   description?: string | null;
+  projectType: ProjectType;
   isArchived?: boolean;
 };
 
@@ -10,6 +13,9 @@ export type SuiteRow = {
   projectId: bigint;
   name: string;
   description?: string | null;
+  isMaster: boolean;
+  isBaseline: boolean;
+  parentSuiteId?: bigint | null;
 };
 
 export type SectionRow = {
@@ -36,6 +42,8 @@ export type CaseRow = {
   automationKey?: string | null;
   externalId?: string | null;
   preconditions?: string | null;
+  expectedResult?: string | null;
+  caseTemplateId?: bigint | null;
   customValues?: Record<string, string | number | boolean | null>;
   lockVersion: number;
   updatedAt: Date;
@@ -79,7 +87,7 @@ export type CaseVersionRow = {
 
 export interface ProjectsRepository {
   listProjects(): Promise<ProjectRow[]>;
-  createProject(input: Omit<ProjectRow, "id"> & { ownerUserId?: bigint }): Promise<ProjectRow>;
+  createProject(input: Omit<ProjectRow, "id" | "isArchived"> & { ownerUserId?: bigint }): Promise<ProjectRow>;
   getProject(projectId: bigint): Promise<ProjectRow | null>;
   updateProject(projectId: bigint, patch: Partial<Omit<ProjectRow, "id">>): Promise<ProjectRow | null>;
   deleteProject(projectId: bigint): Promise<boolean>;

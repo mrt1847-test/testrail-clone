@@ -25,6 +25,7 @@ import {
   usePushResultDefectMutation,
   useRerunMutation,
   useUpdateRunAssigneeMutation,
+  useUpdateRunScheduleMutation,
   useSyncRunCompositionMutation,
   useUpdateRunCompositionMutation,
   useRunTestSubscriptionsQuery,
@@ -43,6 +44,7 @@ import { useRunTestNavigation } from "../hooks/useRunTestNavigation";
 import { ResultEntryPanel } from "./ResultEntryPanel";
 import { ResultHistoryList } from "./ResultHistoryList";
 import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionPanel";
+import { RunSchedulePanel } from "./RunSchedulePanel";
 
 export function RunDetailPage() {
   const { projectId = "", runId = "" } = useParams();
@@ -122,6 +124,7 @@ export function RunDetailPage() {
   const [filterPriority, setFilterPriority] = useState<"" | "low" | "medium" | "high">("");
   const [filterState, setFilterState] = useState<"active" | "archived">("active");
   const assigneeMutation = useUpdateRunAssigneeMutation(projectId, runId);
+  const scheduleMutation = useUpdateRunScheduleMutation(projectId, runId);
   const rerunMutation = useRerunMutation(projectId, runId);
   const addAttachmentMutation = useAddResultAttachmentMutation(selectedResultId ?? undefined);
   const openAttachmentDownloadMutation = useOpenAttachmentDownloadMutation();
@@ -250,6 +253,14 @@ export function RunDetailPage() {
       />
 
       <RunHeader run={run} milestoneName={milestoneQuery.data?.name} counts={counts} />
+
+      <RunSchedulePanel
+        run={run}
+        dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
+        canEdit={run.status === "open"}
+        isSaving={scheduleMutation.isPending}
+        onSave={(patch) => scheduleMutation.mutateAsync(patch)}
+      />
 
       <RunSummaryBar
         className="lg:hidden"

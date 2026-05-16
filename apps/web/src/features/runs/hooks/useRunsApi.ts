@@ -24,6 +24,7 @@ import {
   rerunRun,
   updateTestAssignee,
   updateRunAssignee,
+  updateRunSchedule,
   uploadResultAttachmentViaPresign,
   deleteAttachment,
   reopenRun,
@@ -287,6 +288,18 @@ export function useUpdateRunAssigneeMutation(projectId: string | undefined, runI
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.assignedToMe(projectId) });
+    }
+  });
+}
+
+export function useUpdateRunScheduleMutation(projectId: string | undefined, runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { startedAt: string | null; dueOn: string | null }) => updateRunSchedule(runId!, patch),
+    onSuccess: () => {
+      if (!projectId || !runId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
     }
   });
 }

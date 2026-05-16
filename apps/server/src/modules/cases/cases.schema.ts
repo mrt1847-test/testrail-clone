@@ -10,6 +10,8 @@ export const createCaseSchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   preconditions: z.string().optional(),
+  expectedResult: z.string().nullable().optional(),
+  caseTemplateId: z.coerce.bigint().nullable().optional(),
   refs: z.string().nullable().optional(),
   customValues: customValuesSchema.optional()
 });
@@ -61,6 +63,8 @@ export const updateCaseSchema = z.object({
   priority: z.string().optional(),
   caseType: z.string().optional(),
   preconditions: z.string().nullable().optional(),
+  expectedResult: z.string().nullable().optional(),
+  caseTemplateId: z.coerce.bigint().nullable().optional(),
   refs: z.string().nullable().optional(),
   customValues: customValuesSchema.optional(),
   expectedUpdatedAt: z.string().datetime().optional(),

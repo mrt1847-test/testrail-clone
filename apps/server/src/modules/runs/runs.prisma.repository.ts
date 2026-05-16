@@ -19,7 +19,9 @@ function mapRunRow(r: {
   environment: string | null;
   metadata: Prisma.JsonValue | null;
   startedAt?: Date | null;
+  dueOn?: Date | null;
   closedAt?: Date | null;
+  planId?: bigint | null;
   createdAt?: Date;
 }): TestRun {
   return {
@@ -27,12 +29,14 @@ function mapRunRow(r: {
     projectId: r.projectId,
     suiteId: r.suiteId,
     milestoneId: r.milestoneId ?? null,
+    planId: r.planId ?? null,
     name: r.name,
     includeAll: r.includeAll,
     status: r.status === "closed" ? "closed" : "open",
     assignedTo: r.assignedTo ?? null,
     environment: r.environment ?? null,
     startedAt: r.startedAt ?? null,
+    dueOn: r.dueOn ?? null,
     closedAt: r.closedAt ?? null,
     createdAt: r.createdAt ?? null,
     composition: parseRunCompositionMetadata(r.metadata)
@@ -55,7 +59,8 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           includeAll: input.includeAll,
           assignedTo: input.assignedTo ?? null,
           environment: input.environment ?? null,
-          startedAt: new Date(),
+          startedAt: input.startedAt ?? null,
+          dueOn: input.dueOn ?? null,
           metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
       });
@@ -376,7 +381,7 @@ export class PrismaRunsRepository implements RunsRepository {
 
   async updateRun(
     runId: bigint,
-    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; closedAt?: Date | null }
+    input: { name?: string; assignedTo?: bigint | null; startedAt?: Date | null; dueOn?: Date | null; closedAt?: Date | null }
   ): Promise<TestRun | null> {
     const row = await this.prisma.testRun.findFirst({
       where: { id: runId, deletedAt: null }
@@ -388,6 +393,7 @@ export class PrismaRunsRepository implements RunsRepository {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {}),
         ...(input.startedAt !== undefined ? { startedAt: input.startedAt } : {}),
+        ...(input.dueOn !== undefined ? { dueOn: input.dueOn } : {}),
         ...(input.closedAt !== undefined ? { closedAt: input.closedAt } : {})
       }
     });

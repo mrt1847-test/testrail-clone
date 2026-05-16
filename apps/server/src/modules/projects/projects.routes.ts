@@ -11,6 +11,9 @@ import { createProjectSchema, projectIdParamSchema, updateProjectSchema } from "
 import { ProjectsService } from "./projects.service.js";
 import type { PrismaClient } from "@prisma/client";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import { ensureDefaultCaseTemplates, ensureDefaultCaseTemplatesInMemory } from "../settings/caseTemplates.service.js";
+import { caseTemplates } from "../settings/settings.shared.js";
+import { getAccessDefaults, grantActiveUsersToProject } from "../admin/accessDefaults.service.js";
 
 export async function registerProjectsRoutes(
   app: FastifyInstance,
@@ -26,12 +29,13 @@ export async function registerProjectsRoutes(
           members: { some: { userId: user.id, deletedAt: null } }
         },
         orderBy: { id: "desc" },
-        select: { id: true, name: true, description: true, isActive: true }
+        select: { id: true, name: true, description: true, projectType: true, isActive: true }
       });
       const mapped = items.map((row) => ({
         id: row.id,
         name: row.name,
         description: row.description,
+        projectType: row.projectType,
         isArchived: !row.isActive
       }));
       return reply.send(toJsonSafe(paged(mapped, page, pageSize)));
@@ -43,7 +47,29 @@ export async function registerProjectsRoutes(
   app.post("/api/projects", async (req, reply) => {
     const user = await getAuthenticatedUser(req, deps);
     const body = createProjectSchema.parse(req.body);
-    const created = await deps.projectsService.createProject({ ...body, ownerUserId: user.id });
+    const created = await deps.projectsService.createProject({
+      name: body.name,
+      description: body.description,
+      projectType: body.projectType,
+      ownerUserId: user.id
+    });
+    if (deps.prisma) {
+      await ensureDefaultCaseTemplates(deps.prisma, created.id, user.id);
+    } else {
+      ensureDefaultCaseTemplatesInMemory(created.id, caseTemplates);
+    }
+    if (deps.prisma) {
+      const accessDefaults = await getAccessDefaults(deps.prisma);
+      if (accessDefaults.newProjectAccessMode === "all_active_users") {
+        await deps.prisma.$transaction((tx) =>
+          grantActiveUsersToProject(tx, {
+            projectId: created.id,
+            creatorUserId: user.id,
+            role: accessDefaults.defaultProjectMemberRole
+          })
+        );
+      }
+    }
     await recordActivityEvent(deps.prisma, {
       projectId: created.id,
       actorUserId: user.id,

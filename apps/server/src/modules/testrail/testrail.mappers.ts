@@ -27,8 +27,8 @@ export function mapSuite(row: SuiteRow) {
     name: row.name,
     description: row.description ?? null,
     is_completed: false,
-    is_baseline: false,
-    is_master: false
+    is_baseline: row.isBaseline,
+    is_master: row.isMaster
   };
 }
 

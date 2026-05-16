@@ -37,7 +37,7 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
   });
 
   app.post("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'settings.write' });
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = customFieldCreateSchema.parse(req.body);
     const systemName = normalizeSystemName(body.systemName ?? body.name);
@@ -113,7 +113,7 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
   });
 
   app.patch("/api/projects/:projectId/settings/custom-fields/:fieldId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'settings.write' });
     const { projectId, fieldId } = customFieldIdParamSchema.parse(req.params);
     const body = customFieldUpdateSchema.parse(req.body);
     const nextSystemName = body.systemName !== undefined ? normalizeSystemName(body.systemName) : undefined;
@@ -202,7 +202,7 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
   });
 
   app.delete("/api/projects/:projectId/settings/custom-fields/:fieldId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'settings.write' });
     const { projectId, fieldId } = customFieldIdParamSchema.parse(req.params);
     if (deps.prisma) {
       const actor = await getAuthenticatedUser(req, deps);
@@ -254,3 +254,4 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
     return reply.code(204).send();
   });
 }
+

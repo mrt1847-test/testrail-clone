@@ -5,7 +5,7 @@ import {
 } from "./caseVersionAttachmentSnapshot.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
-import { normalizeCaseRefsInput } from "../../domain/caseRefs.js";
+import { caseRefsValidationError, prepareCaseRefsInput } from "../../domain/caseRefs.js";
 import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
 
 type ScalarCustomValue = string | number | boolean | null;
@@ -41,13 +41,25 @@ export class CasesService {
     priority?: string;
     caseType?: string;
     preconditions?: string;
+    expectedResult?: string | null;
+    caseTemplateId?: bigint | null;
     refs?: string | null;
     labels?: string[];
     customValues?: Record<string, string | number | boolean | null>;
   }) {
+    let refs = input.refs;
+    if (refs !== undefined) {
+      try {
+        refs = prepareCaseRefsInput(refs);
+      } catch (e) {
+        const mapped = caseRefsValidationError(e);
+        if (mapped) throw mapped;
+        throw e;
+      }
+    }
     const created = await this.repo.createCase({
       ...input,
-      refs: input.refs !== undefined ? normalizeCaseRefsInput(input.refs) : input.refs
+      refs
     });
     await this.repo.createCaseVersionSnapshot(created.id, "case_created");
     return created;
@@ -134,16 +146,28 @@ export class CasesService {
       priority?: string;
       caseType?: string;
       preconditions?: string | null;
+      expectedResult?: string | null;
+      caseTemplateId?: bigint | null;
       refs?: string | null;
       customValues?: Record<string, string | number | boolean | null>;
       expectedUpdatedAt?: string;
       expectedVersion?: number;
     }
   ) {
-    const { expectedUpdatedAt: _legacy, expectedVersion, refs, ...rest } = patch;
+    const { expectedUpdatedAt: _legacy, expectedVersion, refs: rawRefs, ...rest } = patch;
+    let refs = rawRefs;
+    if (refs !== undefined) {
+      try {
+        refs = prepareCaseRefsInput(refs);
+      } catch (e) {
+        const mapped = caseRefsValidationError(e);
+        if (mapped) throw mapped;
+        throw e;
+      }
+    }
     const nextPatch = {
       ...rest,
-      ...(refs !== undefined ? { refs: normalizeCaseRefsInput(refs) } : {})
+      ...(refs !== undefined ? { refs } : {})
     };
     const updated = await this.repo.updateCase(caseId, nextPatch, expectedVersion);
     if (updated === "conflict") {
@@ -224,6 +248,8 @@ export class CasesService {
         automationKey: null,
         externalId: null,
         preconditions: source.preconditions,
+        expectedResult: source.expectedResult ?? null,
+        caseTemplateId: source.caseTemplateId ?? null,
         customValues: { ...(source.customValues ?? {}) },
         archivedAt: null
       });

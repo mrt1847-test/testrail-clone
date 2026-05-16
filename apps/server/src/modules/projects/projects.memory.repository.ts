@@ -1,3 +1,4 @@
+import { normalizeProjectType } from "../../domain/projectTypes.js";
 import type {
   CaseRow,
   CasePresenceFilter,
@@ -8,6 +9,7 @@ import type {
   SectionRow,
   SuiteRow
 } from "./projects.repository.js";
+import { shouldTreatAsMasterSuite } from "../../domain/projectTypes.js";
 
 type StoredCaseStep = CaseStepRow & { caseId: bigint };
 
@@ -90,9 +92,30 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   async listProjects() {
     return [...this.projects];
   }
-  async createProject(input: Omit<ProjectRow, "id"> & { ownerUserId?: bigint }) {
-    const row: ProjectRow = { id: this.projectSeq++, isArchived: false, ...input };
+  async createProject(input: Omit<ProjectRow, "id" | "isArchived"> & { ownerUserId?: bigint }) {
+    const row: ProjectRow = {
+      id: this.projectSeq++,
+      isArchived: false,
+      projectType: normalizeProjectType(input.projectType),
+      name: input.name,
+      description: input.description ?? null
+    };
     this.projects.push(row);
+    const suiteName = row.projectType === "multi_suite" ? "Suite 1" : "Master";
+    const suite = await this.createSuite({
+      projectId: row.id,
+      name: suiteName,
+      description: null,
+      isMaster: shouldTreatAsMasterSuite(row.projectType, []),
+      isBaseline: false,
+      parentSuiteId: null
+    });
+    await this.createSection({
+      suiteId: suite.id,
+      name: "General",
+      parentSectionId: null,
+      displayOrder: 0
+    });
     return row;
   }
   async getProject(projectId: bigint) {
@@ -115,7 +138,15 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     return this.suites.filter((s) => s.projectId === projectId);
   }
   async createSuite(input: Omit<SuiteRow, "id">) {
-    const row: SuiteRow = { id: this.suiteSeq++, ...input };
+    const row: SuiteRow = {
+      id: this.suiteSeq++,
+      projectId: input.projectId,
+      name: input.name,
+      description: input.description ?? null,
+      isMaster: input.isMaster ?? false,
+      isBaseline: input.isBaseline ?? false,
+      parentSuiteId: input.parentSuiteId ?? null
+    };
     this.suites.push(row);
     return row;
   }

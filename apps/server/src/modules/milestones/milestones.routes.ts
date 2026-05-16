@@ -37,7 +37,9 @@ export async function registerMilestonesRoutes(
               id: row.id,
               projectId: row.projectId,
               name: row.name,
-              isCompleted: row.isCompleted
+              isCompleted: row.isCompleted,
+              startDate: row.startDate?.toISOString() ?? null,
+              dueDate: row.dueDate?.toISOString() ?? null
             })),
             1,
             100
@@ -206,7 +208,9 @@ export async function registerMilestonesRoutes(
             id: found.id,
             projectId: found.projectId,
             name: found.name,
-            isCompleted: found.isCompleted
+            isCompleted: found.isCompleted,
+            startDate: found.startDate?.toISOString() ?? null,
+            dueDate: found.dueDate?.toISOString() ?? null
           }
         })
       );

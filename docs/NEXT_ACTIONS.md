@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-16
+Last aligned: 2026-05-17
 
 **역할:** 다음 1–2 PR 분량. 방향은 [ROADMAP.md](./ROADMAP.md). **진행률은 [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md)의 `[ ]` → `[x]` 한 줄**로만 잰다.
 
@@ -15,24 +15,24 @@ Last aligned: 2026-05-16
 
 ## Current batch
 
-**Section:** Product Foundation
+**Section:** Automation And API Compatibility
 
 **Checklist line (exact — done when this is `[x]`):**
 
 ```text
-- [ ] **TR-Core** P1 Global default access model.
+- [ ] **TR-Core** P1 Clearer token creation UX.
 ```
 
 ### Scope (only what closes the line above)
 
-1. Define product default for new projects / new members (role or access template).
-2. Persist and expose via settings API + admin UI baseline.
-3. Tests and checklist note on what is in vs out of full permission matrix (line 39).
+1. Improve project token creation form with scope presets, expiry guidance, and validation feedback.
+2. Surface created token secret once with copy affordance and scope summary.
+3. Align with existing `scopes` / `expiresInDays` API on `POST /api/projects/{projectId}/tokens`.
 
 ### Out of scope for this batch
 
-- Full custom roles matrix (checklist line 39).
-- SSO/MFA.
+- OAuth device flow or org-wide token policies.
+- Token rotation automation.
 
 ---
 
@@ -42,10 +42,9 @@ Last aligned: 2026-05-16
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Test Case Management | `- [ ] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)).` |
-| 2 | Run Composition And Execution | `- [ ] **TR-Core** P1 Run **start date** and **end date** (optional, editable while active, milestone inheritance, plan/milestone warnings, manual complete — not auto-close on date). (partial: …)` |
-| 3 | Import And Export | `- [ ] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance.` |
-| 4 | Automation And API Compatibility | `- [ ] **TR-Core** P1 Token scopes and expiration enforcement.` |
-| 5 | Product Foundation | `- [ ] **TR-Core** P1 Users, groups, global roles, custom roles, and permission matrix.` |
+| 1 | Import And Export | `- [ ] **TR-Pro** P1 XML/JSON import/export.` |
+| 2 | Automation And API Compatibility | `- [ ] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance.` |
+| 3 | Test Case Management | `- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).` |
+| 4 | Test Case Management | `- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).` |
 
 항목이 한 PR에 넘치면 **FEATURE_CHECKLIST에서 `[ ]`를 먼저 쪼갠다**. 쪼개기 전에는 NEXT_ACTIONS에 임의 주제를 쓰지 않는다.

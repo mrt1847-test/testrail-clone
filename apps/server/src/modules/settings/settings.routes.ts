@@ -10,6 +10,7 @@ import { registerWebhooksRoutes } from "./webhooks.routes.js";
 import { registerAuditRoutes } from "./audit.routes.js";
 import { registerEmailOutboxRoutes } from "./emailOutbox.routes.js";
 import { registerMembersRoutes } from "./members.routes.js";
+import { registerCustomRolesRoutes } from "./customRoles.routes.js";
 
 export async function registerSettingsRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings", async (req, reply) => {
@@ -29,4 +30,5 @@ export async function registerSettingsRoutes(app: FastifyInstance, deps: Setting
   await registerEmailOutboxRoutes(app, deps);
   await registerAuditRoutes(app, deps);
   await registerMembersRoutes(app, deps);
+  await registerCustomRolesRoutes(app, deps);
 }

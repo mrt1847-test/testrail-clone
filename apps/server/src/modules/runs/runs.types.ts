@@ -12,7 +12,9 @@ export type TestRun = {
   assignedTo: bigint | null;
   environment: string | null;
   startedAt?: Date | null;
+  dueOn?: Date | null;
   closedAt?: Date | null;
+  planId?: bigint | null;
   createdAt?: Date | null;
   composition?: RunCompositionMetadata | null;
 };
@@ -48,6 +50,8 @@ export type CreateRunWithInstancesInput = {
   projectId: bigint;
   suiteId: bigint;
   milestoneId?: bigint | null;
+  startedAt?: Date | null;
+  dueOn?: Date | null;
   name: string;
   includeAll: boolean;
   caseIds?: bigint[];

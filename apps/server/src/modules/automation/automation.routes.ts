@@ -1,11 +1,19 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
-import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
+import type { ApiTokenScope } from "../../domain/apiTokenScopes.js";
+import {
+  assertApiTokenProject,
+  assertApiTokenScopes,
+  resolveProjectApiToken,
+  touchApiTokenLastUsed,
+  type ResolvedApiToken
+} from "../tokens/apiToken.service.js";
+import { resolveInMemoryApiToken } from "../tokens/tokens.routes.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { ResultsService } from "../results/results.service.js";
 import type { RunsService } from "../runs/runs.service.js";
@@ -24,11 +32,6 @@ type UploadRow = {
 };
 
 const uploadRows: UploadRow[] = [];
-
-type AutomationContext = {
-  tokenId: bigint;
-  projectId: bigint;
-};
 
 type AutomationMetadata = {
   external_run_id?: string | null;
@@ -112,36 +115,43 @@ function getBearerToken(value?: string): string | undefined {
   return token;
 }
 
-async function requireAutomationToken(req: FastifyRequest, prisma?: PrismaClient) {
-  if (!prisma) {
-    throw new AppError("NOT_IMPLEMENTED", "automation token auth requires prisma mode", 501);
-  }
+async function requireAutomationToken(
+  req: FastifyRequest,
+  prisma: PrismaClient | undefined,
+  requiredScopes: ApiTokenScope | ApiTokenScope[]
+) {
   const authHeader = Array.isArray(req.headers.authorization) ? req.headers.authorization[0] : req.headers.authorization;
-  const token = getBearerToken(authHeader);
-  if (!token) {
+  const rawToken = getBearerToken(authHeader);
+  if (!rawToken) {
     throw new AppError("UNAUTHORIZED", "missing automation token", 401);
   }
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const row = await prisma.apiToken.findFirst({
-    where: {
-      tokenHash,
-      revokedAt: null,
-      projectId: { not: null },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]
-    },
-    select: { id: true, projectId: true }
-  });
-  if (!row || !row.projectId) {
-    throw new AppError("UNAUTHORIZED", "invalid automation token", 401);
+
+  if (!prisma) {
+    const row = resolveInMemoryApiToken(rawToken);
+    if (!row) {
+      throw new AppError("UNAUTHORIZED", "invalid or expired automation token", 401);
+    }
+    assertApiTokenScopes(
+      { id: row.id, projectId: row.projectId, userId: 1n, scopes: row.scopes, expiresAt: row.expiresAt ? new Date(row.expiresAt) : null },
+      requiredScopes
+    );
+    row.lastUsedAt = new Date().toISOString();
+    return {
+      id: row.id,
+      projectId: row.projectId,
+      userId: 1n,
+      scopes: row.scopes,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt) : null
+    } satisfies ResolvedApiToken;
   }
-  await prisma.apiToken.update({
-    where: { id: row.id },
-    data: { lastUsedAt: new Date() }
-  });
-  return {
-    tokenId: row.id,
-    projectId: row.projectId
-  } satisfies AutomationContext;
+
+  const resolved = await resolveProjectApiToken(prisma, rawToken);
+  if (!resolved) {
+    throw new AppError("UNAUTHORIZED", "invalid or expired automation token", 401);
+  }
+  assertApiTokenScopes(resolved, requiredScopes);
+  await touchApiTokenLastUsed(prisma, resolved.id);
+  return resolved;
 }
 
 async function assertRunBelongsToProject(prisma: PrismaClient, runId: bigint, projectId: bigint) {
@@ -380,11 +390,9 @@ export async function registerAutomationRoutes(
   });
 
   app.post("/api/automation/runs", async (req, reply) => {
-    const ctx = await requireAutomationToken(req, deps.prisma);
+    const ctx = await requireAutomationToken(req, deps.prisma, "automation:write");
     const body = createRunSchema.parse(req.body);
-    if (body.projectId !== ctx.projectId) {
-      throw new AppError("FORBIDDEN", "token project does not match request project", 403);
-    }
+    assertApiTokenProject(ctx, body.projectId);
     const created = await deps.runsService.createRunWithInstances({
       projectId: ctx.projectId,
       suiteId: body.suiteId,
@@ -398,7 +406,7 @@ export async function registerAutomationRoutes(
   });
 
   app.post("/api/automation/runs/:runId/results", async (req, reply) => {
-    const ctx = await requireAutomationToken(req, deps.prisma);
+    const ctx = await requireAutomationToken(req, deps.prisma, "automation:write");
     const { runId } = runIdParamSchema.parse(req.params);
     if (deps.prisma) {
       await assertRunBelongsToProject(deps.prisma, runId, ctx.projectId);
@@ -414,7 +422,7 @@ export async function registerAutomationRoutes(
   });
 
   app.post("/api/automation/results/bulk", async (req, reply) => {
-    const ctx = await requireAutomationToken(req, deps.prisma);
+    const ctx = await requireAutomationToken(req, deps.prisma, "automation:write");
     const body = automationBulkSchema.parse(req.body);
     const rawBody = normalizeAutomationBulkInput(req.body) as { results?: unknown[] } & Record<string, unknown>;
     const requestMetadata = toAutomationMetadata(rawBody);
@@ -435,7 +443,7 @@ export async function registerAutomationRoutes(
   });
 
   app.post("/api/automation/uploads/:uploadId/retry", async (req, reply) => {
-    const ctx = await requireAutomationToken(req, deps.prisma);
+    const ctx = await requireAutomationToken(req, deps.prisma, "automation:write");
     const params = req.params as { uploadId: string };
     const uploadId = BigInt(params.uploadId);
     const retried = await retryFailedForRun(ctx.projectId, uploadId);

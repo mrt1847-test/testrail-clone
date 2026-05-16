@@ -56,8 +56,8 @@ describe("CasesService.getCaseVersionAttachmentDownload", () => {
   it("returns signed download URL from snapshot storageKey", async () => {
     const repo = new ProjectsMemoryRepository();
     const service = new CasesService(repo);
-    const project = await repo.createProject({ name: "P", isArchived: false });
-    const suite = await repo.createSuite({ projectId: project.id, name: "Suite", description: null });
+    const project = await repo.createProject({ name: "P", description: null, projectType: "single_repo" });
+    const suite = (await repo.listSuitesByProject(project.id))[0]!;
     const section = await repo.createSection({ suiteId: suite.id, name: "S", description: null });
     const created = await repo.createCase({
       sectionId: section.id,
@@ -89,8 +89,8 @@ describe("CasesService.getCaseVersionAttachmentDownload", () => {
   it("returns 404 when attachment id is not in snapshot", async () => {
     const repo = new ProjectsMemoryRepository();
     const service = new CasesService(repo);
-    const project = await repo.createProject({ name: "P", isArchived: false });
-    const suite = await repo.createSuite({ projectId: project.id, name: "Suite", description: null });
+    const project = await repo.createProject({ name: "P", description: null, projectType: "single_repo" });
+    const suite = (await repo.listSuitesByProject(project.id))[0]!;
     const section = await repo.createSection({ suiteId: suite.id, name: "S", description: null });
     const created = await repo.createCase({
       sectionId: section.id,

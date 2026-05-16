@@ -42,6 +42,8 @@ export function useCaseEditorActions(projectId: string) {
       title: string;
       preconditions: string;
       references: string;
+      expectedResult: string;
+      templateId: string | null;
       customValues: Record<string, string | number | boolean | null>;
       expectedVersion?: number;
     }) =>
@@ -49,6 +51,8 @@ export function useCaseEditorActions(projectId: string) {
         title: input.title,
         preconditions: input.preconditions,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
+        expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
+        caseTemplateId: input.templateId ? Number(input.templateId) : null,
         customValues: input.customValues,
         expectedVersion: input.expectedVersion
       }),

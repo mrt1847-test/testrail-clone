@@ -19,6 +19,7 @@ type ApiRun = {
   assignedTo?: string | null;
   milestoneId?: string | null;
   startedAt?: string | null;
+  dueOn?: string | null;
   closedAt?: string | null;
   createdAt?: string | null;
   composition?: {
@@ -42,7 +43,7 @@ type ApiInstance = {
   assignedTo?: string | null;
 };
 
-type RunDetailPayload = { run: ApiRun; instances: ApiInstance[] };
+type RunDetailPayload = { run: ApiRun; instances?: ApiInstance[]; dateWarnings?: string[] };
 type RunHeaderPayload = { run: ApiRun };
 
 type RunSummaryResponse = {
@@ -69,7 +70,7 @@ export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
 export async function fetchRunDetail(projectId: string, runId: string): Promise<RunDetailDto | null> {
   try {
     const [detailRes, summaryRes] = await Promise.all([
-      apiFetch<Ok<RunHeaderPayload>>(`/api/projects/${projectId}/runs/${runId}?includeInstances=false`),
+      apiFetch<Ok<RunDetailPayload>>(`/api/projects/${projectId}/runs/${runId}?includeInstances=false`),
       apiFetch<RunSummaryResponse>(`/api/runs/${runId}/summary`)
     ]);
     const { run } = detailRes.data;
@@ -92,11 +93,13 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         includeAll: run.includeAll,
         composition: run.composition ?? null,
         startedAt: run.startedAt ?? null,
+        dueOn: run.dueOn ?? null,
         closedAt: run.closedAt ?? null,
         progress,
         failed,
         createdAt: run.createdAt ?? "—"
       },
+      dateWarnings: detailRes.data.dateWarnings ?? [],
       instances: [],
       counts: { passed, failed, blocked, retest, untested }
     };
@@ -212,6 +215,16 @@ export async function updateRunAssignee(runId: string, assignedTo: string | null
   });
 }
 
+export async function updateRunSchedule(
+  runId: string,
+  patch: { startedAt: string | null; dueOn: string | null }
+) {
+  return apiFetch(`/api/runs/${runId}`, {
+    method: "PATCH",
+    body: patch
+  });
+}
+
 export async function rerunRun(runId: string, statuses: Array<"passed" | "failed" | "blocked" | "retest" | "untested">) {
   return apiFetch(`/api/runs/${runId}/rerun`, {
     method: "POST",
@@ -269,6 +282,8 @@ export type CreateRunInput = {
   includedSectionIds?: string[];
   excludedSectionIds?: string[];
   milestoneId?: string | null;
+  startedAt?: string | null;
+  dueOn?: string | null;
   environment?: string;
   compositionMode?: "static" | "include_all_live" | "dynamic_filter";
   filterDefinition?: {
@@ -326,6 +341,8 @@ export async function createRun(input: CreateRunInput): Promise<RunSummary> {
       includedSectionIds: input.includedSectionIds,
       excludedSectionIds: input.excludedSectionIds,
       milestoneId: input.milestoneId ?? undefined,
+      startedAt: input.startedAt ?? undefined,
+      dueOn: input.dueOn ?? undefined,
       environment: input.environment,
       compositionMode: input.compositionMode,
       filterDefinition: input.filterDefinition

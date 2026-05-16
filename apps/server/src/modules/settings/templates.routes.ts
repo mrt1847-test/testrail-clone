@@ -16,17 +16,23 @@ import {
   type SettingsRouteDeps
 } from "./settings.shared.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import {
+  ensureDefaultCaseTemplates,
+  ensureDefaultCaseTemplatesInMemory
+} from "./caseTemplates.service.js";
 
 export async function registerTemplatesRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/templates", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
+      await ensureDefaultCaseTemplates(deps.prisma, projectId);
       const rows = await deps.prisma.caseTemplate.findMany({
         where: { projectId, deletedAt: null },
         orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
       });
       return reply.send(toJsonSafe(paged(rows.map(templateToResponse), 1, 100)));
     }
+    ensureDefaultCaseTemplatesInMemory(projectId, caseTemplates);
     return reply.send(toJsonSafe(paged(caseTemplates.filter((item) => item.projectId === projectId), 1, 100)));
   });
 
@@ -98,6 +104,7 @@ export async function registerTemplatesRoutes(app: FastifyInstance, deps: Settin
     const row: CaseTemplateRow = {
       id: BigInt(Date.now()),
       projectId,
+      systemKey: null,
       name: body.name,
       description: body.description ?? null,
       fields: body.fields,

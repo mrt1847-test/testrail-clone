@@ -19,28 +19,7 @@ import {
   type CaseAuthoringCustomFieldDefinition,
   type CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
-import { parseCaseRefs } from "../utils/caseRefs";
-
-function CaseRefTokens({ refsValue }: { refsValue: string }) {
-  const { projectId = "" } = useParams();
-  const tokens = parseCaseRefs(refsValue);
-  if (!projectId || tokens.length === 0) return <>{refsValue}</>;
-  return (
-    <>
-      {tokens.map((token, index) => (
-        <span key={token}>
-          {index > 0 ? ", " : null}
-          <Link
-            to={`/projects/${projectId}/cases?q=${encodeURIComponent(token)}`}
-            className="text-indigo-800 hover:underline"
-          >
-            {token}
-          </Link>
-        </span>
-      ))}
-    </>
-  );
-}
+import { CaseRefTokens } from "./CaseRefTokens";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -54,6 +33,8 @@ type ExpandableCaseDetailProps = {
     title: string;
     preconditions: string;
     references: string;
+    expectedResult: string;
+    templateId: string | null;
     customValues: Record<string, string | number | boolean | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -655,6 +636,7 @@ export function ExpandableCaseDetail({
   layout = "embedded",
   showHeading = true
 }: ExpandableCaseDetailProps) {
+  const { projectId = "" } = useParams();
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
   const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | null>>(
@@ -674,6 +656,10 @@ export function ExpandableCaseDetail({
   const selectedChangedDiffs = [...selectedFieldDiffs, ...selectedCustomDiffs].filter((row) => row.changed);
   const selectedChangedStepDiffs = selectedStepDiffs.filter((row) => row.status !== "unchanged");
   const selectedChangeCount = selectedChangedDiffs.length + selectedChangedStepDiffs.length;
+  const activeCaseTemplate =
+    caseTemplates.find((template) => template.id === String(data.caseTemplateId ?? "")) ?? null;
+  const editShowsSteps =
+    activeCaseTemplate?.fields.some((field) => field.trim().toLowerCase() === "steps") || data.steps.length > 0;
 
   useEffect(() => {
     setTitle(data.title);
@@ -735,17 +721,20 @@ export function ExpandableCaseDetail({
         <div className="mt-3 grid gap-3">
           <CaseAttachmentControls entityType="case" entityId={data.id} label="Case images" />
           <CaseAuthoringForm
+            projectId={projectId}
             valueKey={`${data.id}:${data.lockVersion}:${mode}`}
             initialTitle={title}
             initialPreconditions={preconditions}
             initialReferences={data.references}
+            initialExpectedResult={data.expectedResult}
+            initialCaseTemplateId={data.caseTemplateId != null ? String(data.caseTemplateId) : null}
             initialCustomValues={customValues}
             customFields={customFields}
             templates={caseTemplates}
             submitLabel={isSaving ? "Saving..." : "Save"}
             isSubmitting={isSaving}
             submitError={submitError}
-            stepsSection={
+            stepsSection={editShowsSteps ? (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-slate-800">Steps</span>
@@ -835,12 +824,14 @@ export function ExpandableCaseDetail({
                   </ol>
                 )}
               </>
-            }
+            ) : undefined}
             onSubmit={async (input) => {
               await onSave({
                 title: input.title,
                 preconditions: input.preconditions,
                 references: input.references,
+                expectedResult: input.expectedResult,
+                templateId: input.templateId,
                 customValues: input.customValues
               });
             }}
@@ -868,6 +859,16 @@ export function ExpandableCaseDetail({
           <p className="text-sm text-slate-700">
             <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}
           </p>
+          {data.expectedResult.trim().length > 0 ? (
+            <p className="text-sm text-slate-700">
+              <span className="font-medium">Expected result:</span> {data.expectedResult}
+            </p>
+          ) : null}
+          {activeCaseTemplate ? (
+            <p className="text-sm text-slate-700">
+              <span className="font-medium">Template:</span> {activeCaseTemplate.name}
+            </p>
+          ) : null}
           <div className="mt-2">
             <CaseAttachmentControls entityType="case" entityId={data.id} label="Case images" readOnly />
           </div>

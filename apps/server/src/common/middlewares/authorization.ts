@@ -2,8 +2,8 @@ import type { FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 
 import { AppError } from "../errors/appError.js";
-import { canMutateProject } from "../../domain/permissions.js";
-import type { ProjectRole } from "../../domain/roles.js";
+import { hasProjectPermission, type ProjectPermission } from "../../domain/permissionMatrix.js";
+import { resolveProjectAccess, accessAllowsMutation } from "../../modules/permissions/projectAccess.service.js";
 import type { AuthService } from "../../modules/auth/auth.service.js";
 
 function getBearerToken(value?: string): string | undefined {
@@ -121,17 +121,13 @@ async function resolveProjectId(req: FastifyRequest, prisma?: PrismaClient) {
   return null;
 }
 
-export async function requireProjectMutationRole(
+export async function requireProjectPermission(
   req: FastifyRequest,
   deps: { authService: AuthService; prisma?: PrismaClient },
+  permission: ProjectPermission,
   options?: { skipArchivedCheck?: boolean }
 ) {
-  await requireAuthenticated(req, deps);
-  const token = getBearerToken(req.headers.authorization);
-  const user = await deps.authService.me(token);
-  if (!user) {
-    throw new AppError("UNAUTHORIZED", "auth required", 401);
-  }
+  const user = await getAuthenticatedUser(req, deps);
 
   if (!deps.prisma) {
     return;
@@ -142,13 +138,47 @@ export async function requireProjectMutationRole(
     throw new AppError("FORBIDDEN", "unable to resolve project for authorization", 403);
   }
 
-  const member = await deps.prisma.projectMember.findFirst({
-    where: { projectId, userId: user.id, deletedAt: null },
-    select: { role: true }
+  const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+  if (!access || !hasProjectPermission(access.permissions, permission)) {
+    throw new AppError("FORBIDDEN", `missing permission: ${permission}`, 403);
+  }
+
+  const project = await deps.prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { isActive: true }
   });
-  const role = member?.role as ProjectRole | undefined;
-  if (!role || !canMutateProject(role)) {
-    throw new AppError("FORBIDDEN", "insufficient project role for mutation", 403);
+  if (!project) {
+    throw new AppError("NOT_FOUND", `project ${projectId.toString()} not found`, 404);
+  }
+  if (!options?.skipArchivedCheck && !project.isActive) {
+    throw new AppError("PROJECT_ARCHIVED", "project is archived and read-only", 403);
+  }
+}
+
+export async function requireProjectMutationRole(
+  req: FastifyRequest,
+  deps: { authService: AuthService; prisma?: PrismaClient },
+  options?: { skipArchivedCheck?: boolean; permission?: ProjectPermission }
+) {
+  const user = await getAuthenticatedUser(req, deps);
+
+  if (!deps.prisma) {
+    return;
+  }
+
+  const projectId = await resolveProjectId(req, deps.prisma);
+  if (!projectId) {
+    throw new AppError("FORBIDDEN", "unable to resolve project for authorization", 403);
+  }
+
+  const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+  const allowed = options?.permission
+    ? access && hasProjectPermission(access.permissions, options.permission)
+    : access && accessAllowsMutation(access);
+
+  if (!allowed) {
+    const detail = options?.permission ?? "project mutation";
+    throw new AppError("FORBIDDEN", `insufficient permissions for ${detail}`, 403);
   }
 
   const project = await deps.prisma.project.findFirst({

@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 
-import { useProjectQuery, useArchiveProjectMutation, useRestoreProjectMutation } from "../hooks/useProjectsApi";
+import { PROJECT_TYPE_LABELS } from "../types/projectTypes";
+import { useArchiveProjectMutation, useProjectQuery, useRestoreProjectMutation } from "../hooks/useProjectsApi";
 
 export function ProjectSettingsPage() {
   const { projectId = "" } = useParams();
@@ -17,6 +18,17 @@ export function ProjectSettingsPage() {
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">Project settings</h1>
         <p className="mt-1 text-sm text-slate-600">General options, archive state, and admin shortcuts.</p>
       </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Project type</h2>
+        <p className="mt-2 text-sm text-slate-700">
+          {project ? PROJECT_TYPE_LABELS[project.projectType] : "Loading…"}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Single-repository projects use one master suite. Baseline projects can add baseline suites that copy the master
+          section tree. Multiple-suite projects can add independent suites for separate case catalogs.
+        </p>
+      </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-900">Archive</h2>
@@ -60,6 +72,11 @@ export function ProjectSettingsPage() {
           <li>
             <Link to={`/projects/${projectId}/settings/members`} className="text-slate-700 underline">
               Members & roles
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/custom-roles`} className="text-slate-700 underline">
+              Custom roles & permission matrix
             </Link>
           </li>
           <li>

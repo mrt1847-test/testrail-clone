@@ -175,7 +175,7 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/tests/:testId/results", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const user = await getAuthenticatedUser(req, deps);
     const params = testIdParamSchema.parse(req.params);
     const body = resultSchema.parse(req.body);
@@ -242,7 +242,7 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/results/:resultId/attachments", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = resultIdParamSchema.parse(req.params);
     const body = attachmentBodySchema.parse(req.body);
     if (!deps.prisma) {
@@ -298,7 +298,7 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/results/:resultId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = resultIdParamSchema.parse(req.params);
     const body = attachmentPresignBodySchema.parse(req.body ?? {});
     const now = Date.now();
@@ -355,7 +355,7 @@ export async function registerResultsRoutes(
   });
 
   app.delete("/api/attachments/:attachmentId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = attachmentIdParamSchema.parse(req.params);
     if (!deps.prisma) {
       return reply.status(204).send();
@@ -436,7 +436,7 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/results/:resultId/defects", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = resultIdParamSchema.parse(req.params);
     const body = defectBodySchema.parse(req.body);
     if (!deps.prisma) {
@@ -530,7 +530,7 @@ export async function registerResultsRoutes(
   });
 
   app.delete("/api/results/:resultId/defects/:defectLinkId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const user = await getAuthenticatedUser(req, deps);
     const params = defectLinkIdParamSchema.parse(req.params);
     if (!deps.prisma) {
@@ -599,7 +599,7 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/results/:resultId/defects/push", async (req, reply) => {
-    await requireProjectMutationRole(req, deps);
+    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = resultIdParamSchema.parse(req.params);
     const body = defectPushBodySchema.parse(req.body ?? {});
     if (!deps.prisma) {
@@ -694,3 +694,4 @@ export async function registerResultsRoutes(
     );
   });
 }
+

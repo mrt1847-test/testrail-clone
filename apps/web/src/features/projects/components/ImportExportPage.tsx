@@ -1,16 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
+  clearSavedCaseCsvMapping,
   downloadCasesCsv,
   downloadRunResultsCsv,
+  fetchCaseImportProfile,
   fetchExportJobs,
   fetchImportJobs,
   importCasesCsv,
+  loadSavedCaseCsvMapping,
+  saveCaseCsvMapping,
+  suggestCaseCsvMapping,
   type CaseImportResult,
   type ImportExportJobRow
-} from "../api/advancedApi";
+} from "../api/importExportApi";
+import { buildCaseCsvTemplate, extractCsvHeaders } from "../utils/caseCsvHeaders";
+import { CaseCsvMappingPanel } from "./CaseCsvMappingPanel";
+import { CaseImportValidationPanel } from "./CaseImportValidationPanel";
 
 const sampleCsv = [
   "section_id,title,preconditions,priority,type,refs,labels,automation_key,external_id,custom_risk,steps",
@@ -57,37 +65,23 @@ function JobTable({ title, rows }: { title: string; rows: ImportExportJobRow[] }
   );
 }
 
-function ImportResult({ result }: { result: CaseImportResult | null }) {
-  if (!result) return null;
-  return (
-    <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
-      <p className="font-medium text-slate-900">
-        Rows {result.summary.totalRows} / valid {result.summary.validRows} / invalid {result.summary.invalidRows} /
-        imported {result.summary.imported}
-      </p>
-      {result.issues.length > 0 ? (
-        <ul className="mt-2 space-y-1 text-xs text-red-700">
-          {result.issues.slice(0, 8).map((issue, index) => (
-            <li key={`${issue.row}-${issue.code}-${index}`}>
-              row {issue.row}: {issue.field ? `${issue.field} - ` : ""}
-              {issue.message}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-xs text-emerald-700">No validation issues.</p>
-      )}
-    </div>
-  );
-}
-
 export function ImportExportPage() {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
   const [csv, setCsv] = useState(sampleCsv);
   const [sectionId, setSectionId] = useState("");
   const [runId, setRunId] = useState("");
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [lastImportResult, setLastImportResult] = useState<CaseImportResult | null>(null);
+  const [mappingInitialized, setMappingInitialized] = useState(false);
+
+  const headers = useMemo(() => extractCsvHeaders(csv), [csv]);
+
+  const profileQuery = useQuery({
+    queryKey: ["case-import-profile", projectId],
+    queryFn: () => fetchCaseImportProfile(projectId),
+    enabled: Boolean(projectId)
+  });
 
   const importJobsQuery = useQuery({
     queryKey: ["import-jobs", projectId],
@@ -100,6 +94,34 @@ export function ImportExportPage() {
     enabled: Boolean(projectId)
   });
 
+  const applySuggestedMapping = useCallback(
+    async (headerList: string[]) => {
+      if (!projectId || headerList.length === 0) return;
+      const saved = loadSavedCaseCsvMapping(projectId);
+      if (saved && headerList.every((header) => header in saved)) {
+        setColumnMapping(saved);
+        return;
+      }
+      const suggested = await suggestCaseCsvMapping(projectId, { headers: headerList });
+      setColumnMapping(suggested.mapping);
+    },
+    [projectId]
+  );
+
+  useEffect(() => {
+    if (!projectId || headers.length === 0) {
+      setColumnMapping({});
+      setMappingInitialized(false);
+      return;
+    }
+    if (mappingInitialized) return;
+    void applySuggestedMapping(headers).finally(() => setMappingInitialized(true));
+  }, [applySuggestedMapping, headers, mappingInitialized, projectId]);
+
+  useEffect(() => {
+    setMappingInitialized(false);
+  }, [csv]);
+
   const importMutation = useMutation({
     mutationFn: (dryRun: boolean) =>
       importCasesCsv({
@@ -107,7 +129,8 @@ export function ImportExportPage() {
         csv,
         dryRun,
         atomic: true,
-        sectionId: sectionId.trim() || undefined
+        sectionId: sectionId.trim() || undefined,
+        columnMapping
       }),
     onSuccess: (result) => {
       setLastImportResult(result);
@@ -131,12 +154,38 @@ export function ImportExportPage() {
   });
 
   const isImportBusy = importMutation.isPending;
+  const canCommit =
+    lastImportResult != null &&
+    lastImportResult.summary.invalidRows === 0 &&
+    lastImportResult.summary.validRows > 0;
+
+  const downloadTemplate = () => {
+    const exportHeaders = profileQuery.data?.exportHeaders ?? extractCsvHeaders(sampleCsv);
+    const template = buildCaseCsvTemplate(exportHeaders.filter((header) => header !== "id"), {
+      title: "Sample case title",
+      priority: "High",
+      type: "Regression",
+      refs: "REQ-1",
+      steps: "Step one=>Expected one"
+    });
+    const blob = new Blob([template], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `project-${projectId}-cases-template.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">Import / Export</h1>
-        <p className="mt-1 text-sm text-slate-600">Move cases and execution results in and out of the project.</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Map CSV columns to case fields, validate with a dry run, then import. Exports use the canonical column set.
+        </p>
       </div>
 
       <section className="rounded border border-slate-200 bg-white p-4">
@@ -144,37 +193,66 @@ export function ImportExportPage() {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Case CSV Import</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Columns: section_id, title, preconditions, priority, type, refs (References), labels, automation_key,
-              external_id, custom_{"{systemName}"}, steps. Import also accepts references / References headers; empty
-              refs cells import as blank.
+              Step 1: paste CSV · Step 2: map columns · Step 3: dry run · Step 4: import when validation passes.
             </p>
           </div>
-          <input
-            value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
-            placeholder="Default section ID"
-            className="w-40 rounded border border-slate-300 px-2 py-1.5 text-sm"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Download import template
+            </button>
+            <input
+              value={sectionId}
+              onChange={(e) => setSectionId(e.target.value)}
+              placeholder="Default section ID"
+              className="w-40 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
         </div>
+
         <textarea
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
-          className="mt-3 min-h-[220px] w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-400"
+          className="mt-3 min-h-[180px] w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-400"
         />
+
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Column mapping</h3>
+          <div className="mt-2">
+            <CaseCsvMappingPanel
+              headers={headers}
+              profile={profileQuery.data}
+              mapping={columnMapping}
+              onChange={setColumnMapping}
+              onSuggest={() => void applySuggestedMapping(headers)}
+              onSave={() => saveCaseCsvMapping(projectId, columnMapping)}
+              onClearSaved={() => {
+                clearSavedCaseCsvMapping(projectId);
+                void applySuggestedMapping(headers);
+              }}
+              hasSavedMapping={Boolean(projectId && loadSavedCaseCsvMapping(projectId))}
+            />
+          </div>
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={isImportBusy || !csv.trim()}
+            disabled={isImportBusy || !csv.trim() || headers.length === 0}
             onClick={() => importMutation.mutate(true)}
             className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
           >
-            {isImportBusy ? "Checking..." : "Dry run"}
+            {isImportBusy ? "Checking..." : "Dry run (validate)"}
           </button>
           <button
             type="button"
-            disabled={isImportBusy || !csv.trim()}
+            disabled={isImportBusy || !csv.trim() || !canCommit}
             onClick={() => importMutation.mutate(false)}
             className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            title={canCommit ? undefined : "Run a successful dry run with no validation issues first"}
           >
             {isImportBusy ? "Importing..." : "Import cases"}
           </button>
@@ -183,12 +261,15 @@ export function ImportExportPage() {
           <p className="mt-2 text-sm text-red-700">{(importMutation.error as Error).message}</p>
         ) : null}
         <div className="mt-3">
-          <ImportResult result={lastImportResult} />
+          <CaseImportValidationPanel result={lastImportResult} />
         </div>
       </section>
 
       <section className="rounded border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-900">Exports</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Case export uses canonical headers from the import profile (including active custom fields).
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
@@ -228,3 +309,5 @@ export function ImportExportPage() {
     </div>
   );
 }
+
+

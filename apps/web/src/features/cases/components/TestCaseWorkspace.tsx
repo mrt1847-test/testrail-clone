@@ -9,17 +9,36 @@ import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
 import { CaseListPane } from "./CaseListPane";
 import { SectionTreePane } from "./SectionTreePane";
+import { SuiteSwitcherBar } from "./SuiteSwitcherBar";
+
+const suiteStorageKey = (projectId: string) => `cases:active-suite:${projectId}`;
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
-  const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(projectId);
+  const [selectedSuiteId, setSelectedSuiteId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(suiteStorageKey(projectId)) ?? "";
+  });
+  const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(
+    projectId,
+    selectedSuiteId || undefined
+  );
   const sections = bundle?.sections ?? [];
   const { selectedSectionId, expandedCaseId, mode, setSelectedSection } = useExpandedCase();
   const dnd = useCaseListDnD();
   const [pendingMoveCopy, setPendingMoveCopy] = useState<PendingMoveCopy | null>(null);
+  const activeSuiteId = bundle?.suiteId ?? selectedSuiteId;
   const selectedSectionSuiteId =
-    selectedSectionId != null ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? "") : "";
+    selectedSectionId != null
+      ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? activeSuiteId)
+      : activeSuiteId;
+
+  useEffect(() => {
+    if (!bundle?.suiteId) return;
+    setSelectedSuiteId(bundle.suiteId);
+    window.localStorage.setItem(suiteStorageKey(projectId), bundle.suiteId);
+  }, [bundle?.suiteId, projectId]);
 
   useEffect(() => {
     if (expandedCaseId == null) return;
@@ -64,7 +83,18 @@ export function TestCaseWorkspace() {
   }
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid gap-4">
+      <SuiteSwitcherBar
+        projectId={projectId}
+        selectedSuiteId={activeSuiteId}
+        onSelectSuite={(suiteId) => {
+          setSelectedSuiteId(suiteId);
+          window.localStorage.setItem(suiteStorageKey(projectId), suiteId);
+          const firstInSuite = sections.find((section) => String(section.suiteId) === suiteId);
+          if (firstInSuite) setSelectedSection(firstInSuite.id);
+        }}
+      />
+      <div className="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
         <SectionTreePane
           suiteId={selectedSectionSuiteId}
           sections={sections}
@@ -93,6 +123,7 @@ export function TestCaseWorkspace() {
           pendingMoveCopy={pendingMoveCopy}
           onPendingMoveCopyChange={setPendingMoveCopy}
         />
+      </div>
     </div>
   );
 }
