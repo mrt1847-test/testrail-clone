@@ -328,8 +328,8 @@ export async function buildReportPrintDocument(
             columns: ["Case", "Run A status", "Run B status", "Changed"],
             rows: report.items.slice(0, 200).map((row) => [
               row.title,
-              row.statusA,
-              row.statusB,
+              row.statusA ?? "",
+              row.statusB ?? "",
               row.changed ? "yes" : "no"
             ])
           }
@@ -407,9 +407,9 @@ export async function buildReportPrintDocument(
             title: "Reference comparison",
             columns: ["Reference", "Run A", "Run B", "Changed"],
             rows: report.items.slice(0, 200).map((row) => [
-              row.reference,
-              row.statusA,
-              row.statusB,
+              row.refKey,
+              row.statusA ?? "",
+              row.statusB ?? "",
               row.changed ? "yes" : "no"
             ])
           }

@@ -5,12 +5,13 @@ import {
   decodeAttachmentContentBase64,
   encodeAttachmentContentBase64,
   parseAttachmentManifestJson,
-  serializeAttachmentManifest
+  serializeAttachmentManifest,
+  type AttachmentManifest
 } from "./attachmentImportExport.js";
 
 describe("attachmentImportExport", () => {
   it("round-trips manifest JSON", () => {
-    const manifest = {
+    const manifest: AttachmentManifest = {
       version: ATTACHMENT_MANIFEST_VERSION,
       projectId: "1",
       exportedAt: new Date().toISOString(),

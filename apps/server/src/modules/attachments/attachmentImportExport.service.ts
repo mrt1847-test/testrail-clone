@@ -74,7 +74,7 @@ export async function buildProjectAttachmentManifest(
   if (filters.caseId) {
     const stepIds = (
       await prisma.testCaseStep.findMany({
-        where: { testCaseId: filters.caseId },
+        where: { caseId: filters.caseId },
         select: { id: true }
       })
     ).map((row) => row.id);
@@ -147,10 +147,10 @@ export async function buildProjectAttachmentManifest(
     stepIds.length > 0
       ? await prisma.testCaseStep.findMany({
           where: { id: { in: stepIds } },
-          select: { id: true, testCaseId: true }
+          select: { id: true, caseId: true }
         })
       : [];
-  const caseIdByStepId = new Map(steps.map((row) => [row.id.toString(), row.testCaseId.toString()]));
+  const caseIdByStepId = new Map(steps.map((row) => [row.id.toString(), row.caseId.toString()]));
 
   const attachments: AttachmentManifestEntry[] = [];
   for (const row of rows) {

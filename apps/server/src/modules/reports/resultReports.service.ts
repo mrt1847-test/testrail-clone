@@ -216,7 +216,7 @@ async function loadLatestResultRowsFromPrisma(
       results: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { status: true, source: true, version: true, customValues: true }
+        select: { createdAt: true, status: true, source: true, version: true, customValues: true }
       }
     }
   });
