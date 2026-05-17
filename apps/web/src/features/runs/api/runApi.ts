@@ -41,27 +41,43 @@ type ApiInstance = {
   titleSnapshot: string;
   status: string;
   assignedTo?: string | null;
+  caseChanged?: boolean;
+  changedFields?: string[];
+  caseLockVersionAtRun?: number | null;
+  currentCaseLockVersion?: number | null;
 };
 
-type RunDetailPayload = { run: ApiRun; instances?: ApiInstance[]; dateWarnings?: string[] };
-type RunHeaderPayload = { run: ApiRun };
-
-type RunSummaryResponse = {
-  runId: string;
+type RunProgressMetricsPayload = {
   total: number;
   counts: Record<string, number>;
+  executed: number;
   completionRate: number;
+  progressPercent: number;
+};
+
+type RunDetailPayload = {
+  run: ApiRun & { progress?: number; failed?: number };
+  instances?: ApiInstance[];
+  dateWarnings?: string[];
+  metrics?: RunProgressMetricsPayload;
+};
+type RunHeaderPayload = { run: ApiRun };
+
+type RunListItem = ApiRun & {
+  progress?: number;
+  failed?: number;
+  metrics?: RunProgressMetricsPayload;
 };
 
 export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
-  const res = await apiFetch<Paged<ApiRun>>(`/api/projects/${projectId}/runs?page=1&pageSize=100`);
+  const res = await apiFetch<Paged<RunListItem>>(`/api/projects/${projectId}/runs?page=1&pageSize=100`);
   return res.data.map((r) => ({
     id: String(r.id),
     name: r.name,
     status: r.status === "closed" ? "closed" : "open",
-    progress: 0,
-    failed: 0,
-    createdAt: "—",
+    progress: r.metrics?.progressPercent ?? r.progress ?? 0,
+    failed: r.metrics?.counts?.failed ?? r.failed ?? 0,
+    createdAt: r.createdAt ?? "—",
     milestoneId: r.milestoneId ? String(r.milestoneId) : null,
     assignedTo: r.assignedTo ? String(r.assignedTo) : null
   }));
@@ -69,18 +85,26 @@ export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
 
 export async function fetchRunDetail(projectId: string, runId: string): Promise<RunDetailDto | null> {
   try {
-    const [detailRes, summaryRes] = await Promise.all([
-      apiFetch<Ok<RunDetailPayload>>(`/api/projects/${projectId}/runs/${runId}?includeInstances=false`),
-      apiFetch<RunSummaryResponse>(`/api/runs/${runId}/summary`)
-    ]);
-    const { run } = detailRes.data;
-    const counts = summaryRes.counts ?? {};
-    const passed = counts.passed ?? 0;
-    const failed = counts.failed ?? 0;
-    const blocked = counts.blocked ?? 0;
-    const retest = counts.retest ?? 0;
-    const untested = counts.untested ?? 0;
-    const progress = Math.round((summaryRes.completionRate ?? 0) * 100);
+    const detailRes = await apiFetch<Ok<RunDetailPayload>>(
+      `/api/projects/${projectId}/runs/${runId}?includeInstances=false`
+    );
+    const { run, metrics: metricsPayload } = detailRes.data;
+    const countsPayload = metricsPayload?.counts ?? {};
+    const passed = countsPayload.passed ?? 0;
+    const failed = countsPayload.failed ?? 0;
+    const blocked = countsPayload.blocked ?? 0;
+    const retest = countsPayload.retest ?? 0;
+    const untested = countsPayload.untested ?? 0;
+    const progress = metricsPayload?.progressPercent ?? run.progress ?? 0;
+    const metrics = metricsPayload
+      ? {
+          total: metricsPayload.total,
+          counts: { passed, failed, blocked, retest, untested },
+          executed: metricsPayload.executed,
+          completionRate: metricsPayload.completionRate,
+          progressPercent: metricsPayload.progressPercent
+        }
+      : undefined;
 
     return {
       run: {
@@ -101,7 +125,8 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
       },
       dateWarnings: detailRes.data.dateWarnings ?? [],
       instances: [],
-      counts: { passed, failed, blocked, retest, untested }
+      counts: { passed, failed, blocked, retest, untested },
+      metrics
     };
   } catch {
     return null;
@@ -137,6 +162,7 @@ export async function addRunResult(input: {
   defects?: string[];
   customValues?: Record<string, string | number | boolean | null>;
   stepResults?: Array<{ stepOrder: number; status: "passed" | "failed" | "blocked" | "retest" | "untested"; actualResult?: string; comment?: string }>;
+  scenarioResults?: Array<{ caseScenarioId: string; status: "passed" | "failed" | "blocked" | "retest" | "untested"; comment?: string }>;
 }) {
   return apiFetch(`/api/runs/${input.runId}/results`, {
     method: "POST",
@@ -148,7 +174,8 @@ export async function addRunResult(input: {
       version: input.version,
       defects: input.defects,
       customValues: input.customValues,
-      stepResults: input.stepResults
+      stepResults: input.stepResults,
+      scenarioResults: input.scenarioResults
     }
   });
 }
@@ -679,4 +706,58 @@ export async function fetchProjectResultExplorer(input: {
       caseId: String(row.caseId)
     }))
   };
+}
+
+export type ExecutionComment = {
+  id: string;
+  projectId: string;
+  entityType: "test_instance" | "test_run";
+  entityId: string;
+  parentId: string | null;
+  content: string;
+  createdAt: string;
+  author: { id: string; email: string; name: string } | null;
+};
+
+function mapExecutionComment(row: ExecutionComment): ExecutionComment {
+  return {
+    ...row,
+    id: String(row.id),
+    projectId: String(row.projectId),
+    entityId: String(row.entityId),
+    parentId: row.parentId != null ? String(row.parentId) : null,
+    author: row.author ? { ...row.author, id: String(row.author.id) } : null
+  };
+}
+
+export async function fetchTestExecutionComments(testId: string): Promise<ExecutionComment[]> {
+  const res = await apiFetch<Ok<ExecutionComment[]>>(`/api/tests/${testId}/execution-comments`);
+  return (res.data ?? []).map(mapExecutionComment);
+}
+
+export async function createTestExecutionComment(
+  testId: string,
+  input: { content: string; parentId?: string }
+): Promise<ExecutionComment> {
+  const res = await apiFetch<Ok<ExecutionComment>>(`/api/tests/${testId}/execution-comments`, {
+    method: "POST",
+    body: input
+  });
+  return mapExecutionComment(res.data);
+}
+
+export async function fetchRunExecutionComments(runId: string): Promise<ExecutionComment[]> {
+  const res = await apiFetch<Ok<ExecutionComment[]>>(`/api/runs/${runId}/execution-comments`);
+  return (res.data ?? []).map(mapExecutionComment);
+}
+
+export async function createRunExecutionComment(
+  runId: string,
+  input: { content: string; parentId?: string }
+): Promise<ExecutionComment> {
+  const res = await apiFetch<Ok<ExecutionComment>>(`/api/runs/${runId}/execution-comments`, {
+    method: "POST",
+    body: input
+  });
+  return mapExecutionComment(res.data);
 }

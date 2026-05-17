@@ -42,6 +42,7 @@ model User {
   notificationPreferences NotificationPreference[]
   emailOutbox     EmailOutbox[]
   testSubscriptions TestSubscription[]
+  executionComments ExecutionComment[] @relation("ExecutionCommentAuthor")
   updatedAccessDefaults InstanceAccessDefaults[] @relation("InstanceAccessDefaultsUpdatedBy")
   createdGroups         UserGroup[] @relation("UserGroupCreatedBy")
 }
@@ -116,6 +117,7 @@ model Project {
   scheduledReports ScheduledReport[]
   testSubscriptions TestSubscription[]
   customRoles      CustomRole[]
+  executionComments ExecutionComment[]
 
   @@index([deletedAt])
 }
@@ -242,6 +244,7 @@ model TestCase {
   section      Section       @relation(fields: [sectionId], references: [id], onDelete: Restrict)
   caseTemplate CaseTemplate? @relation(fields: [caseTemplateId], references: [id], onDelete: SetNull)
   steps        TestCaseStep[]
+  scenarios    TestCaseScenario[]
   instances TestInstance[]
   versions  TestCaseVersion[]
   requirements CaseRequirement[]
@@ -325,6 +328,23 @@ model TestCaseStep {
   testCase TestCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@unique([caseId, stepOrder])
+  @@index([caseId])
+}
+
+model TestCaseScenario {
+  id            BigInt    @id @default(autoincrement())
+  caseId        BigInt
+  scenarioOrder Int
+  name          String
+  content       String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  testCase      TestCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  resultResults TestResultScenario[]
+
+  @@unique([caseId, scenarioOrder])
   @@index([caseId])
 }
 
@@ -420,6 +440,7 @@ model TestInstance {
   estimateSnapshot      String?
   automationKeySnapshot String?
   externalIdSnapshot    String?
+  caseLockVersionAtRun  Int?
   latestResultId        BigInt?
   assignedTo            BigInt?
   createdAt             DateTime    @default(now())
@@ -463,6 +484,7 @@ model TestResult {
   createdByUser      User?        @relation("ResultCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   linkedAsLatestFor  TestInstance[] @relation("LatestResult")
   stepResults        TestResultStep[]
+  scenarioResults    TestResultScenario[]
   attachments        Attachment[]   @relation("ResultAttachments")
   defectLinks        ResultDefectLink[]
 
@@ -518,6 +540,43 @@ model TestResultStep {
 
   @@unique([resultId, stepOrder])
   @@index([resultId])
+}
+
+model TestResultScenario {
+  id             BigInt     @id @default(autoincrement())
+  resultId       BigInt
+  caseScenarioId BigInt
+  status         TestStatus
+  comment        String?
+  createdAt      DateTime   @default(now())
+
+  result       TestResult       @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  caseScenario TestCaseScenario @relation(fields: [caseScenarioId], references: [id], onDelete: Restrict)
+
+  @@unique([resultId, caseScenarioId])
+  @@index([resultId])
+  @@index([caseScenarioId])
+}
+
+model ExecutionComment {
+  id         BigInt    @id @default(autoincrement())
+  projectId  BigInt
+  entityType String
+  entityId   BigInt
+  parentId   BigInt?
+  content    String
+  createdBy  BigInt?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdByUser User?              @relation("ExecutionCommentAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
+  parent        ExecutionComment?  @relation("ExecutionCommentThread", fields: [parentId], references: [id], onDelete: SetNull)
+  replies       ExecutionComment[] @relation("ExecutionCommentThread")
+
+  @@index([projectId, entityType, entityId, createdAt])
+  @@index([parentId])
 }
 
 model TestPlanEntry {
@@ -812,6 +871,7 @@ model CustomField {
   isRequired   Boolean   @default(false)
   isActive     Boolean   @default(true)
   displayOrder Int       @default(0)
+  visibility   Json?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?

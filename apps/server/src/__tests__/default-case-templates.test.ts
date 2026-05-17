@@ -60,17 +60,18 @@ describe("default case templates API (in-memory)", () => {
       url: `/api/projects/${projectId}/settings/templates`,
       headers
     });
-    const templates = (templatesRes.json() as { data: Array<{ name: string; systemKey: string | null }> }).data;
+    const templates = (templatesRes.json() as { data: Array<{ id: string; name: string; systemKey: string | null }> }).data;
     expect(templates).toHaveLength(5);
     expect(templates.some((row) => row.systemKey === "test_case_steps")).toBe(true);
 
     const suiteRes = await app.inject({
-      method: "POST",
+      method: "GET",
       url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Suite A" }
+      headers
     });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = (suiteRes.json() as { data: Array<{ id: string; isMaster: boolean }> }).data.find(
+      (suite) => suite.isMaster
+    )!.id;
 
     const sectionRes = await app.inject({
       method: "POST",

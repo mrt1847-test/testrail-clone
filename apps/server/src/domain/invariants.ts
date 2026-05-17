@@ -51,6 +51,7 @@ export function buildSnapshotFromCase(testCase: TestCase): Omit<TestInstance, "i
     typeSnapshot: testCase.caseType,
     estimateSnapshot: testCase.estimate,
     automationKeySnapshot: testCase.automationKey,
-    externalIdSnapshot: testCase.externalId
+    externalIdSnapshot: testCase.externalId,
+    caseLockVersionAtRun: testCase.lockVersion ?? 1
   };
 }

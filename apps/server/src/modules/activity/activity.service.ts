@@ -295,6 +295,48 @@ async function queueMentionNotifications(
   await queueEmailsForNotifications(prisma, notifications, project?.name ?? "Project");
 }
 
+export async function recordExecutionCommentActivity(
+  prisma: PrismaClient,
+  input: {
+    commentId: bigint;
+    projectId: bigint;
+    entityType: "test_instance" | "test_run";
+    entityId: bigint;
+    content: string;
+    actorUserId: bigint;
+    contextTitle: string;
+    runName?: string;
+  }
+) {
+  const scopeLabel = input.entityType === "test_run" ? "run" : "test";
+  const event = await recordActivityEvent(prisma, {
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+    entityType: "execution_comment",
+    entityId: input.commentId,
+    eventType: "execution_comment.created",
+    title: "Execution comment added",
+    body: `${scopeLabel} discussion on ${input.contextTitle}`,
+    payload: {
+      commentId: input.commentId.toString(),
+      entityType: input.entityType,
+      entityId: input.entityId.toString(),
+      runName: input.runName ?? null
+    }
+  });
+  if (event) {
+    await queueMentionNotifications(prisma, {
+      event,
+      projectId: input.projectId,
+      actorUserId: input.actorUserId,
+      text: input.content,
+      title: "You were mentioned in a comment",
+      body: `${input.contextTitle}: ${input.content}`
+    });
+  }
+  return event;
+}
+
 export async function recordResultActivity(
   prisma: PrismaClient | undefined,
   input: { resultId: bigint; actorUserId?: bigint | null }

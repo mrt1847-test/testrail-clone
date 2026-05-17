@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { PageHeader } from "../../../shared/ui/PageHeader";
-import { fetchCaseTemplates, fetchCustomFields } from "../../projects/api/settingsApi";
+import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchCaseVersions } from "../api/catalogApi";
 import { buildCaseListPath } from "../caseRoute";
 import { useCaseDetail } from "../hooks/useCaseDetail";
@@ -32,9 +32,14 @@ export function CaseDetailPage() {
   const editor = useCaseEditorActions(projectId);
 
   const { data: customFields = [] } = useQuery({
-    queryKey: ["case-custom-fields", projectId],
-    queryFn: () => fetchCustomFields(projectId, "case"),
-    enabled: Boolean(projectId)
+    queryKey: ["case-custom-fields", projectId, data?.caseTemplateId ?? null],
+    queryFn: () =>
+      fetchCustomFieldsForUse(
+        projectId,
+        "case",
+        data?.caseTemplateId != null ? String(data.caseTemplateId) : null
+      ),
+    enabled: Boolean(projectId && data)
   });
   const { data: caseTemplates = [] } = useQuery({
     queryKey: ["case-templates", projectId],

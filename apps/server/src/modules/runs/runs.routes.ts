@@ -6,6 +6,7 @@ import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { AppError } from "../../common/errors/appError.js";
+import { validateRunSuiteBinding } from "../../domain/runSuitePolicy.js";
 import type { AuthService } from "../auth/auth.service.js";
 import type { PrismaClient } from "@prisma/client";
 import type { ResultsService } from "../results/results.service.js";
@@ -25,7 +26,9 @@ import {
   updateRunSchema,
   updateTestAssigneeSchema
 } from "./runs.schema.js";
+import { runProgressMetricsToApi } from "../../domain/runProgress.js";
 import { calculateRunSummary } from "../reports/reports.service.js";
+import { loadRunProgressMetrics } from "./runProgressMetrics.js";
 import type { RunsRepository } from "./runs.repository.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
 import {
@@ -58,7 +61,19 @@ export async function registerRunsRoutes(
   app.get("/api/projects/:projectId/runs", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    const items = await deps.repo.listRunsByProject(projectId);
+    const runs = await deps.repo.listRunsByProject(projectId);
+    const items = await Promise.all(
+      runs.map(async (run) => {
+        const metrics = await loadRunProgressMetrics(deps.repo, run.id);
+        const progress = runProgressMetricsToApi(metrics);
+        return {
+          ...run,
+          progress: progress.progressPercent,
+          failed: metrics.failed,
+          metrics: progress
+        };
+      })
+    );
     return reply.send(toJsonSafe(paged(items, page, pageSize)));
   });
 
@@ -81,8 +96,19 @@ export async function registerRunsRoutes(
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
     const instances = includeInstances === false ? [] : await deps.repo.listInstancesForRun(runId);
+    const metrics = await loadRunProgressMetrics(deps.repo, runId);
+    const progress = runProgressMetricsToApi(metrics);
     const dateWarnings = await runDateWarningsForRun(deps.prisma, run);
-    return reply.send(toJsonSafe(ok({ run, instances, dateWarnings })));
+    return reply.send(
+      toJsonSafe(
+        ok({
+          run: { ...run, progress: progress.progressPercent, failed: metrics.failed },
+          instances,
+          dateWarnings,
+          metrics: progress
+        })
+      )
+    );
   });
 
   app.get("/api/projects/:projectId/runs/:runId/instances", async (req, reply) => {
@@ -133,6 +159,13 @@ export async function registerRunsRoutes(
       dueOn = inherited.dueOn;
     }
     const body = { ...raw, projectId, startedAt, dueOn };
+    if (deps.prisma) {
+      await validateRunSuiteBinding(deps.prisma, {
+        projectId,
+        suiteId: body.suiteId,
+        caseIds: body.caseIds
+      });
+    }
     const created = await deps.runsService.createRunWithInstances(body);
     await recordActivityEvent(deps.prisma, {
       projectId,
@@ -443,6 +476,17 @@ export async function registerRunsRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = addCasesToRunBodySchema.parse(req.body ?? {});
+    const run = await deps.repo.getRun(runId);
+    if (!run) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    if (deps.prisma) {
+      await validateRunSuiteBinding(deps.prisma, {
+        projectId: run.projectId,
+        suiteId: run.suiteId,
+        caseIds: body.caseIds
+      });
+    }
     const out = await deps.runsService.addCasesToOpenRun(runId, body.caseIds);
     const projectId = out.run.projectId;
     await recordActivityEvent(deps.prisma, {

@@ -6,7 +6,7 @@ import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useAuth } from "../../auth/context/AuthContext";
-import { fetchCaseTemplates, fetchCustomFields } from "../../projects/api/settingsApi";
+import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
@@ -107,7 +107,7 @@ export function CaseListPane({
   const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, directCaseFilters);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
-    queryFn: () => fetchCustomFields(projectId, "case"),
+    queryFn: () => fetchCustomFieldsForUse(projectId, "case"),
     enabled: Boolean(projectId)
   });
   const { data: caseTemplates = [] } = useQuery({
@@ -238,15 +238,17 @@ export function CaseListPane({
     mutationFn: async (input: {
       title: string;
       preconditions: string;
+      estimate: string;
       references: string;
       expectedResult: string;
       templateId: string | null;
-      customValues: Record<string, string | number | boolean | null>;
+      customValues: Record<string, string | number | boolean | string[] | null>;
       draftSteps: Array<{ description: string; expected: string }>;
     }) => {
       const created = await createCase(selectedSectionId!, {
         title: input.title,
         preconditions: input.preconditions,
+        estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
         expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
         caseTemplateId: input.templateId ? Number(input.templateId) : null,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
@@ -733,6 +735,7 @@ export function CaseListPane({
                   await createCaseMutation.mutateAsync({
                     title: input.title,
                     preconditions: input.preconditions,
+                    estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
                     references: input.references,
                     expectedResult: input.expectedResult,
                     templateId: input.templateId,

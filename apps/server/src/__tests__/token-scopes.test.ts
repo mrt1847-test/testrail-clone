@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
+import { getMasterSuiteId } from "./testProjectSuites.js";
 import {
   computeTokenExpiresAt,
   isTokenExpired,
@@ -75,13 +76,7 @@ describe("API token scopes and expiration (in-memory)", () => {
     expect(created.data.scopes).toEqual(["automation:read"]);
     expect(created.data.expiresAt).toBeTruthy();
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Suite" }
-    });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const runRes = await app.inject({
       method: "POST",

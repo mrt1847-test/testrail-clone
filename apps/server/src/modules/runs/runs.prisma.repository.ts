@@ -5,7 +5,15 @@ import { parseRunCompositionMetadata, toMetadataJson } from "./runComposition.js
 import { resolveDesiredCaseIds } from "./runCompositionFilter.js";
 import { assertSectionsBelongToSuite, expandSectionSubtreeIds } from "./sectionScope.js";
 import type { RunsRepository, Tx } from "./runs.repository.js";
+import { customValuesFromJson } from "../../domain/customFieldTypes.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
+import {
+  enrichTestInstancesWithCaseChange,
+  mapInstanceDbRow,
+  testCaseToLiveFields,
+  type InstanceDbRow
+} from "./instanceCaseChange.js";
+import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
 
 function mapRunRow(r: {
   id: bigint;
@@ -125,7 +133,8 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           typeSnapshot: i.typeSnapshot,
           estimateSnapshot: i.estimateSnapshot,
           automationKeySnapshot: i.automationKeySnapshot,
-          externalIdSnapshot: i.externalIdSnapshot
+          externalIdSnapshot: i.externalIdSnapshot,
+          caseLockVersionAtRun: i.caseLockVersionAtRun ?? null
         }))
       });
       const rows = await tx.testInstance.findMany({
@@ -183,6 +192,28 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         }))
       });
     },
+    async createResultScenarios(resultId, scenarios) {
+      await tx.testResultScenario.createMany({
+        data: scenarios.map((row) => ({
+          resultId,
+          caseScenarioId: row.caseScenarioId,
+          status: row.status,
+          comment: row.comment
+        }))
+      });
+    },
+    async listResultScenariosByResultId(resultId) {
+      const rows = await tx.testResultScenario.findMany({
+        where: { resultId },
+        orderBy: { id: "asc" }
+      });
+      return rows.map((row) => ({
+        id: row.id,
+        caseScenarioId: row.caseScenarioId,
+        status: mapStatus(row.status),
+        comment: row.comment ?? null
+      }));
+    },
     async updateInstanceStatus(testInstanceId, status) {
       await tx.testInstance.update({
         where: { id: testInstanceId },
@@ -225,7 +256,7 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         defects: row.defects,
         customValues:
           row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-            ? (row.customValues as Record<string, string | number | boolean | null>)
+            ? customValuesFromJson(row.customValues)
             : {},
         source: row.source as "manual" | "automation" | "api",
         createdAt: row.createdAt
@@ -252,6 +283,35 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
 export class PrismaRunsRepository implements RunsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private async loadLiveCasesById(caseIds: bigint[]): Promise<Map<bigint, LiveCaseFields>> {
+    if (caseIds.length === 0) return new Map();
+    const rows = await this.prisma.testCase.findMany({
+      where: { id: { in: caseIds } },
+      select: {
+        id: true,
+        lockVersion: true,
+        title: true,
+        priority: true,
+        caseType: true,
+        automationKey: true,
+        externalId: true,
+        updatedAt: true
+      }
+    });
+    return new Map(rows.map((row) => [row.id, testCaseToLiveFields(row)]));
+  }
+
+  private async enrichInstanceRows(runId: bigint, rows: InstanceDbRow[]): Promise<TestInstance[]> {
+    const run = await this.prisma.testRun.findFirst({
+      where: { id: runId },
+      select: { createdAt: true }
+    });
+    const base = rows.map((r) => mapInstanceDbRow(r, mapStatus));
+    const caseIds = [...new Set(rows.map((r) => r.caseId))];
+    const casesById = await this.loadLiveCasesById(caseIds);
+    return enrichTestInstancesWithCaseChange(base, casesById, run?.createdAt ?? null);
+  }
+
   async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => fn(toTxAdapter(tx)));
   }
@@ -273,36 +333,11 @@ export class PrismaRunsRepository implements RunsRepository {
   }
 
   async listInstancesForRun(runId: bigint): Promise<TestInstance[]> {
-    type Row = {
-      id: bigint;
-      runId: bigint;
-      caseId: bigint;
-      status: string;
-      assignedTo: bigint | null;
-      titleSnapshot: string;
-      prioritySnapshot: string | null;
-      typeSnapshot: string | null;
-      estimateSnapshot: string | null;
-      automationKeySnapshot: string | null;
-      externalIdSnapshot: string | null;
-    };
     const rows = (await this.prisma.testInstance.findMany({
       where: { runId, deletedAt: null },
       orderBy: { id: "asc" }
-    })) as Row[];
-    return rows.map((r) => ({
-      id: r.id,
-      runId: r.runId,
-      caseId: r.caseId,
-      status: mapStatus(r.status),
-      assignedTo: r.assignedTo ?? null,
-      titleSnapshot: r.titleSnapshot,
-      prioritySnapshot: r.prioritySnapshot,
-      typeSnapshot: r.typeSnapshot,
-      estimateSnapshot: r.estimateSnapshot,
-      automationKeySnapshot: r.automationKeySnapshot,
-      externalIdSnapshot: r.externalIdSnapshot
-    }));
+    })) as InstanceDbRow[];
+    return this.enrichInstanceRows(runId, rows);
   }
 
   async listInstancesForRunPage(input: {
@@ -313,19 +348,6 @@ export class PrismaRunsRepository implements RunsRepository {
     assignedTo?: bigint | null;
     q?: string;
   }): Promise<{ items: TestInstance[]; total: number }> {
-    type Row = {
-      id: bigint;
-      runId: bigint;
-      caseId: bigint;
-      status: string;
-      assignedTo: bigint | null;
-      titleSnapshot: string;
-      prioritySnapshot: string | null;
-      typeSnapshot: string | null;
-      estimateSnapshot: string | null;
-      automationKeySnapshot: string | null;
-      externalIdSnapshot: string | null;
-    };
     const where: Prisma.TestInstanceWhereInput = {
       runId: input.runId,
       deletedAt: null,
@@ -350,19 +372,7 @@ export class PrismaRunsRepository implements RunsRepository {
       this.prisma.testInstance.count({ where })
     ]);
     return {
-      items: (rows as Row[]).map((r) => ({
-        id: r.id,
-        runId: r.runId,
-        caseId: r.caseId,
-        status: mapStatus(r.status),
-        assignedTo: r.assignedTo ?? null,
-        titleSnapshot: r.titleSnapshot,
-        prioritySnapshot: r.prioritySnapshot,
-        typeSnapshot: r.typeSnapshot,
-        estimateSnapshot: r.estimateSnapshot,
-        automationKeySnapshot: r.automationKeySnapshot,
-        externalIdSnapshot: r.externalIdSnapshot
-      })),
+      items: await this.enrichInstanceRows(input.runId, rows as InstanceDbRow[]),
       total
     };
   }
@@ -489,7 +499,7 @@ export class PrismaRunsRepository implements RunsRepository {
       defects: row.defects,
       customValues:
         row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-          ? (row.customValues as Record<string, string | number | boolean | null>)
+          ? customValuesFromJson(row.customValues)
           : {},
       source: row.source as "manual" | "automation" | "api",
       createdAt: row.createdAt
@@ -517,7 +527,7 @@ export class PrismaRunsRepository implements RunsRepository {
       defects: row.defects,
       customValues:
         row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-          ? (row.customValues as Record<string, string | number | boolean | null>)
+          ? customValuesFromJson(row.customValues)
           : {},
       source: row.source as "manual" | "automation" | "api",
       createdAt: row.createdAt
@@ -550,6 +560,20 @@ export class PrismaRunsRepository implements RunsRepository {
       actualResult: row.actualResult ?? undefined,
       comment: row.comment ?? undefined,
       createdAt: row.createdAt
+    }));
+  }
+
+  async listResultScenariosByResultId(resultId: bigint) {
+    const rows = await this.prisma.testResultScenario.findMany({
+      where: { resultId },
+      orderBy: { id: "asc" },
+      select: { id: true, caseScenarioId: true, status: true, comment: true }
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      caseScenarioId: row.caseScenarioId,
+      status: mapStatus(row.status),
+      comment: row.comment ?? null
     }));
   }
 }

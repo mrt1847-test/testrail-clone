@@ -9,7 +9,18 @@ import { reportKeys } from "../../hooks/reportKeys";
 
 type StatusDistribution = Record<string, number>;
 type FailureTrend = Array<{ date: string; failed: number }>;
-type RunSummary = Array<{ runId: string; name: string; status: string; total: number; passed: number; failed: number; progress: number }>;
+type RunSummary = Array<{
+  runId: string;
+  name: string;
+  status: string;
+  total: number;
+  passed: number;
+  failed: number;
+  progress: number;
+  estimate?: string;
+  actual?: string;
+  actualVsEstimate?: string;
+}>;
 
 export function ReportsOverviewPage() {
   const { projectId = "" } = useParams();
@@ -56,7 +67,7 @@ export function ReportsOverviewPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Status Distribution</h2>
         {statusDistributionQuery.isLoading ? (
-          <LoadingState message="Loading status distribution…" />
+          <LoadingState message="Loading status distribution..." />
         ) : statusDistributionQuery.isError ? (
           <ErrorState title="Could not load status distribution" onRetry={() => void statusDistributionQuery.refetch()} />
         ) : totalDistribution === 0 ? (
@@ -76,7 +87,7 @@ export function ReportsOverviewPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Failure Trend</h2>
         {failureTrendQuery.isLoading ? (
-          <LoadingState message="Loading failure trend…" />
+          <LoadingState message="Loading failure trend..." />
         ) : failureTrendQuery.isError ? (
           <ErrorState title="Could not load failure trend" onRetry={() => void failureTrendQuery.refetch()} />
         ) : (failureTrend ?? []).length === 0 ? (
@@ -96,11 +107,14 @@ export function ReportsOverviewPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Run Summary</h2>
         <p className="mt-1 text-xs text-slate-500">
-          상세 표는 <Link className="text-indigo-700 underline" to={`/projects/${projectId}/reports/runs`}>Run summary</Link>에서 확인할 수
-          있습니다.
+          Review detailed run progress and time variance in{" "}
+          <Link className="text-indigo-700 underline" to={`/projects/${projectId}/reports/runs`}>
+            Run summary
+          </Link>
+          .
         </p>
         {runSummaryQuery.isLoading ? (
-          <LoadingState message="Loading run summary…" />
+          <LoadingState message="Loading run summary..." />
         ) : runSummaryQuery.isError ? (
           <ErrorState title="Could not load run summary" onRetry={() => void runSummaryQuery.refetch()} />
         ) : (runSummary ?? []).length === 0 ? (
@@ -113,7 +127,8 @@ export function ReportsOverviewPage() {
                   {row.name}
                 </Link>
                 <p className="text-xs text-slate-500">
-                  {row.status} · progress {row.progress}% · passed {row.passed} · failed {row.failed} / total {row.total}
+                  {row.status} - progress {row.progress}% - passed {row.passed} - failed {row.failed} / total {row.total}
+                  {" - "}estimate {row.estimate || "-"} / actual {row.actual || "-"} ({row.actualVsEstimate || "0"})
                 </p>
               </li>
             ))}

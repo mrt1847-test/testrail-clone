@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
+import { getMasterSuiteId } from "./testProjectSuites.js";
 
 const app = buildApp();
 
@@ -30,17 +31,11 @@ describe("refs traceability", () => {
     });
     const project = projectRes.json() as { data: { id: string } };
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${project.data.id}/suites`,
-      headers,
-      payload: { name: "Suite" }
-    });
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suiteId = await getMasterSuiteId(app, project.data.id, headers);
 
     const sectionRes = await app.inject({
       method: "POST",
-      url: `/api/suites/${suite.data.id}/sections`,
+      url: `/api/suites/${suiteId}/sections`,
       headers,
       payload: { name: "Section" }
     });

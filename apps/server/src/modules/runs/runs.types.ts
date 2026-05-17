@@ -30,6 +30,8 @@ export type TestCase = {
   estimate: string | null;
   automationKey: string | null;
   externalId: string | null;
+  lockVersion?: number;
+  updatedAt?: Date;
 };
 
 export type TestInstance = {
@@ -44,6 +46,10 @@ export type TestInstance = {
   estimateSnapshot: string | null;
   automationKeySnapshot: string | null;
   externalIdSnapshot: string | null;
+  caseLockVersionAtRun?: number | null;
+  caseChanged?: boolean;
+  currentCaseLockVersion?: number | null;
+  changedFields?: string[];
 };
 
 export type CreateRunWithInstancesInput = {

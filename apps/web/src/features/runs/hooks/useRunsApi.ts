@@ -171,6 +171,11 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
         actualResult?: string;
         comment?: string;
       }>;
+      scenarioResults?: Array<{
+        caseScenarioId: string;
+        status: "passed" | "failed" | "blocked" | "retest" | "untested";
+        comment?: string;
+      }>;
     }) =>
       addRunResult({ runId: runId!, ...payload }),
     onSuccess: (_, vars) => {

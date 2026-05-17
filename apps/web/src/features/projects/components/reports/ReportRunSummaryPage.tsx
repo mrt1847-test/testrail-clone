@@ -16,7 +16,41 @@ import {
   ReportTablePanel
 } from "./ReportChrome";
 
-type RunSummary = Array<{ runId: string; name: string; status: string; total: number; passed: number; failed: number; progress: number }>;
+type RunSummary = Array<{
+  runId: string;
+  name: string;
+  status: string;
+  total: number;
+  passed: number;
+  failed: number;
+  progress: number;
+  estimatedSeconds: number;
+  actualSeconds: number;
+  actualOverEstimateSeconds: number;
+  estimate: string;
+  actual: string;
+  actualVsEstimate: string;
+}>;
+
+function formatSeconds(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "-";
+  const units = [
+    ["d", 24 * 60 * 60],
+    ["h", 60 * 60],
+    ["m", 60],
+    ["s", 1]
+  ] as const;
+  const parts: string[] = [];
+  let remaining = Math.round(totalSeconds);
+  for (const [label, seconds] of units) {
+    const value = Math.floor(remaining / seconds);
+    if (value > 0) {
+      parts.push(`${value}${label}`);
+      remaining %= seconds;
+    }
+  }
+  return parts.join(" ");
+}
 
 export function ReportRunSummaryPage() {
   const { projectId = "" } = useParams();
@@ -56,6 +90,9 @@ export function ReportRunSummaryPage() {
     const totalTests = filteredRows.reduce((acc, r) => acc + r.total, 0);
     const totalPassed = filteredRows.reduce((acc, r) => acc + r.passed, 0);
     const totalFailed = filteredRows.reduce((acc, r) => acc + r.failed, 0);
+    const estimatedSeconds = filteredRows.reduce((acc, r) => acc + r.estimatedSeconds, 0);
+    const actualSeconds = filteredRows.reduce((acc, r) => acc + r.actualSeconds, 0);
+    const overEstimateSeconds = actualSeconds - estimatedSeconds;
     const openRuns = filteredRows.filter((r) => r.status === "open").length;
     const avgProgress =
       filteredRows.length > 0
@@ -67,6 +104,16 @@ export function ReportRunSummaryPage() {
       { label: "Tests", value: totalTests, tone: "neutral" as const },
       { label: "Passed", value: totalPassed, tone: "emerald" as const },
       { label: "Failed", value: totalFailed, tone: "rose" as const },
+      { label: "Estimated", value: formatSeconds(estimatedSeconds), tone: "neutral" as const },
+      {
+        label: "Actual",
+        value: formatSeconds(actualSeconds),
+        tone: overEstimateSeconds > 0 ? ("amber" as const) : ("emerald" as const),
+        hint:
+          overEstimateSeconds === 0
+            ? "Actual time matches estimates"
+            : `${overEstimateSeconds > 0 ? "+" : "-"}${formatSeconds(Math.abs(overEstimateSeconds))}`
+      },
       {
         label: "Avg progress",
         value: `${avgProgress}%`,
@@ -76,14 +123,14 @@ export function ReportRunSummaryPage() {
     ];
   }, [filteredRows]);
 
-  if (q.isLoading) return <LoadingState message="Loading run summary…" />;
+  if (q.isLoading) return <LoadingState message="Loading run summary..." />;
   if (q.isError) return <ErrorState title="Could not load run summary" onRetry={() => void q.refetch()} />;
 
   return (
     <div className="space-y-3">
       <ReportPageHeader
         title="Run summary"
-        description="Progress and outcome totals per test run. Open a run to execute tests or drill into instances."
+        description="Progress, outcomes, and estimated versus actual time per test run."
       />
       <ReportFilterBar
         fields={[
@@ -93,7 +140,7 @@ export function ReportRunSummaryPage() {
             label: "Search",
             value: search,
             onChange: setSearch,
-            placeholder: "Run name…"
+            placeholder: "Run name..."
           },
           {
             kind: "select",
@@ -129,7 +176,7 @@ export function ReportRunSummaryPage() {
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[820px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
                   <th className="py-2 pr-2">Run</th>
@@ -137,6 +184,9 @@ export function ReportRunSummaryPage() {
                   <th className="py-2 pr-2">Progress</th>
                   <th className="py-2 pr-2">Passed</th>
                   <th className="py-2 pr-2">Failed</th>
+                  <th className="py-2 pr-2">Estimated</th>
+                  <th className="py-2 pr-2">Actual</th>
+                  <th className="py-2 pr-2">Delta</th>
                   <th className="py-2">Total</th>
                 </tr>
               </thead>
@@ -152,6 +202,11 @@ export function ReportRunSummaryPage() {
                     <td className="py-2 pr-2">{row.progress}%</td>
                     <td className="py-2 pr-2">{row.passed}</td>
                     <td className="py-2 pr-2">{row.failed}</td>
+                    <td className="py-2 pr-2">{row.estimate || "-"}</td>
+                    <td className="py-2 pr-2">{row.actual || "-"}</td>
+                    <td className={["py-2 pr-2", row.actualOverEstimateSeconds > 0 ? "text-amber-700" : "text-slate-700"].join(" ")}>
+                      {row.actualVsEstimate || "-"}
+                    </td>
                     <td className="py-2">{row.total}</td>
                   </tr>
                 ))}

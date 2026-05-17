@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "../../common/errors/appError.js";
+import { validateRunSuiteBinding } from "../../domain/runSuitePolicy.js";
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { testRailStatusMap } from "../../domain/testrailMapping.js";
@@ -12,10 +13,13 @@ import type { ProjectRole } from "../../domain/roles.js";
 import {
   mapAttachmentForV2,
   buildSystemStatuses,
+  buildCaseStatusesCatalog,
   mapCaseTemplatesForV2,
   mapConfigurations,
   mapCustomFieldsForV2,
   mapCustomStatuses,
+  buildDatasetsCatalog,
+  buildVariablesCatalog,
   mapMilestone,
   mapPlan,
   buildCaseTypesCatalog,
@@ -141,6 +145,10 @@ const testIdParamSchema = z.object({
   testId: z.coerce.bigint()
 });
 
+const resultIdParamSchema = z.object({
+  resultId: z.coerce.bigint()
+});
+
 function savedReportExportFilters(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const exportValue = (value as Record<string, unknown>).export;
@@ -186,6 +194,31 @@ function mapCase(row: {
     type: row.caseType ?? null,
     custom_preconds: row.preconditions ?? null,
     labels: mapLabelsForV2(labels)
+  };
+}
+
+function mapScenarioForV2(row: { id: bigint; name: string; content: string }, caseId?: bigint) {
+  return {
+    id: Number(row.id),
+    ...(caseId ? { case_id: Number(caseId) } : {}),
+    name: row.name,
+    scenario: row.content,
+    content: row.content
+  };
+}
+
+function mapResultScenarioForV2(row: {
+  id: bigint;
+  caseScenarioId: bigint;
+  status: TestStatus;
+  comment?: string | null;
+}) {
+  return {
+    id: Number(row.id),
+    case_scenario_id: Number(row.caseScenarioId),
+    status_id: statusId(row.status),
+    status: row.status,
+    comment: row.comment ?? null
   };
 }
 
@@ -361,6 +394,84 @@ export async function registerTestRailRoutes(
     return reply.send(toJsonSafe(mapCase(row)));
   });
 
+  app.get("/api/v2/get_scenarios/:caseId", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const rows = await deps.casesService.listCaseScenarios(caseId);
+    return reply.send(toJsonSafe(rows.map((row) => mapScenarioForV2(row, caseId))));
+  });
+
+  app.get("/api/v2/get_bdd_scenarios/:caseId", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const rows = await deps.casesService.listCaseScenarios(caseId);
+    return reply.send(toJsonSafe(rows.map((row) => mapScenarioForV2(row, caseId))));
+  });
+
+  app.post("/api/v2/add_scenario/:caseId", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = req.body as { name?: string; scenario?: string; content?: string };
+    const name = body.name?.trim();
+    const content = (body.scenario ?? body.content)?.trim();
+    if (!name || !content) {
+      throw new AppError("VALIDATION_ERROR", "name and scenario are required", 400);
+    }
+    const created = await deps.casesService.createCaseScenario(caseId, { name, content });
+    return reply.send(toJsonSafe(mapScenarioForV2(created, caseId)));
+  });
+
+  app.post("/api/v2/add_bdd_scenario/:caseId", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = req.body as { name?: string; scenario?: string; content?: string };
+    const name = body.name?.trim();
+    const content = (body.scenario ?? body.content)?.trim();
+    if (!name || !content) {
+      throw new AppError("VALIDATION_ERROR", "name and scenario are required", 400);
+    }
+    const created = await deps.casesService.createCaseScenario(caseId, { name, content });
+    return reply.send(toJsonSafe(mapScenarioForV2(created, caseId)));
+  });
+
+  app.post("/api/v2/update_scenario/:scenarioId", async (req, reply) => {
+    const scenarioId = BigInt((req.params as { scenarioId: string }).scenarioId);
+    const body = req.body as { name?: string; scenario?: string; content?: string };
+    const updated = await deps.casesService.updateCaseScenario(scenarioId, {
+      ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+      ...(body.scenario !== undefined || body.content !== undefined
+        ? { content: (body.scenario ?? body.content)?.trim() }
+        : {})
+    });
+    return reply.send(toJsonSafe(mapScenarioForV2(updated)));
+  });
+
+  app.post("/api/v2/update_bdd_scenario/:scenarioId", async (req, reply) => {
+    const scenarioId = BigInt((req.params as { scenarioId: string }).scenarioId);
+    const body = req.body as { name?: string; scenario?: string; content?: string };
+    const updated = await deps.casesService.updateCaseScenario(scenarioId, {
+      ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+      ...(body.scenario !== undefined || body.content !== undefined
+        ? { content: (body.scenario ?? body.content)?.trim() }
+        : {})
+    });
+    return reply.send(toJsonSafe(mapScenarioForV2(updated)));
+  });
+
+  app.post("/api/v2/delete_scenario/:scenarioId", async (req, reply) => {
+    const scenarioId = BigInt((req.params as { scenarioId: string }).scenarioId);
+    await deps.casesService.deleteCaseScenario(scenarioId);
+    return reply.send(toJsonSafe({ success: true }));
+  });
+
+  app.post("/api/v2/delete_bdd_scenario/:scenarioId", async (req, reply) => {
+    const scenarioId = BigInt((req.params as { scenarioId: string }).scenarioId);
+    await deps.casesService.deleteCaseScenario(scenarioId);
+    return reply.send(toJsonSafe({ success: true }));
+  });
+
+  app.get("/api/v2/get_bdd_result_scenarios/:resultId", async (req, reply) => {
+    const { resultId } = resultIdParamSchema.parse(req.params);
+    const rows = await deps.resultsService.listResultScenariosByResultId(resultId);
+    return reply.send(toJsonSafe(rows.map(mapResultScenarioForV2)));
+  });
+
   app.get("/api/v2/get_suites/:projectId", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const rows = await deps.catalog.listSuitesByProject(projectId);
@@ -422,6 +533,20 @@ export async function registerTestRailRoutes(
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
     });
     return reply.send(toJsonSafe(mapCustomStatuses(rows)));
+  });
+
+  app.get("/api/v2/get_case_statuses", async (_req, reply) => {
+    return reply.send(toJsonSafe(buildCaseStatusesCatalog()));
+  });
+
+  app.get("/api/v2/get_datasets/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe(buildDatasetsCatalog(projectId)));
+  });
+
+  app.get("/api/v2/get_variables/:projectId", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe(buildVariablesCatalog(projectId)));
   });
 
   app.get("/api/v2/get_configs/:projectId", async (req, reply) => {
@@ -497,6 +622,31 @@ export async function registerTestRailRoutes(
     if (!deps.prisma) return reply.send(toJsonSafe([]));
     const rows = await deps.prisma.savedReport.findMany({
       where: { projectId, deletedAt: null },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 250
+    });
+    return reply.send(toJsonSafe(rows.map(mapSavedReportForV2)));
+  });
+
+  app.get("/api/v2/get_reports", async (req, reply) => {
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const user = await getAuthenticatedUser(req, deps);
+    const query = req.query as { project_id?: string } | undefined;
+    const projectId = query?.project_id ? BigInt(query.project_id) : undefined;
+    const rows = await deps.prisma.savedReport.findMany({
+      where: {
+        ...(projectId ? { projectId } : {}),
+        deletedAt: null,
+        project: {
+          deletedAt: null,
+          members: {
+            some: {
+              userId: user.id,
+              deletedAt: null
+            }
+          }
+        }
+      },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take: 250
     });
@@ -717,6 +867,9 @@ export async function registerTestRailRoutes(
     if (!suiteId) throw new AppError("VALIDATION_ERROR", "suite_id is required", 400);
     const includeAll = body.include_all ?? body.includeAll ?? true;
     const caseIds = body.case_ids ?? body.caseIds;
+    if (deps.prisma) {
+      await validateRunSuiteBinding(deps.prisma, { projectId, suiteId, caseIds });
+    }
     const created = await deps.runsService.createRunWithInstances({
       projectId,
       suiteId,

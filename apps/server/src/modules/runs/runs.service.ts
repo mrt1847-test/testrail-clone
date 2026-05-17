@@ -1,5 +1,6 @@
 import { AppError } from "../../common/errors/appError.js";
-import { assertRunCreationInput } from "../../domain/invariants.js";
+import { assertRunCreationInput, buildSnapshotFromCase } from "../../domain/invariants.js";
+import { assertExplicitCaseIdsBelongToRunSuite } from "../../domain/runSuitePolicy.js";
 import {
   compositionNeedsLiveSync,
   defaultCompositionMetadata,
@@ -71,22 +72,19 @@ export class RunsService {
         filterDefinition: input.filterDefinition
       });
 
+      if (compositionMode === "static" && !includeAll && input.caseIds?.length) {
+        assertExplicitCaseIdsBelongToRunSuite(input.caseIds, cases, input.suiteId);
+      }
+
       if (cases.length === 0) {
         throw new AppError("NO_CASES_FOUND", "no cases found to create run instances");
       }
 
       const instances = await tx.createInstances(
-        cases.map((c) => ({
-          runId: run.id,
-          caseId: c.id,
-          assignedTo: null,
-          titleSnapshot: c.title,
-          prioritySnapshot: c.priority,
-          typeSnapshot: c.caseType,
-          estimateSnapshot: c.estimate,
-          automationKeySnapshot: c.automationKey,
-          externalIdSnapshot: c.externalId
-        }))
+        cases.map((c) => {
+          const snap = buildSnapshotFromCase(c);
+          return { ...snap, runId: run.id };
+        })
       );
 
       return { run, instances };
@@ -144,20 +142,18 @@ export class RunsService {
         caseIds: toAdd
       });
       if (cases.length !== toAdd.length) {
-        throw new AppError("VALIDATION_ERROR", "one or more caseIds are not in the run suite", 400);
+        throw new AppError(
+          "RUN_SUITE_CASE_MISMATCH",
+          "A test run may only include cases from one suite. One or more caseIds belong to a different suite than the run.",
+          409,
+          { suiteId: run.suiteId.toString(), invalidCaseIds: toAdd.filter((id) => !cases.some((row) => row.id === id)).map((id) => id.toString()) }
+        );
       }
       const instances = await tx.createInstances(
-        cases.map((c) => ({
-          runId,
-          caseId: c.id,
-          assignedTo: null,
-          titleSnapshot: c.title,
-          prioritySnapshot: c.priority,
-          typeSnapshot: c.caseType,
-          estimateSnapshot: c.estimate,
-          automationKeySnapshot: c.automationKey,
-          externalIdSnapshot: c.externalId
-        }))
+        cases.map((c) => {
+          const snap = buildSnapshotFromCase(c);
+          return { ...snap, runId };
+        })
       );
       return { run, added: instances, skipped: unique.length - toAdd.length };
     });

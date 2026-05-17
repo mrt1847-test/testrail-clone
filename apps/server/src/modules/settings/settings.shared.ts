@@ -2,6 +2,17 @@ import type { PrismaClient, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 
+import {
+  fieldTypeUsesOptions,
+  normalizeFieldType,
+  userDefinableFieldTypeSchema,
+  type UserDefinableFieldType
+} from "../../domain/customFieldTypes.js";
+import {
+  parseVisibilityRules,
+  visibilityRulesForStorage,
+  type CustomFieldVisibilityRules
+} from "../../domain/customFieldVisibility.js";
 import { testStatuses, type TestStatus } from "../../domain/status.js";
 import type { AuthService } from "../auth/auth.service.js";
 
@@ -10,12 +21,13 @@ export type CustomFieldRow = {
   projectId: bigint;
   name: string;
   systemName: string;
-  fieldType: CustomFieldType;
+  fieldType: UserDefinableFieldType;
   scope: CustomFieldScope;
   options: string[];
   isRequired: boolean;
   isActive: boolean;
   displayOrder: number;
+  visibility?: CustomFieldVisibilityRules | null;
 };
 
 export type WebhookRow = {
@@ -70,20 +82,33 @@ const webhookAttempts: Array<{
   createdAt: Date;
 }> = [];
 
-type CustomFieldType = "text" | "number" | "select" | "boolean";
 type CustomFieldScope = "case" | "result";
 
-const customFieldTypeSchema = z.enum(["text", "number", "select", "boolean"]);
+const customFieldTypeSchema = userDefinableFieldTypeSchema;
 const customFieldScopeSchema = z.enum(["case", "result"]);
+const projectRoleSchema = z.enum(["owner", "manager", "tester", "viewer"]);
+const customFieldVisibilitySchema = z
+  .object({
+    viewRoles: z.array(projectRoleSchema).optional(),
+    editRoles: z.array(projectRoleSchema).optional(),
+    templateIds: z.array(z.string().trim().min(1)).optional()
+  })
+  .optional();
 const customFieldCreateSchema = z.object({
   name: z.string().trim().min(1),
   systemName: z.string().trim().min(1).optional(),
-  fieldType: customFieldTypeSchema.default("text"),
+  fieldType: z
+    .string()
+    .default("text")
+    .transform((raw) => normalizeFieldType(raw))
+    .refine((value): value is UserDefinableFieldType => value != null, { message: "unsupported field type" })
+    .pipe(customFieldTypeSchema),
   scope: customFieldScopeSchema.default("case"),
   options: z.array(z.string().trim().min(1)).default([]),
   isRequired: z.boolean().default(false),
   isActive: z.boolean().default(true),
-  displayOrder: z.number().int().default(0)
+  displayOrder: z.number().int().default(0),
+  visibility: customFieldVisibilitySchema
 });
 const customFieldUpdateSchema = customFieldCreateSchema.partial();
 const customFieldIdParamSchema = z.object({
@@ -274,17 +299,28 @@ function normalizeSystemName(value: string) {
     .slice(0, 64);
 }
 
-function fieldToResponse(row: {
-  id: bigint;
-  name: string;
-  systemName: string;
-  fieldType: string;
-  scope?: string;
-  options: Prisma.JsonValue | null;
-  isRequired: boolean;
-  isActive: boolean;
-  displayOrder: number;
-}) {
+export function customFieldOptionsForStorage(fieldType: UserDefinableFieldType, options: string[]) {
+  if (!fieldTypeUsesOptions(fieldType)) return [];
+  if (normalizeFieldType(fieldType) === "rating" && options.length === 0) return ["5"];
+  return options;
+}
+
+function fieldToResponse(
+  row: {
+    id: bigint;
+    name: string;
+    systemName: string;
+    fieldType: string;
+    scope?: string;
+    options: Prisma.JsonValue | null;
+    isRequired: boolean;
+    isActive: boolean;
+    displayOrder: number;
+    visibility?: Prisma.JsonValue | CustomFieldVisibilityRules | null;
+  },
+  access?: { canView: boolean; canEdit: boolean }
+) {
+  const visibility = parseVisibilityRules(row.visibility);
   return {
     id: row.id,
     name: row.name,
@@ -294,7 +330,9 @@ function fieldToResponse(row: {
     options: Array.isArray(row.options) ? row.options.filter((item): item is string => typeof item === "string") : [],
     isRequired: row.isRequired,
     isActive: row.isActive,
-    displayOrder: row.displayOrder
+    displayOrder: row.displayOrder,
+    visibility,
+    ...(access ? { access } : {})
   };
 }
 

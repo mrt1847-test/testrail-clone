@@ -9,6 +9,8 @@ type ApiInstance = {
   titleSnapshot: string;
   status: string;
   assignedTo?: string | number | null;
+  caseChanged?: boolean;
+  changedFields?: string[];
 };
 
 function mapInstance(instance: ApiInstance): TestInstanceRow {
@@ -18,7 +20,9 @@ function mapInstance(instance: ApiInstance): TestInstanceRow {
     caseCode: `C${instance.caseId}`,
     title: instance.titleSnapshot,
     status: instance.status,
-    assignedTo: instance.assignedTo != null ? String(instance.assignedTo) : null
+    assignedTo: instance.assignedTo != null ? String(instance.assignedTo) : null,
+    caseChanged: instance.caseChanged,
+    changedFields: instance.changedFields
   };
 }
 

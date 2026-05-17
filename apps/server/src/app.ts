@@ -15,6 +15,7 @@ import { PrismaRunsRepository } from "./modules/runs/runs.prisma.repository.js";
 import { RunCompositionSyncService } from "./modules/runs/runCompositionSync.service.js";
 import { RunsService } from "./modules/runs/runs.service.js";
 import { registerAutomationRoutes } from "./modules/automation/automation.routes.js";
+import { registerBddRoutes } from "./modules/bdd/bdd.routes.js";
 import { registerActivityRoutes } from "./modules/activity/activity.routes.js";
 import { registerMilestonesRoutes } from "./modules/milestones/milestones.routes.js";
 import { registerPlansRoutes } from "./modules/plans/plans.routes.js";
@@ -37,6 +38,7 @@ import { registerImportExportRoutes } from "./modules/importExport/importExport.
 import { registerTestRailRoutes } from "./modules/testrail/testrail.routes.js";
 import { registerAdminAccessDefaultsRoutes } from "./modules/admin/accessDefaults.routes.js";
 import { registerAdminUsersRoutes } from "./modules/admin/users.routes.js";
+import { registerExecutionCommentsRoutes } from "./modules/executionComments/executionComments.routes.js";
 
 export function buildApp() {
   const app = Fastify({ logger: false });
@@ -71,7 +73,9 @@ export function buildApp() {
   void registerCasesRoutes(app, { casesService, authService, prisma, compositionSync });
   void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
   void registerResultsRoutes(app, { resultsService, prisma, authService });
+  void registerExecutionCommentsRoutes(app, { authService, prisma });
   void registerAutomationRoutes(app, { prisma, catalog: catalogRepo, runsService, resultsService });
+  void registerBddRoutes(app, { prisma, catalog: catalogRepo, casesService, authService });
   void registerReportsRoutes(app, { repo, prisma, catalog: catalogRepo });
   void registerSavedReportsRoutes(app, { prisma, authService });
   void registerScheduledReportsRoutes(app, { prisma, authService });

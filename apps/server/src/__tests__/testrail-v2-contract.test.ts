@@ -26,10 +26,16 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(body.supported).toContain("GET get_results/{test_id}");
     expect(body.supported).toContain("GET get_case_types");
     expect(body.supported).toContain("GET get_priorities");
+    expect(body.supported).toContain("GET get_case_statuses");
+    expect(body.supported).toContain("GET get_datasets/{project_id}");
+    expect(body.supported).toContain("GET get_variables/{project_id}");
+    expect(body.supported).toContain("GET get_bdd_scenarios/{case_id}");
+    expect(body.supported).toContain("GET get_bdd_result_scenarios/{result_id}");
     expect(body.supported).toContain("GET get_suites/{project_id}");
     expect(body.supported).toContain("GET get_statuses");
     expect(body.supported).toContain("GET get_configs/{project_id}");
     expect(body.supported).toContain("GET get_case_fields/{project_id}");
+    expect(body.supported).toContain("GET get_reports");
     expect(body.supported).toContain("GET get_reports/{project_id}");
     expect(body.supported).toContain("GET get_roles");
     expect(body.supported).toContain("GET get_labels/{project_id}");
@@ -46,6 +52,12 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_milestones/{project_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_templates/{project_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_users");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_case_statuses");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_datasets/{project_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_variables/{project_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_reports");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_bdd_scenarios/{case_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("POST add_bdd_scenario/{case_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_attachments_for_result/{result_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("POST run_report/{report_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_labels/{project_id}");
@@ -81,16 +93,17 @@ describe("/api/v2 TestRail adapter contract", () => {
     const project = projectRes.json() as { data: { id: string } };
 
     const suiteRes = await app.inject({
-      method: "POST",
+      method: "GET",
       url: `/api/projects/${project.data.id}/suites`,
-      headers,
-      payload: { name: "Suite" }
+      headers
     });
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suite = (suiteRes.json() as { data: Array<{ id: string; isMaster: boolean }> }).data.find(
+      (row) => row.isMaster
+    )!;
 
     const sectionRes = await app.inject({
       method: "POST",
-      url: `/api/suites/${suite.data.id}/sections`,
+      url: `/api/suites/${suite.id}/sections`,
       headers,
       payload: { name: "Section" }
     });
@@ -143,18 +156,19 @@ describe("/api/v2 TestRail adapter contract", () => {
     const project = projectRes.json() as { data: { id: string } };
 
     const suiteRes = await app.inject({
-      method: "POST",
+      method: "GET",
       url: `/api/projects/${project.data.id}/suites`,
-      headers,
-      payload: { name: "Suite" }
+      headers
     });
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suite = (suiteRes.json() as { data: Array<{ id: string; isMaster: boolean }> }).data.find(
+      (row) => row.isMaster
+    )!;
 
     await app.inject({
       method: "POST",
       url: `/api/v2/add_run/${project.data.id}`,
       headers,
-      payload: { suite_id: suite.data.id, name: "Run A" }
+      payload: { suite_id: suite.id, name: "Run A" }
     });
 
     const runsRes = await app.inject({
@@ -211,16 +225,17 @@ describe("/api/v2 TestRail adapter contract", () => {
     const project = projectRes.json() as { data: { id: string } };
 
     const suiteRes = await app.inject({
-      method: "POST",
+      method: "GET",
       url: `/api/projects/${project.data.id}/suites`,
-      headers,
-      payload: { name: "V2 Suite" }
+      headers
     });
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suite = (suiteRes.json() as { data: Array<{ id: string; isMaster: boolean }> }).data.find(
+      (row) => row.isMaster
+    )!;
 
     await app.inject({
       method: "POST",
-      url: `/api/suites/${suite.data.id}/sections`,
+      url: `/api/suites/${suite.id}/sections`,
       headers,
       payload: { name: "V2 Section" }
     });
@@ -231,16 +246,16 @@ describe("/api/v2 TestRail adapter contract", () => {
     });
     expect(suitesRes.statusCode).toBe(200);
     const suites = suitesRes.json() as Array<{ id: number; name: string; project_id: number }>;
-    expect(suites.some((row) => row.id === Number(suite.data.id))).toBe(true);
+    expect(suites.some((row) => row.id === Number(suite.id))).toBe(true);
 
     const sectionsRes = await app.inject({
       method: "GET",
-      url: `/api/v2/get_sections/${project.data.id}?suite_id=${suite.data.id}`
+      url: `/api/v2/get_sections/${project.data.id}?suite_id=${suite.id}`
     });
     expect(sectionsRes.statusCode).toBe(200);
     const sections = sectionsRes.json() as Array<{ id: number; name: string; suite_id: number }>;
     expect(sections.length).toBeGreaterThanOrEqual(1);
-    expect(sections[0]?.suite_id).toBe(Number(suite.data.id));
+    expect(sections[0]?.suite_id).toBe(Number(suite.id));
 
     const milestonesRes = await app.inject({
       method: "GET",
@@ -255,6 +270,8 @@ describe("/api/v2 TestRail adapter contract", () => {
       `/api/v2/get_result_fields/${project.data.id}`,
       `/api/v2/get_templates/${project.data.id}`,
       `/api/v2/get_users/${project.data.id}`,
+      `/api/v2/get_datasets/${project.data.id}`,
+      `/api/v2/get_variables/${project.data.id}`,
       `/api/v2/get_reports/${project.data.id}`,
       `/api/v2/get_labels/${project.data.id}`,
       `/api/v2/get_shared_steps/${project.data.id}`,
@@ -270,6 +287,15 @@ describe("/api/v2 TestRail adapter contract", () => {
     const usersRes = await app.inject({ method: "GET", url: "/api/v2/get_users" });
     expect(usersRes.statusCode).toBe(200);
     expect(Array.isArray(usersRes.json())).toBe(true);
+
+    const caseStatusesRes = await app.inject({ method: "GET", url: "/api/v2/get_case_statuses" });
+    expect(caseStatusesRes.statusCode).toBe(200);
+    const caseStatuses = caseStatusesRes.json() as Array<{ id: number; name: string; label: string }>;
+    expect(caseStatuses.map((row) => row.name)).toEqual(["active", "archived"]);
+
+    const reportsRes = await app.inject({ method: "GET", url: "/api/v2/get_reports", headers });
+    expect(reportsRes.statusCode).toBe(200);
+    expect(Array.isArray(reportsRes.json())).toBe(true);
 
     const attachmentsForCaseRes = await app.inject({
       method: "GET",
@@ -336,7 +362,7 @@ describe("/api/v2 TestRail adapter contract", () => {
       method: "POST",
       url: "/api/projects",
       headers,
-      payload: { name: "V2 Write Project" }
+      payload: { name: "V2 Write Project", projectType: "multi_suite" }
     });
     const project = projectRes.json() as { data: { id: string } };
 
@@ -393,12 +419,45 @@ describe("/api/v2 TestRail adapter contract", () => {
     });
     expect(deleteSectionRes.statusCode).toBe(200);
 
-    await app.inject({
+    const runCaseRes = await app.inject({
       method: "POST",
       url: `/api/v2/add_case/${section.id}`,
       headers,
       payload: { title: "V2 Run Case" }
     });
+    const runCase = runCaseRes.json() as { id: number };
+
+    const addBddScenarioRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/add_bdd_scenario/${runCase.id}`,
+      headers,
+      payload: { name: "Checkout", scenario: "Given a cart\nWhen checkout succeeds\nThen an order exists" }
+    });
+    expect(addBddScenarioRes.statusCode).toBe(200);
+    const bddScenario = addBddScenarioRes.json() as { id: number; case_id: number; scenario: string };
+    expect(bddScenario.case_id).toBe(runCase.id);
+
+    const bddScenariosRes = await app.inject({
+      method: "GET",
+      url: `/api/v2/get_bdd_scenarios/${runCase.id}`
+    });
+    expect(bddScenariosRes.statusCode).toBe(200);
+    expect((bddScenariosRes.json() as Array<{ id: number }>).some((row) => row.id === bddScenario.id)).toBe(true);
+
+    const updateBddScenarioRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/update_bdd_scenario/${bddScenario.id}`,
+      headers,
+      payload: { scenario: "Given a cart\nWhen checkout fails\nThen an error is shown" }
+    });
+    expect(updateBddScenarioRes.statusCode).toBe(200);
+
+    const deleteBddScenarioRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/delete_bdd_scenario/${bddScenario.id}`,
+      headers
+    });
+    expect(deleteBddScenarioRes.statusCode).toBe(200);
 
     const runRes = await app.inject({
       method: "POST",

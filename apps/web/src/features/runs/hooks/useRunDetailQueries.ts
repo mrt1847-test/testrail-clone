@@ -74,7 +74,9 @@ export function useRunDetailQueries(input: Input) {
         caseCode: `C${instance.caseId}`,
         title: instance.titleSnapshot,
         status: instance.status,
-        assignedTo: instance.assignedTo ? String(instance.assignedTo) : null
+        assignedTo: instance.assignedTo ? String(instance.assignedTo) : null,
+        caseChanged: instance.caseChanged,
+        changedFields: instance.changedFields
       })),
     [runInstancesQuery.data?.data]
   );

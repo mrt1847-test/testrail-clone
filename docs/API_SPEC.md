@@ -80,6 +80,67 @@
 }
 ```
 
+## API Rate Limits
+
+**Status: documentation only — not enforced by this server.** No Fastify middleware, env flag, or per-token quota applies to `/api/*`, `/api/v2/*`, or automation upload routes. Clients will not receive `429 Too Many Requests` or `Retry-After` from built-in rate limiting in the current release.
+
+### Current clone behavior
+
+| Surface | Rate limiting |
+|---------|----------------|
+| Canonical REST (`/api/...`) | None |
+| TestRail adapter (`/api/v2/...`) | None |
+| Automation upload (`/api/automation/...`) | None |
+| Auth (`/api/auth/...`) | None (no login brute-force throttle in baseline) |
+
+Related limits that **are** enforced (not Cloud rate limits):
+
+- **List pagination**: high-traffic `/api/v2` list routes cap `limit` at `250` per request (see TestRail adapter section).
+- **Authorization**: invalid or expired tokens return `401`; missing project permission returns `403`.
+- **Payload validation**: oversize or invalid bodies return `400` via schema validation.
+
+Operators may add reverse-proxy or API-gateway rate limits at deploy time; that is outside the application contract and should be documented in your own runbook.
+
+### TestRail Cloud reference (parity target)
+
+[TestRail’s API introduction](https://support.testrail.com/hc/en-us/articles/7077083596436-Introduction-to-the-TestRail-API) documents Cloud-only limits:
+
+| Subscription | Limit |
+|--------------|-------|
+| TestRail Cloud Professional | **180 requests per instance per minute** |
+| TestRail Cloud Enterprise | **300 requests per instance per minute** |
+| TestRail Server (self-hosted) | **No built-in API rate limit** |
+
+When Cloud limits are exceeded, TestRail returns **HTTP 429** with a body similar to:
+
+```text
+API Rate Limit Exceeded - 180 per minute maximum allowed. Retry after 1 seconds.
+```
+
+Cloud responses include a **`Retry-After`** header (seconds to wait before the next request). Official guidance: prefer bulk endpoints (for example `add_results_for_cases`), add backoff between calls, and avoid tight polling loops.
+
+### Cloud parity gaps (this release)
+
+| Cloud behavior | Clone (current) |
+|----------------|-----------------|
+| Per-instance requests/minute cap | Not implemented |
+| `429` + rate-limit message | Not emitted for throttling |
+| `Retry-After` on throttle | Not emitted |
+| Tiered limits (180 vs 300) | N/A until enforcement ships |
+
+**Self-hosted parity:** A default clone deployment behaves like **TestRail Server** (no application rate limit), not like **TestRail Cloud**. Teams migrating automation from Cloud to this clone should not expect `429` from the app; they may increase request rates unless an operator adds external throttling.
+
+### Client and CI guidance
+
+- **From Cloud:** Remove or relax `429` retry loops if they only existed for Cloud throttling; keep exponential backoff for transient `5xx` and network errors.
+- **To Cloud later:** Re-enable `429` handling with `Retry-After` respect; use bulk writes and paginated reads (`limit`/`offset`) instead of unbounded single-resource fan-out.
+- **High-volume writers:** Use `POST /api/v2/add_results_for_cases/{run_id}` or `POST /api/automation/results/bulk` rather than per-case single-result calls.
+- **High-volume readers:** Page `get_cases`, `get_tests`, and `get_results*` with `limit` ≤ `250`; avoid loading full project history in one client session.
+
+### Future enforcement (out of scope until checklist splits it)
+
+Planned implementation (not in baseline) would likely include: configurable requests-per-minute per instance, `429` with `Retry-After`, optional tier env vars, and contract tests. Until then, treat this section as the authoritative description of rate-limit behavior.
+
 ## API Groups
 
 ## Projects
@@ -92,7 +153,7 @@
 ## Suites
 - `GET /api/projects/{projectId}/suites` — rows include `isMaster`, `isBaseline`, `parentSuiteId`.
 - `POST /api/projects/{projectId}/suites` — enforces project-type suite limits (`409` `PROJECT_SUITE_LIMIT` on single-repo second suite); optional `isBaseline` on baseline projects.
-- `POST /api/projects/{projectId}/suites/baselines` — baseline projects only; creates baseline suite and copies master section tree (no cases).
+- `POST /api/projects/{projectId}/suites/baselines` — baseline projects only; creates baseline suite and copies the master section tree plus active cases, steps, scenarios, and an initial copied-case snapshot. Automation and external IDs are cleared on copied cases to keep project-level identifiers unique.
 - `GET /api/suites/{suiteId}`
 - `PATCH /api/suites/{suiteId}`
 - `DELETE /api/suites/{suiteId}`
@@ -298,12 +359,17 @@ Run composition baseline:
   - `compositionMode` (optional): `static` (default), `include_all_live`, or `dynamic_filter`.
   - `filterDefinition` (optional, `dynamic_filter` only): `{ priority?, state?, includedSectionIds? }`.
 - `GET /api/projects/{projectId}/runs/{runId}` includes `run.composition` parsed from `TestRun.metadata`.
+- Run progress metrics are shared across list, detail, and summary endpoints via `buildRunProgressMetrics` (any non-`untested` status counts as executed):
+  - `GET /api/projects/{projectId}/runs` — each run row includes `progress` (0–100), `failed`, and `metrics` (`total`, `counts`, `executed`, `completionRate`, `progressPercent`).
+  - `GET /api/projects/{projectId}/runs/{runId}` — response includes top-level `metrics` with the same shape; `run.progress` and `run.failed` mirror list rows.
+  - `GET /api/runs/{runId}/summary` — returns `runId`, `total`, `counts`, `executed`, `completionRate`, and `progressPercent` (alias of completion × 100).
 - `POST /api/projects/{projectId}/runs/{runId}/sync-composition` — reconcile open runs in live modes; returns `{ skipped, added, removed, reason? }`; records activity `run.composition_synced`.
 - `PATCH /api/projects/{projectId}/runs/{runId}/composition` — update live-run filter metadata with optional `filterSelectionMode` (`set` | `add` | `remove`); runs `sync` by default for live modes.
 - `PATCH /api/runs/{runId}` — optional `startedAt` / `dueOn` (ISO dates) while run is open. Use `POST /api/runs/{runId}/close` to set completion; `closedAt` on PATCH is rejected for open runs (`400`).
 - `GET /api/runs/{runId}` (and project-scoped run detail) includes `dateWarnings: string[]` when schedule conflicts with milestone/plan or end date has passed (informational only — runs are not auto-closed).
 - `POST /api/projects/{projectId}/runs` accepts optional `startedAt` / `dueOn`; when `milestoneId` is set and dates are omitted, server inherits milestone `startDate` / `dueDate`.
 - Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
+- **Multi-suite projects:** every case in a run must belong to the run’s `suiteId`. Mixing cases from multiple suites returns `409` with code `RUN_SUITE_CASE_MISMATCH` and `details.invalidCaseIds`. Enforced on run create, `POST /api/runs/{runId}/tests`, and `/api/v2/add_run`.
 
 Example run creation body:
 
@@ -333,6 +399,7 @@ Run instance query parameters:
   - `assignedTo`
   - `q` searches case code/title snapshot
   - `page`, `pageSize`
+- Each instance includes test-change metadata: `caseLockVersionAtRun` (snapshot at add/create), `currentCaseLockVersion`, `caseChanged` (boolean), and `changedFields` (e.g. `title`, `priority`) when the underlying case changed after the run was created.
 
 Run close semantics:
 - Closing a run prevents new result writes and returns `409 RUN_CLOSED`.
@@ -392,7 +459,8 @@ Semantics:
 Semantics (overview/reports baseline):
 - `/overview` returns project-level counters used on overview cards: `totalCases`, `activeRuns`, `recentFailures`, `automationCoveragePct`.
 - `recent-failures` and `recent-results` return ordered `items` with `runId`, `runName`, `caseId`, `title`, `status`, `source`, `createdAt`.
-- `run-summary` returns per-run aggregation rows: `runId`, `name`, `status`, `total`, `passed`, `failed`, `progress`.
+- `run-summary` returns per-run aggregation rows: `runId`, `name`, `status`, `total`, `passed`, `failed`, `progress`, plus time tracking fields `estimatedSeconds`, `actualSeconds`, `actualOverEstimateSeconds`, `estimate`, `actual`, and `actualVsEstimate`.
+- Estimate totals come from each test instance's case estimate snapshot. Actual totals sum recorded result `elapsed` values for the run. Duration strings accept numeric minutes, `mm:ss`/`hh:mm:ss`, and unit forms such as `5m`, `90s`, or `1h 20m`.
 - Empty datasets return `200` with empty collections (no 404 for "no data").
 - Report endpoints must not require loading all raw result history on the client.
 - Expensive reports may use summary tables or materialized views after data volume grows.
@@ -597,7 +665,7 @@ Custom field shape:
 ```
 
 Rules:
-- `fieldType` is currently `text`, `number`, `select`, or `boolean`.
+- `fieldType` supports TestRail-aligned types: `string`, `text`, `url`, `integer`, `number`, `checkbox` (legacy `boolean`), `date`, `dropdown` (legacy `select`), `multi_select`, `user`, `milestone`, `rating`. System template types (`steps`, `step_results`, `scenarios`, `scenario_results`) are recognized for import but are not editable via `customValues` JSON.
 - `systemName` is project-unique and normalized to lowercase snake_case.
 - Deletes are soft deletes in DB-backed mode and create audit log entries.
 
@@ -650,6 +718,19 @@ Audit CSV export applies the same filters, includes project columns, and caps ex
 Retention prune body: `{ "olderThanDays": 365 }` with allowed range 30-3650; the prune action writes a summary audit row.
 Audited mutation groups include project/settings administration plus run/test assignment, defect link/unlink/push, saved report definition changes, and scheduled report create/update/delete/manual-run requests.
 
+## BDD / Gherkin
+- `GET /api/cases/{caseId}/scenarios` — list structured scenarios for a case.
+- `POST /api/cases/{caseId}/scenarios` — body: `{ "name", "content" }`.
+- `PUT /api/cases/{caseId}/scenarios` — replace all scenarios: `{ "scenarios": [{ "name", "content" }] }`.
+- `PATCH /api/case-scenarios/{scenarioId}` — update name/content/order.
+- `DELETE /api/case-scenarios/{scenarioId}`.
+- `GET /api/results/{resultId}/scenarios` — per-scenario results for a test result.
+- Result create payloads accept optional `scenarioResults: [{ caseScenarioId, status, comment? }]`.
+- `POST /api/projects/{projectId}/bdd/features/import` — body: `{ sectionId, featureText, createOneCasePerFeature? }`.
+- `GET /api/projects/{projectId}/bdd/features/export?sectionId=&caseId=` — returns `.feature` plain text.
+- `GET /api/projects/{projectId}/bdd/summary` — case/scenario counts.
+- `/api/v2/get_scenarios/{case_id}`, `POST add_scenario/{case_id}`, `POST update_scenario/{scenario_id}`, `POST delete_scenario/{scenario_id}`.
+
 ## Automation Dashboard (project UI)
 - `GET /api/projects/{projectId}/automation/summary` — `mappedCases`, `totalCases`, `unmappedCases`, `coveragePercent`, `pendingRetryCount`, `uploadedRuns`, `lastUploadAt`.
 - `GET /api/projects/{projectId}/automation/mappings` — query: `coverage` (`mapped` | `unmapped` | `all`), `q`, `page`, `pageSize`.
@@ -663,6 +744,8 @@ Audited mutation groups include project/settings administration plus run/test as
 - `POST /api/automation/runs/{runId}/results`
 - `POST /api/automation/results/bulk`
 - `POST /api/automation/uploads/{uploadId}/retry`
+
+Copy-paste CI examples for GitHub Actions, GitLab CI, Jenkins, and curl live in [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md).
 
 CI metadata fields (for automation endpoints and optionally run/result metadata):
 - `external_run_id`
@@ -777,6 +860,8 @@ Index (supported vs deferred):
 
 - `GET /api/v2` — returns `supported` and `deferred` endpoint lists for migration clients.
 
+Compatibility flow examples for suite/section/case discovery, run creation, result upload, and run close live in [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md).
+
 ### Supported read endpoints
 
 - `GET /api/v2/get_projects`
@@ -787,20 +872,27 @@ Index (supported vs deferred):
 - `GET /api/v2/get_plan/{plan_id}` (DB mode)
 - `GET /api/v2/get_case_types` (static catalog)
 - `GET /api/v2/get_priorities` (static catalog)
+- `GET /api/v2/get_case_statuses` (static active/archived case lifecycle catalog)
 - `GET /api/v2/get_case/{case_id}`
 - `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`, `limit`, `offset` — TestRail envelope with `cases[]`)
+- `GET /api/v2/get_scenarios/{case_id}`
+- `GET /api/v2/get_bdd_scenarios/{case_id}` (alias for BDD-oriented clients)
+- `GET /api/v2/get_bdd_result_scenarios/{result_id}`
 - `GET /api/v2/get_runs/{project_id}` (query: `limit`, `offset` — envelope with `runs[]`)
 - `GET /api/v2/get_suites/{project_id}`
 - `GET /api/v2/get_sections/{project_id}` (query: **`suite_id` required**)
 - `GET /api/v2/get_milestones/{project_id}` (DB mode; empty array in memory mode)
 - `GET /api/v2/get_plans/{project_id}` (DB mode; empty array in memory mode)
 - `GET /api/v2/get_statuses` (query: optional `project_id` for project custom status labels)
+- `GET /api/v2/get_datasets/{project_id}` (compatibility-only empty array until dataset storage ships)
+- `GET /api/v2/get_variables/{project_id}` (compatibility-only empty array until variable storage ships)
 - `GET /api/v2/get_configs/{project_id}` (DB mode; configuration groups with `configs`)
 - `GET /api/v2/get_case_fields/{project_id}` (DB mode; active case custom fields)
 - `GET /api/v2/get_result_fields/{project_id}` (DB mode; active result custom fields)
 - `GET /api/v2/get_templates/{project_id}` (DB mode; active case templates)
 - `GET /api/v2/get_users` (DB mode; active users)
 - `GET /api/v2/get_users/{project_id}` (DB mode; project members)
+- `GET /api/v2/get_reports` (DB mode; authenticated cross-project saved report definitions for projects the caller can access; optional `project_id` query)
 - `GET /api/v2/get_reports/{project_id}` (DB mode; saved report definitions)
 - `GET /api/v2/get_roles` (static project role catalog)
 - `GET /api/v2/get_labels/{project_id}` (distinct case label titles aggregated from active cases; synthetic stable `id` per title)
@@ -818,6 +910,12 @@ Index (supported vs deferred):
 
 - `POST /api/v2/add_case/{section_id}`
 - `POST /api/v2/update_case/{case_id}`
+- `POST /api/v2/add_scenario/{case_id}`
+- `POST /api/v2/add_bdd_scenario/{case_id}` (alias)
+- `POST /api/v2/update_scenario/{scenario_id}`
+- `POST /api/v2/update_bdd_scenario/{scenario_id}` (alias)
+- `POST /api/v2/delete_scenario/{scenario_id}`
+- `POST /api/v2/delete_bdd_scenario/{scenario_id}` (alias)
 - `POST /api/v2/add_run/{project_id}`
 - `POST /api/v2/add_suite/{project_id}` (body: `name`, optional `description`)
 - `POST /api/v2/update_suite/{suite_id}` (body: optional `name`, `description`)
@@ -832,7 +930,7 @@ Index (supported vs deferred):
 
 ### Deferred (not implemented)
 
-First-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, pagination on remaining catalog list routes (suites, sections, milestones, …), and other catalog endpoints — see `GET /api/v2` `deferred` array in the running server (empty when all planned single-resource reads are shipped).
+First-class label/group/shared-step CRUD, persisted datasets/variables, richer role permission parity, and run reopen/date fields remain outside the current compatibility baseline. **Cloud-style API rate-limit enforcement** is also deferred; current behavior is documented in [API Rate Limits](#api-rate-limits) (documentation only, no `429`/`Retry-After` from the app). See `GET /api/v2` for the running server's supported/deferred arrays.
 
 **Paginated list envelope** (cases, runs, tests, results): `{ offset, limit, size, _links: { next, prev }, <collection>: [...] }`. Default `limit=250`, max `250`.
 
@@ -842,12 +940,13 @@ Adapter rules:
 - Adapter is a compatibility layer, not the canonical product API.
 
 Current baseline:
-- Implemented under `/api/v2` for cases, runs, tests, results, suites, sections, milestones, plans, statuses, configurations, custom fields, templates, users, saved reports, roles, attachments, and saved-report CSV execution.
-- List endpoints return **JSON arrays** (not TestRail 9.x `{ offset, limit, suites: [...] }` wrappers).
+- Implemented under `/api/v2` for cases, runs, tests, results, projects, suites, sections, milestones, plans, statuses, case statuses, BDD scenarios, compatibility dataset/variable reads, configurations, custom fields, templates, users, saved reports including authenticated cross-project report reads, roles, labels/groups/shared-step reads, attachments, and saved-report CSV execution.
+- High-traffic list endpoints (`get_cases`, `get_runs`, `get_tests`, `get_results*`) return TestRail-style limit/offset envelopes; lower-volume catalog list routes return JSON arrays.
 - Accepts TestRail-style `status_id`, `case_id`, `suite_id`, `include_all`, and `case_ids` where applicable.
 - `get_statuses?project_id=` returns project custom statuses when DB-backed; includes `custom_status_id` on each row when mapped from `CustomStatus`.
+- `get_case_statuses` returns the current clone case lifecycle catalog (`active`, `archived`); dataset and variable list endpoints intentionally return empty arrays until first-class Enterprise dataset/variable storage exists.
 - Mutating adapter endpoints reuse project membership authorization and existing domain services.
-- Remaining compatibility work: pagination wrappers, token scopes, first-class label/group/shared-step CRUD, richer role permissions, run reopen/date fields, and other deferred endpoints per `GET /api/v2`.
+- `run_report` executes saved reports as CSV export jobs and returns job/download URLs; HTML/PDF rendering remains outside the current baseline.
 
 ## Metadata Field Strategy
 - `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
@@ -916,9 +1015,18 @@ Defect integration semantics:
 - `GET /api/projects/{projectId}/cases/import/csv/profile` — canonical case import fields, active custom fields, and export header list.
 - `POST /api/projects/{projectId}/cases/import/csv/suggest-mapping` — body: `{ headers: string[] }` or `{ csv: string }`; returns suggested `columnMapping` and header-level `mappingIssues`.
 - `POST /api/projects/{projectId}/cases/import/csv`
+- `POST /api/projects/{projectId}/cases/import/csv/async` — queues background CSV import/validation; returns `202` with `job` and `pollUrl` (Prisma mode; staged file on server temp storage).
+- `GET /api/projects/{projectId}/import-jobs/{jobId}` — poll import job status; includes `summary`, `issues`, and `resultReady` when terminal.
 - `GET /api/projects/{projectId}/import-jobs`
+- `POST /api/projects/{projectId}/cases/export/async` — body: `{ format: "csv" | "json" | "xml" }`; returns `202` with `job`, `pollUrl`, and `downloadUrl`.
+- `POST /api/projects/{projectId}/runs/results/export/csv/async` — body: `{ runId }`; queues run result CSV export.
+- `GET /api/projects/{projectId}/export-jobs/{jobId}` — poll export job; `downloadUrl` when `status=completed`.
 - `GET /api/projects/{projectId}/cases/export/csv`
+- `GET /api/projects/{projectId}/cases/export/json`
+- `GET /api/projects/{projectId}/cases/export/xml`
+- `GET /api/projects/{projectId}/cases/export/testrail`
 - `GET /api/projects/{projectId}/runs/{runId}/results/export/csv`
+- `GET /api/projects/{projectId}/runs/{runId}/results/export/testrail`
 - `GET /api/projects/{projectId}/export-jobs`
 - `POST /api/projects/{projectId}/reports/export`
 - `GET /api/projects/{projectId}/reports/export`
@@ -928,10 +1036,16 @@ CSV case import baseline:
 - Supports section path, title, preconditions, priority, type, refs, labels, automation key, external id, steps.
 - Current API baseline accepts JSON body with `csv`, `dryRun`, `atomic`, optional `sectionId`, and optional `columnMapping` (CSV header → canonical field key; empty string ignores a column).
 - When `columnMapping` is omitted, the server auto-suggests mappings from CSV headers (same rules as `suggest-mapping`).
+- UI clients should use `POST .../cases/import/csv/async` when CSV payload exceeds ~48 KB so the browser is not blocked on validation/commit.
+- Import jobs use statuses `pending` → `processing` → `completed` | `failed` | `completed_with_errors`. Export jobs use `pending` → `processing` → `completed` | `failed`.
+- `GET /export-jobs/{jobId}/download` serves report exports and case/run export jobs when `status=completed` (rebuilds file on download).
 - Supports dry-run validation before commit.
 - Returns row-level validation errors with `row`, `field`, `code`, and `message` (row `1` for mapping-level issues such as missing Title mapping).
 - Does not partially import invalid rows unless `atomic=false` is explicitly provided.
-- Case export and run result export return `text/csv` and create completed export job records.
+- Case export and run result CSV export return `text/csv` and create completed export job records.
+- Case JSON/XML export endpoints use the clone-native `testrail-clone.cases` payload for round-trip import compatibility.
+- `cases/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata (`offset`, `limit`, `size`, `_links`) and `cases[]` rows containing numeric `id`, `section_id`, `title`, `refs`, `custom_preconds`, labels, automation/external identifiers, `custom_steps_separated`, and active `custom_{systemName}` values.
+- `runs/{runId}/results/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata and `results[]` rows containing numeric `id`, `test_id`, `case_id`, `status_id`, `created_on`, comment, elapsed, version, defects, refs, source, and active `custom_{systemName}` values.
 - Case and result custom values are exported as `custom_{systemName}` columns where active custom fields exist; result custom columns are included in run result CSV exports and `results_explorer` report CSV exports.
 - Report export supports `run_summary`, `results_explorer`, `traceability`, `coverage_gap`, and `defect_coverage` as CSV.
 - `POST /reports/export` creates an export job and returns a download URL; the baseline generates CSV on download and marks the job completed.

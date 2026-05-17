@@ -380,6 +380,11 @@ export function RunCreatePage() {
               </option>
             ))}
           </select>
+          {suites.length > 1 ? (
+            <p className="mt-1 text-xs text-slate-500">
+              This run includes cases from the selected suite only. Cases from other suites cannot be mixed in one run.
+            </p>
+          ) : null}
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Milestone (optional)

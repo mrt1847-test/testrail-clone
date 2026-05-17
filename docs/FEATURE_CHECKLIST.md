@@ -50,9 +50,9 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** P1 Project archive/read-only mode. (`POST .../archive|restore`, `PROJECT_ARCHIVED` on mutations, settings UI + archived banner.)
 - [x] **TR-Core** P1 Global default access model. (`InstanceAccessDefaults`, `GET/PATCH /api/admin/access-defaults`, new-project grant mode, member-invite default role, `/admin/access-defaults` UI. Out of scope: custom roles/groups/full permission matrix — line 52.)
 - [x] **TR-Core** P1 Users, groups, global roles, custom roles, and permission matrix. (`User.globalRole`, `UserGroup`/`UserGroupMember`, `CustomRole` + project CRUD; `GET /api/admin/users|groups|permission-matrix`; custom roles on members; `cases.write`/`runs.write`/`results.write`/`settings.write`/`members.manage` enforcement on core routes; `/admin/users` + project custom roles UI.)
-- [x] **TR-Core** P1 Project types: single repository, single repository with baselines, multiple test suites ([Projects and their types](https://support.testrail.com/hc/en-us/articles/7076923860244)). (`projectType` on projects; suite policy enforcement; master/baseline flags; project create + settings UI; suite switcher on cases; `POST .../suites/baselines` copies master section tree; full baseline merge/diff tooling out of scope.)
-- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).
-- [ ] **TR-Core** P1 Multi-suite rule: one suite per test run when multiple suites are enabled.
+- [x] **TR-Core** P1 Project types: single repository, single repository with baselines, multiple test suites ([Projects and their types](https://support.testrail.com/hc/en-us/articles/7076923860244)). (`projectType` on projects; suite policy enforcement; master/baseline flags; project create + settings UI; suite switcher on cases; full baseline merge/diff tooling out of scope.)
+- [x] **TR-Core** P1 Baseline branches (copy from master suite without affecting master). (`POST .../suites/baselines` copies master sections plus active cases, steps, scenarios, and snapshots into an independent baseline suite; case workspace can create/select baselines without mutating master.)
+- [x] **TR-Core** P1 Multi-suite rule: one suite per test run when multiple suites are enabled. (`RUN_SUITE_CASE_MISMATCH` 409 on cross-suite `caseIds`; validate on run create, add tests, and v2 `add_run`; run create UI copy when multiple suites.)
 - [ ] **TR-Ent** P2 SSO (OIDC, OAuth 2.0, SAML 2.0) and enforced vs mixed login.
 - [ ] **TR-Ent** P2 MFA.
 - [ ] **Clone+** P2 Settings sidebar for lower-frequency admin categories.
@@ -66,7 +66,7 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** P1 Default **case templates**: Test Case (Text), Test Case (Steps), Exploratory Session, Behaviour Driven Development, AI Evaluation ([Test case templates](https://support.testrail.com/hc/en-us/articles/14927678348052)). (Five built-in templates per project, template-driven authoring UX, `caseTemplateId` + `expectedResult` on cases; BDD `.feature` import and AI execution pipeline out of scope.)
 - [ ] **TR-Core** P1 Exploratory template fields (Mission, Goals).
 - [ ] **TR-Core** P1 AI Evaluation template and result fields (Quality Rating, Input, Output, Traces, Latency).
-- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).
+- [x] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)). (TestCaseScenario model, case scenario CRUD, result scenarioResults, .feature import/export, BDD UI + v2 get_scenarios/add_scenario.)
 - [x] **Clone+** Case version persistence, timeline, compare/restore UI, conflict messaging, and snapshot detail drawer (TestRail Enterprise also offers versioning).
 - [x] **TR-Core** Bulk delete, move, copy, archive/restore, priority/type update, saved views, rich filters, optional list columns, and metadata chips.
 - [x] **TR-Core** Case and section drag/drop move/copy/reorder with persisted ordering and position APIs.
@@ -101,10 +101,11 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** P1 Bulk result entry uses `/results/bulk` with per-row success/failure summary in run UI.
 - [x] **TR-Core** P1 Activity/notification drilldown for run composition (`run.tests_added`, `run.test_removed`) with run + case links.
 - [x] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation; [UX_BACKLOG.md](./UX_BACKLOG.md) UX-2).
-- [ ] **TR-Core** P1 Test change indicator when underlying case changed after run was created.
-- [ ] **TR-Pro** P1 Time tracking beyond elapsed entry (estimates vs actuals in reports).
+- [x] **TR-Core** P1 Test change indicator when underlying case changed after run was created. (lockVersion at run + snapshot diff; API `caseChanged` / `changedFields`; run test list badge)
+- [x] **TR-Pro** P1 Time tracking beyond elapsed entry (estimates vs actuals in reports). (Shared duration parser, case estimate create/update, run-summary API/CSV estimated vs actual seconds/display/delta fields, report UI columns and overview hints, focused tests.)
+- [x] **TR-Core** P1 Run-level progress and completion metrics in UI and API. (`buildRunProgressMetrics`; metrics on run list/detail + `/runs/:id/summary`; run detail UI uses single API; completion counts all non-untested statuses.)
 - [x] **TR-Core** P1 Result comment `@mention` notification/email routing baseline.
-- [ ] **TR-Core** P1 Richer comments on execution workflow beyond result-entry comments.
+- [x] **TR-Core** P1 Richer comments on execution workflow beyond result-entry comments. (test/run `ExecutionComment` threads; list/create APIs; run detail discussion panels; @mention on post)
 
 ---
 
@@ -114,7 +115,8 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** Result custom values in run result and result explorer CSV exports.
 - [x] **TR-Core** Result explorer custom field exact-match filters.
 - [x] **TR-Core** Boolean custom field type for definitions, validation, forms, import, exports, and filtering.
-- [ ] **TR-Core** P1 Remaining TestRail field types: Checkbox, Date, Dropdown, Integer, Multi-select, String, Text, URL, User, Milestone, Rating, Steps, Step Results, Scenarios, Scenario Results ([Configuring custom fields](https://support.testrail.com/hc/en-us/articles/7373850291220)).
+- [x] **TR-Core** P1 Remaining TestRail field types: Checkbox, Date, Dropdown, Integer, Multi-select, String, Text, URL, User, Milestone, Rating, Steps, Step Results, Scenarios, Scenario Results ([Configuring custom fields](https://support.testrail.com/hc/en-us/articles/7373850291220)). (shared type registry + API validation; case/result forms; legacy text/number/select/boolean aliases)
+- [x] **TR-Core** P1 Custom field visibility rules per role or template. (`visibility` JSON on definitions; case/result read filtering and write enforcement; `forUse` field list with `access`; settings UI)
 - [ ] **TR-Core** P1 Advanced result custom field filtering semantics.
 - [ ] **TR-Core** P2 Result editing/correction policy (product decision; TestRail allows limited correction via new results).
 
@@ -223,10 +225,10 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Core** P1 Token scopes and expiration enforcement. (`scopes` + `expiresInDays` on create; `GET .../tokens/scopes`; automation routes enforce `automation:write` and expiry; Tokens UI for scopes/expiration.)
 - [x] **TR-Core** P1 Clearer token creation UX. (Scope presets, expiry guidance, validation feedback, and one-time copyable token secret summary.)
 - [x] **TR-Pro** P1 Automation mapping UI, mapping health, upload retry queues, and row-level failure guidance. (Mapping table with unmapped/mapped filters and PATCH mapping; summary health metrics; retry queue list; upload detail row guidance and bulk upload failure preview.)
-- [ ] **TR-Pro** P2 CI examples and compatibility examples.
-- [ ] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (partial: configurations, case/result fields, templates, users, saved reports, roles, case/result attachments, saved-report `run_report` CSV execution, read-only `get_labels` / `get_groups` / `get_shared_steps`, suite/section/run write endpoints; list pagination tracked separately.)
-- [ ] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports.
-- [ ] **TR-Pro** P2 API rate-limit behavior documentation (Cloud parity).
+- [x] **TR-Pro** P2 CI examples and compatibility examples. ([CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md) covers curl, GitHub Actions, GitLab CI, Jenkins automation uploads, CI metadata, common `/api/v2` read/write flows, status mapping, and troubleshooting.)
+- [x] **TR-Pro** P2 Expanded `/api/v2`: projects, suites, sections, milestones, plans, configurations, fields, templates, users, roles, `get_reports`, `run_report`, attachments, labels, groups, shared steps. (`GET /api/v2` supported list covers the expanded surface with empty deferred list; contract tests cover catalog reads, read-only labels/groups/shared steps, case/result attachments, saved-report CSV `run_report`, suite/section/run writes, and high-traffic list pagination.)
+- [x] **TR-Ent** P2 `get_case_statuses`, datasets, variables, BDD endpoints, cross-project reports. (`/api/v2/get_case_statuses`; compatibility-only empty `get_datasets`/`get_variables`; BDD scenario aliases plus result scenario read; authenticated cross-project `get_reports`; supported index, API docs, and contract tests.)
+- [x] **TR-Pro** P2 API rate-limit behavior documentation (Cloud parity). ([API_SPEC.md](./API_SPEC.md#api-rate-limits): documentation-only baseline, Cloud 180/300 req/min reference, parity gap table, CI guidance; no app-level `429` enforcement.)
 
 ---
 
@@ -237,8 +239,8 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 - [x] **TR-Core** Case and result custom values in relevant imports/exports.
 - [x] **TR-Core** P1 Mapping-driven import/export UX and richer validation guidance. (column mapping UI with auto-suggest and per-project local save; import profile + suggest-mapping APIs; `columnMapping` on import; validation table with row/field/code; import template download; commit gated on successful dry run.)
 - [x] **TR-Pro** P1 XML/JSON import/export. (Case JSON/XML import dry-run/commit endpoints, JSON/XML case exports, job history entries, and format selection/guidance in import/export UI.)
-- [ ] **TR-Pro** P1 Mapping wizard and large async file lifecycle.
-- [ ] **TR-Pro** P2 TestRail-native export shapes beyond current CSV baselines.
+- [x] **TR-Pro** P1 Mapping wizard and large async file lifecycle. (4-step CSV import wizard with file upload; async CSV import/export job APIs with poll + download; job tables with 2s polling; ~48KB async threshold.)
+- [x] **TR-Pro** P2 TestRail-native export shapes beyond current CSV baselines. (Compatibility-only JSON exports for cases and run results with TestRail-style collection metadata, case `custom_preconds`/`custom_steps_separated`, result `status_id`/`created_on`, export job records, API docs, and focused integration coverage.)
 
 ---
 

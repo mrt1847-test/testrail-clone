@@ -4,16 +4,45 @@ import { downloadCsv } from "./importExportApi";
 
 type TestStatus = "untested" | "passed" | "failed" | "blocked" | "retest";
 
+export type ProjectRole = "owner" | "manager" | "tester" | "viewer";
+
+export type CustomFieldVisibilityRules = {
+  viewRoles?: ProjectRole[];
+  editRoles?: ProjectRole[];
+  templateIds?: string[];
+};
+
+export type CustomFieldAccess = {
+  canView: boolean;
+  canEdit: boolean;
+};
+
 export type CustomFieldRow = {
   id: string;
   name: string;
   systemName: string;
-  fieldType: "text" | "number" | "select" | "boolean";
+  fieldType:
+    | "string"
+    | "text"
+    | "url"
+    | "integer"
+    | "number"
+    | "checkbox"
+    | "boolean"
+    | "date"
+    | "dropdown"
+    | "select"
+    | "multi_select"
+    | "user"
+    | "milestone"
+    | "rating";
   scope: "case" | "result";
   options: string[];
   isRequired: boolean;
   isActive: boolean;
   displayOrder: number;
+  visibility?: CustomFieldVisibilityRules;
+  access?: CustomFieldAccess;
 };
 
 export type CustomStatusRow = {
@@ -232,18 +261,36 @@ export type NotificationPreferences = {
   digestEnabled: boolean;
 };
 
-export async function fetchCustomFields(projectId: string, scope?: CustomFieldRow["scope"]): Promise<CustomFieldRow[]> {
-  const suffix = scope ? `?scope=${scope}` : "";
-  const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields${suffix}`);
-  return res.data.map((row) => ({
+function mapCustomFieldRow(row: CustomFieldRow): CustomFieldRow {
+  return {
     ...row,
     id: String(row.id),
     scope: row.scope ?? "case",
     options: row.options ?? [],
     isRequired: row.isRequired ?? false,
     isActive: row.isActive ?? true,
-    displayOrder: row.displayOrder ?? 0
-  }));
+    displayOrder: row.displayOrder ?? 0,
+    visibility: row.visibility ?? {}
+  };
+}
+
+export async function fetchCustomFields(projectId: string, scope?: CustomFieldRow["scope"]): Promise<CustomFieldRow[]> {
+  const suffix = scope ? `?scope=${scope}` : "";
+  const res = await apiFetch<Paged<CustomFieldRow>>(`/api/projects/${projectId}/settings/custom-fields${suffix}`);
+  return res.data.map(mapCustomFieldRow);
+}
+
+export async function fetchCustomFieldsForUse(
+  projectId: string,
+  scope: CustomFieldRow["scope"],
+  templateId?: string | null
+): Promise<CustomFieldRow[]> {
+  const params = new URLSearchParams({ scope, forUse: "true" });
+  if (templateId) params.set("templateId", templateId);
+  const res = await apiFetch<Paged<CustomFieldRow>>(
+    `/api/projects/${projectId}/settings/custom-fields?${params.toString()}`
+  );
+  return res.data.map(mapCustomFieldRow);
 }
 
 export async function createCustomField(projectId: string, input: Omit<CustomFieldRow, "id">): Promise<CustomFieldRow> {

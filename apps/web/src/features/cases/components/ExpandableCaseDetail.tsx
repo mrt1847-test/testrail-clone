@@ -20,6 +20,7 @@ import {
   type CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
 import { CaseRefTokens } from "./CaseRefTokens";
+import { BddScenarioEditor } from "./BddScenarioEditor";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -32,10 +33,11 @@ type ExpandableCaseDetailProps = {
   onSave: (patch: {
     title: string;
     preconditions: string;
+    estimate: string | null;
     references: string;
     expectedResult: string;
     templateId: string | null;
-    customValues: Record<string, string | number | boolean | null>;
+    customValues: Record<string, string | number | boolean | string[] | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;
@@ -639,7 +641,7 @@ export function ExpandableCaseDetail({
   const { projectId = "" } = useParams();
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
-  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | null>>(
+  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | string[] | null>>(
     () => data.customValues ?? {}
   );
   const [localSteps, setLocalSteps] = useState<LocalStep[]>(() => toLocalSteps(data.steps));
@@ -660,6 +662,9 @@ export function ExpandableCaseDetail({
     caseTemplates.find((template) => template.id === String(data.caseTemplateId ?? "")) ?? null;
   const editShowsSteps =
     activeCaseTemplate?.fields.some((field) => field.trim().toLowerCase() === "steps") || data.steps.length > 0;
+  const editShowsBdd =
+    activeCaseTemplate?.fields.some((field) => field.trim().toLowerCase() === "scenario") ||
+    activeCaseTemplate?.name.toLowerCase().includes("behaviour");
 
   useEffect(() => {
     setTitle(data.title);
@@ -725,6 +730,7 @@ export function ExpandableCaseDetail({
             valueKey={`${data.id}:${data.lockVersion}:${mode}`}
             initialTitle={title}
             initialPreconditions={preconditions}
+            initialEstimate={data.estimate === "-" ? "" : data.estimate}
             initialReferences={data.references}
             initialExpectedResult={data.expectedResult}
             initialCaseTemplateId={data.caseTemplateId != null ? String(data.caseTemplateId) : null}
@@ -829,6 +835,7 @@ export function ExpandableCaseDetail({
               await onSave({
                 title: input.title,
                 preconditions: input.preconditions,
+                estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
                 references: input.references,
                 expectedResult: input.expectedResult,
                 templateId: input.templateId,
@@ -837,6 +844,7 @@ export function ExpandableCaseDetail({
             }}
             onCancel={onClose}
           />
+          {editShowsBdd ? <BddScenarioEditor caseId={data.id} disabled={isSaving} /> : null}
         </div>
       ) : (
         <>

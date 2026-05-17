@@ -27,6 +27,8 @@ export type SectionRow = {
   description?: string | null;
 };
 
+export type CaseCustomValue = string | number | boolean | string[] | null;
+
 export type CaseRow = {
   id: bigint;
   projectId?: bigint;
@@ -44,7 +46,7 @@ export type CaseRow = {
   preconditions?: string | null;
   expectedResult?: string | null;
   caseTemplateId?: bigint | null;
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, CaseCustomValue>;
   lockVersion: number;
   updatedAt: Date;
   archivedAt?: Date | null;
@@ -59,6 +61,13 @@ export type CaseStepRow = {
   expectedResult?: string | null;
 };
 
+export type CaseScenarioRow = {
+  id: bigint;
+  scenarioOrder: number;
+  name: string;
+  content: string;
+};
+
 export type CaseVersionRow = {
   id: bigint;
   caseId: bigint;
@@ -67,7 +76,7 @@ export type CaseVersionRow = {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
-  customValuesSnapshot?: Record<string, string | number | boolean | null>;
+  customValuesSnapshot?: Record<string, CaseCustomValue>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   attachmentSnapshots: Array<{
     id: string;
@@ -93,7 +102,10 @@ export interface ProjectsRepository {
   deleteProject(projectId: bigint): Promise<boolean>;
 
   listSuitesByProject(projectId: bigint): Promise<SuiteRow[]>;
-  createSuite(input: Omit<SuiteRow, "id">): Promise<SuiteRow>;
+  createSuite(
+    input: Omit<SuiteRow, "id" | "isMaster" | "isBaseline" | "parentSuiteId"> &
+      Partial<Pick<SuiteRow, "isMaster" | "isBaseline" | "parentSuiteId">>
+  ): Promise<SuiteRow>;
   getSuite(suiteId: bigint): Promise<SuiteRow | null>;
   updateSuite(suiteId: bigint, patch: Partial<Omit<SuiteRow, "id" | "projectId">>): Promise<SuiteRow | null>;
   deleteSuite(suiteId: bigint): Promise<boolean>;
@@ -125,6 +137,22 @@ export interface ProjectsRepository {
   createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">): Promise<CaseRow>;
   getCase(caseId: bigint): Promise<CaseRow | null>;
   listCaseSteps(caseId: bigint): Promise<CaseStepRow[]>;
+  listCaseScenarios(caseId: bigint): Promise<CaseScenarioRow[]>;
+  createCaseScenario(input: {
+    caseId: bigint;
+    scenarioOrder: number;
+    name: string;
+    content: string;
+  }): Promise<CaseScenarioRow>;
+  updateCaseScenario(
+    scenarioId: bigint,
+    patch: { name?: string; content?: string; scenarioOrder?: number }
+  ): Promise<CaseScenarioRow | null>;
+  deleteCaseScenario(scenarioId: bigint): Promise<boolean>;
+  replaceCaseScenarios(
+    caseId: bigint,
+    scenarios: Array<{ name: string; content: string }>
+  ): Promise<CaseScenarioRow[]>;
   listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]>;
   getCaseVersion(caseId: bigint, versionId: bigint): Promise<CaseVersionRow | null>;
   getCaseVersionByVersionNo(caseId: bigint, versionNo: number): Promise<CaseVersionRow | null>;

@@ -2,45 +2,46 @@
 
 Last aligned: 2026-05-17
 
-**역할:** 다음 1–2 PR 분량. 방향은 [ROADMAP.md](./ROADMAP.md). **진행률은 [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md)의 `[ ]` → `[x]` 한 줄**로만 잰다.
+Goal: keep the next development batch to roughly one PR. Direction lives in [ROADMAP.md](./ROADMAP.md). Progress should be tracked by flipping exactly one line in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) from `[ ]` to `[x]`.
 
-**루프**
+## Loop
 
-1. 아래 **Current batch**의 체크리스트 **한 줄**만 구현한다.
-2. 그 줄만 `[x]`로 바꾸고 `(…)`에 이번에 실은 범위를 적는다.
-3. **새 체크리스트 줄을 만들지 않는다** (이미 `[x]`인 덩어리에 대한 폴리시는 해당 줄 괄호 보강 또는, 먼저 checklist에서 `[ ]`로 쪼갠 뒤 배치).
-4. **Next batch candidates**에서 다음 `[ ]` 한 줄을 골라 **Current batch**를 통째로 교체한다.
+1. Implement only the unchecked checklist line named in **Current batch**.
+2. When it ships, flip only that line to `[x]` and add a short parenthetical note.
+3. Do not add new checklist lines for polish inside an already completed area.
+4. Pick the next unchecked line from **Next batch candidates** and replace **Current batch** with it.
 
 ---
 
 ## Current batch
 
-**Section:** Automation And API Compatibility
+**Section:** Results And Custom Fields
 
-**Checklist line (exact — done when this is `[x]`):**
+**Checklist line (exact line done when this is `[x]`):**
 
 ```text
-- [ ] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)).
+- [ ] **TR-Core** P1 Advanced result custom field filtering semantics.
 ```
 
 ### Scope (only what closes the line above)
 
-1. BDD/Gherkin scenario fields on cases and scenario-level execution in runs.
-2. `.feature` import/export and BDD-oriented API surface aligned with TestRail BDD docs.
+1. Extend result explorer (and related APIs) beyond exact-match custom field filters.
+2. Support the product-defined operators (contains, range, empty, etc.) per field type.
+3. Wire UI controls that map to server filter semantics.
+4. Add focused tests for filter matrix per type.
 
 ### Out of scope for this batch
 
-- Full TestRail BDD Cloud parity (datasets, variables, cross-project BDD reports).
-- Unrelated case template or automation mapping changes.
+- Execution workflow discussion comments (shipped).
+- Import mapping wizard (already `[x]` in checklist).
 
 ---
 
 ## Next batch candidates
 
-다음 **Current batch**는 아래에서 **`[ ]` 한 줄만** 고른다 (복사해서 Current batch에 붙인다).
+Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Test Case Management | `- [ ] **TR-Core** P1 Baseline branches (copy from master suite without affecting master).` |
-
-항목이 한 PR에 넘치면 **FEATURE_CHECKLIST에서 `[ ]`를 먼저 쪼갠다**. 쪼개기 전에는 NEXT_ACTIONS에 임의 주제를 쓰지 않는다.
+| 1 | Test Execution And Runs | `- [ ] **TR-Core** P1 Email when tests are assigned and when others comment or add results to your tests.` |
+| 2 | Assignments And To-Do | `- [ ] **TR-Core** P1 **Team to-do** view: see other members’ or whole-team to-dos for workload balancing ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028)).` |

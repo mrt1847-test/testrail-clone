@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createBaselineSuite, createSuite, fetchSuites } from "../../projects/api/suitesApi";
 import { useProjectQuery } from "../../projects/hooks/useProjectsApi";
 import { PROJECT_TYPE_LABELS, projectTypeUsesSuiteSwitcher } from "../../projects/types/projectTypes";
+import { caseKeys } from "../hooks/useCases";
 import { sectionKeys } from "../hooks/useSections";
 
 type SuiteSwitcherBarProps = {
@@ -49,6 +50,7 @@ export function SuiteSwitcherBar({ projectId, selectedSuiteId, onSelectSuite }: 
       setNewSuiteName("");
       void qc.invalidateQueries({ queryKey: ["project-suites", projectId] });
       void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
       onSelectSuite(created.id);
     },
     onError: (err) => {
@@ -101,7 +103,7 @@ export function SuiteSwitcherBar({ projectId, selectedSuiteId, onSelectSuite }: 
               className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
               onClick={() => void createMutation.mutateAsync()}
             >
-              {createMutation.isPending ? "Adding…" : "Add"}
+              {createMutation.isPending ? "Adding..." : projectType === "single_repo_baselines" ? "Add baseline" : "Add suite"}
             </button>
           </>
         ) : null}

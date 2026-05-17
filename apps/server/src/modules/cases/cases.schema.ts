@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const customValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+const customValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]));
 const presenceFilterSchema = z.enum(["with", "without"]);
 const sectionScopeSchema = z.enum(["direct", "subtree"]);
 
@@ -9,6 +9,7 @@ export const createCaseSchema = z.object({
   title: z.string().min(1),
   priority: z.string().optional(),
   caseType: z.string().optional(),
+  estimate: z.string().nullable().optional(),
   preconditions: z.string().optional(),
   expectedResult: z.string().nullable().optional(),
   caseTemplateId: z.coerce.bigint().nullable().optional(),
@@ -62,6 +63,7 @@ export const updateCaseSchema = z.object({
   title: z.string().min(1).optional(),
   priority: z.string().optional(),
   caseType: z.string().optional(),
+  estimate: z.string().nullable().optional(),
   preconditions: z.string().nullable().optional(),
   expectedResult: z.string().nullable().optional(),
   caseTemplateId: z.coerce.bigint().nullable().optional(),
@@ -131,6 +133,32 @@ export const updateCaseStepSchema = z.object({
   content: z.string().min(1).optional(),
   expectedResult: z.string().nullable().optional(),
   stepOrder: z.coerce.number().int().positive().optional()
+});
+
+export const scenarioIdParamSchema = z.object({
+  scenarioId: z.coerce.bigint()
+});
+
+export const createCaseScenarioSchema = z.object({
+  name: z.string().trim().min(1),
+  content: z.string().trim().min(1)
+});
+
+export const updateCaseScenarioSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  content: z.string().trim().min(1).optional(),
+  scenarioOrder: z.coerce.number().int().positive().optional()
+});
+
+export const replaceCaseScenariosSchema = z.object({
+  scenarios: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        content: z.string().trim().min(1)
+      })
+    )
+    .max(200)
 });
 
 export const caseAttachmentBodySchema = z.object({

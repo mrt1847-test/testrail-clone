@@ -127,6 +127,9 @@ export function TestInstanceTable(props: Props) {
               <th className="min-w-[8rem] px-3 py-2.5" scope="col">
                 Title
               </th>
+              <th className="w-28 px-3 py-2.5" scope="col">
+                Updated
+              </th>
               <th className="w-36 px-3 py-2.5" scope="col">
                 Status
               </th>
@@ -157,6 +160,22 @@ export function TestInstanceTable(props: Props) {
                 <td className="px-3 py-2 align-middle font-mono text-xs text-slate-800">{row.caseCode}</td>
                 <td className="max-w-[24rem] truncate px-3 py-2 align-middle text-slate-800" title={row.title}>
                   {row.title}
+                </td>
+                <td className="px-3 py-2 align-middle">
+                  {row.caseChanged ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+                      title={
+                        row.changedFields?.length
+                          ? `Underlying case changed: ${row.changedFields.join(", ")}`
+                          : "Underlying case changed after this run was created"
+                      }
+                    >
+                      Changed
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
                   <StatusBadge

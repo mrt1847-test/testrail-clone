@@ -3,12 +3,18 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CaseTemplateRow, CustomFieldRow } from "../../projects/api/settingsApi";
 import { ReferencesInput } from "./ReferencesInput";
 
-type ScalarCustomValue = string | number | boolean | null;
+import { CustomFieldValueInput } from "../../../shared/customFields/CustomFieldValueInput";
+import {
+  validateCustomFieldDraft,
+  type CustomFieldScalar
+} from "../../../shared/customFields/customFieldTypes";
+
+type ScalarCustomValue = CustomFieldScalar;
 
 export type CaseAuthoringCustomFieldDefinition = Pick<
   CustomFieldRow,
   "systemName" | "name" | "fieldType" | "options" | "isRequired" | "isActive" | "displayOrder"
->;
+> & Pick<CustomFieldRow, "access">;
 
 export type CaseAuthoringTemplateDefinition = Pick<
   CaseTemplateRow,
@@ -20,6 +26,7 @@ type CaseAuthoringFormProps = {
   valueKey: string;
   initialTitle: string;
   initialPreconditions: string;
+  initialEstimate?: string;
   initialReferences?: string;
   initialExpectedResult?: string;
   initialCaseTemplateId?: string | null;
@@ -35,6 +42,7 @@ type CaseAuthoringFormProps = {
   onSubmit: (input: {
     title: string;
     preconditions: string;
+    estimate: string;
     references: string;
     expectedResult: string;
     customValues: Record<string, ScalarCustomValue>;
@@ -87,6 +95,7 @@ function preferredTemplateId(templates: CaseAuthoringTemplateDefinition[], initi
 function isMissingRequiredValue(value: ScalarCustomValue) {
   if (value == null) return true;
   if (typeof value === "string") return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
   return false;
 }
 
@@ -95,8 +104,15 @@ function normalizeValueForSubmit(
   value: ScalarCustomValue
 ): ScalarCustomValue {
   if (value == null) return null;
-  if (field.fieldType === "boolean") return typeof value === "boolean" ? value : null;
-  if (field.fieldType === "number") return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (field.fieldType === "checkbox" || field.fieldType === "boolean") {
+    return typeof value === "boolean" ? value : null;
+  }
+  if (field.fieldType === "multi_select") {
+    return Array.isArray(value) && value.length > 0 ? value : null;
+  }
+  if (field.fieldType === "number" || field.fieldType === "integer" || field.fieldType === "rating") {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
   const text = String(value).trim();
   return text.length > 0 ? text : null;
 }
@@ -113,6 +129,7 @@ export function CaseAuthoringForm({
   valueKey,
   initialTitle,
   initialPreconditions,
+  initialEstimate = "",
   initialReferences = "",
   initialExpectedResult = "",
   initialCaseTemplateId = null,
@@ -131,7 +148,7 @@ export function CaseAuthoringForm({
   const activeCustomFields = useMemo(
     () =>
       customFields
-        .filter((field) => field.isActive)
+        .filter((field) => field.isActive && field.access?.canView !== false)
         .sort((left, right) => left.displayOrder - right.displayOrder || left.name.localeCompare(right.name)),
     [customFields]
   );
@@ -150,6 +167,7 @@ export function CaseAuthoringForm({
 
   const [title, setTitle] = useState(initialTitle);
   const [preconditions, setPreconditions] = useState(initialPreconditions);
+  const [estimate, setEstimate] = useState(initialEstimate);
   const [references, setReferences] = useState(initialReferences);
   const [expectedResult, setExpectedResult] = useState(initialExpectedResult);
   const [customValues, setCustomValues] = useState<Record<string, ScalarCustomValue>>(initialCustomValues);
@@ -159,12 +177,13 @@ export function CaseAuthoringForm({
   useEffect(() => {
     setTitle(initialTitle);
     setPreconditions(initialPreconditions);
+    setEstimate(initialEstimate);
     setReferences(initialReferences);
     setExpectedResult(initialExpectedResult);
     setCustomValues(initialCustomValues);
     setSelectedTemplateId(preferredTemplateId(activeTemplates, initialCaseTemplateId));
     setFieldErrors({});
-  }, [valueKey, initialCaseTemplateId, initialExpectedResult, initialCustomValues, initialPreconditions, initialReferences, initialTitle, activeTemplates]);
+  }, [valueKey, initialCaseTemplateId, initialEstimate, initialExpectedResult, initialCustomValues, initialPreconditions, initialReferences, initialTitle, activeTemplates]);
 
   useEffect(() => {
     if (activeTemplates.length === 0) {
@@ -205,9 +224,11 @@ export function CaseAuthoringForm({
       nextErrors.title = "Title is required.";
     }
     for (const field of activeCustomFields) {
+      if (field.access?.canEdit === false) continue;
       const value = customValues[field.systemName] ?? null;
-      if (field.fieldType === "number" && typeof value === "number" && !Number.isFinite(value)) {
-        nextErrors[field.systemName] = `${field.name} must be a valid number.`;
+      const typeError = validateCustomFieldDraft(field, value);
+      if (typeError) {
+        nextErrors[field.systemName] = typeError;
         continue;
       }
       if (!field.isRequired) continue;
@@ -286,6 +307,19 @@ export function CaseAuthoringForm({
       </label>
     );
 
+    const estimateNode = (
+      <label className="grid gap-1 text-sm text-slate-700">
+        <span>Estimate</span>
+        <input
+          type="text"
+          value={estimate}
+          onChange={(event) => setEstimate(event.target.value)}
+          placeholder="5m, 1h 20m, or 01:30"
+          className={inputClassName(false)}
+        />
+      </label>
+    );
+
     const stepsNode = stepsSection && templateShowsSteps ? <div className="grid gap-2">{stepsSection}</div> : null;
 
     const expectedResultNode = templateShowsExpectedResult ? (
@@ -327,79 +361,18 @@ export function CaseAuthoringForm({
       );
     };
 
-    const renderCustomField = (field: CaseAuthoringCustomFieldDefinition) => {
-      const error = fieldErrors[field.systemName];
-      const value = customValues[field.systemName] ?? null;
-      const label = (
-        <span className="flex items-center gap-1">
-          {field.name}
-          {field.isRequired ? <span className="text-xs font-medium text-red-600">Required</span> : null}
-        </span>
-      );
-
-      if (field.fieldType === "select") {
-        return (
-          <label key={field.systemName} className="grid gap-1 text-sm text-slate-700">
-            {label}
-            <select
-              className={inputClassName(Boolean(error))}
-              value={typeof value === "string" ? value : ""}
-              onChange={(event) => setCustomValue(field.systemName, event.target.value || null)}
-            >
-              <option value="">-</option>
-              {field.options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            {error ? <span className="text-xs text-red-700">{error}</span> : null}
-          </label>
-        );
-      }
-
-      if (field.fieldType === "boolean") {
-        return (
-          <label key={field.systemName} className="grid gap-1 text-sm text-slate-700">
-            {label}
-            <select
-              className={inputClassName(Boolean(error))}
-              value={typeof value === "boolean" ? String(value) : ""}
-              onChange={(event) =>
-                setCustomValue(field.systemName, event.target.value === "" ? null : event.target.value === "true")
-              }
-            >
-              <option value="">-</option>
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-            {error ? <span className="text-xs text-red-700">{error}</span> : null}
-          </label>
-        );
-      }
-
-      return (
-        <label key={field.systemName} className="grid gap-1 text-sm text-slate-700">
-          {label}
-          <input
-            type={field.fieldType === "number" ? "number" : "text"}
-            className={inputClassName(Boolean(error))}
-            value={value == null ? "" : String(value)}
-            onChange={(event) =>
-              setCustomValue(
-                field.systemName,
-                field.fieldType === "number"
-                  ? event.target.value === ""
-                    ? null
-                    : Number(event.target.value)
-                  : event.target.value
-              )
-            }
-          />
-          {error ? <span className="text-xs text-red-700">{error}</span> : null}
-        </label>
-      );
-    };
+    const renderCustomField = (field: CaseAuthoringCustomFieldDefinition) => (
+      <div key={field.systemName}>
+        <CustomFieldValueInput
+          field={field}
+          value={customValues[field.systemName] ?? null}
+          error={fieldErrors[field.systemName]}
+          disabled={field.access?.canEdit === false}
+          inputClassName={inputClassName(Boolean(fieldErrors[field.systemName]))}
+          onChange={(next) => setCustomValue(field.systemName, next)}
+        />
+      </div>
+    );
 
     for (const fieldKey of selectedTemplate?.fields ?? []) {
       const normalized = normalizeTemplateFieldKey(fieldKey);
@@ -413,6 +386,10 @@ export function CaseAuthoringForm({
       }
       if (normalized === "references" || normalized === "refs") {
         pushBlock("references", referencesNode);
+        continue;
+      }
+      if (normalized === "estimate") {
+        pushBlock("estimate", estimateNode);
         continue;
       }
       if (normalized === "steps") {
@@ -436,6 +413,7 @@ export function CaseAuthoringForm({
     if ((selectedTemplate?.fields ?? []).length === 0) {
       pushBlock("title", titleNode);
       pushBlock("preconditions", preconditionsNode);
+      pushBlock("estimate", estimateNode);
       pushBlock("references", referencesNode);
       if (expectedResultNode) pushBlock("expectedResult", expectedResultNode);
       if (stepsNode) pushBlock("steps", stepsNode);
@@ -449,6 +427,7 @@ export function CaseAuthoringForm({
     customFieldMap,
     customValues,
     expectedResult,
+    estimate,
     fieldErrors,
     preconditions,
     references,
@@ -466,6 +445,7 @@ export function CaseAuthoringForm({
 
     const normalizedCustomValues: Record<string, ScalarCustomValue> = { ...customValues };
     for (const field of activeCustomFields) {
+      if (field.access?.canEdit === false) continue;
       normalizedCustomValues[field.systemName] = normalizeValueForSubmit(
         field,
         customValues[field.systemName] ?? null
@@ -475,6 +455,7 @@ export function CaseAuthoringForm({
       await onSubmit({
         title: title.trim(),
         preconditions: preconditions.trim(),
+        estimate: estimate.trim(),
         references: references.trim(),
         expectedResult: expectedResult.trim(),
         customValues: normalizedCustomValues,

@@ -47,10 +47,31 @@ export type CaseImportResult = {
     validRows: number;
     invalidRows: number;
     imported: number;
+    phase?: string;
   };
   issues: CaseImportIssue[];
   columnMapping?: Record<string, string> | null;
 };
+
+export type ImportJobDetail = {
+  job: ImportExportJobRow;
+  summary: Record<string, unknown>;
+  issues: CaseImportIssue[];
+  resultReady: boolean;
+};
+
+export type ExportJobDetail = {
+  job: ImportExportJobRow;
+  summary: Record<string, unknown>;
+  downloadUrl: string | null;
+};
+
+/** Match server `LARGE_IMPORT_BYTES` — use async import when CSV exceeds this size. */
+export const LARGE_IMPORT_BYTES = 48_000;
+
+export function shouldUseAsyncImport(csv: string) {
+  return new TextEncoder().encode(csv).length >= LARGE_IMPORT_BYTES;
+}
 
 const CASE_CSV_MAPPING_STORAGE_PREFIX = "case-csv-mapping:";
 
@@ -95,6 +116,83 @@ export async function suggestCaseCsvMapping(
   return res.data;
 }
 
+export async function importCasesCsvAsync(input: {
+  projectId: string;
+  csv: string;
+  dryRun: boolean;
+  atomic?: boolean;
+  sectionId?: string;
+  columnMapping?: Record<string, string>;
+}): Promise<{ job: ImportExportJobRow; pollUrl: string }> {
+  const res = await apiFetch<Ok<{ job: ImportExportJobRow; pollUrl: string }>>(
+    `/api/projects/${input.projectId}/cases/import/csv/async`,
+    {
+      method: "POST",
+      body: {
+        csv: input.csv,
+        dryRun: input.dryRun,
+        atomic: input.atomic ?? true,
+        ...(input.sectionId ? { sectionId: input.sectionId } : {}),
+        ...(input.columnMapping ? { columnMapping: input.columnMapping } : {})
+      }
+    }
+  );
+  return {
+    pollUrl: res.data.pollUrl,
+    job: { ...res.data.job, id: String(res.data.job.id), projectId: String(res.data.job.projectId) }
+  };
+}
+
+export async function fetchImportJob(projectId: string, jobId: string): Promise<ImportJobDetail> {
+  const res = await apiFetch<Ok<ImportJobDetail>>(`/api/projects/${projectId}/import-jobs/${jobId}`);
+  return {
+    ...res.data,
+    job: { ...res.data.job, id: String(res.data.job.id), projectId: String(res.data.job.projectId) }
+  };
+}
+
+export async function fetchExportJob(projectId: string, jobId: string): Promise<ExportJobDetail> {
+  const res = await apiFetch<Ok<ExportJobDetail>>(`/api/projects/${projectId}/export-jobs/${jobId}`);
+  return {
+    ...res.data,
+    job: { ...res.data.job, id: String(res.data.job.id), projectId: String(res.data.job.projectId) }
+  };
+}
+
+export async function requestCasesExportAsync(
+  projectId: string,
+  format: "csv" | "json" | "xml" = "csv"
+): Promise<{ job: ImportExportJobRow; downloadUrl: string; pollUrl: string }> {
+  const res = await apiFetch<
+    Ok<{ job: ImportExportJobRow; downloadUrl: string; pollUrl: string }>
+  >(`/api/projects/${projectId}/cases/export/async`, {
+    method: "POST",
+    body: { format }
+  });
+  return {
+    downloadUrl: res.data.downloadUrl,
+    pollUrl: res.data.pollUrl,
+    job: { ...res.data.job, id: String(res.data.job.id), projectId: String(res.data.job.projectId) }
+  };
+}
+
+export async function requestRunResultsExportAsync(
+  projectId: string,
+  runId: string
+): Promise<{ job: ImportExportJobRow; downloadUrl: string; pollUrl: string }> {
+  const res = await apiFetch<
+    Ok<{ job: ImportExportJobRow; downloadUrl: string; pollUrl: string }>
+  >(`/api/projects/${projectId}/runs/results/export/csv/async`, {
+    method: "POST",
+    body: { runId }
+  });
+  return {
+    downloadUrl: res.data.downloadUrl,
+    pollUrl: res.data.pollUrl,
+    job: { ...res.data.job, id: String(res.data.job.id), projectId: String(res.data.job.projectId) }
+  };
+}
+
 export async function importCasesCsv(input: {
   projectId: string;
   csv: string;
@@ -102,7 +200,24 @@ export async function importCasesCsv(input: {
   atomic?: boolean;
   sectionId?: string;
   columnMapping?: Record<string, string>;
+  preferAsync?: boolean;
 }): Promise<CaseImportResult> {
+  if (input.preferAsync || shouldUseAsyncImport(input.csv)) {
+    const queued = await importCasesCsvAsync(input);
+    const detail = await pollImportJobUntilReady(input.projectId, queued.job.id);
+    return {
+      job: detail.job,
+      summary: {
+        totalRows: Number(detail.summary.totalRows ?? 0),
+        validRows: Number(detail.summary.validRows ?? 0),
+        invalidRows: Number(detail.summary.invalidRows ?? 0),
+        imported: Number(detail.summary.imported ?? 0),
+        phase: typeof detail.summary.phase === "string" ? detail.summary.phase : undefined
+      },
+      issues: detail.issues,
+      columnMapping: input.columnMapping ?? null
+    };
+  }
   const res = await apiFetch<Ok<CaseImportResult>>(`/api/projects/${input.projectId}/cases/import/csv`, {
     method: "POST",
     body: {
@@ -204,7 +319,39 @@ export async function requestReportExportJob(
 }
 
 export async function downloadExportJob(projectId: string, jobId: string, filename: string) {
-  await downloadCsv(`/api/projects/${projectId}/export-jobs/${jobId}/download`, filename);
+  await downloadFile(`/api/projects/${projectId}/export-jobs/${jobId}/download`, filename);
+}
+
+const TERMINAL_IMPORT_STATUSES = new Set(["completed", "failed", "completed_with_errors"]);
+const TERMINAL_EXPORT_STATUSES = new Set(["completed", "failed"]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function pollImportJobUntilReady(projectId: string, jobId: string, maxAttempts = 120) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const detail = await fetchImportJob(projectId, jobId);
+    if (detail.resultReady && TERMINAL_IMPORT_STATUSES.has(detail.job.status)) {
+      return detail;
+    }
+    if (detail.job.status === "failed") {
+      return detail;
+    }
+    await sleep(1500);
+  }
+  throw new Error("Import job timed out while waiting for completion");
+}
+
+export async function pollExportJobUntilReady(projectId: string, jobId: string, maxAttempts = 120) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const detail = await fetchExportJob(projectId, jobId);
+    if (TERMINAL_EXPORT_STATUSES.has(detail.job.status)) {
+      return detail;
+    }
+    await sleep(1500);
+  }
+  throw new Error("Export job timed out while waiting for completion");
 }
 
 export async function downloadCsv(path: string, filename: string) {

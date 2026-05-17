@@ -6,8 +6,11 @@ import { parseRunCompositionMetadata, type RunCompositionMetadata } from "./runC
 import type { RunCompositionScope } from "./runCompositionFilter.js";
 import { expandSectionSubtreeIdsPure } from "./sectionScope.js";
 import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
+import { enrichTestInstancesWithCaseChange } from "./instanceCaseChange.js";
+import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
+import type { CustomFieldValue } from "../../domain/customFieldTypes.js";
 
-type ResultCustomValues = Record<string, string | number | boolean | null>;
+type ResultCustomValues = Record<string, CustomFieldValue>;
 
 function mapCatalogCaseToTestCase(
   c: {
@@ -19,6 +22,8 @@ function mapCatalogCaseToTestCase(
     estimate?: string | null;
     automationKey?: string | null;
     externalId?: string | null;
+    lockVersion?: number;
+    updatedAt?: Date;
   },
   projectId: bigint,
   suiteId: bigint
@@ -33,7 +38,9 @@ function mapCatalogCaseToTestCase(
     caseType: c.caseType ?? null,
     estimate: c.estimate ?? null,
     automationKey: c.automationKey ?? null,
-    externalId: c.externalId ?? null
+    externalId: c.externalId ?? null,
+    lockVersion: c.lockVersion ?? 1,
+    updatedAt: c.updatedAt
   };
 }
 
@@ -73,6 +80,18 @@ export type Tx = {
     input: ResultInput
   ): Promise<{ id: bigint; testInstanceId: bigint; status: TestStatus }>;
   createResultSteps(resultId: bigint, steps: NonNullable<ResultInput["stepResults"]>): Promise<void>;
+  createResultScenarios(
+    resultId: bigint,
+    scenarios: NonNullable<ResultInput["scenarioResults"]>
+  ): Promise<void>;
+  listResultScenariosByResultId(resultId: bigint): Promise<
+    Array<{
+      id: bigint;
+      caseScenarioId: bigint;
+      status: TestStatus;
+      comment?: string | null;
+    }>
+  >;
   updateInstanceStatus(testInstanceId: bigint, status: TestStatus): Promise<void>;
   closeRun(runId: bigint): Promise<void>;
   updateRun(
@@ -164,6 +183,14 @@ export interface RunsRepository {
       createdAt: Date;
     }>
   >;
+  listResultScenariosByResultId(resultId: bigint): Promise<
+    Array<{
+      id: bigint;
+      caseScenarioId: bigint;
+      status: TestStatus;
+      comment?: string | null;
+    }>
+  >;
   closeRun(runId: bigint): Promise<TestRun | null>;
   reopenRun(runId: bigint): Promise<TestRun | null>;
   updateRun(
@@ -215,6 +242,14 @@ type ResultStepRow = {
   comment?: string;
   createdAt: Date;
 };
+type ResultScenarioRow = {
+  id: bigint;
+  resultId: bigint;
+  caseScenarioId: bigint;
+  status: TestStatus;
+  comment?: string;
+  createdAt: Date;
+};
 
 export class InMemoryRunsRepository implements RunsRepository {
   constructor(private readonly catalog?: ProjectsRepository) {}
@@ -223,6 +258,7 @@ export class InMemoryRunsRepository implements RunsRepository {
   private instanceSeq = 1n;
   private resultSeq = 1n;
   private resultStepSeq = 1n;
+  private resultScenarioSeq = 1n;
   private runs: TestRun[] = [];
   private cases: TestCase[] = [
     {
@@ -235,7 +271,8 @@ export class InMemoryRunsRepository implements RunsRepository {
       caseType: "functional",
       estimate: "1m",
       automationKey: "MWEB-CART-001",
-      externalId: null
+      externalId: null,
+      lockVersion: 1
     },
     {
       id: 102n,
@@ -247,12 +284,14 @@ export class InMemoryRunsRepository implements RunsRepository {
       caseType: "functional",
       estimate: "2m",
       automationKey: "MWEB-CHECKOUT-001",
-      externalId: null
+      externalId: null,
+      lockVersion: 1
     }
   ];
   private instances: TestInstance[] = [];
   private results: ResultRow[] = [];
   private resultSteps: ResultStepRow[] = [];
+  private resultScenarios: ResultScenarioRow[] = [];
 
   async listRunsByProject(projectId: bigint): Promise<TestRun[]> {
     return [...this.runs.filter((r) => r.projectId === projectId)].sort((a, b) => (a.id < b.id ? 1 : -1));
@@ -262,8 +301,29 @@ export class InMemoryRunsRepository implements RunsRepository {
     return this.runs.find((r) => r.id === runId) ?? null;
   }
 
+  private enrichMemoryInstances(runId: bigint, instances: TestInstance[]): TestInstance[] {
+    const run = this.runs.find((r) => r.id === runId);
+    const casesById = new Map<bigint, LiveCaseFields>();
+    for (const inst of instances) {
+      if (casesById.has(inst.caseId)) continue;
+      const row = this.cases.find((c) => c.id === inst.caseId);
+      if (!row) continue;
+      casesById.set(inst.caseId, {
+        lockVersion: row.lockVersion ?? 1,
+        title: row.title,
+        priority: row.priority,
+        caseType: row.caseType,
+        automationKey: row.automationKey,
+        externalId: row.externalId,
+        updatedAt: row.updatedAt ?? new Date(0)
+      });
+    }
+    return enrichTestInstancesWithCaseChange(instances, casesById, run?.createdAt ?? null);
+  }
+
   async listInstancesForRun(runId: bigint): Promise<TestInstance[]> {
-    return this.instances.filter((i) => i.runId === runId);
+    const rows = this.instances.filter((i) => i.runId === runId);
+    return this.enrichMemoryInstances(runId, rows);
   }
 
   async listInstancesForRunPage(input: {
@@ -286,8 +346,9 @@ export class InMemoryRunsRepository implements RunsRepository {
       );
     });
     const start = (input.page - 1) * input.pageSize;
+    const pageRows = rows.slice(start, start + input.pageSize);
     return {
-      items: rows.slice(start, start + input.pageSize),
+      items: this.enrichMemoryInstances(input.runId, pageRows),
       total: rows.length
     };
   }
@@ -416,6 +477,27 @@ export class InMemoryRunsRepository implements RunsRepository {
           });
         }
       },
+      createResultScenarios: async (resultId, scenarios) => {
+        for (const item of scenarios) {
+          this.resultScenarios.push({
+            id: this.resultScenarioSeq++,
+            resultId,
+            caseScenarioId: item.caseScenarioId,
+            status: item.status,
+            comment: item.comment,
+            createdAt: new Date()
+          });
+        }
+      },
+      listResultScenariosByResultId: async (resultId) =>
+        this.resultScenarios
+          .filter((row) => row.resultId === resultId)
+          .map((row) => ({
+            id: row.id,
+            caseScenarioId: row.caseScenarioId,
+            status: row.status,
+            comment: row.comment ?? null
+          })),
       updateInstanceStatus: async (testInstanceId, status) => {
         const instance = this.instances.find((i) => i.id === testInstanceId);
         if (instance) instance.status = status;
@@ -455,6 +537,17 @@ export class InMemoryRunsRepository implements RunsRepository {
     return this.resultSteps
       .filter((row) => row.resultId === resultId)
       .sort((a, b) => a.stepOrder - b.stepOrder);
+  }
+
+  async listResultScenariosByResultId(resultId: bigint) {
+    return this.resultScenarios
+      .filter((row) => row.resultId === resultId)
+      .map((row) => ({
+        id: row.id,
+        caseScenarioId: row.caseScenarioId,
+        status: row.status,
+        comment: row.comment ?? null
+      }));
   }
 
   async listResultsForTestInstance(testId: bigint) {

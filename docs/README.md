@@ -13,6 +13,7 @@ This folder keeps the current product, architecture, API, and delivery documents
 - [DOMAIN_MODEL.md](./DOMAIN_MODEL.md): domain terms, relationships, and invariants.
 - [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md): Prisma/PostgreSQL persistence model and schema policy.
 - [API_SPEC.md](./API_SPEC.md): REST contract, compatibility conventions, and endpoint groups.
+- [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md): copy-paste CI upload and `/api/v2` compatibility examples.
 - [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md): screen-level requirements and UX states.
 - [ROUTE_MAP.md](./ROUTE_MAP.md): actual frontend route tree and route ownership.
 - [COMPONENT_MAP.md](./COMPONENT_MAP.md): implemented/planned component boundaries.

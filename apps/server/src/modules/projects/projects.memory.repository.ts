@@ -2,6 +2,7 @@ import { normalizeProjectType } from "../../domain/projectTypes.js";
 import type {
   CaseRow,
   CasePresenceFilter,
+  CaseScenarioRow,
   CaseStepRow,
   CaseVersionRow,
   ProjectRow,
@@ -12,6 +13,7 @@ import type {
 import { shouldTreatAsMasterSuite } from "../../domain/projectTypes.js";
 
 type StoredCaseStep = CaseStepRow & { caseId: bigint };
+type StoredCaseScenario = CaseScenarioRow & { caseId: bigint };
 
 function normalizeSearchTerm(value: string | undefined) {
   const normalized = value?.trim().toLowerCase() ?? "";
@@ -64,12 +66,14 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   private sectionSeq = 1n;
   private caseSeq = 1n;
   private stepSeq = 1n;
+  private scenarioSeq = 1n;
 
   private readonly projects: ProjectRow[] = [];
   private readonly suites: SuiteRow[] = [];
   private readonly sections: SectionRow[] = [];
   private readonly cases: CaseRow[] = [];
   private readonly caseSteps: StoredCaseStep[] = [];
+  private readonly caseScenarios: StoredCaseScenario[] = [];
   private readonly caseVersions: CaseVersionRow[] = [];
   private caseVersionSeq = 1n;
 
@@ -137,7 +141,10 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   async listSuitesByProject(projectId: bigint) {
     return this.suites.filter((s) => s.projectId === projectId);
   }
-  async createSuite(input: Omit<SuiteRow, "id">) {
+  async createSuite(
+    input: Omit<SuiteRow, "id" | "isMaster" | "isBaseline" | "parentSuiteId"> &
+      Partial<Pick<SuiteRow, "isMaster" | "isBaseline" | "parentSuiteId">>
+  ) {
     const row: SuiteRow = {
       id: this.suiteSeq++,
       projectId: input.projectId,
@@ -281,12 +288,22 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       });
   }
   async createCase(input: Omit<CaseRow, "id" | "updatedAt" | "lockVersion">) {
+    const section = this.sections.find((s) => s.id === input.sectionId);
+    if (!section) {
+      throw new Error("section not found");
+    }
+    const suite = this.suites.find((s) => s.id === section.suiteId);
+    if (!suite) {
+      throw new Error("suite not found");
+    }
     const lastOrder = this.cases
       .filter((c) => c.sectionId === input.sectionId)
       .reduce((max, row) => Math.max(max, row.displayOrder ?? 0), -1);
     const row: CaseRow = {
       id: this.caseSeq++,
       ...input,
+      projectId: input.projectId ?? suite.projectId,
+      suiteId: input.suiteId ?? section.suiteId,
       displayOrder: input.displayOrder ?? lastOrder + 1,
       labels: input.labels ?? [],
       lockVersion: 1,
@@ -304,6 +321,74 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
       .filter((s) => s.caseId === caseId)
       .sort((a, b) => a.stepOrder - b.stepOrder)
       .map(({ id, stepOrder, content, expectedResult }) => ({ id, stepOrder, content, expectedResult }));
+  }
+
+  async listCaseScenarios(caseId: bigint): Promise<CaseScenarioRow[]> {
+    return this.caseScenarios
+      .filter((s) => s.caseId === caseId)
+      .sort((a, b) => a.scenarioOrder - b.scenarioOrder)
+      .map(({ id, scenarioOrder, name, content }) => ({ id, scenarioOrder, name, content }));
+  }
+
+  async createCaseScenario(input: {
+    caseId: bigint;
+    scenarioOrder: number;
+    name: string;
+    content: string;
+  }): Promise<CaseScenarioRow> {
+    const row: StoredCaseScenario = {
+      id: this.scenarioSeq++,
+      caseId: input.caseId,
+      scenarioOrder: input.scenarioOrder,
+      name: input.name,
+      content: input.content
+    };
+    this.caseScenarios.push(row);
+    return { id: row.id, scenarioOrder: row.scenarioOrder, name: row.name, content: row.content };
+  }
+
+  async updateCaseScenario(
+    scenarioId: bigint,
+    patch: { name?: string; content?: string; scenarioOrder?: number }
+  ): Promise<CaseScenarioRow | null> {
+    const row = this.caseScenarios.find((s) => s.id === scenarioId);
+    if (!row) return null;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.content !== undefined) row.content = patch.content;
+    if (patch.scenarioOrder !== undefined) row.scenarioOrder = patch.scenarioOrder;
+    return { id: row.id, scenarioOrder: row.scenarioOrder, name: row.name, content: row.content };
+  }
+
+  async deleteCaseScenario(scenarioId: bigint): Promise<boolean> {
+    const idx = this.caseScenarios.findIndex((s) => s.id === scenarioId);
+    if (idx < 0) return false;
+    const caseId = this.caseScenarios[idx]!.caseId;
+    this.caseScenarios.splice(idx, 1);
+    const remaining = this.caseScenarios.filter((s) => s.caseId === caseId).sort((a, b) => a.scenarioOrder - b.scenarioOrder);
+    remaining.forEach((s, i) => {
+      s.scenarioOrder = i + 1;
+    });
+    return true;
+  }
+
+  async replaceCaseScenarios(
+    caseId: bigint,
+    scenarios: Array<{ name: string; content: string }>
+  ): Promise<CaseScenarioRow[]> {
+    for (let i = this.caseScenarios.length - 1; i >= 0; i -= 1) {
+      if (this.caseScenarios[i]!.caseId === caseId) this.caseScenarios.splice(i, 1);
+    }
+    const created: CaseScenarioRow[] = [];
+    for (let i = 0; i < scenarios.length; i += 1) {
+      const row = await this.createCaseScenario({
+        caseId,
+        scenarioOrder: i + 1,
+        name: scenarios[i]!.name,
+        content: scenarios[i]!.content
+      });
+      created.push(row);
+    }
+    return created;
   }
 
   async listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]> {

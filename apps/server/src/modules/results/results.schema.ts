@@ -16,7 +16,7 @@ export const resultSchema = z.object({
   elapsed: z.string().optional(),
   version: z.string().optional(),
   defects: z.array(z.string()).optional(),
-  customValues: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  customValues: z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()])).optional(),
   source: z.enum(["manual", "automation", "api"]).optional(),
   stepResults: z
     .array(
@@ -24,6 +24,15 @@ export const resultSchema = z.object({
         stepOrder: z.number().int().positive(),
         status: z.enum(["untested", "passed", "failed", "blocked", "retest"]),
         actualResult: z.string().optional(),
+        comment: z.string().optional()
+      })
+    )
+    .optional(),
+  scenarioResults: z
+    .array(
+      z.object({
+        caseScenarioId: z.coerce.bigint(),
+        status: z.enum(["untested", "passed", "failed", "blocked", "retest"]),
         comment: z.string().optional()
       })
     )

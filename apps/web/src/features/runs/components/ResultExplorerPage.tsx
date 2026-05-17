@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { fetchCustomFields } from "../../projects/api/settingsApi";
+import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchProjectResultExplorer } from "../api/runApi";
 
 export function ResultExplorerPage() {
@@ -27,7 +27,7 @@ export function ResultExplorerPage() {
   );
   const customFieldsQuery = useQuery({
     queryKey: ["custom-fields", projectId, "result"],
-    queryFn: () => fetchCustomFields(projectId, "result"),
+    queryFn: () => fetchCustomFieldsForUse(projectId, "result"),
     enabled: Boolean(projectId),
     refetchInterval: false,
     refetchIntervalInBackground: false

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { fetchCustomFields } from "../../projects/api/settingsApi";
+import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { DefectKeyInput } from "./DefectKeyInput";
 import { ElapsedTimerField } from "./ElapsedTimerField";
 import {
@@ -10,6 +10,8 @@ import {
   valueForSubmit
 } from "./ResultCustomFields";
 import { StepResultEditor } from "./StepResultEditor";
+import { ScenarioResultEditor, createScenarioResultDrafts, type ScenarioResultDraft } from "./ScenarioResultEditor";
+import type { CaseScenarioRow } from "../../cases/api/bddApi";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
 import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
@@ -29,6 +31,7 @@ type ResultEntryPanelProps = {
   projectId: string;
   instance: { id: string; caseId?: string; caseCode: string; title: string };
   caseSteps?: CaseStepContext[];
+  caseScenarios?: CaseScenarioRow[];
   isCaseStepsLoading?: boolean;
   isSubmitting: boolean;
   disableUntested?: boolean;
@@ -39,6 +42,7 @@ export function ResultEntryPanel({
   projectId,
   instance,
   caseSteps = [],
+  caseScenarios = [],
   isCaseStepsLoading = false,
   isSubmitting,
   disableUntested = false,
@@ -57,12 +61,15 @@ export function ResultEntryPanel({
   const [defects, setDefects] = useState<string[]>([]);
   const [customValueErrors, setCustomValueErrors] = useState<Record<string, string>>({});
   const [stepResults, setStepResults] = useState<StepResultDraft[]>(() => createStepDraftsFromCaseSteps(caseSteps));
+  const [scenarioResults, setScenarioResults] = useState<ScenarioResultDraft[]>(() =>
+    createScenarioResultDrafts(caseScenarios)
+  );
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [showDetails, setShowDetails] = useState(false);
 
   const { data: resultFields = [] } = useQuery({
     queryKey: ["custom-fields", projectId, "result"],
-    queryFn: () => fetchCustomFields(projectId, "result"),
+    queryFn: () => fetchCustomFieldsForUse(projectId, "result"),
     enabled: Boolean(projectId)
   });
   const activeResultFields = resultFields.filter((field) => field.isActive);
@@ -80,6 +87,11 @@ export function ResultEntryPanel({
     if (caseSteps.length === 0) return;
     setStepResults((current) => (isBlankDefaultStepDrafts(current) ? createStepDraftsFromCaseSteps(caseSteps) : current));
   }, [caseSteps]);
+
+  useEffect(() => {
+    if (caseScenarios.length === 0) return;
+    setScenarioResults(createScenarioResultDrafts(caseScenarios));
+  }, [caseScenarios]);
 
   useEffect(() => {
     if (elapsedError || Object.values(customValueErrors).some(Boolean)) setShowDetails(true);
@@ -136,7 +148,15 @@ export function ResultEntryPanel({
         status: step.status,
         actualResult: step.actualResult.trim() || undefined,
         comment: step.comment.trim() || undefined
-      }))
+      })),
+      scenarioResults:
+        caseScenarios.length > 0
+          ? scenarioResults.map((row) => ({
+              caseScenarioId: row.caseScenarioId,
+              status: row.status,
+              comment: row.comment.trim() || undefined
+            }))
+          : undefined
     });
     setComment("");
     setElapsed("");
@@ -146,6 +166,7 @@ export function ResultEntryPanel({
     setVersion("");
     setDefects([]);
     setStepResults(createStepDraftsFromCaseSteps(caseSteps));
+    setScenarioResults(createScenarioResultDrafts(caseScenarios));
     setCustomValues({});
     setCustomValueErrors({});
   }
@@ -235,6 +256,13 @@ export function ResultEntryPanel({
           isCaseStepsLoading={isCaseStepsLoading}
           stepResults={stepResults}
           onChange={setStepResults}
+        />
+
+        <ScenarioResultEditor
+          scenarios={caseScenarios}
+          value={scenarioResults}
+          onChange={setScenarioResults}
+          disabled={isSubmitting}
         />
 
         <button

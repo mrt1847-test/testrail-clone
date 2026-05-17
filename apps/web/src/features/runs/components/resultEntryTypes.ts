@@ -1,6 +1,6 @@
 export type ResultStatus = "passed" | "failed" | "blocked" | "retest" | "untested";
 
-export type CustomValue = string | number | boolean | null;
+export type CustomValue = string | number | boolean | string[] | null;
 
 export type ResultSubmitPayload = {
   status: ResultStatus;
@@ -10,6 +10,7 @@ export type ResultSubmitPayload = {
   defects: string[];
   customValues?: Record<string, CustomValue>;
   stepResults: Array<{ stepOrder: number; status: ResultStatus; actualResult?: string; comment?: string }>;
+  scenarioResults?: Array<{ caseScenarioId: string; status: ResultStatus; comment?: string }>;
 };
 
 export type StepResultDraft = {

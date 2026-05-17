@@ -53,7 +53,7 @@ export interface TestCase {
   preconditions: string;
   expectedResult: string;
   caseTemplateId: number | null;
-  customValues: Record<string, string | number | boolean | null>;
+  customValues: Record<string, string | number | boolean | string[] | null>;
   steps: CaseStep[];
   sectionId: number;
   displayOrder: number;
@@ -70,7 +70,7 @@ export type CaseVersion = {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
-  customValuesSnapshot?: Record<string, string | number | boolean | null>;
+  customValuesSnapshot?: Record<string, string | number | boolean | string[] | null>;
   stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   attachmentSnapshots?: Array<{
     id: string;

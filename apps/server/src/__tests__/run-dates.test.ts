@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
 import { buildRunDateWarnings, inheritRunDatesFromMilestone } from "../domain/runDates.js";
+import { getMasterSuiteId } from "./testProjectSuites.js";
 
 const app = buildApp();
 
@@ -58,13 +59,7 @@ describe("run schedule API", () => {
     });
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Suite" }
-    });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const sectionRes = await app.inject({
       method: "POST",

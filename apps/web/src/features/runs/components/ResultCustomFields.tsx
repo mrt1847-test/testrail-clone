@@ -1,4 +1,11 @@
 import type { CustomFieldRow } from "../../projects/api/settingsApi";
+import { CustomFieldValueInput } from "../../../shared/customFields/CustomFieldValueInput";
+import {
+  parseDraftToScalar,
+  stringDraftFromValue,
+  validateCustomFieldDraft,
+  type CustomFieldScalar
+} from "../../../shared/customFields/customFieldTypes";
 import type { CustomValue } from "./resultEntryTypes";
 
 type ResultCustomFieldsProps = {
@@ -10,80 +17,47 @@ type ResultCustomFieldsProps = {
 };
 
 export function valueForSubmit(field: CustomFieldRow, value: string): CustomValue {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (field.fieldType === "number") return Number(trimmed);
-  if (field.fieldType === "boolean") return trimmed === "true";
-  return trimmed;
+  return parseDraftToScalar(field, value) as CustomValue;
 }
 
 export function validateCustomFieldValues(fields: CustomFieldRow[], values: Record<string, string>) {
   const errors: Record<string, string> = {};
   for (const field of fields) {
-    const value = values[field.systemName]?.trim() ?? "";
-    if (field.isRequired && !value) {
-      errors[field.systemName] = `${field.name} is required.`;
-    } else if (field.fieldType === "number" && value && !Number.isFinite(Number(value))) {
-      errors[field.systemName] = `${field.name} must be a number.`;
-    }
+    if (field.access?.canEdit === false) continue;
+    const draft = values[field.systemName]?.trim() ?? "";
+    const scalar = parseDraftToScalar(field, draft);
+    const message = validateCustomFieldDraft(field, scalar);
+    if (message) errors[field.systemName] = message;
   }
   return errors;
 }
 
 export function ResultCustomFields({ fields, values, errors, onChange, onClearError }: ResultCustomFieldsProps) {
-  if (fields.length === 0) return null;
+  const visibleFields = fields.filter((field) => field.access?.canView !== false);
+  if (visibleFields.length === 0) return null;
 
   return (
     <div className="grid gap-2">
-      {fields.map((field) => (
-        <label key={field.id} className="text-xs text-slate-600">
-          <span className="font-medium">
-            {field.name}
-            {field.isRequired ? " *" : ""}
-          </span>
-          {field.fieldType === "select" ? (
-            <select
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
-              value={values[field.systemName] ?? ""}
-              onChange={(e) => {
-                onChange({ ...values, [field.systemName]: e.target.value });
-                onClearError(field.systemName);
-              }}
-            >
-              <option value="">Select...</option>
-              {field.options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          ) : field.fieldType === "boolean" ? (
-            <select
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
-              value={values[field.systemName] ?? ""}
-              onChange={(e) => {
-                onChange({ ...values, [field.systemName]: e.target.value });
-                onClearError(field.systemName);
-              }}
-            >
-              <option value="">Select...</option>
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-          ) : (
-            <input
-              type={field.fieldType === "number" ? "number" : "text"}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
-              value={values[field.systemName] ?? ""}
-              onChange={(e) => {
-                onChange({ ...values, [field.systemName]: e.target.value });
-                onClearError(field.systemName);
-              }}
-            />
-          )}
-          {errors[field.systemName] ? <span className="mt-1 block text-red-600">{errors[field.systemName]}</span> : null}
-        </label>
-      ))}
+      {visibleFields.map((field) => {
+        const draft = values[field.systemName] ?? "";
+        const scalar: CustomFieldScalar = parseDraftToScalar(field, draft);
+        return (
+          <CustomFieldValueInput
+            key={field.id}
+            field={field}
+            value={scalar}
+            draft={draft}
+            size="sm"
+            disabled={field.access?.canEdit === false}
+            error={errors[field.systemName]}
+            inputClassName="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+            onChange={(next) => {
+              onChange({ ...values, [field.systemName]: stringDraftFromValue(next) });
+              onClearError(field.systemName);
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

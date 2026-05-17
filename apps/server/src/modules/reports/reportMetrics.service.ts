@@ -1,5 +1,7 @@
 export type ReportStatus = "passed" | "failed" | "blocked" | "retest" | "untested";
 
+import { buildRunProgressMetrics } from "../../domain/runProgress.js";
+
 export type RunSummaryMetrics = {
   total: number;
   passed: number;
@@ -25,14 +27,12 @@ export function toStatusCounters(statuses: Iterable<string>) {
 }
 
 export function toRunSummaryMetrics(statuses: Iterable<string>): RunSummaryMetrics {
-  const counters = toStatusCounters(statuses);
-  const total = counters.passed + counters.failed + counters.blocked + counters.retest + counters.untested;
-  const completed = total - counters.untested;
+  const metrics = buildRunProgressMetrics(statuses);
   return {
-    total,
-    passed: counters.passed,
-    failed: counters.failed,
-    progress: total === 0 ? 0 : Math.round((completed / total) * 100)
+    total: metrics.total,
+    passed: metrics.passed,
+    failed: metrics.failed,
+    progress: metrics.progressPercent
   };
 }
 

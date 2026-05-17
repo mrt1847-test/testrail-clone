@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
+import { getMasterSuiteId } from "./testProjectSuites.js";
 
 const app = buildApp();
 
@@ -53,18 +54,11 @@ describe("phase2 CRUD flow", () => {
     });
     expect(automationCandidateFieldRes.statusCode).toBe(200);
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${project.data.id}/suites`,
-      headers: mutationHeaders,
-      payload: { name: "S1" }
-    });
-    expect(suiteRes.statusCode).toBe(200);
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suiteId = await getMasterSuiteId(app, project.data.id, mutationHeaders);
 
     const sectionRes = await app.inject({
       method: "POST",
-      url: `/api/suites/${suite.data.id}/sections`,
+      url: `/api/suites/${suiteId}/sections`,
       headers: mutationHeaders,
       payload: { name: "SEC1" }
     });
@@ -196,17 +190,11 @@ describe("phase2 CRUD flow", () => {
     });
     expect(fieldRes.statusCode).toBe(200);
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${project.data.id}/suites`,
-      headers: mutationHeaders,
-      payload: { name: "Required field suite" }
-    });
-    const suite = suiteRes.json() as { data: { id: string } };
+    const suiteId = await getMasterSuiteId(app, project.data.id, mutationHeaders);
 
     const sectionRes = await app.inject({
       method: "POST",
-      url: `/api/suites/${suite.data.id}/sections`,
+      url: `/api/suites/${suiteId}/sections`,
       headers: mutationHeaders,
       payload: { name: "Required field section" }
     });
@@ -313,13 +301,7 @@ describe("phase2 CRUD flow", () => {
     });
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Suite" }
-    });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const sectionRes = await app.inject({
       method: "POST",

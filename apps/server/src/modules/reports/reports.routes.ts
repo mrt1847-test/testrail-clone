@@ -9,6 +9,8 @@ import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
 import { parseCaseRefs } from "../../domain/caseRefs.js";
+import { customValuesFromJson, parseReportFilterValue, type CustomFieldValue } from "../../domain/customFieldTypes.js";
+import { formatDurationSeconds, sumDurationSeconds } from "../../domain/timeTracking.js";
 import {
   latestByCreatedAt,
   toCoverageStatus,
@@ -27,6 +29,35 @@ type ReportActivityItem = {
   createdAt: Date | string;
 };
 
+type RunTimingSummary = {
+  estimatedSeconds: number;
+  actualSeconds: number;
+  actualOverEstimateSeconds: number;
+  estimate: string;
+  actual: string;
+  actualVsEstimate: string;
+};
+
+function buildRunTimingSummary(input: {
+  estimates: Array<string | null | undefined>;
+  elapsed: Array<string | null | undefined>;
+}): RunTimingSummary {
+  const estimatedSeconds = sumDurationSeconds(input.estimates);
+  const actualSeconds = sumDurationSeconds(input.elapsed);
+  const actualOverEstimateSeconds = actualSeconds - estimatedSeconds;
+  return {
+    estimatedSeconds,
+    actualSeconds,
+    actualOverEstimateSeconds,
+    estimate: formatDurationSeconds(estimatedSeconds),
+    actual: formatDurationSeconds(actualSeconds),
+    actualVsEstimate:
+      actualOverEstimateSeconds === 0
+        ? ""
+        : `${actualOverEstimateSeconds > 0 ? "+" : "-"}${formatDurationSeconds(Math.abs(actualOverEstimateSeconds))}`
+  };
+}
+
 function toIsoDate(offsetDays: number) {
   const now = new Date();
   now.setDate(now.getDate() - offsetDays);
@@ -42,14 +73,6 @@ function extractCustomValueFilters(query: unknown) {
       rawValue: String(value).trim()
     }))
     .filter((item) => item.systemName.length > 0);
-}
-
-function parseCustomFilterValue(rawValue: string, fieldType: string) {
-  if (fieldType === "number") {
-    const value = Number(rawValue);
-    return Number.isFinite(value) ? value : rawValue;
-  }
-  return rawValue;
 }
 
 type ResultExplorerFilters = {
@@ -147,7 +170,7 @@ class ReportsQueryService {
         return {
           customValues: {
             path: [filter.systemName],
-            equals: parseCustomFilterValue(filter.rawValue, field.fieldType)
+            equals: parseReportFilterValue(filter.rawValue, field.fieldType)
           }
         };
       })
@@ -789,7 +812,7 @@ export async function registerReportsRoutes(
       source: string;
       createdAt: string;
       comment: string | null;
-      customValues?: Record<string, string | number | boolean | null>;
+      customValues?: Record<string, CustomFieldValue>;
     }> = [];
     for (const run of targetRuns) {
       const instances = await deps.repo.listInstancesForRun(run.id);
@@ -830,7 +853,7 @@ export async function registerReportsRoutes(
             source: row.source,
             createdAt: row.createdAt.toISOString(),
             comment: row.comment ?? null,
-            customValues: row.customValues ?? {}
+            customValues: customValuesFromJson(row.customValues)
           });
         }
       }
@@ -856,6 +879,11 @@ export async function registerReportsRoutes(
     for (const run of runs) {
       const instances = await deps.repo.listInstancesForRun(run.id);
       const metrics = toRunSummaryMetrics(instances.map((item) => item.status));
+      const resultRows = await Promise.all(instances.map((instance) => deps.repo.listResultsForTestInstance(instance.id)));
+      const timing = buildRunTimingSummary({
+        estimates: instances.map((instance) => instance.estimateSnapshot),
+        elapsed: resultRows.flat().map((result) => result.elapsed)
+      });
       items.push({
         runId: run.id.toString(),
         name: run.name,
@@ -863,7 +891,8 @@ export async function registerReportsRoutes(
         total: metrics.total,
         passed: metrics.passed,
         failed: metrics.failed,
-        progress: metrics.progress
+        progress: metrics.progress,
+        ...timing
       });
     }
     return reply.send(toJsonSafe(ok({ items })));

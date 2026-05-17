@@ -273,6 +273,35 @@ export function mapSavedReportForV2(row: {
   };
 }
 
+const CASE_STATUS_CATALOG = [
+  { id: 1, name: "active", label: "Active", is_default: true, is_system: true, is_archived: false },
+  { id: 2, name: "archived", label: "Archived", is_default: false, is_system: true, is_archived: true }
+] as const;
+
+export function buildCaseStatusesCatalog() {
+  return CASE_STATUS_CATALOG.map((row) => ({ ...row }));
+}
+
+export function buildDatasetsCatalog(projectId?: bigint) {
+  void projectId;
+  return [] as Array<{
+    id: number;
+    project_id: number;
+    name: string;
+    variables: Array<{ name: string; value: string }>;
+  }>;
+}
+
+export function buildVariablesCatalog(projectId?: bigint) {
+  void projectId;
+  return [] as Array<{
+    id: number;
+    project_id: number;
+    name: string;
+    default_value: string | null;
+  }>;
+}
+
 export function mapAttachmentForV2(row: {
   id: bigint;
   entityId: bigint;

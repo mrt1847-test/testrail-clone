@@ -6,14 +6,23 @@ import {
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { caseRefsValidationError, prepareCaseRefsInput } from "../../domain/caseRefs.js";
+import {
+  fieldOptions as parseFieldOptions,
+  mapValidationErrorToResponse,
+  sanitizeCustomFieldMap,
+  type CustomFieldValue
+} from "../../domain/customFieldTypes.js";
+import {
+  assertWritableCustomValueKeys,
+  fieldsVisibleForEdit,
+  filterCustomValuesForRead,
+  type CustomFieldVisibilityContext
+} from "../../domain/customFieldVisibility.js";
+import { loadActiveCustomFields } from "../settings/customFieldAccess.js";
 import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
 
-type ScalarCustomValue = string | number | boolean | null;
+type ScalarCustomValue = CustomFieldValue;
 type CustomValues = Record<string, ScalarCustomValue>;
-
-function fieldOptions(value: Prisma.JsonValue | null): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
 
 export class CasesService {
   constructor(private readonly repo: ProjectsRepository) {}
@@ -40,12 +49,13 @@ export class CasesService {
     title: string;
     priority?: string;
     caseType?: string;
+    estimate?: string | null;
     preconditions?: string;
     expectedResult?: string | null;
     caseTemplateId?: bigint | null;
     refs?: string | null;
     labels?: string[];
-    customValues?: Record<string, string | number | boolean | null>;
+    customValues?: Record<string, CustomFieldValue>;
   }) {
     let refs = input.refs;
     if (refs !== undefined) {
@@ -67,8 +77,11 @@ export class CasesService {
   async getCase(caseId: bigint) {
     const found = await this.repo.getCase(caseId);
     if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
-    const steps = await this.repo.listCaseSteps(caseId);
-    return { ...found, steps };
+    const [steps, scenarios] = await Promise.all([
+      this.repo.listCaseSteps(caseId),
+      this.repo.listCaseScenarios(caseId)
+    ]);
+    return { ...found, steps, scenarios };
   }
   async listCaseVersions(caseId: bigint) {
     const found = await this.repo.getCase(caseId);
@@ -145,11 +158,12 @@ export class CasesService {
       title?: string;
       priority?: string;
       caseType?: string;
+      estimate?: string | null;
       preconditions?: string | null;
       expectedResult?: string | null;
       caseTemplateId?: bigint | null;
       refs?: string | null;
-      customValues?: Record<string, string | number | boolean | null>;
+      customValues?: Record<string, CustomFieldValue>;
       expectedUpdatedAt?: string;
       expectedVersion?: number;
     }
@@ -261,6 +275,15 @@ export class CasesService {
           stepOrder: step.stepOrder,
           content: step.content,
           expectedResult: step.expectedResult ?? null
+        });
+      }
+      const scenarios = await this.repo.listCaseScenarios(sourceCaseId);
+      for (const scenario of scenarios) {
+        await this.repo.createCaseScenario({
+          caseId: copied.id,
+          scenarioOrder: scenario.scenarioOrder,
+          name: scenario.name,
+          content: scenario.content
         });
       }
       await this.repo.createCaseVersionSnapshot(copied.id, `case_copied:${sourceCaseId.toString()}`);
@@ -463,62 +486,72 @@ export class CasesService {
     return row?.projectId ?? null;
   }
 
-  async validateCaseCustomValues(prisma: PrismaClient | undefined, projectId: bigint | null, values: CustomValues | undefined) {
+  async validateCaseCustomValues(
+    prisma: PrismaClient | undefined,
+    projectId: bigint | null,
+    values: CustomValues | undefined,
+    visibility?: CustomFieldVisibilityContext
+  ) {
     if (!projectId || values === undefined) return values;
-    const fields = prisma
-      ? await prisma.customField.findMany({
-          where: { projectId, scope: "case", deletedAt: null, isActive: true },
-          orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
-        })
+    const loaded = prisma
+      ? await loadActiveCustomFields(prisma, projectId, "case")
       : inMemoryCustomFields
           .filter((field) => field.projectId === projectId && field.scope === "case" && field.isActive)
-          .sort((left, right) => left.displayOrder - right.displayOrder || Number(left.id - right.id));
-    const known = new Map(fields.map((field) => [field.systemName, field]));
-    const sanitized: CustomValues = {};
-    for (const [key, value] of Object.entries(values)) {
-      const field = known.get(key);
-      if (!field) {
-        throw new Error(`UNKNOWN_CUSTOM_FIELD:${key}`);
-      }
-      if (value == null || value === "") {
-        if (field.isRequired) throw new Error(`REQUIRED_CUSTOM_FIELD:${key}`);
-        sanitized[key] = null;
-        continue;
-      }
-      if (field.fieldType === "number") {
-        const numberValue = typeof value === "number" ? value : Number(value);
-        if (!Number.isFinite(numberValue)) throw new Error(`INVALID_CUSTOM_FIELD_NUMBER:${key}`);
-        sanitized[key] = numberValue;
-        continue;
-      }
-      if (field.fieldType === "select") {
-        const stringValue = String(value);
-        if (!fieldOptions(field.options).includes(stringValue)) throw new Error(`INVALID_CUSTOM_FIELD_OPTION:${key}`);
-        sanitized[key] = stringValue;
-        continue;
-      }
-      sanitized[key] = String(value);
+          .sort((left, right) => left.displayOrder - right.displayOrder || Number(left.id - right.id))
+          .map((field) => ({
+            id: field.id,
+            name: field.name,
+            systemName: field.systemName,
+            fieldType: field.fieldType,
+            scope: field.scope,
+            options: field.options,
+            isRequired: field.isRequired,
+            isActive: field.isActive,
+            displayOrder: field.displayOrder,
+            visibility: field.visibility ?? {}
+          }));
+    if (visibility) {
+      assertWritableCustomValueKeys(values as Record<string, unknown>, loaded, visibility);
     }
-    for (const field of fields) {
-      if (field.isRequired && (sanitized[field.systemName] == null || sanitized[field.systemName] === "")) {
-        throw new Error(`REQUIRED_CUSTOM_FIELD:${field.systemName}`);
-      }
-    }
-    return sanitized;
+    const editable = visibility ? fieldsVisibleForEdit(loaded, visibility) : loaded;
+    return sanitizeCustomFieldMap(
+      editable.map((field) => ({
+        systemName: field.systemName,
+        fieldType: field.fieldType,
+        options: parseFieldOptions(field.options),
+        isRequired: field.isRequired
+      })),
+      values as Record<string, unknown>,
+      "case"
+    ) as CustomValues;
+  }
+
+  filterCaseCustomValuesForRead<T extends { customValues?: CustomValues; caseTemplateId?: bigint | null }>(
+    row: T,
+    visibility: CustomFieldVisibilityContext,
+    fields: Awaited<ReturnType<typeof loadActiveCustomFields>>
+  ): T {
+    if (!row.customValues) return row;
+    return {
+      ...row,
+      customValues: filterCustomValuesForRead(row.customValues, fields, visibility)
+    };
+  }
+
+  async mergeCaseCustomValuesForWrite(
+    prisma: PrismaClient | undefined,
+    projectId: bigint,
+    existingValues: CustomValues | undefined,
+    incoming: CustomValues | undefined,
+    visibility: CustomFieldVisibilityContext
+  ) {
+    if (incoming === undefined) return undefined;
+    const merged = { ...(existingValues ?? {}), ...incoming };
+    return this.validateCaseCustomValues(prisma, projectId, merged, visibility);
   }
 
   customFieldErrorResponse(error: unknown) {
-    if (!(error instanceof Error)) return null;
-    const [code, field] = error.message.split(":");
-    if (!field) return null;
-    const messages: Record<string, string> = {
-      UNKNOWN_CUSTOM_FIELD: `unknown custom field ${field}`,
-      REQUIRED_CUSTOM_FIELD: `custom field ${field} is required`,
-      INVALID_CUSTOM_FIELD_NUMBER: `custom field ${field} must be a number`,
-      INVALID_CUSTOM_FIELD_OPTION: `custom field ${field} has an invalid option`
-    };
-    if (!messages[code]) return null;
-    return { code, message: messages[code], field };
+    return mapValidationErrorToResponse(error);
   }
 
   async createCaseStep(caseId: bigint, input: { content: string; expectedResult?: string | null }) {
@@ -572,5 +605,61 @@ export class CasesService {
     if (parentCaseId) {
       await this.repo.createCaseVersionSnapshot(parentCaseId, "case_step_deleted");
     }
+  }
+
+  async listCaseScenarios(caseId: bigint) {
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    return this.repo.listCaseScenarios(caseId);
+  }
+
+  async createCaseScenario(caseId: bigint, input: { name: string; content: string }) {
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    const scenarios = await this.repo.listCaseScenarios(caseId);
+    const nextOrder = scenarios.reduce((max, row) => Math.max(max, row.scenarioOrder), 0) + 1;
+    const created = await this.repo.createCaseScenario({
+      caseId,
+      scenarioOrder: nextOrder,
+      name: input.name,
+      content: input.content
+    });
+    await this.repo.createCaseVersionSnapshot(caseId, "case_scenario_created");
+    return created;
+  }
+
+  async updateCaseScenario(
+    scenarioId: bigint,
+    patch: { name?: string; content?: string; scenarioOrder?: number }
+  ) {
+    const parentCaseId = await this.findCaseIdForScenario(scenarioId);
+    const updated = await this.repo.updateCaseScenario(scenarioId, patch);
+    if (!updated) throw new AppError("NOT_FOUND", `case scenario ${scenarioId.toString()} not found`, 404);
+    if (parentCaseId) await this.repo.createCaseVersionSnapshot(parentCaseId, "case_scenario_updated");
+    return updated;
+  }
+
+  async deleteCaseScenario(scenarioId: bigint) {
+    const parentCaseId = await this.findCaseIdForScenario(scenarioId);
+    const deleted = await this.repo.deleteCaseScenario(scenarioId);
+    if (!deleted) throw new AppError("NOT_FOUND", `case scenario ${scenarioId.toString()} not found`, 404);
+    if (parentCaseId) await this.repo.createCaseVersionSnapshot(parentCaseId, "case_scenario_deleted");
+  }
+
+  async replaceCaseScenarios(caseId: bigint, scenarios: Array<{ name: string; content: string }>) {
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    const replaced = await this.repo.replaceCaseScenarios(caseId, scenarios);
+    await this.repo.createCaseVersionSnapshot(caseId, "case_scenarios_replaced");
+    return replaced;
+  }
+
+  private async findCaseIdForScenario(scenarioId: bigint) {
+    const allCases = await this.repo.listCases({ state: "all" });
+    for (const testCase of allCases) {
+      const scenarios = await this.repo.listCaseScenarios(testCase.id);
+      if (scenarios.some((row) => row.id === scenarioId)) return testCase.id;
+    }
+    return null;
   }
 }

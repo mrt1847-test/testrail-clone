@@ -1,4 +1,5 @@
 import type { TestStatus } from "../../domain/status.js";
+import type { CustomFieldValue } from "../../domain/customFieldTypes.js";
 
 export type ResultInput = {
   status: TestStatus;
@@ -6,13 +7,18 @@ export type ResultInput = {
   elapsed?: string;
   version?: string;
   defects?: string[];
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, CustomFieldValue>;
   source?: "manual" | "automation" | "api";
   metadata?: Record<string, unknown>;
   stepResults?: Array<{
     stepOrder: number;
     status: TestStatus;
     actualResult?: string;
+    comment?: string;
+  }>;
+  scenarioResults?: Array<{
+    caseScenarioId: bigint;
+    status: TestStatus;
     comment?: string;
   }>;
 };

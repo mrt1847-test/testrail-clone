@@ -41,15 +41,17 @@ export function useCaseEditorActions(projectId: string) {
       caseId: number;
       title: string;
       preconditions: string;
+      estimate: string | null;
       references: string;
       expectedResult: string;
       templateId: string | null;
-      customValues: Record<string, string | number | boolean | null>;
+      customValues: Record<string, string | number | boolean | string[] | null>;
       expectedVersion?: number;
     }) =>
       updateCase(input.caseId, {
         title: input.title,
         preconditions: input.preconditions,
+        estimate: input.estimate,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
         expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
         caseTemplateId: input.templateId ? Number(input.templateId) : null,

@@ -4,12 +4,14 @@ import { normalizeProjectType } from "../../domain/projectTypes.js";
 import type {
   CaseRow,
   CasePresenceFilter,
+  CaseScenarioRow,
   CaseStepRow,
   CaseVersionRow,
   ProjectRow,
   ProjectsRepository,
   SectionRow,
-  SuiteRow
+  SuiteRow,
+  CaseCustomValue
 } from "./projects.repository.js";
 import { bootstrapProjectCatalog } from "./projectBootstrap.service.js";
 import {
@@ -22,18 +24,24 @@ function serializeCaseSnapshot(input: {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, CaseCustomValue>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   attachmentSnapshots: unknown;
 }) {
   return JSON.stringify(input);
 }
 
-function jsonObject(value: unknown): Record<string, string | number | boolean | null> {
+function jsonObject(value: unknown): Record<string, CaseCustomValue> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out: Record<string, string | number | boolean | null> = {};
+  const out: Record<string, CaseCustomValue> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean" || item === null) {
+    if (
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean" ||
+      item === null ||
+      (Array.isArray(item) && item.every((row) => typeof row === "string"))
+    ) {
       out[key] = item;
     }
   }
@@ -76,6 +84,7 @@ function isPrismaUniqueViolation(error: unknown): boolean {
 const caseSelect = {
   id: true,
   projectId: true,
+  suiteId: true,
   sectionId: true,
   displayOrder: true,
   title: true,
@@ -185,6 +194,7 @@ function caseMatchesPresence(
 function mapCaseRow(row: {
   id: bigint;
   projectId: bigint;
+  suiteId: bigint;
   sectionId: bigint;
   displayOrder: number;
   title: string;
@@ -206,6 +216,7 @@ function mapCaseRow(row: {
   return {
     id: row.id,
     projectId: row.projectId,
+    suiteId: row.suiteId,
     sectionId: row.sectionId,
     displayOrder: row.displayOrder,
     title: row.title,
@@ -371,14 +382,17 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     });
   }
 
-  async createSuite(input: Omit<SuiteRow, "id">): Promise<SuiteRow> {
+  async createSuite(
+    input: Omit<SuiteRow, "id" | "isMaster" | "isBaseline" | "parentSuiteId"> &
+      Partial<Pick<SuiteRow, "isMaster" | "isBaseline" | "parentSuiteId">>
+  ): Promise<SuiteRow> {
     return this.prisma.testSuite.create({
       data: {
         projectId: input.projectId,
         name: input.name,
         description: input.description,
-        isMaster: input.isMaster,
-        isBaseline: input.isBaseline,
+        isMaster: input.isMaster ?? false,
+        isBaseline: input.isBaseline ?? false,
         parentSuiteId: input.parentSuiteId ?? null
       },
       select: {
@@ -629,6 +643,117 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       select: { id: true, stepOrder: true, content: true, expectedResult: true }
     });
     return rows.map((r: (typeof rows)[number]) => mapCaseStepRow(r));
+  }
+
+  async listCaseScenarios(caseId: bigint): Promise<CaseScenarioRow[]> {
+    const rows = await this.prisma.testCaseScenario.findMany({
+      where: { caseId, deletedAt: null },
+      orderBy: { scenarioOrder: "asc" },
+      select: { id: true, scenarioOrder: true, name: true, content: true }
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      scenarioOrder: row.scenarioOrder,
+      name: row.name,
+      content: row.content
+    }));
+  }
+
+  async createCaseScenario(input: {
+    caseId: bigint;
+    scenarioOrder: number;
+    name: string;
+    content: string;
+  }): Promise<CaseScenarioRow> {
+    const row = await this.prisma.testCaseScenario.create({
+      data: {
+        caseId: input.caseId,
+        scenarioOrder: input.scenarioOrder,
+        name: input.name,
+        content: input.content
+      },
+      select: { id: true, scenarioOrder: true, name: true, content: true }
+    });
+    return {
+      id: row.id,
+      scenarioOrder: row.scenarioOrder,
+      name: row.name,
+      content: row.content
+    };
+  }
+
+  async updateCaseScenario(
+    scenarioId: bigint,
+    patch: { name?: string; content?: string; scenarioOrder?: number }
+  ): Promise<CaseScenarioRow | null> {
+    const existing = await this.prisma.testCaseScenario.findFirst({
+      where: { id: scenarioId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!existing) return null;
+    const row = await this.prisma.testCaseScenario.update({
+      where: { id: scenarioId },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.content !== undefined ? { content: patch.content } : {}),
+        ...(patch.scenarioOrder !== undefined ? { scenarioOrder: patch.scenarioOrder } : {})
+      },
+      select: { id: true, scenarioOrder: true, name: true, content: true }
+    });
+    return {
+      id: row.id,
+      scenarioOrder: row.scenarioOrder,
+      name: row.name,
+      content: row.content
+    };
+  }
+
+  async deleteCaseScenario(scenarioId: bigint): Promise<boolean> {
+    const existing = await this.prisma.testCaseScenario.findFirst({
+      where: { id: scenarioId, deletedAt: null },
+      select: { id: true, caseId: true }
+    });
+    if (!existing) return false;
+    await this.prisma.testCaseScenario.update({
+      where: { id: scenarioId },
+      data: { deletedAt: new Date() }
+    });
+    const remaining = await this.prisma.testCaseScenario.findMany({
+      where: { caseId: existing.caseId, deletedAt: null },
+      orderBy: { scenarioOrder: "asc" },
+      select: { id: true }
+    });
+    await this.prisma.$transaction(
+      remaining.map((row, index) =>
+        this.prisma.testCaseScenario.update({
+          where: { id: row.id },
+          data: { scenarioOrder: index + 1 }
+        })
+      )
+    );
+    return true;
+  }
+
+  async replaceCaseScenarios(
+    caseId: bigint,
+    scenarios: Array<{ name: string; content: string }>
+  ): Promise<CaseScenarioRow[]> {
+    await this.prisma.testCaseScenario.updateMany({
+      where: { caseId, deletedAt: null },
+      data: { deletedAt: new Date() }
+    });
+    const created: CaseScenarioRow[] = [];
+    for (let i = 0; i < scenarios.length; i += 1) {
+      created.push(
+        await this.createCaseScenario({
+          caseId,
+          scenarioOrder: i + 1,
+          name: scenarios[i]!.name,
+          content: scenarios[i]!.content
+        })
+      );
+    }
+    return created;
   }
 
   async listCaseVersions(caseId: bigint): Promise<CaseVersionRow[]> {

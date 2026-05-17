@@ -83,7 +83,13 @@ export function RunSummaryBar({
       <div className={`flex items-center gap-3 ${className}`.trim()}>
         <RunProgressBar counts={counts} total={total} />
         <p className="shrink-0 text-xs tabular-nums text-slate-500">
-          {total} tests · {total > 0 ? Math.round(((counts.passed + counts.failed) / total) * 100) : 0}% done
+          {total} tests ·{" "}
+          {total > 0
+            ? Math.round(
+                ((counts.passed + counts.failed + counts.blocked + counts.retest) / total) * 100
+              )
+            : 0}
+          % done
         </p>
       </div>
     );

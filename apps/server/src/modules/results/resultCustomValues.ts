@@ -1,11 +1,22 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
-type ScalarCustomValue = string | number | boolean | null;
-export type ResultCustomValues = Record<string, ScalarCustomValue>;
+import {
+  CustomFieldValidationError,
+  customFieldErrorMessage,
+  fieldOptions,
+  mapValidationErrorToResponse,
+  sanitizeCustomFieldMap,
+  type CustomFieldValue
+} from "../../domain/customFieldTypes.js";
+import {
+  assertWritableCustomValueKeys,
+  fieldsVisibleForEdit,
+  filterCustomValuesForRead,
+  type CustomFieldVisibilityContext
+} from "../../domain/customFieldVisibility.js";
+import { loadActiveCustomFields } from "../settings/customFieldAccess.js";
 
-function fieldOptions(value: Prisma.JsonValue | null): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
+export type ResultCustomValues = Record<string, CustomFieldValue>;
 
 export async function projectIdForTestInstance(prisma: PrismaClient | undefined, testId: bigint) {
   if (!prisma) return null;
@@ -19,74 +30,44 @@ export async function projectIdForTestInstance(prisma: PrismaClient | undefined,
 export async function validateResultCustomValues(
   prisma: PrismaClient | undefined,
   projectId: bigint | null,
-  values: ResultCustomValues | undefined
+  values: ResultCustomValues | undefined,
+  visibility?: CustomFieldVisibilityContext
 ) {
-  if (!prisma || !projectId || values === undefined) return values;
-  const fields = await prisma.customField.findMany({
-    where: { projectId, scope: "result", deletedAt: null, isActive: true },
-    orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
-  });
-  const known = new Map(fields.map((field) => [field.systemName, field]));
-  const sanitized: ResultCustomValues = {};
-  for (const [key, value] of Object.entries(values)) {
-    const field = known.get(key);
-    if (!field) {
-      throw new Error(`UNKNOWN_RESULT_CUSTOM_FIELD:${key}`);
-    }
-    if (value == null || value === "") {
-      if (field.isRequired) throw new Error(`REQUIRED_RESULT_CUSTOM_FIELD:${key}`);
-      sanitized[key] = null;
-      continue;
-    }
-    if (field.fieldType === "number") {
-      const numberValue = typeof value === "number" ? value : Number(value);
-      if (!Number.isFinite(numberValue)) throw new Error(`INVALID_RESULT_CUSTOM_FIELD_NUMBER:${key}`);
-      sanitized[key] = numberValue;
-      continue;
-    }
-    if (field.fieldType === "select") {
-      const stringValue = String(value);
-      if (!fieldOptions(field.options).includes(stringValue)) throw new Error(`INVALID_RESULT_CUSTOM_FIELD_OPTION:${key}`);
-      sanitized[key] = stringValue;
-      continue;
-    }
-    if (field.fieldType === "boolean") {
-      if (typeof value === "boolean") {
-        sanitized[key] = value;
-        continue;
-      }
-      const stringValue = String(value).trim().toLowerCase();
-      if (["true", "1", "yes", "y"].includes(stringValue)) {
-        sanitized[key] = true;
-        continue;
-      }
-      if (["false", "0", "no", "n"].includes(stringValue)) {
-        sanitized[key] = false;
-        continue;
-      }
-      throw new Error(`INVALID_RESULT_CUSTOM_FIELD_BOOLEAN:${key}`);
-    }
-    sanitized[key] = String(value);
+  if (!projectId || values === undefined) return values;
+  const loaded = await loadActiveCustomFields(prisma, projectId, "result");
+  if (visibility) {
+    assertWritableCustomValueKeys(values as Record<string, unknown>, loaded, visibility);
   }
-  for (const field of fields) {
-    if (field.isRequired && (sanitized[field.systemName] == null || sanitized[field.systemName] === "")) {
-      throw new Error(`REQUIRED_RESULT_CUSTOM_FIELD:${field.systemName}`);
-    }
-  }
-  return sanitized;
+  const editable = visibility ? fieldsVisibleForEdit(loaded, visibility) : loaded;
+  return sanitizeCustomFieldMap(
+    editable.map((field) => ({
+      systemName: field.systemName,
+      fieldType: field.fieldType,
+      options: fieldOptions(field.options),
+      isRequired: field.isRequired
+    })),
+    values as Record<string, unknown>,
+    "result"
+  ) as ResultCustomValues;
+}
+
+export function filterResultCustomValuesForRead(
+  values: ResultCustomValues | null | undefined,
+  fields: Awaited<ReturnType<typeof loadActiveCustomFields>>,
+  visibility: CustomFieldVisibilityContext
+) {
+  return filterCustomValuesForRead(values ?? {}, fields, visibility);
 }
 
 export function resultCustomFieldErrorResponse(error: unknown) {
-  if (!(error instanceof Error)) return null;
-  const [code, field] = error.message.split(":");
-  if (!field) return null;
-  const messages: Record<string, string> = {
-    UNKNOWN_RESULT_CUSTOM_FIELD: `unknown result custom field ${field}`,
-    REQUIRED_RESULT_CUSTOM_FIELD: `result custom field ${field} is required`,
-    INVALID_RESULT_CUSTOM_FIELD_NUMBER: `result custom field ${field} must be a number`,
-    INVALID_RESULT_CUSTOM_FIELD_OPTION: `result custom field ${field} has an invalid option`,
-    INVALID_RESULT_CUSTOM_FIELD_BOOLEAN: `result custom field ${field} must be true or false`
-  };
-  if (!messages[code]) return null;
-  return { code, message: messages[code], field };
+  const mapped = mapValidationErrorToResponse(error);
+  if (mapped) return mapped;
+  if (error instanceof CustomFieldValidationError) {
+    return {
+      code: error.code,
+      message: customFieldErrorMessage(error.code, error.field) ?? error.message,
+      field: error.field
+    };
+  }
+  return null;
 }

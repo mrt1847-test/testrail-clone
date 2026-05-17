@@ -147,6 +147,10 @@ export class ResultsService {
     return this.repo.listResultStepsByResultId(resultId);
   }
 
+  async listResultScenariosByResultId(resultId: bigint) {
+    return this.repo.listResultScenariosByResultId(resultId);
+  }
+
   private async writeResultTx(tx: Tx, testInstanceId: bigint, input: ResultInput) {
     if (input.status === "untested") {
       const priorResults = await tx.countResultsForTestInstance(testInstanceId);
@@ -161,6 +165,9 @@ export class ResultsService {
     const created = await tx.createResult(testInstanceId, input);
     if (input.stepResults && input.stepResults.length > 0) {
       await tx.createResultSteps(created.id, input.stepResults);
+    }
+    if (input.scenarioResults && input.scenarioResults.length > 0) {
+      await tx.createResultScenarios(created.id, input.scenarioResults);
     }
     await tx.updateInstanceStatus(testInstanceId, input.status);
     return created;

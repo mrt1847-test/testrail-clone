@@ -25,15 +25,25 @@ import {
   validateCaseCsvColumnMapping
 } from "../../domain/caseCsvMapping.js";
 import {
+  deleteStagedCsv,
+  readStagedCsv,
+  shouldUseAsyncImport,
+  stageCaseCsvImportMeta,
+  takeCaseCsvImportMeta,
+  writeStagedCsv
+} from "./importExportAsync.js";
+import {
   CASE_CSV_REFS_COLUMN,
   caseRefsCsvAliases,
   caseRefsFromCsvCell,
   formatCaseRefsForCsv
 } from "../../domain/caseRefs.js";
+import { formatDurationSeconds, sumDurationSeconds } from "../../domain/timeTracking.js";
+import { statusIdForCanonical } from "../testrail/testrail.mappers.js";
 
 type CsvRow = Record<string, string>;
 type ImportIssue = { row: number; field?: string; code: string; message: string };
-type ScalarCustomValue = string | number | boolean | null;
+type ScalarCustomValue = string | number | boolean | string[] | null;
 type CaseImportFormat = "csv" | "json" | "xml";
 type CustomFieldDefinition = {
   systemName: string;
@@ -90,6 +100,18 @@ export const reportExportSchema = z.object({
 
 const exportJobIdParamSchema = z.object({
   jobId: z.coerce.bigint()
+});
+
+const importJobIdParamSchema = z.object({
+  jobId: z.coerce.bigint()
+});
+
+const caseExportAsyncSchema = z.object({
+  format: z.enum(["csv", "json", "xml"]).default("csv")
+});
+
+const runResultsExportAsyncSchema = z.object({
+  runId: z.coerce.bigint()
 });
 
 function parseCsv(input: string): CsvRow[] {
@@ -328,6 +350,23 @@ type CaseExportRecord = {
   steps: Array<{ content: string; expected_result: string | null }>;
 };
 
+type RunResultExportRecord = {
+  result_id: string;
+  test_id: string;
+  case_id: string;
+  refs: string;
+  status: string;
+  status_id: number;
+  comment: string | null;
+  elapsed: string | null;
+  version: string | null;
+  source: string;
+  defects: string[];
+  customValues: Record<string, unknown>;
+  created_at: string;
+  created_on: number;
+};
+
 function caseExportRecordToCsvRow(record: CaseExportRecord, customFieldNames: string[]) {
   return {
     id: record.id,
@@ -345,6 +384,44 @@ function caseExportRecordToCsvRow(record: CaseExportRecord, customFieldNames: st
   };
 }
 
+function testRailCollection<T>(key: string, rows: T[]) {
+  return {
+    offset: 0,
+    limit: rows.length,
+    size: rows.length,
+    _links: { next: null, prev: null },
+    [key]: rows
+  };
+}
+
+function caseExportRecordToTestRailRow(record: CaseExportRecord, customFieldNames: string[]) {
+  return {
+    id: Number(record.id),
+    section_id: Number(record.section_id),
+    title: record.title,
+    refs: record.refs || null,
+    custom_preconds: record.preconditions ?? null,
+    priority: record.priority ?? null,
+    type: record.type ?? null,
+    labels: record.labels,
+    automation_key: record.automation_key,
+    external_id: record.external_id,
+    custom_steps_separated: record.steps.map((step) => ({
+      content: step.content,
+      expected: step.expected_result ?? ""
+    })),
+    ...Object.fromEntries(customFieldNames.map((fieldName) => [customColumnName(fieldName), record.customValues[fieldName] ?? ""]))
+  };
+}
+
+function casesToTestRailExport(cases: CaseExportRecord[], customFieldNames: string[]) {
+  return JSON.stringify(
+    testRailCollection("cases", cases.map((row) => caseExportRecordToTestRailRow(row, customFieldNames))),
+    null,
+    2
+  );
+}
+
 function casesToJsonExport(projectId: bigint, cases: CaseExportRecord[]) {
   return JSON.stringify(
     {
@@ -352,6 +429,52 @@ function casesToJsonExport(projectId: bigint, cases: CaseExportRecord[]) {
       version: 1,
       project_id: projectId.toString(),
       cases
+    },
+    null,
+    2
+  );
+}
+
+function runResultRecordToCsvRow(record: RunResultExportRecord, customFieldNames: string[]) {
+  return {
+    result_id: record.result_id,
+    test_id: record.test_id,
+    case_id: record.case_id,
+    refs: record.refs,
+    status: record.status,
+    comment: record.comment,
+    elapsed: record.elapsed,
+    version: record.version,
+    source: record.source,
+    defects: record.defects.join("|"),
+    ...Object.fromEntries(customFieldNames.map((fieldName) => [customColumnName(fieldName), record.customValues[fieldName] ?? ""])),
+    created_at: record.created_at
+  };
+}
+
+function runResultRecordToTestRailRow(record: RunResultExportRecord, customFieldNames: string[]) {
+  return {
+    id: Number(record.result_id),
+    test_id: Number(record.test_id),
+    case_id: Number(record.case_id),
+    status_id: record.status_id,
+    status: record.status,
+    comment: record.comment ?? null,
+    elapsed: record.elapsed ?? null,
+    version: record.version ?? null,
+    defects: record.defects.length > 0 ? record.defects.join(", ") : null,
+    created_on: record.created_on,
+    refs: record.refs || null,
+    source: record.source,
+    ...Object.fromEntries(customFieldNames.map((fieldName) => [customColumnName(fieldName), record.customValues[fieldName] ?? ""]))
+  };
+}
+
+function runResultsToTestRailExport(runId: bigint, records: RunResultExportRecord[], customFieldNames: string[]) {
+  return JSON.stringify(
+    {
+      run_id: Number(runId),
+      ...testRailCollection("results", records.map((row) => runResultRecordToTestRailRow(row, customFieldNames)))
     },
     null,
     2
@@ -490,10 +613,18 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
       where: { projectId, deletedAt: null },
       orderBy: { id: "asc" },
       take: input.maxRows,
-      include: { instances: { where: { deletedAt: null }, select: { status: true } } }
+      include: {
+        instances: {
+          where: { deletedAt: null },
+          select: { status: true, estimateSnapshot: true, results: { select: { elapsed: true } } }
+        }
+      }
     });
     const rows = runs.map((run) => {
       const metrics = toRunSummaryMetrics(run.instances.map((item) => item.status));
+      const estimatedSeconds = sumDurationSeconds(run.instances.map((item) => item.estimateSnapshot));
+      const actualSeconds = sumDurationSeconds(run.instances.flatMap((item) => item.results.map((result) => result.elapsed)));
+      const actualOverEstimateSeconds = actualSeconds - estimatedSeconds;
       return {
         run_id: run.id,
         name: run.name,
@@ -501,12 +632,33 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
         total: metrics.total,
         passed: metrics.passed,
         failed: metrics.failed,
-        progress: metrics.progress
+        progress: metrics.progress,
+        estimated_seconds: estimatedSeconds,
+        actual_seconds: actualSeconds,
+        actual_over_estimate_seconds: actualOverEstimateSeconds,
+        estimate: formatDurationSeconds(estimatedSeconds),
+        actual: formatDurationSeconds(actualSeconds)
       };
     });
     return {
       fileName: `project-${projectId.toString()}-run-summary.csv`,
-      csv: toCsv(["run_id", "name", "status", "total", "passed", "failed", "progress"], rows),
+      csv: toCsv(
+        [
+          "run_id",
+          "name",
+          "status",
+          "total",
+          "passed",
+          "failed",
+          "progress",
+          "estimated_seconds",
+          "actual_seconds",
+          "actual_over_estimate_seconds",
+          "estimate",
+          "actual"
+        ],
+        rows
+      ),
       totalRows: rows.length
     };
   }
@@ -894,7 +1046,7 @@ export class ImportExportService {
     dryRun: boolean;
     summary: Prisma.InputJsonValue;
     issues: Prisma.InputJsonValue;
-    status: "failed" | "completed" | "completed_with_errors";
+    status: "pending" | "processing" | "failed" | "completed" | "completed_with_errors";
   }) {
     const prisma = this.getPrisma();
     return prisma.importJob.create({
@@ -906,6 +1058,60 @@ export class ImportExportService {
         summary: input.summary,
         errors: input.issues,
         createdBy: input.userId
+      }
+    });
+  }
+
+  async getImportJob(projectId: bigint, jobId: bigint) {
+    const prisma = this.getPrisma();
+    const job = await prisma.importJob.findFirst({ where: { id: jobId, projectId } });
+    if (!job) throw new AppError("NOT_FOUND", `import job ${jobId.toString()} not found`, 404);
+    return job;
+  }
+
+  async updateImportJob(
+    projectId: bigint,
+    jobId: bigint,
+    data: {
+      status?: string;
+      summary?: Prisma.InputJsonValue;
+      issues?: Prisma.InputJsonValue;
+      dryRun?: boolean;
+    }
+  ) {
+    const prisma = this.getPrisma();
+    await this.getImportJob(projectId, jobId);
+    return prisma.importJob.update({
+      where: { id: jobId },
+      data: {
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.summary !== undefined ? { summary: data.summary } : {}),
+        ...(data.issues !== undefined ? { errors: data.issues } : {}),
+        ...(data.dryRun !== undefined ? { dryRun: data.dryRun } : {})
+      }
+    });
+  }
+
+  async getExportJob(projectId: bigint, jobId: bigint) {
+    const prisma = this.getPrisma();
+    const job = await prisma.exportJob.findFirst({ where: { id: jobId, projectId } });
+    if (!job) throw new AppError("NOT_FOUND", `export job ${jobId.toString()} not found`, 404);
+    return job;
+  }
+
+  async updateExportJob(
+    projectId: bigint,
+    jobId: bigint,
+    data: { status?: string; summary?: Prisma.InputJsonValue; filters?: Prisma.InputJsonValue }
+  ) {
+    const prisma = this.getPrisma();
+    await this.getExportJob(projectId, jobId);
+    return prisma.exportJob.update({
+      where: { id: jobId },
+      data: {
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.summary !== undefined ? { summary: data.summary } : {}),
+        ...(data.filters !== undefined ? { filters: data.filters } : {})
       }
     });
   }
@@ -1097,7 +1303,11 @@ export class ImportExportService {
     return { records, customFieldNames };
   }
 
-  async exportCasesCsv(projectId: bigint, userId: bigint) {
+  async exportCasesCsv(
+    projectId: bigint,
+    userId: bigint,
+    options?: { existingJobId?: bigint; recordJob?: boolean }
+  ) {
     const prisma = this.getPrisma();
     const { records, customFieldNames } = await this.getCaseExportRecords(projectId);
     const headers = [
@@ -1115,51 +1325,114 @@ export class ImportExportService {
       "steps"
     ];
     const csv = toCsv(headers, records.map((record) => caseExportRecordToCsvRow(record, customFieldNames)));
-    await prisma.exportJob.create({
-      data: {
-        projectId,
-        type: "cases_csv",
-        status: "completed",
-        summary: { totalRows: records.length, contentType: "text/csv" } as Prisma.InputJsonValue,
-        createdBy: userId
+    const recordJob = options?.recordJob !== false;
+    const summary = {
+      totalRows: records.length,
+      contentType: "text/csv",
+      fileName: `project-${projectId.toString()}-cases.csv`
+    } as Prisma.InputJsonValue;
+    if (recordJob) {
+      if (options?.existingJobId) {
+        await prisma.exportJob.update({
+          where: { id: options.existingJobId },
+          data: { status: "completed", summary }
+        });
+      } else {
+        await prisma.exportJob.create({
+          data: {
+            projectId,
+            type: "cases_csv",
+            status: "completed",
+            summary,
+            createdBy: userId
+          }
+        });
       }
-    });
+    }
     return csv;
   }
 
-  async exportCasesJson(projectId: bigint, userId: bigint) {
+  async exportCasesJson(
+    projectId: bigint,
+    userId: bigint,
+    options?: { existingJobId?: bigint; recordJob?: boolean }
+  ) {
     const prisma = this.getPrisma();
     const { records } = await this.getCaseExportRecords(projectId);
     const json = casesToJsonExport(projectId, records);
+    const recordJob = options?.recordJob !== false;
+    const summary = {
+      totalRows: records.length,
+      contentType: "application/json",
+      fileName: `project-${projectId.toString()}-cases.json`
+    } as Prisma.InputJsonValue;
+    if (recordJob) {
+      if (options?.existingJobId) {
+        await prisma.exportJob.update({ where: { id: options.existingJobId }, data: { status: "completed", summary } });
+      } else {
+        await prisma.exportJob.create({
+          data: {
+            projectId,
+            type: "cases_json",
+            status: "completed",
+            summary,
+            createdBy: userId
+          }
+        });
+      }
+    }
+    return json;
+  }
+
+  async exportCasesTestRailJson(projectId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const { records, customFieldNames } = await this.getCaseExportRecords(projectId);
+    const json = casesToTestRailExport(records, customFieldNames);
     await prisma.exportJob.create({
       data: {
         projectId,
-        type: "cases_json",
+        type: "cases_testrail",
         status: "completed",
-        summary: { totalRows: records.length, contentType: "application/json" } as Prisma.InputJsonValue,
+        summary: { totalRows: records.length, contentType: "application/json", compatibilityOnly: true } as Prisma.InputJsonValue,
         createdBy: userId
       }
     });
     return json;
   }
 
-  async exportCasesXml(projectId: bigint, userId: bigint) {
+  async exportCasesXml(
+    projectId: bigint,
+    userId: bigint,
+    options?: { existingJobId?: bigint; recordJob?: boolean }
+  ) {
     const prisma = this.getPrisma();
     const { records } = await this.getCaseExportRecords(projectId);
     const xml = casesToXmlExport(projectId, records);
-    await prisma.exportJob.create({
-      data: {
-        projectId,
-        type: "cases_xml",
-        status: "completed",
-        summary: { totalRows: records.length, contentType: "application/xml" } as Prisma.InputJsonValue,
-        createdBy: userId
+    const recordJob = options?.recordJob !== false;
+    const summary = {
+      totalRows: records.length,
+      contentType: "application/xml",
+      fileName: `project-${projectId.toString()}-cases.xml`
+    } as Prisma.InputJsonValue;
+    if (recordJob) {
+      if (options?.existingJobId) {
+        await prisma.exportJob.update({ where: { id: options.existingJobId }, data: { status: "completed", summary } });
+      } else {
+        await prisma.exportJob.create({
+          data: {
+            projectId,
+            type: "cases_xml",
+            status: "completed",
+            summary,
+            createdBy: userId
+          }
+        });
       }
-    });
+    }
     return xml;
   }
 
-  async exportRunResultsCsv(projectId: bigint, runId: bigint, userId: bigint) {
+  async getRunResultExportRecords(projectId: bigint, runId: bigint) {
     const prisma = this.getPrisma();
     const run = await prisma.testRun.findFirst({ where: { id: runId, projectId, deletedAt: null } });
     if (!run) throw new AppError("NOT_FOUND", `run ${runId.toString()} not found`, 404);
@@ -1176,7 +1449,37 @@ export class ImportExportService {
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       select: { systemName: true }
     });
-    const customHeaders = customFields.map((field) => customColumnName(field.systemName));
+    const customFieldNames = customFields.map((field) => field.systemName);
+    const records: RunResultExportRecord[] = rows.map((row) => ({
+      result_id: row.id.toString(),
+      test_id: row.testInstanceId.toString(),
+      case_id: row.instance.caseId.toString(),
+      refs: formatCaseRefsForCsv(row.instance.testCase.refs),
+      status: row.status,
+      status_id: statusIdForCanonical(row.status),
+      comment: row.comment,
+      elapsed: row.elapsed,
+      version: row.version,
+      source: row.source,
+      defects: [...row.defects, ...row.defectLinks.map((link) => link.defectKey)].filter(Boolean),
+      customValues: Object.fromEntries(
+        customFieldNames.map((fieldName) => [fieldName, customValueFromJson(row.customValues, fieldName)])
+      ),
+      created_at: row.createdAt.toISOString(),
+      created_on: Math.floor(row.createdAt.getTime() / 1000)
+    }));
+    return { run, records, customFieldNames };
+  }
+
+  async exportRunResultsCsv(
+    projectId: bigint,
+    runId: bigint,
+    userId: bigint,
+    options?: { existingJobId?: bigint; recordJob?: boolean }
+  ) {
+    const prisma = this.getPrisma();
+    const { records, customFieldNames } = await this.getRunResultExportRecords(projectId, runId);
+    const customHeaders = customFieldNames.map((fieldName) => customColumnName(fieldName));
     const csv = toCsv(
       [
         "result_id",
@@ -1192,35 +1495,301 @@ export class ImportExportService {
         ...customHeaders,
         "created_at"
       ],
-      rows.map((row) => ({
-        result_id: row.id,
-        test_id: row.testInstanceId,
-        case_id: row.instance.caseId,
-        refs: formatCaseRefsForCsv(row.instance.testCase.refs),
-        status: row.status,
-        comment: row.comment,
-        elapsed: row.elapsed,
-        version: row.version,
-        source: row.source,
-        defects: [...row.defects, ...row.defectLinks.map((link) => link.defectKey)].join("|"),
-        ...Object.fromEntries(
-          customFields.map((field) => [customColumnName(field.systemName), customValueFromJson(row.customValues, field.systemName)])
-        ),
-        created_at: row.createdAt.toISOString()
-      }))
+      records.map((record) => runResultRecordToCsvRow(record, customFieldNames))
     );
+    const recordJob = options?.recordJob !== false;
+    const summary = {
+      totalRows: records.length,
+      contentType: "text/csv",
+      fileName: `run-${runId.toString()}-results.csv`
+    } as Prisma.InputJsonValue;
+    const filters = { runId: runId.toString() } as Prisma.InputJsonValue;
+    if (recordJob) {
+      if (options?.existingJobId) {
+        await prisma.exportJob.update({
+          where: { id: options.existingJobId },
+          data: { status: "completed", summary, filters }
+        });
+      } else {
+        await prisma.exportJob.create({
+          data: {
+            projectId,
+            type: "run_results_csv",
+            filters,
+            status: "completed",
+            summary,
+            createdBy: userId
+          }
+        });
+      }
+    }
+    return csv;
+  }
+
+  async buildExportDownload(projectId: bigint, jobId: bigint) {
+    const job = await this.getExportJob(projectId, jobId);
+    if (job.type.startsWith("report_")) {
+      const exported = await this.buildReportExportFromJob(projectId, jobId);
+      return {
+        fileName: exported.fileName,
+        contentType: "text/csv; charset=utf-8",
+        body: exported.csv
+      };
+    }
+    if (job.status !== "completed") {
+      throw new AppError("CONFLICT", `export job ${jobId.toString()} is not ready (status: ${job.status})`, 409);
+    }
+    const summary =
+      job.summary && typeof job.summary === "object" && !Array.isArray(job.summary)
+        ? (job.summary as Record<string, unknown>)
+        : {};
+    const userId = job.createdBy ?? 0n;
+    if (job.type === "cases_csv") {
+      const csv = await this.exportCasesCsv(projectId, userId, { recordJob: false });
+      return {
+        fileName: String(summary.fileName ?? `project-${projectId.toString()}-cases.csv`),
+        contentType: "text/csv; charset=utf-8",
+        body: csv
+      };
+    }
+    if (job.type === "cases_json") {
+      const json = await this.exportCasesJson(projectId, userId, { recordJob: false });
+      return {
+        fileName: String(summary.fileName ?? `project-${projectId.toString()}-cases.json`),
+        contentType: "application/json; charset=utf-8",
+        body: json
+      };
+    }
+    if (job.type === "cases_xml") {
+      const xml = await this.exportCasesXml(projectId, userId, { recordJob: false });
+      return {
+        fileName: String(summary.fileName ?? `project-${projectId.toString()}-cases.xml`),
+        contentType: "application/xml; charset=utf-8",
+        body: xml
+      };
+    }
+    if (job.type === "run_results_csv") {
+      const filters = job.filters && typeof job.filters === "object" ? (job.filters as Record<string, unknown>) : {};
+      const runId = filters.runId ? BigInt(String(filters.runId)) : null;
+      if (!runId) throw new AppError("VALIDATION_ERROR", "run_results_csv job is missing runId filter", 400);
+      const csv = await this.exportRunResultsCsv(projectId, runId, userId, { recordJob: false });
+      return {
+        fileName: String(summary.fileName ?? `run-${runId.toString()}-results.csv`),
+        contentType: "text/csv; charset=utf-8",
+        body: csv
+      };
+    }
+    throw new AppError("VALIDATION_ERROR", `export type ${job.type} cannot be downloaded by job id`, 400);
+  }
+
+  async exportRunResultsTestRailJson(projectId: bigint, runId: bigint, userId: bigint) {
+    const prisma = this.getPrisma();
+    const { records, customFieldNames } = await this.getRunResultExportRecords(projectId, runId);
+    const json = runResultsToTestRailExport(runId, records, customFieldNames);
     await prisma.exportJob.create({
       data: {
         projectId,
-        type: "run_results_csv",
+        type: "run_results_testrail",
         filters: { runId: runId.toString() } as Prisma.InputJsonValue,
         status: "completed",
-        summary: { totalRows: rows.length } as Prisma.InputJsonValue,
+        summary: { totalRows: records.length, contentType: "application/json", compatibilityOnly: true } as Prisma.InputJsonValue,
         createdBy: userId
       }
     });
-    return csv;
+    return json;
   }
+}
+
+async function runCaseCsvImport(
+  importExportService: ImportExportService,
+  activityPrisma: PrismaClient | undefined,
+  input: {
+    projectId: bigint;
+    userId: bigint;
+    body: z.infer<typeof caseImportSchema>;
+    existingJobId?: bigint;
+    jobStatus?: "pending" | "processing" | "failed" | "completed" | "completed_with_errors";
+  }
+) {
+  const prisma = importExportService.getPrisma();
+  const body = input.body;
+
+  const customFieldRows = await prisma.customField.findMany({
+    where: { projectId: input.projectId, scope: "case", deletedAt: null, isActive: true },
+    orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+    select: { systemName: true, name: true, isRequired: true }
+  });
+  const customFields = customFieldRows.map((field) => ({ ...field, label: field.name }));
+
+  const parsedRows = parseCsv(body.csv);
+  const headers = extractCsvHeaders(body.csv);
+  const columnMapping =
+    body.columnMapping ??
+    (headers.length > 0 ? suggestCaseCsvColumnMapping(headers, customFields) : undefined);
+  const rows = applyCaseCsvColumnMapping(parsedRows, columnMapping);
+
+  const mappingIssues = validateCaseCsvColumnMapping(
+    columnMapping ?? {},
+    customFields.map((field) => ({ systemName: field.systemName, isRequired: field.isRequired }))
+  ).map((issue) => ({ row: 1, field: issue.field, code: issue.code, message: issue.message }));
+
+  const { issues: rowIssues, normalized } = await validateImportRows(prisma, input.projectId, rows, body.sectionId);
+  const issues = [...mappingIssues, ...rowIssues];
+  const summary = { totalRows: parsedRows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
+
+  if (body.dryRun || (body.atomic && issues.length > 0)) {
+    const finalStatus = input.jobStatus ?? (issues.length > 0 ? "failed" : "completed");
+    const job = input.existingJobId
+      ? await importExportService.updateImportJob(input.projectId, input.existingJobId, {
+          status: finalStatus,
+          summary: summary as Prisma.InputJsonValue,
+          issues: issues as Prisma.InputJsonValue,
+          dryRun: body.dryRun
+        })
+      : await importExportService.createCaseImportJob({
+          projectId: input.projectId,
+          userId: input.userId,
+          dryRun: body.dryRun,
+          summary: summary as Prisma.InputJsonValue,
+          issues: issues as Prisma.InputJsonValue,
+          status: finalStatus
+        });
+    const status = !body.dryRun && body.atomic && issues.length > 0 ? 400 : 200;
+    await recordActivityEvent(activityPrisma, {
+      projectId: input.projectId,
+      actorUserId: input.userId,
+      entityType: "import",
+      entityId: job.id,
+      eventType: "import.cases_csv_validated",
+      title: "Case CSV import validated",
+      body: `valid ${normalized.length} · invalid ${issues.length}`,
+      payload: {
+        dryRun: body.dryRun,
+        atomic: body.atomic,
+        totalRows: rows.length,
+        validRows: normalized.length,
+        invalidRows: issues.length
+      }
+    });
+    return {
+      status,
+      data: { job, summary, issues, columnMapping: columnMapping ?? null }
+    };
+  }
+
+  const imported = await importExportService.importValidatedCases(input.projectId, input.userId, normalized);
+  summary.imported = imported.length;
+  const finalStatus = input.jobStatus ?? (issues.length > 0 ? "completed_with_errors" : "completed");
+  const job = input.existingJobId
+    ? await importExportService.updateImportJob(input.projectId, input.existingJobId, {
+        status: finalStatus,
+        summary: summary as Prisma.InputJsonValue,
+        issues: issues as Prisma.InputJsonValue,
+        dryRun: false
+      })
+    : await importExportService.createCaseImportJob({
+        projectId: input.projectId,
+        userId: input.userId,
+        dryRun: false,
+        summary: summary as Prisma.InputJsonValue,
+        issues: issues as Prisma.InputJsonValue,
+        status: finalStatus
+      });
+  await recordActivityEvent(activityPrisma, {
+    projectId: input.projectId,
+    actorUserId: input.userId,
+    entityType: "import",
+    entityId: job.id,
+    eventType: "import.cases_csv_committed",
+    title: "Case CSV import completed",
+    body: `imported ${imported.length} · invalid ${issues.length}`,
+    payload: {
+      imported: imported.length,
+      invalidRows: issues.length,
+      totalRows: rows.length
+    }
+  });
+  return {
+    status: 200,
+    data: { job, summary, issues, columnMapping: columnMapping ?? null }
+  };
+}
+
+function scheduleCaseCsvImportJob(
+  importExportService: ImportExportService,
+  activityPrisma: PrismaClient | undefined,
+  jobId: bigint,
+  projectId: bigint
+) {
+  setImmediate(() => {
+    void (async () => {
+      const meta = takeCaseCsvImportMeta(jobId);
+      if (!meta) return;
+      try {
+        await importExportService.updateImportJob(projectId, jobId, {
+          status: "processing",
+          summary: { phase: meta.dryRun ? "validating" : "importing" } as Prisma.InputJsonValue
+        });
+        const csv = await readStagedCsv(jobId);
+        await runCaseCsvImport(importExportService, activityPrisma, {
+          projectId: meta.projectId,
+          userId: meta.userId,
+          existingJobId: jobId,
+          body: {
+            csv,
+            dryRun: meta.dryRun,
+            atomic: meta.atomic,
+            sectionId: meta.sectionId,
+            columnMapping: meta.columnMapping
+          }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "import failed";
+        await importExportService.updateImportJob(projectId, jobId, {
+          status: "failed",
+          summary: { phase: "failed", message } as Prisma.InputJsonValue,
+          issues: [{ row: 0, code: "IMPORT_FAILED", message }] as Prisma.InputJsonValue
+        });
+      } finally {
+        await deleteStagedCsv(jobId);
+      }
+    })();
+  });
+}
+
+function scheduleCaseExportJob(
+  importExportService: ImportExportService,
+  jobId: bigint,
+  projectId: bigint,
+  userId: bigint,
+  type: "cases_csv" | "cases_json" | "cases_xml" | "run_results_csv",
+  runId?: bigint
+) {
+  setImmediate(() => {
+    void (async () => {
+      try {
+        await importExportService.updateExportJob(projectId, jobId, {
+          status: "processing",
+          summary: { phase: "exporting" } as Prisma.InputJsonValue
+        });
+        if (type === "cases_csv") {
+          await importExportService.exportCasesCsv(projectId, userId, { existingJobId: jobId });
+        } else if (type === "cases_json") {
+          await importExportService.exportCasesJson(projectId, userId, { existingJobId: jobId });
+        } else if (type === "cases_xml") {
+          await importExportService.exportCasesXml(projectId, userId, { existingJobId: jobId });
+        } else if (type === "run_results_csv" && runId) {
+          await importExportService.exportRunResultsCsv(projectId, runId, userId, { existingJobId: jobId });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "export failed";
+        await importExportService.updateExportJob(projectId, jobId, {
+          status: "failed",
+          summary: { phase: "failed", message } as Prisma.InputJsonValue
+        });
+      }
+    })();
+  });
 }
 
 export async function registerImportExportRoutes(
@@ -1359,101 +1928,46 @@ export async function registerImportExportRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = caseImportSchema.parse(req.body ?? {});
-    const prisma = importExportService.getPrisma();
-
-    const customFieldRows = await prisma.customField.findMany({
-      where: { projectId, scope: "case", deletedAt: null, isActive: true },
-      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-      select: { systemName: true, name: true, isRequired: true }
+    const result = await runCaseCsvImport(importExportService, deps.prisma, {
+      projectId,
+      userId: user.id,
+      body
     });
-    const customFields = customFieldRows.map((field) => ({ ...field, label: field.name }));
+    return reply.status(result.status).send(toJsonSafe(ok(result.data)));
+  });
 
-    const parsedRows = parseCsv(body.csv);
-    const headers = extractCsvHeaders(body.csv);
-    const columnMapping =
-      body.columnMapping ??
-      (headers.length > 0 ? suggestCaseCsvColumnMapping(headers, customFields) : undefined);
-    const rows = applyCaseCsvColumnMapping(parsedRows, columnMapping);
-
-    const mappingIssues = validateCaseCsvColumnMapping(
-      columnMapping ?? {},
-      customFields.map((field) => ({ systemName: field.systemName, isRequired: field.isRequired }))
-    ).map((issue) => ({ row: 1, field: issue.field, code: issue.code, message: issue.message }));
-
-    const { issues: rowIssues, normalized } = await validateImportRows(prisma, projectId, rows, body.sectionId);
-    const issues = [...mappingIssues, ...rowIssues];
-    const summary = { totalRows: parsedRows.length, validRows: normalized.length, invalidRows: issues.length, imported: 0 };
-
-    if (body.dryRun || (body.atomic && issues.length > 0)) {
-      const job = await importExportService.createCaseImportJob({
-        projectId,
-        userId: user.id,
-        dryRun: body.dryRun,
-        summary: summary as Prisma.InputJsonValue,
-        issues: issues as Prisma.InputJsonValue,
-        status: issues.length > 0 ? "failed" : "completed"
-      });
-      const status = !body.dryRun && body.atomic && issues.length > 0 ? 400 : 200;
-      await recordActivityEvent(deps.prisma, {
-        projectId,
-        actorUserId: user.id,
-        entityType: "import",
-        entityId: job.id,
-        eventType: "import.cases_csv_validated",
-        title: "Case CSV import validated",
-        body: `valid ${normalized.length} · invalid ${issues.length}`,
-        payload: {
-          dryRun: body.dryRun,
-          atomic: body.atomic,
-          totalRows: rows.length,
-          validRows: normalized.length,
-          invalidRows: issues.length
-        }
-      });
-      return reply.status(status).send(
-        toJsonSafe(
-          ok({
-            job,
-            summary,
-            issues,
-            columnMapping: columnMapping ?? null
-          })
-        )
-      );
-    }
-
-    const imported = await importExportService.importValidatedCases(projectId, user.id, normalized);
-
-    summary.imported = imported.length;
+  app.post("/api/projects/:projectId/cases/import/csv/async", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = caseImportSchema.parse(req.body ?? {});
     const job = await importExportService.createCaseImportJob({
       projectId,
       userId: user.id,
-      dryRun: false,
-      summary: summary as Prisma.InputJsonValue,
-      issues: issues as Prisma.InputJsonValue,
-      status: issues.length > 0 ? "completed_with_errors" : "completed"
+      dryRun: body.dryRun,
+      summary: {
+        phase: "queued",
+        totalBytes: Buffer.byteLength(body.csv, "utf8"),
+        recommendedAsync: shouldUseAsyncImport(body.csv)
+      } as Prisma.InputJsonValue,
+      issues: [] as Prisma.InputJsonValue,
+      status: "pending"
     });
-    await recordActivityEvent(deps.prisma, {
+    await writeStagedCsv(job.id, body.csv);
+    stageCaseCsvImportMeta(job.id, {
       projectId,
-      actorUserId: user.id,
-      entityType: "import",
-      entityId: job.id,
-      eventType: "import.cases_csv_committed",
-      title: "Case CSV import completed",
-      body: `imported ${imported.length} · invalid ${issues.length}`,
-      payload: {
-        imported: imported.length,
-        invalidRows: issues.length,
-        totalRows: rows.length
-      }
+      userId: user.id,
+      dryRun: body.dryRun,
+      atomic: body.atomic,
+      sectionId: body.sectionId,
+      columnMapping: body.columnMapping
     });
-    return reply.send(
+    scheduleCaseCsvImportJob(importExportService, deps.prisma, job.id, projectId);
+    return reply.status(202).send(
       toJsonSafe(
         ok({
           job,
-          summary,
-          issues,
-          columnMapping: columnMapping ?? null
+          pollUrl: `/api/projects/${projectId.toString()}/import-jobs/${job.id.toString()}`
         })
       )
     );
@@ -1505,6 +2019,28 @@ export async function registerImportExportRoutes(
     return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
   });
 
+  app.get("/api/projects/:projectId/import-jobs/:jobId", async (req, reply) => {
+    await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { jobId } = importJobIdParamSchema.parse(req.params);
+    const job = await importExportService.getImportJob(projectId, jobId);
+    const issues = Array.isArray(job.errors) ? job.errors : [];
+    const summary =
+      job.summary && typeof job.summary === "object" && !Array.isArray(job.summary)
+        ? (job.summary as Record<string, unknown>)
+        : {};
+    return reply.send(
+      toJsonSafe(
+        ok({
+          job,
+          summary,
+          issues,
+          resultReady: ["completed", "failed", "completed_with_errors"].includes(job.status)
+        })
+      )
+    );
+  });
+
   app.get("/api/projects/:projectId/export-jobs", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
@@ -1515,6 +2051,83 @@ export async function registerImportExportRoutes(
     if (!deps.prisma) return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
     const { rows, total } = await importExportService.listExportJobs(projectId, page, pageSize, typePrefix);
     return reply.send(toJsonSafe({ data: rows, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }));
+  });
+
+  app.get("/api/projects/:projectId/export-jobs/:jobId", async (req, reply) => {
+    await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { jobId } = exportJobIdParamSchema.parse(req.params);
+    const job = await importExportService.getExportJob(projectId, jobId);
+    const summary =
+      job.summary && typeof job.summary === "object" && !Array.isArray(job.summary)
+        ? (job.summary as Record<string, unknown>)
+        : {};
+    return reply.send(
+      toJsonSafe(
+        ok({
+          job,
+          summary,
+          downloadUrl:
+            job.status === "completed"
+              ? `/api/projects/${projectId.toString()}/export-jobs/${jobId.toString()}/download`
+              : null
+        })
+      )
+    );
+  });
+
+  app.post("/api/projects/:projectId/cases/export/async", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = caseExportAsyncSchema.parse(req.body ?? {});
+    const type = body.format === "json" ? "cases_json" : body.format === "xml" ? "cases_xml" : "cases_csv";
+    const prisma = importExportService.getPrisma();
+    const job = await prisma.exportJob.create({
+      data: {
+        projectId,
+        type,
+        status: "pending",
+        summary: { phase: "queued", format: body.format } as Prisma.InputJsonValue,
+        createdBy: user.id
+      }
+    });
+    scheduleCaseExportJob(importExportService, job.id, projectId, user.id, type);
+    return reply.status(202).send(
+      toJsonSafe(
+        ok({
+          job,
+          downloadUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}/download`,
+          pollUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}`
+        })
+      )
+    );
+  });
+
+  app.post("/api/projects/:projectId/runs/results/export/csv/async", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = runResultsExportAsyncSchema.parse(req.body ?? {});
+    const prisma = importExportService.getPrisma();
+    const job = await prisma.exportJob.create({
+      data: {
+        projectId,
+        type: "run_results_csv",
+        status: "pending",
+        filters: { runId: body.runId.toString() } as Prisma.InputJsonValue,
+        summary: { phase: "queued" } as Prisma.InputJsonValue,
+        createdBy: user.id
+      }
+    });
+    scheduleCaseExportJob(importExportService, job.id, projectId, user.id, "run_results_csv", body.runId);
+    return reply.status(202).send(
+      toJsonSafe(
+        ok({
+          job,
+          downloadUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}/download`,
+          pollUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}`
+        })
+      )
+    );
   });
 
   app.get("/api/projects/:projectId/reports/export-jobs", async (req, reply) => {
@@ -1588,33 +2201,23 @@ export async function registerImportExportRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { jobId } = exportJobIdParamSchema.parse(req.params);
     if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "export job download requires prisma mode", 501);
-    const exported = await importExportService.buildReportExportFromJob(projectId, jobId);
-    const reportType = String(exported.fileName).includes("run-summary")
-      ? "run_summary"
-      : String(exported.fileName).includes("milestone-summary")
-        ? "milestone_summary"
-        : String(exported.fileName).includes("plan-summary")
-          ? "plan_summary"
-          : String(exported.fileName).includes("traceability")
-            ? "traceability"
-            : String(exported.fileName).includes("coverage-gap")
-              ? "coverage_gap"
-              : String(exported.fileName).includes("defect-coverage")
-                ? "defect_coverage"
-                : "results_explorer";
+    const exported = await importExportService.buildExportDownload(projectId, jobId);
+    const job = await importExportService.getExportJob(projectId, jobId);
+    const entityType = job.type.startsWith("report_") ? "report" : "export";
+    const eventType = job.type.startsWith("report_") ? "report.export_downloaded" : "export.job_downloaded";
     await recordActivityEvent(deps.prisma, {
       projectId,
       actorUserId: user.id,
-      entityType: "report",
+      entityType,
       entityId: jobId,
-      eventType: "report.export_downloaded",
-      title: "Report export downloaded",
-      body: reportType,
-      payload: { reportType, jobId: jobId.toString(), fileName: exported.fileName, totalRows: exported.totalRows }
+      eventType,
+      title: "Export downloaded",
+      body: job.type,
+      payload: { jobId: jobId.toString(), fileName: exported.fileName, exportType: job.type }
     });
-    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-type", exported.contentType);
     reply.header("content-disposition", `attachment; filename="${exported.fileName}"`);
-    return reply.send(exported.csv);
+    return reply.send(exported.body);
   });
 
   app.get("/api/projects/:projectId/cases/export/csv", async (req, reply) => {
@@ -1637,6 +2240,16 @@ export async function registerImportExportRoutes(
     return reply.send(json);
   });
 
+  app.get("/api/projects/:projectId/cases/export/testrail", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "case export requires prisma mode", 501);
+    const json = await importExportService.exportCasesTestRailJson(projectId, user.id);
+    reply.header("content-type", "application/json; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="project-${projectId.toString()}-cases-testrail.json"`);
+    return reply.send(json);
+  });
+
   app.get("/api/projects/:projectId/cases/export/xml", async (req, reply) => {
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -1656,5 +2269,16 @@ export async function registerImportExportRoutes(
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", `attachment; filename="run-${runId.toString()}-results.csv"`);
     return reply.send(csv);
+  });
+
+  app.get("/api/projects/:projectId/runs/:runId/results/export/testrail", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "result export requires prisma mode", 501);
+    const json = await importExportService.exportRunResultsTestRailJson(projectId, runId, user.id);
+    reply.header("content-type", "application/json; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="run-${runId.toString()}-results-testrail.json"`);
+    return reply.send(json);
   });
 }

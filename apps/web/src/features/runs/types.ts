@@ -20,6 +20,8 @@ export type TestInstanceRow = {
   title: string;
   status: string;
   assignedTo?: string | null;
+  caseChanged?: boolean;
+  changedFields?: string[];
 };
 
 export type RunCompositionMode = "static" | "include_all_live" | "dynamic_filter";
@@ -42,11 +44,20 @@ export type RunDetail = RunSummary & {
   composition?: RunCompositionInfo | null;
 };
 
+export type RunProgressMetricsDto = {
+  total: number;
+  counts: { passed: number; failed: number; blocked: number; retest: number; untested: number };
+  executed: number;
+  completionRate: number;
+  progressPercent: number;
+};
+
 export type RunDetailDto = {
   run: RunDetail;
   dateWarnings?: string[];
   instances: TestInstanceRow[];
   counts: { passed: number; failed: number; blocked: number; retest: number; untested: number };
+  metrics?: RunProgressMetricsDto;
 };
 
 export type TestResultHistoryItem = {

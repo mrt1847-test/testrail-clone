@@ -52,7 +52,8 @@ export class SuitesService {
     });
 
     if (isBaseline && master) {
-      await this.copySectionTree(master.id, created.id);
+      const sectionIdMap = await this.copySectionTree(master.id, created.id);
+      await this.copyCases(master.id, sectionIdMap);
     }
 
     return created;
@@ -85,6 +86,56 @@ export class SuitesService {
         displayOrder: section.displayOrder
       });
       idMap.set(section.id, created.id);
+    }
+    return idMap;
+  }
+
+  private async copyCases(sourceSuiteId: bigint, sectionIdMap: Map<bigint, bigint>) {
+    const sourceSuite = await this.getSuite(sourceSuiteId);
+    const cases = await this.repo.listCasesForSuite(sourceSuite.projectId, sourceSuiteId, "active");
+    for (const sourceCase of cases) {
+      const targetSectionId = sectionIdMap.get(sourceCase.sectionId);
+      if (!targetSectionId) continue;
+
+      const copiedCase = await this.repo.createCase({
+        projectId: sourceCase.projectId,
+        sectionId: targetSectionId,
+        title: sourceCase.title,
+        priority: sourceCase.priority,
+        caseType: sourceCase.caseType,
+        estimate: sourceCase.estimate,
+        refs: sourceCase.refs,
+        labels: [...(sourceCase.labels ?? [])],
+        automationKey: null,
+        externalId: null,
+        preconditions: sourceCase.preconditions,
+        expectedResult: sourceCase.expectedResult,
+        caseTemplateId: sourceCase.caseTemplateId ?? null,
+        customValues: { ...(sourceCase.customValues ?? {}) },
+        archivedAt: null
+      });
+
+      const steps = await this.repo.listCaseSteps(sourceCase.id);
+      for (const step of steps) {
+        await this.repo.createCaseStep({
+          caseId: copiedCase.id,
+          stepOrder: step.stepOrder,
+          content: step.content,
+          expectedResult: step.expectedResult ?? null
+        });
+      }
+
+      const scenarios = await this.repo.listCaseScenarios(sourceCase.id);
+      for (const scenario of scenarios) {
+        await this.repo.createCaseScenario({
+          caseId: copiedCase.id,
+          scenarioOrder: scenario.scenarioOrder,
+          name: scenario.name,
+          content: scenario.content
+        });
+      }
+
+      await this.repo.createCaseVersionSnapshot(copiedCase.id, `baseline_created:${sourceCase.id.toString()}`);
     }
   }
 

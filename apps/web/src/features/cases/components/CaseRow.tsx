@@ -28,7 +28,7 @@ type CaseRowProps = {
     references: string;
     expectedResult: string;
     templateId: string | null;
-    customValues: Record<string, string | number | boolean | null>;
+    customValues: Record<string, string | number | boolean | string[] | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;

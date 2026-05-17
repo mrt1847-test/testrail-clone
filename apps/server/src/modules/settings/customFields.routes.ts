@@ -1,10 +1,21 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
-import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import {
+  getAuthenticatedUser,
+  requireProjectMutationRole,
+  requireProjectPermission
+} from "../../common/middlewares/authorization.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import { visibilityRulesForStorage } from "../../domain/customFieldVisibility.js";
+import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import {
+  customFieldAccessFlags,
+  loadActiveCustomFields,
+  visibilityContextFromAccess
+} from "./customFieldAccess.js";
 import {
   customFields,
   customFieldCreateSchema,
@@ -12,28 +23,80 @@ import {
   customFieldIdParamSchema,
   type CustomFieldRow,
   normalizeSystemName,
+  customFieldOptionsForStorage,
   fieldToResponse,
   fieldAuditChanges,
   type SettingsRouteDeps
 } from "./settings.shared.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 
+function parseForUseQuery(query: Record<string, unknown> | undefined) {
+  const raw = query?.forUse;
+  return raw === true || raw === "true" || raw === "1";
+}
+
+function parseTemplateIdQuery(query: Record<string, unknown> | undefined) {
+  const raw = query?.templateId;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  return String(raw);
+}
+
 export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const rawScope = (req.query as { scope?: unknown } | undefined)?.scope;
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const rawScope = query.scope;
     const scope = rawScope === "case" || rawScope === "result" ? rawScope : undefined;
+    const forUse = parseForUseQuery(query);
+    const templateId = parseTemplateIdQuery(query);
+
+    if (forUse && scope && deps.prisma) {
+      await requireProjectPermission(
+        req,
+        deps,
+        scope === "case" ? "cases.read" : "runs.read"
+      );
+      const user = await getAuthenticatedUser(req, deps);
+      const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+      if (!access) {
+        return reply.send(toJsonSafe(paged([], 1, 100)));
+      }
+      const ctx = visibilityContextFromAccess(access, scope, templateId);
+      const fields = await loadActiveCustomFields(deps.prisma, projectId, scope);
+      const items = fields
+        .filter((field) => customFieldAccessFlags(field, ctx).canView)
+        .map((field) => fieldToResponse(field, customFieldAccessFlags(field, ctx)));
+      return reply.send(toJsonSafe(paged(items, 1, 100)));
+    }
+
     if (deps.prisma) {
       const rows = await deps.prisma.customField.findMany({
         where: { projectId, deletedAt: null, ...(scope ? { scope } : {}) },
         orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
       });
-      const items = rows.map(fieldToResponse);
+      const items = rows.map((row) => fieldToResponse(row));
       return reply.send(toJsonSafe(paged(items, 1, 100)));
     }
-    return reply.send(
-      toJsonSafe(paged(customFields.filter((item) => item.projectId === projectId && (!scope || item.scope === scope)), 1, 100))
+    const memoryRows = customFields.filter(
+      (item) => item.projectId === projectId && (!scope || item.scope === scope)
     );
+    if (forUse && scope) {
+      const user = await getAuthenticatedUser(req, deps);
+      if (!deps.prisma) {
+        const access = user
+          ? { builtInRole: "owner" as const, userId: user.id, projectId, customRoleId: null, customRoleName: null, globalRole: "user" as const, permissions: [] }
+          : null;
+        if (!access) return reply.send(toJsonSafe(paged([], 1, 100)));
+        const ctx = visibilityContextFromAccess(access, scope, templateId);
+        const items = memoryRows
+          .filter((field) => field.isActive && customFieldAccessFlags({ ...field, visibility: field.visibility ?? {} }, ctx).canView)
+          .map((field) =>
+            fieldToResponse(field, customFieldAccessFlags({ ...field, visibility: field.visibility ?? {} }, ctx))
+          );
+        return reply.send(toJsonSafe(paged(items, 1, 100)));
+      }
+    }
+    return reply.send(toJsonSafe(paged(memoryRows.map((row) => fieldToResponse(row)), 1, 100)));
   });
 
   app.post("/api/projects/:projectId/settings/custom-fields", async (req, reply) => {
@@ -55,10 +118,11 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
               systemName,
               fieldType: body.fieldType,
               scope: body.scope,
-              options: body.fieldType === "select" ? body.options : [],
+              options: customFieldOptionsForStorage(body.fieldType, body.options),
               isRequired: body.isRequired,
               isActive: body.isActive,
               displayOrder: body.displayOrder,
+              visibility: (visibilityRulesForStorage(body.visibility) ?? Prisma.DbNull) as Prisma.InputJsonValue,
               createdBy: actor.id,
               updatedBy: actor.id
             }
@@ -103,13 +167,14 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
       systemName,
       fieldType: body.fieldType,
       scope: body.scope,
-      options: body.fieldType === "select" ? body.options : [],
+      options: customFieldOptionsForStorage(body.fieldType, body.options),
       isRequired: body.isRequired,
       isActive: body.isActive,
-      displayOrder: body.displayOrder
+      displayOrder: body.displayOrder,
+      visibility: visibilityRulesForStorage(body.visibility)
     };
     customFields.push(row);
-    return reply.send(toJsonSafe(ok(row)));
+    return reply.send(toJsonSafe(ok(fieldToResponse(row))));
   });
 
   app.patch("/api/projects/:projectId/settings/custom-fields/:fieldId", async (req, reply) => {
@@ -126,11 +191,12 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
         const row = await deps.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const existing = await tx.customField.findFirst({
             where: { id: fieldId, projectId, deletedAt: null },
-            select: { id: true }
+            select: { id: true, fieldType: true }
           });
           if (!existing) {
             throw new Error("CUSTOM_FIELD_NOT_FOUND");
           }
+          const nextFieldType = body.fieldType ?? existing.fieldType;
           const updated = await tx.customField.update({
             where: { id: existing.id },
             data: {
@@ -139,11 +205,22 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
               ...(body.fieldType !== undefined ? { fieldType: body.fieldType } : {}),
               ...(body.scope !== undefined ? { scope: body.scope } : {}),
               ...(body.options !== undefined || body.fieldType !== undefined
-                ? { options: body.fieldType === "select" || body.options !== undefined ? body.options ?? [] : [] }
+                ? {
+                    options: customFieldOptionsForStorage(
+                      nextFieldType as CustomFieldRow["fieldType"],
+                      body.options ?? []
+                    )
+                  }
                 : {}),
               ...(body.isRequired !== undefined ? { isRequired: body.isRequired } : {}),
               ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
               ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
+              ...(body.visibility !== undefined
+                ? {
+                    visibility: (visibilityRulesForStorage(body.visibility) ??
+                      Prisma.DbNull) as Prisma.InputJsonValue
+                  }
+                : {}),
               updatedBy: actor.id
             }
           });
@@ -188,17 +265,21 @@ export async function registerCustomFieldsRoutes(app: FastifyInstance, deps: Set
     ) {
       return reply.code(409).send({ code: "CUSTOM_FIELD_EXISTS", message: "custom field systemName already exists" });
     }
+    const nextFieldType = body.fieldType ?? row.fieldType;
     Object.assign(row, {
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(nextSystemName !== undefined ? { systemName: nextSystemName } : {}),
       ...(body.fieldType !== undefined ? { fieldType: body.fieldType } : {}),
       ...(body.scope !== undefined ? { scope: body.scope } : {}),
-      ...(body.options !== undefined ? { options: body.options } : {}),
+      ...(body.options !== undefined || body.fieldType !== undefined
+        ? { options: customFieldOptionsForStorage(nextFieldType, body.options ?? row.options) }
+        : {}),
       ...(body.isRequired !== undefined ? { isRequired: body.isRequired } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-      ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {})
+      ...(body.displayOrder !== undefined ? { displayOrder: body.displayOrder } : {}),
+      ...(body.visibility !== undefined ? { visibility: visibilityRulesForStorage(body.visibility) } : {})
     });
-    return reply.send(toJsonSafe(ok(row)));
+    return reply.send(toJsonSafe(ok(fieldToResponse(row))));
   });
 
   app.delete("/api/projects/:projectId/settings/custom-fields/:fieldId", async (req, reply) => {

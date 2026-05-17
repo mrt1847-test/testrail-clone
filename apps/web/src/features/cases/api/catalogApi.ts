@@ -27,7 +27,7 @@ type ApiCase = {
   preconditions?: string | null;
   expectedResult?: string | null;
   caseTemplateId?: string | null;
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, string | number | boolean | string[] | null>;
   lockVersion?: number;
   updatedAt?: string;
   archivedAt?: string | null;
@@ -288,11 +288,12 @@ export async function createCase(
     title: string;
     priority?: string;
     caseType?: string;
+    estimate?: string | null;
     preconditions?: string;
     expectedResult?: string | null;
     caseTemplateId?: number | null;
     refs?: string | null;
-    customValues?: Record<string, string | number | boolean | null>;
+    customValues?: Record<string, string | number | boolean | string[] | null>;
   }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/sections/${sectionId}/cases`, {
@@ -315,9 +316,10 @@ export async function updateCase(
     refs?: string | null;
     priority?: string;
     caseType?: string;
+    estimate?: string | null;
     expectedUpdatedAt?: string;
     expectedVersion?: number;
-    customValues?: Record<string, string | number | boolean | null>;
+    customValues?: Record<string, string | number | boolean | string[] | null>;
   }
 ): Promise<TestCase> {
   const res = await apiFetch<Ok<ApiCase>>(`/api/cases/${caseId}`, {
@@ -627,7 +629,7 @@ type ApiCaseVersion = {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
-  customValuesSnapshot?: Record<string, string | number | boolean | null>;
+  customValuesSnapshot?: Record<string, string | number | boolean | string[] | null>;
   stepsSnapshot?: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   attachmentSnapshots?: CaseVersion["attachmentSnapshots"];
   changeReason?: string | null;

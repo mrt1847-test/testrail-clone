@@ -1,5 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+
+import { fetchCaseScenarios } from "../../cases/api/bddApi";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
@@ -45,6 +48,7 @@ import { ResultEntryPanel } from "./ResultEntryPanel";
 import { ResultHistoryList } from "./ResultHistoryList";
 import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionPanel";
 import { RunSchedulePanel } from "./RunSchedulePanel";
+import { ExecutionCommentsPanel } from "./ExecutionCommentsPanel";
 
 export function RunDetailPage() {
   const { projectId = "", runId = "" } = useParams();
@@ -97,6 +101,11 @@ export function RunDetailPage() {
     defectsQuery
   } = queries;
   const statusQuery = useProjectStatuses(projectId);
+  const selectedCaseScenariosQuery = useQuery({
+    queryKey: ["case-scenarios", selected?.caseId],
+    queryFn: () => fetchCaseScenarios(selected!.caseId),
+    enabled: Boolean(selected?.caseId)
+  });
   const bulkActions = useRunBulkActions({ projectId, runId, pagedInstances });
   const {
     selectedTestIds,
@@ -262,6 +271,15 @@ export function RunDetailPage() {
         onSave={(patch) => scheduleMutation.mutateAsync(patch)}
       />
 
+      <CollapsibleSection title="Run discussion" defaultOpen={false}>
+        <ExecutionCommentsPanel
+          scope="test_run"
+          runId={runId}
+          canPost={run.status === "open"}
+          emptyHint="Discuss this run with your team."
+        />
+      </CollapsibleSection>
+
       <RunSummaryBar
         className="lg:hidden"
         counts={counts}
@@ -356,6 +374,7 @@ export function RunDetailPage() {
                   title: selected.title
                 }}
                 caseSteps={selectedCaseDetail.data?.steps ?? []}
+                caseScenarios={selectedCaseScenariosQuery.data ?? []}
                 isCaseStepsLoading={selectedCaseDetail.isLoading}
                 isSubmitting={addResultMutation.isPending}
                 disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
@@ -368,7 +387,8 @@ export function RunDetailPage() {
                     version: payload.version,
                     defects: payload.defects,
                     customValues: payload.customValues,
-                    stepResults: payload.stepResults
+                    stepResults: payload.stepResults,
+                    scenarioResults: payload.scenarioResults
                   });
                 }}
               />
@@ -408,6 +428,14 @@ export function RunDetailPage() {
                 onPushDefect={(input) => void pushDefectMutation.mutateAsync(input)}
                 onDeleteDefect={(defectLinkId) => void deleteDefectMutation.mutateAsync(defectLinkId)}
               />
+              </CollapsibleSection>
+              <CollapsibleSection title="Test discussion" defaultOpen={false}>
+                <ExecutionCommentsPanel
+                  scope="test_instance"
+                  testId={selected.id}
+                  canPost={run.status === "open"}
+                  emptyHint="Discuss this test without adding a result."
+                />
               </CollapsibleSection>
               {run.status === "open" ? (
                 <CollapsibleSection title="Composition" defaultOpen={false}>

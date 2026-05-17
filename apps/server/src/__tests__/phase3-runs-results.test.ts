@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
+import { getMasterSuiteId } from "./testProjectSuites.js";
 
 const app = buildApp();
 
@@ -37,14 +38,7 @@ describe("phase3 runs/results flow", () => {
     expect(projectRes.statusCode).toBe(200);
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Phase3 Suite" }
-    });
-    expect(suiteRes.statusCode).toBe(200);
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const sectionRes = await app.inject({
       method: "POST",
@@ -59,7 +53,7 @@ describe("phase3 runs/results flow", () => {
       method: "POST",
       url: `/api/sections/${sectionId}/cases`,
       headers,
-      payload: { title: "Phase3 case", priority: "high" }
+      payload: { title: "Phase3 case", priority: "high", estimate: "5m" }
     });
     expect(caseRes.statusCode).toBe(200);
     const caseId = (caseRes.json() as { data: { id: string } }).data.id;
@@ -89,19 +83,37 @@ describe("phase3 runs/results flow", () => {
 
     const detailRes = await app.inject({
       method: "GET",
-      url: `/api/projects/${projectId}/runs/${runId}`
+      url: `/api/projects/${projectId}/runs/${runId}?includeInstances=false`
     });
     expect(detailRes.statusCode).toBe(200);
     const detail = detailRes.json() as {
       data: {
-        run: { id: string; status: string };
+        run: { id: string; status: string; progress?: number };
+        metrics?: {
+          total: number;
+          executed: number;
+          progressPercent: number;
+          counts: { passed: number; untested: number };
+        };
         instances: Array<{ id: string; titleSnapshot: string; status: string; automationKeySnapshot?: string | null }>;
       };
     };
-    expect(detail.data.instances.length).toBe(1);
-    expect(detail.data.instances[0].titleSnapshot).toBe("Phase3 case");
-    expect(detail.data.instances[0].status).toBe("untested");
-    const testId = detail.data.instances[0].id;
+    expect(detail.data.metrics?.total).toBe(1);
+    expect(detail.data.metrics?.counts.untested).toBe(1);
+    expect(detail.data.run.progress).toBe(0);
+    expect(detail.data.instances).toEqual([]);
+
+    const instancesRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/runs/${runId}/instances?page=1&pageSize=20`
+    });
+    expect(instancesRes.statusCode).toBe(200);
+    const instanceRows = (instancesRes.json() as { data: Array<{ id: string; titleSnapshot: string; status: string }> })
+      .data;
+    expect(instanceRows.length).toBe(1);
+    expect(instanceRows[0].titleSnapshot).toBe("Phase3 case");
+    expect(instanceRows[0].status).toBe("untested");
+    const testId = instanceRows[0].id;
 
     const resultRes = await app.inject({
       method: "POST",
@@ -111,6 +123,7 @@ describe("phase3 runs/results flow", () => {
         testId,
         status: "passed",
         comment: "ok",
+        elapsed: "7m",
         stepResults: [{ stepOrder: 1, status: "passed", actualResult: "step ok" }]
       }
     });
@@ -161,8 +174,14 @@ describe("phase3 runs/results flow", () => {
       url: `/api/runs/${runId}/summary`
     });
     expect(summaryRes.statusCode).toBe(200);
-    const summary = summaryRes.json() as { counts: Record<string, number> };
+    const summary = summaryRes.json() as {
+      counts: Record<string, number>;
+      progressPercent: number;
+      executed: number;
+    };
     expect(summary.counts.passed).toBe(1);
+    expect(summary.progressPercent).toBe(100);
+    expect(summary.executed).toBe(1);
 
     const overviewBeforeCloseRes = await app.inject({
       method: "GET",
@@ -180,10 +199,30 @@ describe("phase3 runs/results flow", () => {
       url: `/api/projects/${projectId}/reports/run-summary`
     });
     expect(runSummaryRes.statusCode).toBe(200);
-    const runSummaryPayload = runSummaryRes.json() as { data: { items: Array<{ runId: string; passed: number; progress: number }> } };
+    const runSummaryPayload = runSummaryRes.json() as {
+      data: {
+        items: Array<{
+          runId: string;
+          passed: number;
+          progress: number;
+          estimatedSeconds: number;
+          actualSeconds: number;
+          actualOverEstimateSeconds: number;
+          estimate: string;
+          actual: string;
+          actualVsEstimate: string;
+        }>;
+      };
+    };
     const matchedRun = runSummaryPayload.data.items.find((item) => item.runId === runId);
     expect(matchedRun?.passed).toBe(1);
     expect((matchedRun?.progress ?? 0) > 0).toBe(true);
+    expect(matchedRun?.estimatedSeconds).toBe(300);
+    expect(matchedRun?.actualSeconds).toBe(420);
+    expect(matchedRun?.actualOverEstimateSeconds).toBe(120);
+    expect(matchedRun?.estimate).toBe("5m");
+    expect(matchedRun?.actual).toBe("7m");
+    expect(matchedRun?.actualVsEstimate).toBe("+2m");
 
     const closeRes = await app.inject({
       method: "POST",
@@ -221,13 +260,7 @@ describe("phase3 runs/results flow", () => {
     });
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "IncludeAll Suite" }
-    });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const sectionRes = await app.inject({
       method: "POST",
@@ -293,13 +326,7 @@ describe("phase3 runs/results flow", () => {
     });
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
 
-    const suiteRes = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/suites`,
-      headers,
-      payload: { name: "Archive Exclusion Suite" }
-    });
-    const suiteId = (suiteRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
 
     const sectionRes = await app.inject({
       method: "POST",

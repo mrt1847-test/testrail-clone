@@ -9,10 +9,13 @@ import { resultIdParamSchema, resultSchema, testIdParamSchema } from "./results.
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
 import { getAuthenticatedUser, requireAuthenticated, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
+import { loadActiveCustomFields, visibilityContextFromAccess } from "../settings/customFieldAccess.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
 import { recordAuditLog } from "../settings/auditLog.service.js";
 import {
+  filterResultCustomValuesForRead,
   projectIdForTestInstance,
   resultCustomFieldErrorResponse,
   validateResultCustomValues
@@ -180,8 +183,20 @@ export async function registerResultsRoutes(
     const params = testIdParamSchema.parse(req.params);
     const body = resultSchema.parse(req.body);
     const projectId = await projectIdForTestInstance(deps.prisma, params.testId);
+    let visibility;
+    if (deps.prisma && projectId) {
+      const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+      if (access) {
+        visibility = visibilityContextFromAccess(access, "result");
+      }
+    }
     try {
-      body.customValues = await validateResultCustomValues(deps.prisma, projectId, body.customValues);
+      body.customValues = await validateResultCustomValues(
+        deps.prisma,
+        projectId,
+        body.customValues,
+        visibility
+      );
     } catch (e) {
       const customFieldError = resultCustomFieldErrorResponse(e);
       if (customFieldError) return reply.code(400).send(customFieldError);
@@ -196,10 +211,28 @@ export async function registerResultsRoutes(
     const params = testIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
     const { items, total } = await deps.resultsService.listResultsForTestInstancePage(params.testId, page, pageSize);
+    let filteredItems = items;
+    if (deps.prisma) {
+      const projectId = await projectIdForTestInstance(deps.prisma, params.testId);
+      if (projectId) {
+        const user = await getAuthenticatedUser(req, deps);
+        const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+        if (access) {
+          const ctx = visibilityContextFromAccess(access, "result");
+          const fields = await loadActiveCustomFields(deps.prisma, projectId, "result");
+          filteredItems = items.map((item) => ({
+            ...item,
+            customValues: item.customValues
+              ? filterResultCustomValuesForRead(item.customValues, fields, ctx)
+              : item.customValues
+          }));
+        }
+      }
+    }
     return reply.send(
       toJsonSafe(
         ok({
-          items,
+          items: filteredItems,
           page,
           pageSize,
           total,
@@ -213,6 +246,12 @@ export async function registerResultsRoutes(
     const params = resultIdParamSchema.parse(req.params);
     const steps = await deps.resultsService.listResultStepsByResultId(params.resultId);
     return reply.send(toJsonSafe(steps));
+  });
+
+  app.get("/api/results/:resultId/scenarios", async (req, reply) => {
+    const params = resultIdParamSchema.parse(req.params);
+    const scenarios = await deps.resultsService.listResultScenariosByResultId(params.resultId);
+    return reply.send(toJsonSafe(scenarios));
   });
 
   app.get("/api/results/:resultId/attachments", async (req, reply) => {

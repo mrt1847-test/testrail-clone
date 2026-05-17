@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
+import {
+  loadActiveCustomFields,
+  visibilityContextFromAccess
+} from "../settings/customFieldAccess.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
@@ -25,7 +30,11 @@ import {
   bulkMoveCasesSchema,
   bulkUpdateCasesSchema,
   createCaseSchema,
+  createCaseScenarioSchema,
   createCaseStepSchema,
+  replaceCaseScenariosSchema,
+  scenarioIdParamSchema,
+  updateCaseScenarioSchema,
   listCasesQuerySchema,
   positionCasesSchema,
   projectIdParamSchema,
@@ -73,7 +82,7 @@ function parseIfMatchVersion(value?: string | string[]): number | undefined {
   return num;
 }
 
-type ScalarCustomValue = string | number | boolean | null;
+type ScalarCustomValue = string | number | boolean | string[] | null;
 type CustomValues = Record<string, ScalarCustomValue>;
 
 function asCustomValues(value: unknown): CustomValues | undefined {
@@ -81,8 +90,14 @@ function asCustomValues(value: unknown): CustomValues | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: CustomValues = {};
   for (const [key, item] of Object.entries(value)) {
-    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean" || item === null) {
-      out[key] = item;
+    if (
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean" ||
+      item === null ||
+      (Array.isArray(item) && item.every((entry) => typeof entry === "string"))
+    ) {
+      out[key] = item as ScalarCustomValue;
     }
   }
   return out;
@@ -90,6 +105,40 @@ function asCustomValues(value: unknown): CustomValues | undefined {
 
 function previewText(value: string, maxLength = 160) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
+}
+
+type CaseVisibilityDeps = {
+  casesService: CasesService;
+  authService: AuthService;
+  prisma?: PrismaClient;
+};
+
+async function applyCaseVisibilityRead<T extends { customValues?: CustomValues; caseTemplateId?: bigint | null }>(
+  req: Parameters<typeof getAuthenticatedUser>[0],
+  deps: CaseVisibilityDeps,
+  projectId: bigint,
+  row: T
+): Promise<T> {
+  if (!deps.prisma) return row;
+  const user = await getAuthenticatedUser(req, deps);
+  const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+  if (!access) return row;
+  const ctx = visibilityContextFromAccess(access, "case", row.caseTemplateId?.toString() ?? null);
+  const fields = await loadActiveCustomFields(deps.prisma, projectId, "case");
+  return deps.casesService.filterCaseCustomValuesForRead(row, ctx, fields);
+}
+
+async function caseVisibilityContext(
+  req: Parameters<typeof getAuthenticatedUser>[0],
+  deps: CaseVisibilityDeps,
+  projectId: bigint,
+  templateId?: bigint | null
+) {
+  if (!deps.prisma) return undefined;
+  const user = await getAuthenticatedUser(req, deps);
+  const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
+  if (!access) return undefined;
+  return visibilityContextFromAccess(access, "case", templateId?.toString() ?? null);
 }
 
 type AttachmentEntity = "case" | "case_step";
@@ -271,7 +320,15 @@ export async function registerCasesRoutes(
       sectionScope: rawQuery.sectionScope,
       state: rawQuery.state
     });
-    return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
+    const listed = await deps.casesService.listCases(query);
+    if (deps.prisma) {
+      const filtered = [];
+      for (const row of listed) {
+        filtered.push(await applyCaseVisibilityRead(req, deps, projectId, row));
+      }
+      return reply.send(toJsonSafe(paged(filtered, page, pageSize)));
+    }
+    return reply.send(toJsonSafe(paged(listed, page, pageSize)));
   });
 
   app.get("/api/sections/:sectionId/cases", async (req, reply) => {
@@ -290,7 +347,16 @@ export async function registerCasesRoutes(
       sectionScope: rawQuery.sectionScope,
       state: rawQuery.state
     });
-    return reply.send(toJsonSafe(paged(await deps.casesService.listCases(query), page, pageSize)));
+    const listed = await deps.casesService.listCases(query);
+    const projectId = await deps.casesService.projectIdForSection(deps.prisma, sectionId);
+    if (deps.prisma && projectId) {
+      const filtered = [];
+      for (const row of listed) {
+        filtered.push(await applyCaseVisibilityRead(req, deps, projectId, row));
+      }
+      return reply.send(toJsonSafe(paged(filtered, page, pageSize)));
+    }
+    return reply.send(toJsonSafe(paged(listed, page, pageSize)));
   });
 
   app.post("/api/sections/:sectionId/cases", async (req, reply) => {
@@ -302,6 +368,7 @@ export async function registerCasesRoutes(
       title: raw.title,
       priority: raw.priority,
       caseType: raw.caseType,
+      estimate: raw.estimate,
       preconditions: raw.preconditions,
       expectedResult: raw.expectedResult,
       caseTemplateId: parseOptionalBigint(raw.caseTemplateId),
@@ -311,15 +378,20 @@ export async function registerCasesRoutes(
     try {
       const user = await getAuthenticatedUser(req, deps);
       const projectId = await deps.casesService.projectIdForSection(deps.prisma, sectionId);
-      const customValues = await deps.casesService.validateCaseCustomValues(
-        deps.prisma,
-        projectId,
-        asCustomValues(body.customValues) ?? {}
-      );
+      if (!projectId) {
+        throw new AppError("NOT_FOUND", `section ${sectionId.toString()} not found`, 404);
+      }
       const caseTemplateId = await resolveCaseTemplateIdForProject(
         deps,
         projectId,
         body.caseTemplateId ?? undefined
+      );
+      const visibility = await caseVisibilityContext(req, deps, projectId, caseTemplateId);
+      const customValues = await deps.casesService.validateCaseCustomValues(
+        deps.prisma,
+        projectId,
+        asCustomValues(body.customValues) ?? {},
+        visibility
       );
       const created = await deps.casesService.createCase({
         ...body,
@@ -339,7 +411,11 @@ export async function registerCasesRoutes(
         });
       }
       await syncRunsForCaseChange(deps.compositionSync, created.projectId, created.suiteId);
-      return reply.send(toJsonSafe(ok(created)));
+      const responseRow =
+        created.projectId != null
+          ? await applyCaseVisibilityRead(req, deps, created.projectId, created)
+          : created;
+      return reply.send(toJsonSafe(ok(responseRow)));
     } catch (e) {
       const customFieldError = deps.casesService.customFieldErrorResponse(e);
       if (customFieldError) return reply.code(400).send(customFieldError);
@@ -349,7 +425,11 @@ export async function registerCasesRoutes(
 
   app.get("/api/cases/:caseId", async (req, reply) => {
     const { caseId } = caseIdParamSchema.parse(req.params);
-    return reply.send(toJsonSafe(ok(await deps.casesService.getCase(caseId))));
+    const row = await deps.casesService.getCase(caseId);
+    if (!row?.projectId) {
+      return reply.send(toJsonSafe(ok(row)));
+    }
+    return reply.send(toJsonSafe(ok(await applyCaseVisibilityRead(req, deps, row.projectId, row))));
   });
 
   app.get("/api/cases/:caseId/attachments", async (req, reply) => {
@@ -663,24 +743,49 @@ export async function registerCasesRoutes(
     const body = updateCaseSchema.parse(req.body);
     const ifMatchVersion = parseIfMatchVersion(req.headers["if-match"]);
     const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
-    const customValues = await deps.casesService.validateCaseCustomValues(
-      deps.prisma,
-      projectId,
-      asCustomValues(body.customValues)
-    ).catch((e) => {
-      const customFieldError = deps.casesService.customFieldErrorResponse(e);
-      if (customFieldError) return customFieldError;
-      throw e;
-    });
-    if (customValues && "code" in customValues) return reply.code(400).send(customValues);
+    if (!projectId) {
+      throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    }
+    const existing = await deps.casesService.getCase(caseId);
+    if (!existing) {
+      throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    }
     const caseTemplateId =
+      raw.caseTemplateId !== undefined
+        ? await resolveCaseTemplateIdForProject(deps, projectId, parseOptionalBigint(raw.caseTemplateId))
+        : existing.caseTemplateId;
+    const visibility = await caseVisibilityContext(req, deps, projectId, caseTemplateId);
+    let customValues: CustomValues | { code: string; message: string } | undefined;
+    try {
+      if (body.customValues !== undefined) {
+        customValues = visibility
+          ? await deps.casesService.mergeCaseCustomValuesForWrite(
+              deps.prisma,
+              projectId,
+              existing.customValues,
+              asCustomValues(body.customValues),
+              visibility
+            )
+          : await deps.casesService.validateCaseCustomValues(
+              deps.prisma,
+              projectId,
+              asCustomValues(body.customValues)
+            );
+      }
+    } catch (e) {
+      const customFieldError = deps.casesService.customFieldErrorResponse(e);
+      if (customFieldError) return reply.code(400).send(customFieldError);
+      throw e;
+    }
+    if (customValues && "code" in customValues) return reply.code(400).send(customValues);
+    const resolvedTemplateId =
       raw.caseTemplateId !== undefined
         ? await resolveCaseTemplateIdForProject(deps, projectId, parseOptionalBigint(raw.caseTemplateId))
         : undefined;
     const updated = await deps.casesService.updateCase(caseId, {
       ...body,
       ...(customValues !== undefined ? { customValues } : {}),
-      ...(caseTemplateId !== undefined ? { caseTemplateId } : {}),
+      ...(resolvedTemplateId !== undefined ? { caseTemplateId: resolvedTemplateId } : {}),
       expectedVersion: body.expectedVersion ?? ifMatchVersion
     });
     if (updated.projectId) {
@@ -695,7 +800,11 @@ export async function registerCasesRoutes(
         payload: { caseId: updated.id.toString() }
       });
     }
-    return reply.send(toJsonSafe(ok(updated)));
+    const responseRow =
+      updated.projectId != null
+        ? await applyCaseVisibilityRead(req, deps, updated.projectId, updated)
+        : updated;
+    return reply.send(toJsonSafe(ok(responseRow)));
   });
 
   app.delete("/api/cases/:caseId", async (req, reply) => {
@@ -838,6 +947,43 @@ export async function registerCasesRoutes(
         payload: { caseId: stepContext.caseId.toString(), stepId: stepId.toString() }
       });
     }
+    return reply.status(204).send();
+  });
+
+  app.get("/api/cases/:caseId/scenarios", async (req, reply) => {
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const scenarios = await deps.casesService.listCaseScenarios(caseId);
+    return reply.send(toJsonSafe(ok(scenarios)));
+  });
+
+  app.post("/api/cases/:caseId/scenarios", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = createCaseScenarioSchema.parse(req.body ?? {});
+    const created = await deps.casesService.createCaseScenario(caseId, body);
+    return reply.send(toJsonSafe(ok(created)));
+  });
+
+  app.put("/api/cases/:caseId/scenarios", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const body = replaceCaseScenariosSchema.parse(req.body ?? {});
+    const replaced = await deps.casesService.replaceCaseScenarios(caseId, body.scenarios);
+    return reply.send(toJsonSafe(ok(replaced)));
+  });
+
+  app.patch("/api/case-scenarios/:scenarioId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
+    const { scenarioId } = scenarioIdParamSchema.parse(req.params);
+    const body = updateCaseScenarioSchema.parse(req.body ?? {});
+    const updated = await deps.casesService.updateCaseScenario(scenarioId, body);
+    return reply.send(toJsonSafe(ok(updated)));
+  });
+
+  app.delete("/api/case-scenarios/:scenarioId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
+    const { scenarioId } = scenarioIdParamSchema.parse(req.params);
+    await deps.casesService.deleteCaseScenario(scenarioId);
     return reply.status(204).send();
   });
 }

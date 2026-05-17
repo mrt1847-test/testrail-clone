@@ -67,7 +67,13 @@ export const runInstancesQuerySchema = z.object({
     }, z.coerce.bigint().nullable())
     .optional(),
   q: z.string().trim().min(1).optional(),
-  includeInstances: z.coerce.boolean().optional()
+  includeInstances: z
+    .preprocess((value) => {
+      if (value === "false" || value === "0") return false;
+      if (value === "true" || value === "1") return true;
+      return value;
+    }, z.boolean().optional())
+    .optional()
 });
 
 export const addCasesToRunBodySchema = z.object({
