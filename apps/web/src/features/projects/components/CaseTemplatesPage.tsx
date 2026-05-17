@@ -48,6 +48,7 @@ function formFromTemplate(row: CaseTemplateRow): TemplateForm {
 
 function payloadFromForm(form: TemplateForm): Omit<CaseTemplateRow, "id"> {
   return {
+    systemKey: null,
     name: form.name.trim(),
     description: form.description.trim() || null,
     fields: form.fieldsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),

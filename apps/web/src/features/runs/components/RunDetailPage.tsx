@@ -50,6 +50,7 @@ import { ResultHistoryList } from "./ResultHistoryList";
 import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionPanel";
 import { RunSchedulePanel } from "./RunSchedulePanel";
 import { ExecutionCommentsPanel } from "./ExecutionCommentsPanel";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 
 export function RunDetailPage() {
   const { projectId = "", runId = "" } = useParams();
@@ -276,14 +277,21 @@ export function RunDetailPage() {
         }}
       />
 
-      <RunHeader run={run} milestoneName={milestoneQuery.data?.name} counts={counts} />
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <RunHeader run={run} milestoneName={milestoneQuery.data?.name} counts={counts} />
+        </div>
+        <PrintLinkButton to={`/projects/${projectId}/runs/${runId}/print`} />
+      </div>
 
       <RunSchedulePanel
         run={run}
         dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
         canEdit={run.status === "open"}
         isSaving={scheduleMutation.isPending}
-        onSave={(patch) => scheduleMutation.mutateAsync(patch)}
+        onSave={async (patch) => {
+          await scheduleMutation.mutateAsync(patch);
+        }}
       />
 
       <CollapsibleSection title="Run discussion" defaultOpen={false}>

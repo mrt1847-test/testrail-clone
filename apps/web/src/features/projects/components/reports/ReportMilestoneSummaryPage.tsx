@@ -10,6 +10,7 @@ import { orderMilestonesForHierarchy } from "../../utils/milestoneDisplay";
 import { MilestoneDashboardPanel } from "../MilestoneDashboardPanel";
 import { MilestoneLifecycleBadge } from "../MilestoneLifecycleBadge";
 import { MilestoneProgressChip } from "../MilestoneProgressChip";
+import { MilestoneScheduleBadge } from "../MilestoneScheduleBadge";
 import {
   ReportExportButton,
   ReportSaveViewButton,
@@ -76,7 +77,7 @@ export function ReportMilestoneSummaryPage() {
     ];
   }, [q.data?.dashboard]);
 
-  if (q.isLoading) return <LoadingState message="Loading milestone summary…" />;
+  if (q.isLoading) return <LoadingState message="Loading milestone summary..." />;
   if (q.isError) return <ErrorState title="Could not load milestone summary" onRetry={() => void q.refetch()} />;
 
   return (
@@ -96,7 +97,7 @@ export function ReportMilestoneSummaryPage() {
             label: "Search",
             value: search,
             onChange: setSearch,
-            placeholder: "Milestone name…"
+            placeholder: "Milestone name..."
           },
           {
             kind: "select",
@@ -140,6 +141,7 @@ export function ReportMilestoneSummaryPage() {
                 <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
                   <th className="py-2 pr-2">Milestone</th>
                   <th className="py-2 pr-2">State</th>
+                  <th className="py-2 pr-2">Schedule</th>
                   <th className="py-2 pr-2">Runs</th>
                   <th className="py-2 pr-2">Progress</th>
                   <th className="py-2 pr-2">Passed</th>
@@ -150,7 +152,7 @@ export function ReportMilestoneSummaryPage() {
               <tbody>
                 {orderedRows.map((row) => (
                   <tr key={row.milestoneId} className="border-b border-slate-100">
-                    <td className="py-2 pr-2" style={{ paddingLeft: `${row.depth * 1rem + 0.5}rem` }}>
+                    <td className="py-2 pr-2" style={{ paddingLeft: `${row.depth * 16 + 8}px` }}>
                       <Link
                         className="font-medium text-indigo-800 hover:underline"
                         to={`/projects/${projectId}/milestones/${row.milestoneId}`}
@@ -163,6 +165,11 @@ export function ReportMilestoneSummaryPage() {
                     </td>
                     <td className="py-2 pr-2">
                       <MilestoneLifecycleBadge status={row.lifecycleStatus} />
+                    </td>
+                    <td className="py-2 pr-2">
+                      <span title={row.forecast.hint}>
+                        <MilestoneScheduleBadge status={row.forecast.scheduleStatus} />
+                      </span>
                     </td>
                     <td className="py-2 pr-2">
                       {row.runCount}

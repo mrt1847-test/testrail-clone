@@ -16,6 +16,35 @@ import {
   toUniqueDefectKeys
 } from "../reports/reportMetrics.service.js";
 import { buildMilestoneSummary } from "../reports/milestoneSummary.service.js";
+import {
+  buildCaseActivitySummaryReport,
+  caseActivitySummaryQuerySchema
+} from "../reports/caseActivitySummary.service.js";
+import {
+  buildCasePropertyDistributionReport,
+  buildCaseStatusTopsReport
+} from "../reports/casePropertyReports.service.js";
+import {
+  buildDefectSummaryReportForProject,
+  defectSummaryQuerySchema
+} from "../reports/defectSummary.service.js";
+import {
+  buildResultsCaseComparisonReport,
+  buildResultsPropertyDistributionReport,
+  resultsCaseComparisonQuerySchema,
+  resultsPropertyDistributionQuerySchema
+} from "../reports/resultReports.service.js";
+import {
+  buildRefsComparisonReportForProject,
+  buildRefsCoverageReportForProject,
+  buildRefsDefectSummaryReportForProject,
+  refsComparisonQuerySchema
+} from "../reports/refsReports.service.js";
+import {
+  buildProjectExecutionSummaryForProject,
+  buildUserWorkloadSummaryForProject
+} from "../reports/projectSummaryReports.service.js";
+import { PrismaRunsRepository } from "../runs/runs.prisma.repository.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
@@ -84,11 +113,26 @@ export const reportExportSchema = z.object({
       "results_explorer",
       "traceability",
       "coverage_gap",
-      "defect_coverage"
+      "defect_coverage",
+      "defect_summary",
+      "case_activity_summary",
+      "cases_property_distribution",
+      "status_tops",
+      "results_case_comparison",
+      "results_property_distribution",
+      "refs_coverage",
+      "refs_comparison",
+      "refs_defect_summary",
+      "project_summary",
+      "users_workload_summary"
     ])
     .default("results_explorer"),
   format: z.enum(["csv"]).default("csv"),
   runId: z.coerce.bigint().optional(),
+  runIdA: z.coerce.bigint().optional(),
+  runIdB: z.coerce.bigint().optional(),
+  milestoneId: z.coerce.bigint().optional(),
+  planId: z.coerce.bigint().optional(),
   caseId: z.coerce.bigint().optional(),
   testId: z.coerce.bigint().optional(),
   status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
@@ -96,6 +140,10 @@ export const reportExportSchema = z.object({
   createdFrom: z.string().datetime().optional(),
   createdTo: z.string().datetime().optional(),
   q: z.string().trim().min(1).optional(),
+  days: z.coerce.number().int().min(1).max(365).optional(),
+  actorUserId: z.coerce.bigint().optional(),
+  category: z.enum(["created", "updated", "deleted", "other", "all"]).optional(),
+  field: z.string().trim().min(1).optional(),
   maxRows: z.coerce.number().int().min(1).max(50000).default(10000)
 });
 
@@ -320,6 +368,10 @@ function normalizeReportFilters(input: z.infer<typeof reportExportSchema>) {
     reportType: input.reportType,
     format: input.format,
     ...(input.runId ? { runId: input.runId.toString() } : {}),
+    ...(input.runIdA ? { runIdA: input.runIdA.toString() } : {}),
+    ...(input.runIdB ? { runIdB: input.runIdB.toString() } : {}),
+    ...(input.milestoneId ? { milestoneId: input.milestoneId.toString() } : {}),
+    ...(input.planId ? { planId: input.planId.toString() } : {}),
     ...(input.caseId ? { caseId: input.caseId.toString() } : {}),
     ...(input.testId ? { testId: input.testId.toString() } : {}),
     ...(input.status ? { status: input.status } : {}),
@@ -327,6 +379,10 @@ function normalizeReportFilters(input: z.infer<typeof reportExportSchema>) {
     ...(input.createdFrom ? { createdFrom: input.createdFrom } : {}),
     ...(input.createdTo ? { createdTo: input.createdTo } : {}),
     ...(input.q ? { q: input.q } : {}),
+    ...(input.days != null ? { days: input.days } : {}),
+    ...(input.actorUserId ? { actorUserId: input.actorUserId.toString() } : {}),
+    ...(input.category ? { category: input.category } : {}),
+    ...(input.field ? { field: input.field } : {}),
     maxRows: input.maxRows
   };
 }
@@ -916,6 +972,76 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
     };
   }
 
+  if (input.reportType === "case_activity_summary") {
+    const query = caseActivitySummaryQuerySchema.parse({
+      days: input.days ?? 30,
+      ...(input.actorUserId != null ? { actorUserId: input.actorUserId } : {}),
+      ...(input.category ? { category: input.category } : {})
+    });
+    const summary = await buildCaseActivitySummaryReport(prisma, projectId, query);
+    const rows = summary.recent.map((row) => ({
+      event_id: row.id,
+      event_type: row.eventType,
+      category: row.category,
+      case_id: row.caseId,
+      title: row.title,
+      body: row.body ?? "",
+      actor_user_id: row.actorUserId ?? "",
+      actor_name: row.actorName,
+      created_at: row.createdAt
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-case-activity-summary.csv`,
+      csv: toCsv(
+        [
+          "event_id",
+          "event_type",
+          "category",
+          "case_id",
+          "title",
+          "body",
+          "actor_user_id",
+          "actor_name",
+          "created_at"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "cases_property_distribution") {
+    const report = await buildCasePropertyDistributionReport(projectId, { prisma }, input.field ?? "priority");
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      field: report.selectedField,
+      value: row.value,
+      label: row.label,
+      count: row.count,
+      percent: row.percent,
+      total_cases: report.totalCases
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-cases-property-distribution.csv`,
+      csv: toCsv(["field", "value", "label", "count", "percent", "total_cases"], rows),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "status_tops") {
+    const report = await buildCaseStatusTopsReport(projectId, { prisma });
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      status: row.status,
+      count: row.count,
+      percent: row.percent,
+      total_tests: report.totalTests
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-status-tops.csv`,
+      csv: toCsv(["status", "count", "percent", "total_tests"], rows),
+      totalRows: rows.length
+    };
+  }
+
   if (input.reportType === "coverage_gap") {
     const rows = requirements.map((reqRow) => {
       const latestStatuses = reqRow.caseLinks.map(
@@ -935,6 +1061,377 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
       csv: toCsv(["requirement_id", "requirement_key", "requirement_title", "coverage_status", "linked_case_count", "latest_statuses"], rows),
       totalRows: rows.length
     };
+  }
+
+  if (input.reportType === "results_case_comparison") {
+    const query = resultsCaseComparisonQuerySchema.parse({
+      runIdA: input.runIdA,
+      runIdB: input.runIdB
+    });
+    const report = await buildResultsCaseComparisonReport(projectId, { prisma }, query);
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      run_a_id: report.runA.runId,
+      run_a_name: report.runA.name,
+      run_b_id: report.runB.runId,
+      run_b_name: report.runB.name,
+      case_id: row.caseId,
+      title: row.title,
+      status_a: row.statusA ?? "",
+      status_b: row.statusB ?? "",
+      changed: row.changed ? "yes" : "no",
+      only_in_run_a: row.onlyInRunA ? "yes" : "no",
+      only_in_run_b: row.onlyInRunB ? "yes" : "no"
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-results-case-comparison.csv`,
+      csv: toCsv(
+        [
+          "run_a_id",
+          "run_a_name",
+          "run_b_id",
+          "run_b_name",
+          "case_id",
+          "title",
+          "status_a",
+          "status_b",
+          "changed",
+          "only_in_run_a",
+          "only_in_run_b"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "results_property_distribution") {
+    const query = resultsPropertyDistributionQuerySchema.parse({
+      field: input.field ?? "status",
+      ...(input.runId != null ? { runId: input.runId } : {})
+    });
+    const report = await buildResultsPropertyDistributionReport(projectId, { prisma }, query);
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      field: report.selectedField,
+      run_id: report.runId ?? "",
+      value: row.value,
+      label: row.label,
+      count: row.count,
+      percent: row.percent,
+      total_results: report.totalResults
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-results-property-distribution.csv`,
+      csv: toCsv(["field", "run_id", "value", "label", "count", "percent", "total_results"], rows),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "refs_coverage") {
+    const report = await buildRefsCoverageReportForProject(projectId, { prisma });
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      ref_key: row.refKey,
+      linked_case_count: row.linkedCaseCount,
+      coverage_status: row.coverageStatus,
+      latest_statuses: row.latestStatuses.join("|"),
+      case_ids: row.caseIds.join("|")
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-refs-coverage.csv`,
+      csv: toCsv(
+        ["ref_key", "linked_case_count", "coverage_status", "latest_statuses", "case_ids"],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "refs_comparison") {
+    const query = refsComparisonQuerySchema.parse({
+      runIdA: input.runIdA,
+      runIdB: input.runIdB
+    });
+    const report = await buildRefsComparisonReportForProject(projectId, { prisma }, query);
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      run_a_id: report.runA.runId,
+      run_a_name: report.runA.name,
+      run_b_id: report.runB.runId,
+      run_b_name: report.runB.name,
+      ref_key: row.refKey,
+      linked_case_count: row.linkedCaseCount,
+      status_a: row.statusA ?? "",
+      status_b: row.statusB ?? "",
+      changed: row.changed ? "yes" : "no",
+      case_ids: row.caseIds.join("|")
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-refs-comparison.csv`,
+      csv: toCsv(
+        [
+          "run_a_id",
+          "run_a_name",
+          "run_b_id",
+          "run_b_name",
+          "ref_key",
+          "linked_case_count",
+          "status_a",
+          "status_b",
+          "changed",
+          "case_ids"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "refs_defect_summary") {
+    const report = await buildRefsDefectSummaryReportForProject(projectId, { prisma });
+    const rows = report.items.slice(0, input.maxRows).map((row) => ({
+      ref_key: row.refKey,
+      linked_case_count: row.linkedCaseCount,
+      at_risk_result_count: row.atRiskResultCount,
+      linked_defect_count: row.linkedDefectCount,
+      defect_coverage: row.defectCoverage,
+      defect_keys: row.defectKeys.join("|"),
+      case_ids: row.caseIds.join("|")
+    }));
+    return {
+      fileName: `project-${projectId.toString()}-refs-defect-summary.csv`,
+      csv: toCsv(
+        [
+          "ref_key",
+          "linked_case_count",
+          "at_risk_result_count",
+          "linked_defect_count",
+          "defect_coverage",
+          "defect_keys",
+          "case_ids"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "project_summary") {
+    const repo = new PrismaRunsRepository(prisma);
+    const report = await buildProjectExecutionSummaryForProject(projectId, { prisma, repo });
+    const executionRows = [
+      {
+        row_kind: "execution",
+        total_cases: report.totalCases,
+        automation_coverage_pct: report.automationCoveragePct,
+        total_runs: report.totalRuns,
+        active_runs: report.activeRuns,
+        completed_runs: report.completedRuns,
+        tests_total: report.execution.total,
+        tests_passed: report.execution.passed,
+        tests_failed: report.execution.failed,
+        tests_blocked: report.execution.blocked,
+        tests_retest: report.execution.retest,
+        tests_untested: report.execution.untested,
+        progress: report.execution.progress,
+        run_id: "",
+        run_name: "",
+        run_status: "",
+        run_total: "",
+        run_passed: "",
+        run_failed: "",
+        run_progress: ""
+      },
+      ...report.runs.slice(0, input.maxRows).map((row) => ({
+        row_kind: "run",
+        total_cases: report.totalCases,
+        automation_coverage_pct: report.automationCoveragePct,
+        total_runs: report.totalRuns,
+        active_runs: report.activeRuns,
+        completed_runs: report.completedRuns,
+        tests_total: report.execution.total,
+        tests_passed: report.execution.passed,
+        tests_failed: report.execution.failed,
+        tests_blocked: report.execution.blocked,
+        tests_retest: report.execution.retest,
+        tests_untested: report.execution.untested,
+        progress: report.execution.progress,
+        run_id: row.runId,
+        run_name: row.name,
+        run_status: row.status,
+        run_total: row.total,
+        run_passed: row.passed,
+        run_failed: row.failed,
+        run_progress: row.progress
+      }))
+    ];
+    return {
+      fileName: `project-${projectId.toString()}-project-summary.csv`,
+      csv: toCsv(
+        [
+          "row_kind",
+          "total_cases",
+          "automation_coverage_pct",
+          "total_runs",
+          "active_runs",
+          "completed_runs",
+          "tests_total",
+          "tests_passed",
+          "tests_failed",
+          "tests_blocked",
+          "tests_retest",
+          "tests_untested",
+          "progress",
+          "run_id",
+          "run_name",
+          "run_status",
+          "run_total",
+          "run_passed",
+          "run_failed",
+          "run_progress"
+        ],
+        executionRows
+      ),
+      totalRows: executionRows.length
+    };
+  }
+
+  if (input.reportType === "users_workload_summary") {
+    const repo = new PrismaRunsRepository(prisma);
+    const report = await buildUserWorkloadSummaryForProject(projectId, { prisma, repo });
+    const rows = [
+      {
+        row_kind: "totals",
+        user_id: "",
+        name: "",
+        email: "",
+        assigned_count: report.totalAssignedTests,
+        active_count: report.totalActiveTests,
+        unassigned_active_count: report.unassignedActiveCount,
+        passed_count: "",
+        failed_count: "",
+        blocked_count: "",
+        retest_count: "",
+        untested_count: "",
+        overdue_count: "",
+        due_soon_count: "",
+        stale_count: ""
+      },
+      ...report.items.slice(0, input.maxRows).map((row) => ({
+        row_kind: "user",
+        user_id: row.userId,
+        name: row.name,
+        email: row.email,
+        assigned_count: row.assignedCount,
+        active_count: row.activeCount,
+        unassigned_active_count: report.unassignedActiveCount,
+        passed_count: row.passedCount,
+        failed_count: row.failedCount,
+        blocked_count: row.blockedCount,
+        retest_count: row.retestCount,
+        untested_count: row.untestedCount,
+        overdue_count: row.overdueCount,
+        due_soon_count: row.dueSoonCount,
+        stale_count: row.staleCount
+      }))
+    ];
+    return {
+      fileName: `project-${projectId.toString()}-users-workload-summary.csv`,
+      csv: toCsv(
+        [
+          "row_kind",
+          "user_id",
+          "name",
+          "email",
+          "assigned_count",
+          "active_count",
+          "unassigned_active_count",
+          "passed_count",
+          "failed_count",
+          "blocked_count",
+          "retest_count",
+          "untested_count",
+          "overdue_count",
+          "due_soon_count",
+          "stale_count"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType === "defect_summary") {
+    const query = defectSummaryQuerySchema.parse({
+      ...(input.runId != null ? { runId: input.runId } : {}),
+      ...(input.milestoneId != null ? { milestoneId: input.milestoneId } : {}),
+      ...(input.planId != null ? { planId: input.planId } : {})
+    });
+    const report = await buildDefectSummaryReportForProject(projectId, { prisma }, query);
+    const rows = [
+      ...report.defects.map((row) => ({
+        row_kind: "defect",
+        scope_type: report.scope.type,
+        scope_label: report.scope.label,
+        defect_key: row.defectKey,
+        linked_result_count: row.linkedResultCount,
+        failed_count: row.failedCount,
+        blocked_count: row.blockedCount,
+        retest_count: row.retestCount,
+        run_id: "",
+        run_name: "",
+        test_id: "",
+        case_id: "",
+        title: "",
+        status: "",
+        result_id: "",
+        created_at: ""
+      })),
+      ...report.unlinkedAtRisk.map((row) => ({
+        row_kind: "unlinked_at_risk",
+        scope_type: report.scope.type,
+        scope_label: report.scope.label,
+        defect_key: "",
+        linked_result_count: "",
+        failed_count: "",
+        blocked_count: "",
+        retest_count: "",
+        run_id: row.runId,
+        run_name: row.runName,
+        test_id: row.testId,
+        case_id: row.caseId,
+        title: row.title,
+        status: row.status,
+        result_id: row.resultId,
+        created_at: row.createdAt
+      }))
+    ].slice(0, input.maxRows);
+    return {
+      fileName: `project-${projectId.toString()}-defect-summary.csv`,
+      csv: toCsv(
+        [
+          "row_kind",
+          "scope_type",
+          "scope_label",
+          "defect_key",
+          "linked_result_count",
+          "failed_count",
+          "blocked_count",
+          "retest_count",
+          "run_id",
+          "run_name",
+          "test_id",
+          "case_id",
+          "title",
+          "status",
+          "result_id",
+          "created_at"
+        ],
+        rows
+      ),
+      totalRows: rows.length
+    };
+  }
+
+  if (input.reportType !== "defect_coverage") {
+    throw new Error(`Unsupported report export type: ${input.reportType}`);
   }
 
   const rows = requirements.map((reqRow) => {

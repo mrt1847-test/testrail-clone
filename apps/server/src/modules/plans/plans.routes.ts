@@ -44,6 +44,14 @@ type ConfigurationRow = {
 };
 
 const plans: MemoryPlanRow[] = [];
+
+export function listMemoryPlans(projectId: bigint) {
+  return plans.filter((item) => item.projectId === projectId);
+}
+
+export function findMemoryPlan(projectId: bigint, planId: bigint) {
+  return plans.find((item) => item.projectId === projectId && item.id === planId) ?? null;
+}
 const configurationGroups: ConfigurationGroupRow[] = [];
 const configurations: ConfigurationRow[] = [];
 

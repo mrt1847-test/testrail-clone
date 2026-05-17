@@ -10,12 +10,23 @@ import { ProjectLayout } from "./features/projects/components/ProjectLayout";
 import { ProjectListPage } from "./features/projects/components/ProjectListPage";
 import { ProjectOverviewPage } from "./features/projects/components/ProjectOverviewPage";
 import { ProjectSettingsPage } from "./features/projects/components/ProjectSettingsPage";
+import { ReportCaseActivitySummaryPage } from "./features/projects/components/reports/ReportCaseActivitySummaryPage";
+import { ReportCasePropertyDistributionPage } from "./features/projects/components/reports/ReportCasePropertyDistributionPage";
 import { ReportCoverageGapPage } from "./features/projects/components/reports/ReportCoverageGapPage";
 import { ReportDefectCoveragePage } from "./features/projects/components/reports/ReportDefectCoveragePage";
+import { ReportDefectSummaryPage } from "./features/projects/components/reports/ReportDefectSummaryPage";
+import { ReportRefsComparisonPage } from "./features/projects/components/reports/ReportRefsComparisonPage";
+import { ReportRefsCoveragePage } from "./features/projects/components/reports/ReportRefsCoveragePage";
+import { ReportRefsDefectSummaryPage } from "./features/projects/components/reports/ReportRefsDefectSummaryPage";
+import { ReportResultsCaseComparisonPage } from "./features/projects/components/reports/ReportResultsCaseComparisonPage";
+import { ReportResultsPropertyDistributionPage } from "./features/projects/components/reports/ReportResultsPropertyDistributionPage";
 import { ReportResultsExplorerPage } from "./features/projects/components/reports/ReportResultsExplorerPage";
 import { ReportMilestoneSummaryPage } from "./features/projects/components/reports/ReportMilestoneSummaryPage";
 import { ReportPlanSummaryPage } from "./features/projects/components/reports/ReportPlanSummaryPage";
+import { ReportProjectSummaryPage } from "./features/projects/components/reports/ReportProjectSummaryPage";
 import { ReportRunSummaryPage } from "./features/projects/components/reports/ReportRunSummaryPage";
+import { ReportUsersWorkloadSummaryPage } from "./features/projects/components/reports/ReportUsersWorkloadSummaryPage";
+import { ReportStatusTopsPage } from "./features/projects/components/reports/ReportStatusTopsPage";
 import { ReportTraceabilityPage } from "./features/projects/components/reports/ReportTraceabilityPage";
 import { ReportsLayout } from "./features/projects/components/reports/ReportsLayout";
 import { ReportOperationsPage } from "./features/projects/components/reports/ReportOperationsPage";
@@ -45,6 +56,10 @@ import { TeamTodoPage } from "./features/runs/components/TeamTodoPage";
 import { AdminAccessDefaultsPage } from "./features/admin/components/AdminAccessDefaultsPage";
 import { AdminUsersPage } from "./features/admin/components/AdminUsersPage";
 import { ProjectCustomRolesPage } from "./features/projects/components/ProjectCustomRolesPage";
+import { CasePrintPage } from "./features/print/components/CasePrintPage";
+import { MilestonePrintPage } from "./features/print/components/MilestonePrintPage";
+import { PlanPrintPage } from "./features/print/components/PlanPrintPage";
+import { RunPrintPage } from "./features/print/components/RunPrintPage";
 
 export function App() {
   return (
@@ -52,6 +67,10 @@ export function App() {
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
+        <Route path="projects/:projectId/cases/:caseId/print" element={<CasePrintPage />} />
+        <Route path="projects/:projectId/runs/:runId/print" element={<RunPrintPage />} />
+        <Route path="projects/:projectId/plans/:planId/print" element={<PlanPrintPage />} />
+        <Route path="projects/:projectId/milestones/:milestoneId/print" element={<MilestonePrintPage />} />
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/admin/access-defaults" element={<AdminAccessDefaultsPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
@@ -68,12 +87,23 @@ export function App() {
           <Route path="results" element={<ResultExplorerPage />} />
           <Route path="reports" element={<ReportsLayout />}>
             <Route index element={<ReportsOverviewPage />} />
+            <Route path="project-summary" element={<ReportProjectSummaryPage />} />
+            <Route path="users-workload" element={<ReportUsersWorkloadSummaryPage />} />
             <Route path="runs" element={<ReportRunSummaryPage />} />
             <Route path="milestones" element={<ReportMilestoneSummaryPage />} />
             <Route path="plans" element={<ReportPlanSummaryPage />} />
             <Route path="traceability" element={<ReportTraceabilityPage />} />
             <Route path="coverage" element={<ReportCoverageGapPage />} />
+            <Route path="case-activity" element={<ReportCaseActivitySummaryPage />} />
+            <Route path="case-properties" element={<ReportCasePropertyDistributionPage />} />
+            <Route path="status-tops" element={<ReportStatusTopsPage />} />
+            <Route path="refs-coverage" element={<ReportRefsCoveragePage />} />
+            <Route path="refs-comparison" element={<ReportRefsComparisonPage />} />
+            <Route path="refs-defects" element={<ReportRefsDefectSummaryPage />} />
+            <Route path="results-comparison" element={<ReportResultsCaseComparisonPage />} />
+            <Route path="results-properties" element={<ReportResultsPropertyDistributionPage />} />
             <Route path="defects" element={<ReportDefectCoveragePage />} />
+            <Route path="defect-summary" element={<ReportDefectSummaryPage />} />
             <Route path="explorer" element={<ReportResultsExplorerPage />} />
             <Route path="saved" element={<ReportOperationsPage />} />
           </Route>

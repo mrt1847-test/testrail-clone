@@ -79,7 +79,7 @@ export type Tx = {
   createResult(
     testInstanceId: bigint,
     input: ResultInput
-  ): Promise<{ id: bigint; testInstanceId: bigint; status: TestStatus }>;
+  ): Promise<ResultRow>;
   createResultSteps(resultId: bigint, steps: NonNullable<ResultInput["stepResults"]>): Promise<void>;
   createResultScenarios(
     resultId: bigint,

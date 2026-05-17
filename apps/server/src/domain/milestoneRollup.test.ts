@@ -81,4 +81,26 @@ describe("milestoneRollup", () => {
     expect(dashboard.openCount).toBe(1);
     expect(dashboard.completedCount).toBe(1);
   });
+
+  it("attaches schedule forecast with burndown when dates are set", () => {
+    const items = enrichMilestoneSummaries(
+      [
+        {
+          milestoneId: "1",
+          name: "Sprint",
+          parentMilestoneId: null,
+          isCompleted: false,
+          startDate: "2026-01-01T00:00:00.000Z",
+          dueDate: "2026-12-31T00:00:00.000Z"
+        }
+      ],
+      new Map([["1", { statuses: ["passed", "untested", "untested"], runCount: 1, openRunCount: 1 }]])
+    );
+
+    const row = items[0];
+    expect(row?.forecast.scheduleStatus).toBe("on_track");
+    expect(row?.forecast.remainingTests).toBe(2);
+    expect(row?.forecast.burndown.length).toBeGreaterThan(0);
+    expect(row?.forecast.hint.length).toBeGreaterThan(0);
+  });
 });

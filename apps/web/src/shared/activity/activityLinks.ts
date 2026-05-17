@@ -99,6 +99,15 @@ export function getActivityPrimaryHref(projectId: string, row: ActivityLinkTarge
     if (reportType === "traceability") return `/projects/${projectId}/reports/traceability`;
     if (reportType === "coverage_gap") return `/projects/${projectId}/reports/coverage`;
     if (reportType === "defect_coverage") return `/projects/${projectId}/reports/defects`;
+    if (reportType === "defect_summary") return `/projects/${projectId}/reports/defect-summary`;
+    if (reportType === "case_activity_summary") return `/projects/${projectId}/reports/case-activity`;
+    if (reportType === "results_case_comparison") return `/projects/${projectId}/reports/results-comparison`;
+    if (reportType === "results_property_distribution") return `/projects/${projectId}/reports/results-properties`;
+    if (reportType === "refs_coverage") return `/projects/${projectId}/reports/refs-coverage`;
+    if (reportType === "refs_comparison") return `/projects/${projectId}/reports/refs-comparison`;
+    if (reportType === "refs_defect_summary") return `/projects/${projectId}/reports/refs-defects`;
+    if (reportType === "project_summary") return `/projects/${projectId}/reports/project-summary`;
+    if (reportType === "users_workload_summary") return `/projects/${projectId}/reports/users-workload`;
     return `/projects/${projectId}/reports/explorer`;
   }
   return null;

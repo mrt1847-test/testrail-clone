@@ -59,7 +59,7 @@ export function TeamTodoPage() {
     onAssigneeChange: setAssigneeFilter,
     assigneeOptions: [
       { value: "all", label: "Whole team" },
-      ...memberOptions.map((member) => ({ value: member.userId, label: member.name }))
+      ...memberOptions.map((member) => ({ value: member.userId, label: member.name ?? member.email ?? member.userId }))
     ],
     searchPlaceholder: "Search cases, runs, or assignees"
   });

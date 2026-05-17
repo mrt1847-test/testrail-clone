@@ -1,4 +1,5 @@
 import { AppError } from "../../common/errors/appError.js";
+import { createSignedDownloadTarget } from "../../domain/attachmentStorage.js";
 import {
   findCaseVersionAttachmentSnapshot,
   parseCaseVersionAttachmentSnapshots
@@ -128,13 +129,13 @@ export class CasesService {
     if (!snapshot) {
       throw new AppError("NOT_FOUND", "attachment not found in version snapshot", 404);
     }
-    const now = Date.now();
+    const signed = createSignedDownloadTarget(snapshot.storageKey);
     return {
       attachmentId: snapshot.attachmentId,
       fileName: snapshot.fileName,
       contentType: snapshot.contentType ?? null,
-      downloadUrl: `https://storage.local/download/${encodeURIComponent(snapshot.storageKey)}`,
-      expiresAt: new Date(now + 10 * 60 * 1000)
+      downloadUrl: signed.downloadUrl,
+      expiresAt: signed.expiresAt
     };
   }
 
@@ -182,6 +183,8 @@ export class CasesService {
       expectedResult?: string | null;
       mission?: string | null;
       goals?: string | null;
+      aiInput?: string | null;
+      aiExpectedOutput?: string | null;
       caseTemplateId?: bigint | null;
       refs?: string | null;
       labels?: string[];

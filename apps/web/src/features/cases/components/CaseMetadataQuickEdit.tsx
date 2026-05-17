@@ -111,6 +111,7 @@ export function CaseMetadataQuickEdit({
                 field={field}
                 value={valuesDraft[field.systemName] ?? null}
                 error={fieldErrors[field.systemName]}
+                inputClassName="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-100"
                 disabled={isSaving || field.access?.canEdit === false}
                 onChange={(next) => {
                   setValuesDraft((current) => ({ ...current, [field.systemName]: next }));

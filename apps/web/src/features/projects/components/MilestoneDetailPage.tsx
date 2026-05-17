@@ -11,6 +11,8 @@ import { MilestoneLifecycleBadge } from "./MilestoneLifecycleBadge";
 import { MilestoneProgressChip } from "./MilestoneProgressChip";
 import { reportKeys } from "../hooks/reportKeys";
 import { ExecutionSummaryChart } from "./ExecutionSummaryChart";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { MilestoneForecastPanel } from "./MilestoneForecastPanel";
 import { ReportSummaryStrip } from "./reports/ReportChrome";
 
 export function MilestoneDetailPage() {
@@ -127,12 +129,15 @@ export function MilestoneDetailPage() {
               </button>
             </div>
           </div>
-          <Link
-            to={`/projects/${projectId}/reports/milestones`}
-            className="text-sm font-medium text-slate-700 underline"
-          >
-            Milestone summary report
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <PrintLinkButton to={`/projects/${projectId}/milestones/${milestoneId}/print`} />
+            <Link
+              to={`/projects/${projectId}/reports/milestones`}
+              className="text-sm font-medium text-slate-700 underline"
+            >
+              Milestone summary report
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -152,6 +157,7 @@ export function MilestoneDetailPage() {
             ) : null}
           </div>
           <ReportSummaryStrip items={summaryItems} />
+          <MilestoneForecastPanel forecast={rollup.forecast} />
           <ExecutionSummaryChart projectId={projectId} execution={execution} />
         </>
       ) : null}

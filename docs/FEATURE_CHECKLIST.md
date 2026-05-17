@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-16 (custom result statuses)
+Last aligned: 2026-05-17 (completion-depth legend)
 
 This file tracks implemented, partial, and missing capabilities. It should not contain the roadmap narrative or the execution queue.
 
@@ -10,11 +10,49 @@ Strategy and phase intent live in [ROADMAP.md](./ROADMAP.md).
 
 | Symbol | Meaning |
 |--------|---------|
-| `[x]` | Baseline available from API and/or UI (may still lack full TestRail depth). |
+| `[x]` | **Baseline shipped** — API and/or UI exists for the named capability; parenthetical notes describe what actually landed. **Not** “full TestRail parity.” |
 | `[ ]` | Incomplete, partial, or missing. |
 | `P0` | Blocks core daily TestRail-like workflow. |
 | `P1` | High-value workflow or parity depth. |
 | `P2` | Advanced parity, scale, administration, or Enterprise-tier. |
+
+### Completion depth (what `[x]` does *not* mean)
+
+Use these labels when reading bullets, parentheticals, and the report-catalog **Status** column:
+
+| Depth | Meaning | Typical signals in this repo |
+|-------|---------|------------------------------|
+| **Baseline done** | Minimum slice closes the checklist line: fixed report page and/or GET API, often plus CSV export and saved/scheduled **type registration**. Gaps called out in `(…)` or “out of scope”. | `GET /reports/…`, `/reports/…` page, `reportType` in export/saved/scheduled; “deferred” for HTML/PDF engine. |
+| **Partial** | Usable surface exists but template depth, scheduling, provider-native behavior, or TestRail-equivalent UX is incomplete. | Page without full template/scheduling; internal Requirement entity vs References field; v2 empty/stub lists. |
+| **Full parity** | Behavior, data model, and operator workflow match TestRail docs closely enough to claim replacement for that feature. | Rare for `[x]` lines; prefer explicit “full parity” wording in the note when true. |
+| **Missing** | No intentional baseline yet. | `[ ]` or catalog **Status** = Missing. |
+
+**Rule of thumb:** if the closing note says *baseline*, *fixed page*, *CSV*, *saved/scheduled/export*, or *deferred*, treat the line as **Baseline done**, not full parity.
+
+### Progress meter vs product completeness
+
+| Metric | What it measures | What it does *not* measure |
+|--------|------------------|----------------------------|
+| **`[x]` count / total lines** | Roadmap checkbox progress for batches in [NEXT_ACTIONS.md](./NEXT_ACTIONS.md). | Weighted product quality or TestRail replacement readiness. |
+| **Report catalog Status** | Per-template mapping (page, API, export). | A single report engine or PDF pipeline. |
+| **Server tests** | API/domain regression coverage (~70 files in tree). | End-to-end UI workflow safety. |
+| **Web tests** | Very small today. | Click-path or visual regression confidence. |
+
+**Honest completeness bands (code-informed, not a scorecard):** use for planning and stakeholder language, not for marketing “% complete.”
+
+| Area | Rough band | Notes |
+|------|------------|--------|
+| Daily workflow (cases → runs → results) | **75–85%** | High code density; suitable for internal pilot / small-team daily use. |
+| TestRail Core parity (breadth) | **60–70%** | Many `[x]` baselines; shared steps, restore/permanent delete, deep print, etc. still open. |
+| Reporting parity | **55–65%** | Fixed reports + CSV jobs, not HTML/PDF report engine depth. |
+| `/api/v2` compatibility | **55–65%** | Broad surface; some endpoints are compatibility-only or empty lists. |
+| Collaboration / integrations | **50–60%** | Inbox, email, webhooks, audit skeletons; provider-native defect flows thinner. |
+| Enterprise (SSO, MFA, cross-project, datasets) | **20–30%** | Mostly placeholder or minimal compat. |
+| Production hardening | **45–55%** | Builds and server tests OK; rate limits, storage lifecycle, scale proof, web tests weak. |
+
+**Product positioning (short):** past **MVP+** for core test management and execution on a single instance; **not** yet a credible “TestRail replacement” without closing parity depth, reference/integration credibility, report engine, UI regression tests, and ops hardening.
+
+When closing a batch, prefer parentheticals that name **depth** explicitly, e.g. `(baseline: fixed page + CSV + saved/scheduled; HTML/PDF deferred)`.
 
 ### Source tags (TestRail docs vs this product)
 
@@ -35,7 +73,7 @@ Use this file as the **progress meter**: each development batch should advance *
 |------|--------|
 | One batch → one line | [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) **Current batch** must quote the target line below verbatim (section + full bullet text). |
 | No extra bullets | Do not add new checklist lines to record polish inside an already `[x]` area. Extend that line’s parenthetical when closing a remaining gap, or split a `[ ]` line first, then run a batch against it. |
-| Done means `[x]` | When the batch ships, flip **only** the named line to `[x]` and add a short `(…)` note for what shipped. |
+| Done means `[x]` | When the batch ships, flip **only** the named line to `[x]` and add a short `(…)` note stating **depth** (baseline / partial) and what shipped (routes, pages, export types). |
 | Pick work from `[ ]` | Batch candidates are unchecked lines here, not free-form themes. |
 
 If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** here first, then queue one line per batch.
@@ -144,8 +182,8 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** P1 Milestone lifecycle: Upcoming vs Open, manual complete, parent/child milestones ([Milestones](https://support.testrail.com/hc/en-us/articles/15545364561044)). (`lifecycleStatus` from dates/completion; parentMilestoneId hierarchy; start-now/complete/reopen API + list/detail UI)
 - [x] **TR-Core** P1 Sub-milestones and richer milestone dashboard widgets beyond current rollup. (hierarchy rollup in milestone-summary API + dashboard; hub/overview/detail progress chips)
 - [x] **TR-Core** P1 Full plan-entry semantics: plan-level assignee, refs, start/due dates, per-entry include/exclude and combination editing ([Plans](https://support.testrail.com/hc/en-us/articles/7077711537684)). (plan/entry scheduling fields; include/exclude case selection on run generation; PUT entry configurations + detail UI)
-- [ ] **TR-Pro** P2 Milestone forecasts and burndown-style hints.
-- [ ] **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations.
+- [x] **TR-Pro** P2 Milestone forecasts and burndown-style hints. (domain forecast + burndown from dates/velocity; milestone-summary `forecast` field; `GET .../milestones/:id/forecast`; detail panel + schedule badges on list/report)
+- [x] **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations. (`add/update_milestone`, `add/update_plan`, `add/update_config_group`, `add/update_config`; TestRail field mapping `start_on`/`due_on`/`milestone_id`; contract + mapper tests)
 
 ---
 
@@ -166,37 +204,39 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 
 ### TestRail built-in report catalog (template parity)
 
-Track each template as saved-report or fixed-page parity. Current clone mapping:
+Track each template as saved-report or fixed-page parity. **Status** uses the [completion depth](#completion-depth-what-x-does-not-mean) labels above (`Baseline done`, `Partial`, `Missing`) — not “full TestRail template parity.”
+
+Current clone mapping:
 
 | TestRail report (support docs) | Clone target | Status |
 |--------------------------------|--------------|--------|
 | Summary - Run | Run summary page + CSV | Partial: page exists; template/scheduling not |
-| Summary - Project | Project overview/dashboard | Partial: fixed dashboard exists; report template not |
-| Cases - Activity Summary | TBD | Missing |
-| Cases - Coverage for References | Coverage gap page | Partial: internal requirements, not References |
-| Cases - Property Distribution | TBD | Missing |
-| Cases - Status Tops | TBD | Missing |
-| Defects - Summary | Defect coverage / result explorer | Partial: no milestone/plan/run defect summary template |
+| Summary - Project | `/reports/project-summary` + CSV | Baseline done |
+| Cases - Activity Summary | `/reports/case-activity` + CSV | Baseline done |
+| Cases - Coverage for References | `/reports/refs-coverage` + CSV | Baseline done |
+| Cases - Property Distribution | `/reports/case-properties` + CSV | Baseline done |
+| Cases - Status Tops | `/reports/status-tops` + CSV | Baseline done |
+| Defects - Summary | `/reports/defect-summary` + CSV | Baseline done |
 | Defects - Summary for Cases | Defect coverage page | Partial |
-| Defects - Summary for References | TBD | Missing |
-| Results - Comparison for Cases | TBD | Missing (see Convenience: compare runs) |
-| Results - Comparison for References | Traceability page (Case references tab + refs drilldown) | Partial |
-| Results - Property Distribution | Result explorer / dashboard charts | Partial: no report template |
+| Defects - Summary for References | `/reports/refs-defects` + CSV | Baseline done |
+| Results - Comparison for Cases | `/reports/results-comparison` + CSV | Baseline done |
+| Results - Comparison for References | `/reports/refs-comparison` + CSV | Baseline done |
+| Results - Property Distribution | `/reports/results-properties` + CSV | Baseline done |
 | Summary - Milestone | `/reports/milestones` | Baseline done |
 | Summary - Plan | `/reports/plans` | Baseline done |
-| Users - Workload summary | My Tests / assignments | Partial: user workload report missing |
+| Users - Workload summary | `/reports/users-workload` + CSV | Baseline done |
 | Cross-project: Test Execution Project Summary | TBD | Missing (Enterprise) |
 | Cross-project: Test Execution User Workload | TBD | Missing (Enterprise) |
-| Print from Cases/Runs/Plans/Milestones | TBD | Missing |
+| Print from Cases/Runs/Plans/Milestones | `/print` routes + HTML download | Baseline done |
 
-- [ ] **TR-Core** P1 Activity Summary (Cases) report template.
-- [ ] **TR-Core** P1 Cases Property Distribution and Status Tops report templates.
-- [ ] **TR-Core** P1 Defects Summary report template for milestone, plan, or selected runs.
-- [ ] **TR-Core** P1 Results Comparison for Cases and Results Property Distribution report templates.
-- [ ] **TR-Core** P1 Coverage / Comparison for **References** (Cases/Results) aligned to References field, not only internal requirements.
-- [ ] **TR-Core** P1 Summary for References (Defects) report template.
-- [ ] **TR-Core** P1 Project Summary and Users Workload summary report templates.
-- [ ] **TR-Core** P1 Print-friendly exports from cases, runs, plans, and milestones ([Print reports](https://support.testrail.com/hc/en-us/articles/7101821797140)).
+- [x] **TR-Core** P1 Activity Summary (Cases) report template. (`GET /reports/case-activity-summary`, `/reports/case-activity`, saved/scheduled/export)
+- [x] **TR-Core** P1 Cases Property Distribution and Status Tops report templates. (`GET /reports/cases-property-distribution`, `GET /reports/status-tops`, fixed pages, saved/scheduled/export)
+- [x] **TR-Core** P1 Defects Summary report template for milestone, plan, or selected runs. (`GET /reports/defect-summary`, scope filters, saved/scheduled/export)
+- [x] **TR-Core** P1 Results Comparison for Cases and Results Property Distribution report templates. (`GET /reports/results-case-comparison`, `GET /reports/results-property-distribution`, fixed pages, saved/scheduled/export)
+- [x] **TR-Core** P1 Coverage / Comparison for **References** (Cases/Results) aligned to References field, not only internal requirements. (`GET /reports/refs-coverage`, `GET /reports/refs-comparison`, fixed pages, saved/scheduled/export)
+- [x] **TR-Core** P1 Summary for References (Defects) report template. (`GET /reports/refs-defect-summary`, `/reports/refs-defects`, saved/scheduled/export)
+- [x] **TR-Core** P1 Project Summary and Users Workload summary report templates. (`GET /reports/project-summary`, `GET /reports/users-workload-summary`, fixed pages, saved/scheduled/export)
+- [x] **TR-Core** P1 Print-friendly exports from cases, runs, plans, and milestones. (`GET /*/print`, print pages, HTML download; [Print reports](https://support.testrail.com/hc/en-us/articles/7101821797140))
 
 ---
 
@@ -204,7 +244,7 @@ Track each template as saved-report or fixed-page parity. Current clone mapping:
 
 - [x] **TR-Core** Result attachment metadata, signed upload/download URLs, run detail upload/open/delete binding.
 - [x] **TR-Pro** Defect links, integration settings, URL-template push, provider feedback, and unlink baseline.
-- [ ] **Clone+** P1 Production object storage lifecycle and authorization hardening.
+- [x] **Clone+** P1 Production object storage lifecycle and authorization hardening. (project-scoped storage keys + path boundary checks; tombstone on delete + backfill worker; signed URL TTL env; project permission on attachment list/read/download/delete)
 - [x] **TR-Core** P1 Attachment preview drawer and upload progress/retry baseline for case and result evidence.
 - [ ] **TR-Core** P1 Attachment retention and cleanup policy.
 - [ ] **TR-Pro** P1 Integration test connection and validation ([Configuring defect integrations](https://support.testrail.com/hc/en-us/articles/7747085183636)).

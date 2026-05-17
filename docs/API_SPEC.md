@@ -455,12 +455,16 @@ Semantics:
 - `GET /api/projects/{projectId}/reports/coverage-gap`
 - `GET /api/projects/{projectId}/reports/traceability`
 - `GET /api/projects/{projectId}/reports/defect-coverage`
+- `GET /api/projects/{projectId}/reports/cases-property-distribution?field=priority|caseType|automation|template|custom:{systemName}`
+- `GET /api/projects/{projectId}/reports/status-tops`
 
 Semantics (overview/reports baseline):
 - `/overview` returns project-level counters used on overview cards: `totalCases`, `activeRuns`, `recentFailures`, `automationCoveragePct`.
 - `recent-failures` and `recent-results` return ordered `items` with `runId`, `runName`, `caseId`, `title`, `status`, `source`, `createdAt`.
 - `run-summary` returns per-run aggregation rows: `runId`, `name`, `status`, `total`, `passed`, `failed`, `progress`, plus time tracking fields `estimatedSeconds`, `actualSeconds`, `actualOverEstimateSeconds`, `estimate`, `actual`, and `actualVsEstimate`.
 - Estimate totals come from each test instance's case estimate snapshot. Actual totals sum recorded result `elapsed` values for the run. Duration strings accept numeric minutes, `mm:ss`/`hh:mm:ss`, and unit forms such as `5m`, `90s`, or `1h 20m`.
+- `cases-property-distribution` returns active-case bucket counts for the selected system/custom case field: `selectedField`, `fields[]`, `totalCases`, `items[]` (`value`, `label`, `count`, `percent`).
+- `status-tops` returns current test-instance status rankings across project runs: `totalTests`, `items[]` (`status`, `count`, `percent`).
 - Empty datasets return `200` with empty collections (no 404 for "no data").
 - Report endpoints must not require loading all raw result history on the client.
 - Expensive reports may use summary tables or materialized views after data volume grows.
@@ -1047,7 +1051,7 @@ CSV case import baseline:
 - `cases/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata (`offset`, `limit`, `size`, `_links`) and `cases[]` rows containing numeric `id`, `section_id`, `title`, `refs`, `custom_preconds`, labels, automation/external identifiers, `custom_steps_separated`, and active `custom_{systemName}` values.
 - `runs/{runId}/results/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata and `results[]` rows containing numeric `id`, `test_id`, `case_id`, `status_id`, `created_on`, comment, elapsed, version, defects, refs, source, and active `custom_{systemName}` values.
 - Case and result custom values are exported as `custom_{systemName}` columns where active custom fields exist; result custom columns are included in run result CSV exports and `results_explorer` report CSV exports.
-- Report export supports `run_summary`, `results_explorer`, `traceability`, `coverage_gap`, and `defect_coverage` as CSV.
+- Report export supports `run_summary`, `milestone_summary`, `plan_summary`, `results_explorer`, `traceability`, `coverage_gap`, `defect_coverage`, `case_activity_summary`, `cases_property_distribution`, and `status_tops` as CSV.
 - `POST /reports/export` creates an export job and returns a download URL; the baseline generates CSV on download and marks the job completed.
 - `GET /reports/export` is a compatibility shortcut that immediately returns CSV and records a completed export job.
 

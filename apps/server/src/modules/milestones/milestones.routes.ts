@@ -185,8 +185,14 @@ export async function registerMilestonesRoutes(
     if (body.name !== undefined) row.name = body.name.trim() || "Untitled milestone";
     if (body.isCompleted !== undefined) row.isCompleted = body.isCompleted;
     if (body.startNow === true) row.startDate = new Date();
-    else if (body.startDate !== undefined) row.startDate = parseOptionalDate(body.startDate);
-    if (body.dueDate !== undefined) row.dueDate = parseOptionalDate(body.dueDate);
+    else if (body.startDate !== undefined) {
+      const startDate = parseOptionalDate(body.startDate);
+      if (startDate !== undefined) row.startDate = startDate;
+    }
+    if (body.dueDate !== undefined) {
+      const dueDate = parseOptionalDate(body.dueDate);
+      if (dueDate !== undefined) row.dueDate = dueDate;
+    }
     return reply.send(toJsonSafe({ data: toMilestoneDto(row) }));
   });
 

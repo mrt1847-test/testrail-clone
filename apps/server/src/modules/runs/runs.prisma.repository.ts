@@ -189,14 +189,24 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
         id: row.id,
         testInstanceId: row.testInstanceId,
         status: mapStatus(row.status),
+        comment: row.comment ?? undefined,
+        elapsed: row.elapsed ?? undefined,
+        version: row.version ?? undefined,
         aiActualOutput: row.aiActualOutput ?? null,
         aiQualityRating: row.aiQualityRating ?? null,
         aiLatencyMs: row.aiLatencyMs ?? null,
         aiTraces: row.aiTraces ?? null,
+        defects: row.defects,
         customValues:
           row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-            ? (row.customValues as Record<string, import("../../domain/customFieldTypes.js").CustomFieldValue>)
-            : {}
+            ? customValuesFromJson(row.customValues)
+            : {},
+        source: row.source as "manual" | "automation" | "api",
+        metadata:
+          row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : undefined,
+        createdAt: row.createdAt
       };
     },
     async createResultSteps(resultId, steps) {

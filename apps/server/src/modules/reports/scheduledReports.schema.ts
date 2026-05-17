@@ -7,7 +7,18 @@ export const scheduledReportTypeSchema = z.enum([
   "results_explorer",
   "traceability",
   "coverage_gap",
-  "defect_coverage"
+  "defect_coverage",
+  "defect_summary",
+  "case_activity_summary",
+  "cases_property_distribution",
+  "status_tops",
+  "results_case_comparison",
+  "results_property_distribution",
+  "refs_coverage",
+  "refs_comparison",
+  "refs_defect_summary",
+  "project_summary",
+  "users_workload_summary"
 ]);
 
 export const scheduledReportIdParamSchema = z.object({

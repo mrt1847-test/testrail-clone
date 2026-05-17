@@ -196,7 +196,7 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
       elapsed?: string;
       version?: string;
       defects?: string[];
-      customValues?: Record<string, string | number | boolean | null>;
+      customValues?: Record<string, string | number | boolean | string[] | null>;
       stepResults?: Array<{
         stepOrder: number;
         status: "passed" | "failed" | "blocked" | "retest" | "untested";
@@ -328,7 +328,7 @@ export function useUpdateRunAssigneeMutation(projectId: string | undefined, runI
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
-      void qc.invalidateQueries({ queryKey: runKeys.assignedToMe(projectId) });
+      void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "assigned-to-me"] });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
   });
@@ -370,7 +370,7 @@ export function useUpdateTestAssigneeMutation(projectId: string | undefined, run
     onSuccess: () => {
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
-      void qc.invalidateQueries({ queryKey: runKeys.assignedToMe(projectId) });
+      void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "assigned-to-me"] });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
   });

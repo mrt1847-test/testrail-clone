@@ -389,7 +389,7 @@ export function CaseListPane({
           failedCount: result.failed,
           successLabel: "Copied",
           failureLabel: "Could not copy",
-          items: result.items,
+          items: result.items.map((item) => ({ caseId: item.sourceCaseId, success: item.success, error: item.error })),
           caseLabelById
         })
       );

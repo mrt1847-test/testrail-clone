@@ -93,6 +93,7 @@ describe("milestone summary hierarchy rollup API", () => {
           passed: number;
           includesSubMilestones: boolean;
           childCount: number;
+          forecast: { scheduleStatus: string; hint: string; remainingTests: number };
         }>;
         dashboard: { linkedRunCount: number; topMilestones: Array<{ milestoneId: string }> };
       };
@@ -113,5 +114,18 @@ describe("milestone summary hierarchy rollup API", () => {
     expect(parent?.passed).toBeGreaterThanOrEqual(1);
     expect(body.data.dashboard.linkedRunCount).toBe(1);
     expect(body.data.dashboard.topMilestones[0]?.milestoneId).toBe(parentId);
+    expect(parent?.forecast).toMatchObject({
+      scheduleStatus: expect.any(String),
+      hint: expect.any(String)
+    });
+    expect(parent?.forecast.remainingTests).toBeGreaterThanOrEqual(0);
+
+    const forecastRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/milestones/${childId}/forecast`,
+      headers
+    });
+    expect(forecastRes.statusCode).toBe(200);
+    expect((forecastRes.json() as { data: { scheduleStatus: string } }).data.scheduleStatus).toBeTruthy();
   });
 });

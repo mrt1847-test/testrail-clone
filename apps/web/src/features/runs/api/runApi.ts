@@ -162,7 +162,7 @@ export async function addRunResult(input: {
   elapsed?: string;
   version?: string;
   defects?: string[];
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, string | number | boolean | string[] | null>;
   stepResults?: Array<{ stepOrder: number; status: "passed" | "failed" | "blocked" | "retest" | "untested"; actualResult?: string; comment?: string }>;
   scenarioResults?: Array<{ caseScenarioId: string; status: "passed" | "failed" | "blocked" | "retest" | "untested"; comment?: string }>;
   aiActualOutput?: string;
@@ -219,7 +219,7 @@ export async function bulkAddRunResults(input: {
     elapsed?: string;
     version?: string;
     defects?: string[];
-    customValues?: Record<string, string | number | boolean | null>;
+    customValues?: Record<string, string | number | boolean | string[] | null>;
   }>;
 }): Promise<BulkRunResultsResponse> {
   const res = await apiFetch<BulkRunResultsResponse>(`/api/runs/${input.runId}/results/bulk`, {
@@ -493,7 +493,7 @@ type ApiResultHistory = {
   version?: string;
   source: "manual" | "automation" | "api";
   defects?: string[];
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, string | number | boolean | string[] | null>;
   createdAt: string;
 };
 
@@ -760,7 +760,7 @@ export type ResultExplorerRow = {
   source: string;
   createdAt: string;
   comment?: string | null;
-  customValues?: Record<string, string | number | boolean | null>;
+  customValues?: Record<string, string | number | boolean | string[] | null>;
 };
 
 export async function fetchProjectResultExplorer(input: {

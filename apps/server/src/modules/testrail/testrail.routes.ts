@@ -15,6 +15,8 @@ import {
   buildSystemStatuses,
   buildCaseStatusesCatalog,
   mapCaseTemplatesForV2,
+  mapConfigForV2,
+  mapConfigGroupForV2,
   mapConfigurations,
   mapCustomFieldsForV2,
   mapCustomStatuses,
@@ -22,6 +24,7 @@ import {
   buildVariablesCatalog,
   mapMilestone,
   mapPlan,
+  testRailEpochToDate,
   buildCaseTypesCatalog,
   buildPrioritiesCatalog,
   mapLabelsForV2,
@@ -51,6 +54,8 @@ import { runIdParamSchema } from "../runs/runs.schema.js";
 import type { RunsService } from "../runs/runs.service.js";
 import type { TestStatus } from "../../domain/status.js";
 import { ImportExportService, reportExportSchema } from "../importExport/importExport.routes.js";
+import { validateMilestoneParent } from "../milestones/milestones.shared.js";
+import { buildPlanCreateData, buildPlanWriteData } from "../plans/plans.shared.js";
 import {
   buildTestRailListResponse,
   parseTestRailPagination,
@@ -139,6 +144,57 @@ const milestoneIdParamSchema = z.object({
 
 const planIdParamSchema = z.object({
   planId: z.coerce.bigint()
+});
+
+const configGroupIdParamSchema = z.object({
+  configGroupId: z.coerce.bigint()
+});
+
+const configurationIdParamSchema = z.object({
+  configurationId: z.coerce.bigint()
+});
+
+const addMilestoneBodySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  parent_id: z.coerce.bigint().nullable().optional(),
+  parentId: z.coerce.bigint().nullable().optional(),
+  start_on: z.coerce.number().int().nullable().optional(),
+  due_on: z.coerce.number().int().nullable().optional()
+});
+
+const updateMilestoneBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  parent_id: z.coerce.bigint().nullable().optional(),
+  parentId: z.coerce.bigint().nullable().optional(),
+  start_on: z.coerce.number().int().nullable().optional(),
+  due_on: z.coerce.number().int().nullable().optional(),
+  is_completed: z.boolean().optional(),
+  is_started: z.boolean().optional()
+});
+
+const addPlanBodySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  milestone_id: z.coerce.bigint().nullable().optional(),
+  milestoneId: z.coerce.bigint().nullable().optional()
+});
+
+const updatePlanBodySchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  milestone_id: z.coerce.bigint().nullable().optional(),
+  milestoneId: z.coerce.bigint().nullable().optional(),
+  is_completed: z.boolean().optional()
+});
+
+const configGroupBodySchema = z.object({
+  name: z.string().min(1)
+});
+
+const configBodySchema = z.object({
+  name: z.string().min(1)
 });
 
 const testIdParamSchema = z.object({
@@ -563,6 +619,176 @@ export async function registerTestRailRoutes(
       }
     });
     return reply.send(toJsonSafe(mapConfigurations(rows)));
+  });
+
+  app.post("/api/v2/add_milestone/:projectId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "milestone not available in memory mode", 404);
+    const body = addMilestoneBodySchema.parse(req.body ?? {});
+    const parentMilestoneId = body.parent_id ?? body.parentId ?? null;
+    const parentRows = await deps.prisma.milestone.findMany({
+      where: { projectId, deletedAt: null },
+      select: { id: true, parentMilestoneId: true }
+    });
+    validateMilestoneParent({ milestoneId: null, parentMilestoneId, rows: parentRows });
+    const created = await deps.prisma.milestone.create({
+      data: {
+        projectId,
+        name: body.name.trim(),
+        description: body.description ?? undefined,
+        parentMilestoneId,
+        startDate: testRailEpochToDate(body.start_on ?? undefined) ?? undefined,
+        dueDate: testRailEpochToDate(body.due_on ?? undefined) ?? undefined
+      }
+    });
+    return reply.send(toJsonSafe(mapMilestone(created)));
+  });
+
+  app.post("/api/v2/update_milestone/:milestoneId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "milestone not found", 404);
+    const body = updateMilestoneBodySchema.parse(req.body ?? {});
+    const found = await deps.prisma.milestone.findFirst({
+      where: { id: milestoneId, deletedAt: null }
+    });
+    if (!found) throw new AppError("NOT_FOUND", "milestone not found", 404);
+    const parentMilestoneId = body.parent_id ?? body.parentId;
+    if (parentMilestoneId !== undefined) {
+      const parentRows = await deps.prisma.milestone.findMany({
+        where: { projectId: found.projectId, deletedAt: null },
+        select: { id: true, parentMilestoneId: true }
+      });
+      validateMilestoneParent({ milestoneId, parentMilestoneId, rows: parentRows });
+    }
+    const startDate =
+      body.is_started === true
+        ? new Date()
+        : body.start_on !== undefined
+          ? testRailEpochToDate(body.start_on)
+          : undefined;
+    const updated = await deps.prisma.milestone.update({
+      where: { id: milestoneId },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.is_completed !== undefined ? { isCompleted: body.is_completed } : {}),
+        ...(parentMilestoneId !== undefined ? { parentMilestoneId } : {}),
+        ...(startDate !== undefined ? { startDate } : {}),
+        ...(body.due_on !== undefined ? { dueDate: testRailEpochToDate(body.due_on) } : {})
+      }
+    });
+    return reply.send(toJsonSafe(mapMilestone(updated)));
+  });
+
+  app.post("/api/v2/add_plan/:projectId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "plan not available in memory mode", 404);
+    const body = addPlanBodySchema.parse(req.body ?? {});
+    const milestoneId = body.milestone_id ?? body.milestoneId ?? null;
+    if (milestoneId != null) {
+      const milestone = await deps.prisma.milestone.findFirst({
+        where: { id: milestoneId, projectId, deletedAt: null }
+      });
+      if (!milestone) throw new AppError("VALIDATION_ERROR", "milestone not found in project", 400);
+    }
+    const created = await deps.prisma.testPlan.create({
+      data: {
+        ...buildPlanCreateData(projectId, { name: body.name, milestoneId }),
+        ...(body.description !== undefined ? { description: body.description } : {})
+      }
+    });
+    return reply.send(toJsonSafe(mapPlan(created)));
+  });
+
+  app.post("/api/v2/update_plan/:planId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { planId } = planIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "plan not found", 404);
+    const body = updatePlanBodySchema.parse(req.body ?? {});
+    const found = await deps.prisma.testPlan.findFirst({
+      where: { id: planId, deletedAt: null }
+    });
+    if (!found) throw new AppError("NOT_FOUND", "plan not found", 404);
+    const milestoneId = body.milestone_id ?? body.milestoneId;
+    if (milestoneId !== undefined && milestoneId != null) {
+      const milestone = await deps.prisma.milestone.findFirst({
+        where: { id: milestoneId, projectId: found.projectId, deletedAt: null }
+      });
+      if (!milestone) throw new AppError("VALIDATION_ERROR", "milestone not found in project", 400);
+    }
+    const updated = await deps.prisma.testPlan.update({
+      where: { id: planId },
+      data: {
+        ...buildPlanWriteData({
+          ...(body.name !== undefined ? { name: body.name } : {})
+        }),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(milestoneId !== undefined ? { milestoneId } : {}),
+        ...(body.is_completed !== undefined ? { status: body.is_completed ? "closed" : "open" } : {})
+      }
+    });
+    return reply.send(toJsonSafe(mapPlan(updated)));
+  });
+
+  app.post("/api/v2/add_config_group/:projectId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "configurations not available in memory mode", 404);
+    const body = configGroupBodySchema.parse(req.body ?? {});
+    const created = await deps.prisma.configurationGroup.create({
+      data: { projectId, name: body.name.trim(), displayOrder: 0 }
+    });
+    return reply.send(toJsonSafe(mapConfigGroupForV2(created)));
+  });
+
+  app.post("/api/v2/update_config_group/:configGroupId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { configGroupId } = configGroupIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "configuration group not found", 404);
+    const body = configGroupBodySchema.parse(req.body ?? {});
+    const found = await deps.prisma.configurationGroup.findFirst({
+      where: { id: configGroupId, deletedAt: null }
+    });
+    if (!found) throw new AppError("NOT_FOUND", "configuration group not found", 404);
+    const updated = await deps.prisma.configurationGroup.update({
+      where: { id: configGroupId },
+      data: { name: body.name.trim() }
+    });
+    return reply.send(toJsonSafe(mapConfigGroupForV2(updated)));
+  });
+
+  app.post("/api/v2/add_config/:configGroupId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { configGroupId } = configGroupIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "configuration group not found", 404);
+    const body = configBodySchema.parse(req.body ?? {});
+    const group = await deps.prisma.configurationGroup.findFirst({
+      where: { id: configGroupId, deletedAt: null }
+    });
+    if (!group) throw new AppError("NOT_FOUND", "configuration group not found", 404);
+    const created = await deps.prisma.configuration.create({
+      data: { groupId: configGroupId, name: body.name.trim(), displayOrder: 0, isActive: true }
+    });
+    return reply.send(toJsonSafe(mapConfigForV2(created)));
+  });
+
+  app.post("/api/v2/update_config/:configurationId", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { configurationId } = configurationIdParamSchema.parse(req.params);
+    if (!deps.prisma) throw new AppError("NOT_FOUND", "configuration not found", 404);
+    const body = configBodySchema.parse(req.body ?? {});
+    const found = await deps.prisma.configuration.findFirst({
+      where: { id: configurationId, deletedAt: null }
+    });
+    if (!found) throw new AppError("NOT_FOUND", "configuration not found", 404);
+    const updated = await deps.prisma.configuration.update({
+      where: { id: configurationId },
+      data: { name: body.name.trim() }
+    });
+    return reply.send(toJsonSafe(mapConfigForV2(updated)));
   });
 
   app.get("/api/v2/get_case_fields/:projectId", async (req, reply) => {

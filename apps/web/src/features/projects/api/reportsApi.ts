@@ -7,7 +7,18 @@ export type ReportExportType =
   | "results_explorer"
   | "traceability"
   | "coverage_gap"
-  | "defect_coverage";
+  | "defect_coverage"
+  | "defect_summary"
+  | "case_activity_summary"
+  | "cases_property_distribution"
+  | "status_tops"
+  | "results_case_comparison"
+  | "results_property_distribution"
+  | "refs_coverage"
+  | "refs_comparison"
+  | "refs_defect_summary"
+  | "project_summary"
+  | "users_workload_summary";
 
 const fileNames: Record<ReportExportType, string> = {
   run_summary: "run-summary.csv",
@@ -16,7 +27,18 @@ const fileNames: Record<ReportExportType, string> = {
   results_explorer: "results-explorer.csv",
   traceability: "traceability.csv",
   coverage_gap: "coverage-gap.csv",
-  defect_coverage: "defect-coverage.csv"
+  defect_coverage: "defect-coverage.csv",
+  defect_summary: "defect-summary.csv",
+  case_activity_summary: "case-activity-summary.csv",
+  cases_property_distribution: "cases-property-distribution.csv",
+  status_tops: "status-tops.csv",
+  results_case_comparison: "results-case-comparison.csv",
+  results_property_distribution: "results-property-distribution.csv",
+  refs_coverage: "refs-coverage.csv",
+  refs_comparison: "refs-comparison.csv",
+  refs_defect_summary: "refs-defect-summary.csv",
+  project_summary: "project-summary.csv",
+  users_workload_summary: "users-workload-summary.csv"
 };
 
 export async function downloadReportCsv(

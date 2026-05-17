@@ -43,22 +43,36 @@ export function AdminUsersPage() {
     await load();
   }
 
-  return (
-    <AppShell
-      title="Users & groups"
-      userLabel={user?.email}
-      onLogout={() => void logout()}
-      nav={
-        <div className="flex gap-3 text-sm">
-          <Link to="/projects" className="text-slate-600 hover:text-slate-900">
-            Projects
-          </Link>
-          <Link to="/admin/access-defaults" className="text-slate-600 hover:text-slate-900">
-            Access defaults
-          </Link>
+  const top = (
+    <div className="border-b border-slate-200 bg-white px-4 py-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Users & groups</h1>
+          <p className="text-xs text-slate-500">{user?.email ?? "unknown"}</p>
         </div>
-      }
-    >
+        <div className="flex items-center gap-3">
+          <div className="flex gap-3 text-sm">
+            <Link to="/projects" className="text-slate-600 hover:text-slate-900">
+              Projects
+            </Link>
+            <Link to="/admin/access-defaults" className="text-slate-600 hover:text-slate-900">
+              Access defaults
+            </Link>
+          </div>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <AppShell top={top}>
       {loading ? (
         <LoadingState message="Loading users…" />
       ) : (

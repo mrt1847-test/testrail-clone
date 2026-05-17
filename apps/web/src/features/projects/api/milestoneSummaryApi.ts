@@ -2,6 +2,34 @@ import { apiFetch } from "../../../shared/api/http";
 import type { Ok } from "../../../shared/api/types";
 import type { MilestoneLifecycleStatus } from "./planningApi";
 
+export type MilestoneScheduleStatus =
+  | "completed"
+  | "no_schedule"
+  | "not_started"
+  | "on_track"
+  | "at_risk"
+  | "overdue";
+
+export type BurndownPoint = {
+  date: string;
+  idealRemaining: number;
+  actualRemaining: number | null;
+};
+
+export type MilestoneForecast = {
+  scheduleStatus: MilestoneScheduleStatus;
+  remainingTests: number;
+  executedTests: number;
+  daysElapsed: number | null;
+  daysRemaining: number | null;
+  daysTotal: number | null;
+  velocityPerDay: number | null;
+  projectedCompletionDate: string | null;
+  projectedOnTime: boolean | null;
+  hint: string;
+  burndown: BurndownPoint[];
+};
+
 export type MilestoneSummaryRow = {
   milestoneId: string;
   name: string;
@@ -19,6 +47,7 @@ export type MilestoneSummaryRow = {
   directTotal: number;
   directProgress: number;
   includesSubMilestones: boolean;
+  forecast: MilestoneForecast;
 };
 
 export type MilestoneDashboardTopItem = {

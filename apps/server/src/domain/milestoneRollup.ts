@@ -2,6 +2,7 @@ import {
   resolveMilestoneLifecycleStatus,
   type MilestoneLifecycleStatus
 } from "./milestoneLifecycle.js";
+import { buildMilestoneForecast, type MilestoneForecast } from "./milestoneForecast.js";
 
 export type MilestoneDirectMetrics = {
   statuses: string[];
@@ -15,6 +16,7 @@ export type MilestoneSummaryMeta = {
   parentMilestoneId: string | null;
   isCompleted: boolean;
   startDate?: Date | string | null;
+  dueDate?: Date | string | null;
 };
 
 export type MilestoneSummaryItem = {
@@ -34,6 +36,7 @@ export type MilestoneSummaryItem = {
   directTotal: number;
   directProgress: number;
   includesSubMilestones: boolean;
+  forecast: MilestoneForecast;
 };
 
 export type MilestoneDashboardTopItem = {
@@ -131,15 +134,17 @@ export function enrichMilestoneSummaries(
         rollupMetrics.total > directMetrics.total ||
         rollupMetrics.progress !== directMetrics.progress);
 
+    const lifecycleStatus = resolveMilestoneLifecycleStatus({
+      isCompleted: row.isCompleted,
+      startDate: row.startDate
+    });
+
     return {
       milestoneId: row.milestoneId,
       name: row.name,
       parentMilestoneId: row.parentMilestoneId,
       isCompleted: row.isCompleted,
-      lifecycleStatus: resolveMilestoneLifecycleStatus({
-        isCompleted: row.isCompleted,
-        startDate: row.startDate
-      }),
+      lifecycleStatus,
       childCount,
       runCount: rollupRunCount,
       openRunCount: rollupOpenRunCount,
@@ -150,7 +155,16 @@ export function enrichMilestoneSummaries(
       directRunCount: direct.runCount,
       directTotal: directMetrics.total,
       directProgress: directMetrics.progress,
-      includesSubMilestones
+      includesSubMilestones,
+      forecast: buildMilestoneForecast({
+        isCompleted: row.isCompleted,
+        lifecycleStatus,
+        startDate: row.startDate,
+        dueDate: row.dueDate,
+        total: rollupMetrics.total,
+        passed: rollupMetrics.passed,
+        failed: rollupMetrics.failed
+      })
     };
   });
 }

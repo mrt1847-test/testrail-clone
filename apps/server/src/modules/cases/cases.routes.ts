@@ -1,6 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
-import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import {
+  getAuthenticatedUser,
+  requireProjectMutationRole,
+  requireProjectPermission
+} from "../../common/middlewares/authorization.js";
+import {
+  assertAttachmentStoragePathAllowed,
+  buildAttachmentStoragePath,
+  createSignedUploadTarget
+} from "../../domain/attachmentStorage.js";
 import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
 import {
   loadActiveCustomFields,
@@ -218,10 +227,11 @@ async function createCaseEntityAttachment(
     fileSize?: bigint;
   }
 ) {
-  const storagePath =
-    input.storagePath ??
-    `local://${input.entityType === "case" ? "cases" : "case-steps"}/${input.entityId.toString()}/${input.fileName}`;
+  const storageEntity = input.entityType === "case" ? "cases" : "case-steps";
   if (!prisma) {
+    const storagePath =
+      input.storagePath ??
+      `local://${storageEntity}/${input.entityId.toString()}/${input.fileName}`;
     return {
       id: BigInt(Date.now()),
       entityType: input.entityType,
@@ -238,6 +248,20 @@ async function createCaseEntityAttachment(
   if (!context) {
     throw new AppError("NOT_FOUND", input.entityType === "case" ? "case not found" : "case step not found", 404);
   }
+  const storagePath =
+    input.storagePath ??
+    buildAttachmentStoragePath({
+      projectId: context.projectId,
+      entity: storageEntity,
+      entityId: input.entityId,
+      fileName: input.fileName
+    });
+  assertAttachmentStoragePathAllowed({
+    projectId: context.projectId,
+    entity: storageEntity,
+    entityId: input.entityId,
+    storagePath
+  });
   const created = await prisma.attachment.create({
     data: {
       projectId: context.projectId,
@@ -437,6 +461,7 @@ export async function registerCasesRoutes(
   });
 
   app.get("/api/cases/:caseId/attachments", async (req, reply) => {
+    await requireProjectPermission(req, deps, "cases.read");
     const { caseId } = caseIdParamSchema.parse(req.params);
     return reply.send(toJsonSafe(await listCaseEntityAttachments(deps.prisma, "case", caseId)));
   });
@@ -459,22 +484,23 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/cases/:caseId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
-    const now = Date.now();
-    const storagePath = `cases/${caseId.toString()}/${now}-${body.fileName}`;
-    return reply.send(
-      toJsonSafe({
-        data: {
-          storagePath,
-          uploadUrl: `https://storage.local/upload/${encodeURIComponent(storagePath)}`,
-          method: "PUT",
-          headers: { "content-type": body.contentType ?? "application/octet-stream" },
-          expiresAt: new Date(now + 10 * 60 * 1000)
-        }
-      })
-    );
+    if (!deps.prisma) {
+      throw new AppError("NOT_FOUND", "case not found", 404);
+    }
+    const context = await caseAttachmentContext(deps.prisma, "case", caseId);
+    if (!context) {
+      throw new AppError("NOT_FOUND", "case not found", 404);
+    }
+    const storagePath = buildAttachmentStoragePath({
+      projectId: context.projectId,
+      entity: "cases",
+      entityId: caseId,
+      fileName: body.fileName
+    });
+    return reply.send(toJsonSafe({ data: createSignedUploadTarget(storagePath, body.contentType) }));
   });
 
   app.post("/api/projects/:projectId/cases/bulk-delete", async (req, reply) => {
@@ -711,7 +737,7 @@ export async function registerCasesRoutes(
   });
 
   app.get("/api/cases/:caseId/versions/:versionNo/attachments/:attachmentId/download", async (req, reply) => {
-    await getAuthenticatedUser(req, deps);
+    await requireProjectPermission(req, deps, "cases.read");
     const { caseId, versionNo, attachmentId } = caseVersionAttachmentDownloadParamSchema.parse(req.params);
     const download = await deps.casesService.getCaseVersionAttachmentDownload(caseId, versionNo, attachmentId);
     return reply.send(toJsonSafe(ok(download)));
@@ -857,6 +883,7 @@ export async function registerCasesRoutes(
   });
 
   app.get("/api/case-steps/:stepId/attachments", async (req, reply) => {
+    await requireProjectPermission(req, deps, "cases.read");
     const { stepId } = stepIdParamSchema.parse(req.params);
     return reply.send(toJsonSafe(await listCaseEntityAttachments(deps.prisma, "case_step", stepId)));
   });
@@ -879,22 +906,23 @@ export async function registerCasesRoutes(
   });
 
   app.post("/api/case-steps/:stepId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
     const { stepId } = stepIdParamSchema.parse(req.params);
     const body = caseAttachmentPresignBodySchema.parse(req.body ?? {});
-    const now = Date.now();
-    const storagePath = `case-steps/${stepId.toString()}/${now}-${body.fileName}`;
-    return reply.send(
-      toJsonSafe({
-        data: {
-          storagePath,
-          uploadUrl: `https://storage.local/upload/${encodeURIComponent(storagePath)}`,
-          method: "PUT",
-          headers: { "content-type": body.contentType ?? "application/octet-stream" },
-          expiresAt: new Date(now + 10 * 60 * 1000)
-        }
-      })
-    );
+    if (!deps.prisma) {
+      throw new AppError("NOT_FOUND", "case step not found", 404);
+    }
+    const context = await caseAttachmentContext(deps.prisma, "case_step", stepId);
+    if (!context) {
+      throw new AppError("NOT_FOUND", "case step not found", 404);
+    }
+    const storagePath = buildAttachmentStoragePath({
+      projectId: context.projectId,
+      entity: "case-steps",
+      entityId: stepId,
+      fileName: body.fileName
+    });
+    return reply.send(toJsonSafe({ data: createSignedUploadTarget(storagePath, body.contentType) }));
   });
 
   app.patch("/api/case-steps/:stepId", async (req, reply) => {

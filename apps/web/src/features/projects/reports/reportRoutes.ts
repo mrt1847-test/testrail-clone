@@ -7,7 +7,18 @@ export const REPORT_TYPE_LABELS: Record<ReportExportType, string> = {
   results_explorer: "Results explorer",
   traceability: "Traceability",
   coverage_gap: "Coverage gap",
-  defect_coverage: "Defect coverage"
+  defect_coverage: "Defect coverage",
+  defect_summary: "Defect summary",
+  case_activity_summary: "Case activity summary",
+  cases_property_distribution: "Cases property distribution",
+  status_tops: "Status tops",
+  results_case_comparison: "Results comparison (cases)",
+  results_property_distribution: "Results property distribution",
+  refs_coverage: "References coverage",
+  refs_comparison: "References comparison",
+  refs_defect_summary: "References defect summary",
+  project_summary: "Project summary",
+  users_workload_summary: "Users workload summary"
 };
 
 export function reportPagePath(projectId: string, reportType: ReportExportType): string {
@@ -27,6 +38,28 @@ export function reportPagePath(projectId: string, reportType: ReportExportType):
       return `${base}/coverage`;
     case "defect_coverage":
       return `${base}/defects`;
+    case "defect_summary":
+      return `${base}/defect-summary`;
+    case "case_activity_summary":
+      return `${base}/case-activity`;
+    case "cases_property_distribution":
+      return `${base}/case-properties`;
+    case "status_tops":
+      return `${base}/status-tops`;
+    case "results_case_comparison":
+      return `${base}/results-comparison`;
+    case "results_property_distribution":
+      return `${base}/results-properties`;
+    case "refs_coverage":
+      return `${base}/refs-coverage`;
+    case "refs_comparison":
+      return `${base}/refs-comparison`;
+    case "refs_defect_summary":
+      return `${base}/refs-defects`;
+    case "project_summary":
+      return `${base}/project-summary`;
+    case "users_workload_summary":
+      return `${base}/users-workload`;
     default:
       return base;
   }

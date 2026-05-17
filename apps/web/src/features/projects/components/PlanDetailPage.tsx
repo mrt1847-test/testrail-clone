@@ -21,6 +21,7 @@ import {
 } from "../api/advancedApi";
 import { fetchProjectMembers } from "../api/settingsApi";
 import { formatCaseIdList, parseCaseIdList } from "../utils/planCaseSelection";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 
 export function PlanDetailPage() {
   const { projectId = "", planId = "" } = useParams();
@@ -168,9 +169,12 @@ export function PlanDetailPage() {
 
   return (
     <div className="space-y-4">
-      <header className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Test Plan</p>
-        <h2 className="text-xl font-semibold text-slate-900">{planQuery.data.name}</h2>
+      <header className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Test Plan</p>
+          <h2 className="text-xl font-semibold text-slate-900">{planQuery.data.name}</h2>
+        </div>
+        <PrintLinkButton to={`/projects/${projectId}/plans/${planId}/print`} />
       </header>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

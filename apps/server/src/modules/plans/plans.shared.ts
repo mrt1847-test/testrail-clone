@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { AppError } from "../../common/errors/appError.js";
 import {
@@ -102,14 +102,16 @@ export function buildPlanCreateData(
   projectId: bigint,
   body: {
     name?: string;
+    milestoneId?: bigint | null;
     assignedTo?: bigint | null;
     refs?: string | null;
     startDate?: Date | null;
     dueOn?: Date | null;
   }
-): Prisma.TestPlanCreateInput {
+): Prisma.TestPlanUncheckedCreateInput {
   return {
     projectId,
+    ...(body.milestoneId !== undefined ? { milestoneId: body.milestoneId } : {}),
     name: body.name?.trim() || "New test plan",
     assignedTo: body.assignedTo ?? undefined,
     refs: body.refs === undefined ? undefined : normalizePlanRefs(body.refs),
@@ -125,7 +127,7 @@ export function buildPlanWriteData(body: {
   startDate?: Date | null;
   dueOn?: Date | null;
 }) {
-  const data: Prisma.TestPlanUpdateInput = {};
+  const data: Prisma.TestPlanUncheckedUpdateInput = {};
   if (body.name !== undefined) data.name = body.name.trim() || "Untitled plan";
   if (body.assignedTo !== undefined) data.assignedTo = body.assignedTo;
   if (body.refs !== undefined) data.refs = normalizePlanRefs(body.refs);
@@ -147,7 +149,7 @@ export function buildPlanEntryWriteData(body: {
   excludeCaseIds?: bigint[];
   isIncluded?: boolean;
 }) {
-  const data: Prisma.TestPlanEntryUpdateInput = {};
+  const data: Prisma.TestPlanEntryUncheckedUpdateInput = {};
   if (body.name !== undefined) data.name = body.name.trim() || "Untitled entry";
   if (body.environment !== undefined) {
     data.environment = body.environment === null ? null : body.environment.trim() || null;
@@ -158,8 +160,8 @@ export function buildPlanEntryWriteData(body: {
   if (body.startDate !== undefined) data.startDate = body.startDate;
   if (body.dueOn !== undefined) data.dueOn = body.dueOn;
   if (body.includeAll !== undefined) data.includeAll = body.includeAll;
-  if (body.includeCaseIds !== undefined) data.includeCaseIds = serializeCaseIds(body.includeCaseIds);
-  if (body.excludeCaseIds !== undefined) data.excludeCaseIds = serializeCaseIds(body.excludeCaseIds);
+  if (body.includeCaseIds !== undefined) data.includeCaseIds = serializeCaseIds(body.includeCaseIds) ?? Prisma.JsonNull;
+  if (body.excludeCaseIds !== undefined) data.excludeCaseIds = serializeCaseIds(body.excludeCaseIds) ?? Prisma.JsonNull;
   if (body.isIncluded !== undefined) data.isIncluded = body.isIncluded;
   return data;
 }
@@ -179,9 +181,9 @@ export function buildPlanEntryCreateData(
     excludeCaseIds?: bigint[];
     isIncluded?: boolean;
   }
-): Prisma.TestPlanEntryCreateInput {
+): Prisma.TestPlanEntryUncheckedCreateInput {
   return {
-    plan: { connect: { id: planId } },
+    planId,
     name: body.name?.trim() || "Entry",
     environment: body.environment === undefined ? undefined : body.environment?.trim() || null,
     suiteId: body.suiteId ?? undefined,

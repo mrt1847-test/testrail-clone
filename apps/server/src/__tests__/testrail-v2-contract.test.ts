@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.js";
+import { env } from "../config/env.js";
 import { labelIdFromTitle, mapLabelsForV2, mapSections } from "../modules/testrail/testrail.mappers.js";
 import { TESTRAIL_V2_SUPPORTED } from "../modules/testrail/testrail.supported.js";
+
+const integrationEnabled = !env.useInMemoryRepository && Boolean(env.databaseUrl);
 
 const app = buildApp();
 
@@ -45,6 +48,9 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(body.supported).toContain("POST run_report/{report_id}");
     expect(body.supported).toContain("POST add_suite/{project_id}");
     expect(body.supported).toContain("POST close_run/{run_id}");
+    expect(body.supported).toContain("POST add_milestone/{project_id}");
+    expect(body.supported).toContain("POST add_plan/{project_id}");
+    expect(body.supported).toContain("POST add_config_group/{project_id}");
   });
 
   it("documents supported routes in TESTRAIL_V2_SUPPORTED", () => {
@@ -73,6 +79,10 @@ describe("/api/v2 TestRail adapter contract", () => {
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_project/{project_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_runs/{project_id}");
     expect(TESTRAIL_V2_SUPPORTED).toContain("GET get_results_for_run/{run_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("POST update_milestone/{milestone_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("POST update_plan/{plan_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("POST add_config/{config_group_id}");
+    expect(TESTRAIL_V2_SUPPORTED).toContain("POST update_config/{config_id}");
   });
 
   it("paginates get_cases with limit and offset envelope", async () => {
@@ -549,6 +559,78 @@ describe("/api/v2 TestRail adapter contract", () => {
       url: `/api/v2/get_run/${run.id}`
     });
     expect(getRunRes.statusCode).toBe(200);
+  });
+
+  it.skipIf(!integrationEnabled)("writes milestones, plans, and configurations via v2", async () => {
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.com", password: "password" }
+    });
+    const { token } = loginRes.json() as { token: string };
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "V2 planning writes" }
+    });
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+    const milestoneRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/add_milestone/${projectId}`,
+      headers,
+      payload: {
+        name: "Release train",
+        due_on: Math.floor(Date.now() / 1000) + 86_400
+      }
+    });
+    expect(milestoneRes.statusCode).toBe(200);
+    const milestone = milestoneRes.json() as { id: number; name: string };
+    expect(milestone.name).toBe("Release train");
+
+    const getMilestoneRes = await app.inject({
+      method: "GET",
+      url: `/api/v2/get_milestone/${milestone.id}`
+    });
+    expect(getMilestoneRes.statusCode).toBe(200);
+
+    const planRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/add_plan/${projectId}`,
+      headers,
+      payload: { name: "Master plan", milestone_id: milestone.id }
+    });
+    expect(planRes.statusCode).toBe(200);
+    const plan = planRes.json() as { id: number; milestone_id: number | null };
+    expect(plan.milestone_id).toBe(milestone.id);
+
+    const groupRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/add_config_group/${projectId}`,
+      headers,
+      payload: { name: "Browsers" }
+    });
+    expect(groupRes.statusCode).toBe(200);
+    const group = groupRes.json() as { id: number; name: string };
+
+    const configRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/add_config/${group.id}`,
+      headers,
+      payload: { name: "Firefox" }
+    });
+    expect(configRes.statusCode).toBe(200);
+
+    const configsRes = await app.inject({
+      method: "GET",
+      url: `/api/v2/get_configs/${projectId}`
+    });
+    expect(configsRes.statusCode).toBe(200);
+    const configs = configsRes.json() as Array<{ configs: Array<{ name: string }> }>;
+    expect(configs.some((row) => row.configs.some((cfg) => cfg.name === "Firefox"))).toBe(true);
   });
 
   it("exposes static case type and priority catalogs", async () => {

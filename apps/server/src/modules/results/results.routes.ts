@@ -10,10 +10,20 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
 import {
   getAuthenticatedUser,
-  requireAuthenticated,
   requireProjectMutationRole,
   requireProjectPermission
 } from "../../common/middlewares/authorization.js";
+import {
+  assertAttachmentStoragePathAllowed,
+  buildAttachmentStoragePath,
+  createSignedDownloadTarget,
+  createSignedUploadTarget
+} from "../../domain/attachmentStorage.js";
+import {
+  requireAttachmentRoutePermission,
+  requireProjectPermissionForProject
+} from "../attachments/attachmentAccess.js";
+import { softDeleteAttachmentWithTombstone } from "../attachments/attachmentLifecycle.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import {
   rejectResultRowMutation,
@@ -137,7 +147,6 @@ export async function registerResultsRoutes(
   app.delete("/api/results/:resultId", blockResultRowMutation);
 
   app.post("/api/attachments", async (req, reply) => {
-    await requireAuthenticated(req, deps);
     const body = createAttachmentBodySchema.parse(req.body ?? {});
     if (!deps.prisma) {
       return reply.send(
@@ -165,6 +174,14 @@ export async function registerResultsRoutes(
     if (!result) {
       throw new AppError("NOT_FOUND", "result not found", 404);
     }
+    await requireProjectPermissionForProject(req, deps, result.instance.run.projectId, "results.write");
+    const storagePath = body.storagePath;
+    assertAttachmentStoragePathAllowed({
+      projectId: result.instance.run.projectId,
+      entity: "results",
+      entityId: body.resultId,
+      storagePath
+    });
     const created = await deps.prisma.attachment.create({
       data: {
         projectId: result.instance.run.projectId,
@@ -173,7 +190,7 @@ export async function registerResultsRoutes(
         resultId: body.resultId,
         fileName: body.fileName,
         contentType: body.contentType,
-        storagePath: body.storagePath,
+        storagePath,
         fileSize: body.fileSize,
         createdBy: user.id
       }
@@ -279,6 +296,7 @@ export async function registerResultsRoutes(
 
   app.get("/api/results/:resultId/attachments", async (req, reply) => {
     const params = resultIdParamSchema.parse(req.params);
+    await requireAttachmentRoutePermission(req, deps, "read");
     if (!deps.prisma) return reply.send(toJsonSafe([]));
     const rows = await deps.prisma.attachment.findMany({
       where: {
@@ -327,6 +345,20 @@ export async function registerResultsRoutes(
     if (!result) {
       throw new AppError("NOT_FOUND", "result not found", 404);
     }
+    const storagePath =
+      body.storagePath ??
+      buildAttachmentStoragePath({
+        projectId: result.instance.run.projectId,
+        entity: "results",
+        entityId: params.resultId,
+        fileName: body.fileName
+      });
+    assertAttachmentStoragePathAllowed({
+      projectId: result.instance.run.projectId,
+      entity: "results",
+      entityId: params.resultId,
+      storagePath
+    });
     const created = await deps.prisma.attachment.create({
       data: {
         projectId: result.instance.run.projectId,
@@ -335,7 +367,7 @@ export async function registerResultsRoutes(
         resultId: params.resultId,
         fileName: body.fileName,
         contentType: body.contentType,
-        storagePath: body.storagePath ?? `local://results/${params.resultId.toString()}/${body.fileName}`,
+        storagePath,
         fileSize: body.fileSize,
         createdBy: user.id
       }
@@ -360,28 +392,31 @@ export async function registerResultsRoutes(
   });
 
   app.post("/api/results/:resultId/attachments/presign", async (req, reply) => {
-    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
+    await requireProjectMutationRole(req, deps, { permission: "results.write" });
     const params = resultIdParamSchema.parse(req.params);
     const body = attachmentPresignBodySchema.parse(req.body ?? {});
-    const now = Date.now();
-    const storagePath = `results/${params.resultId.toString()}/${now}-${body.fileName}`;
-    return reply.send(
-      toJsonSafe({
-        data: {
-          storagePath,
-          uploadUrl: `https://storage.local/upload/${encodeURIComponent(storagePath)}`,
-          method: "PUT",
-          headers: {
-            "content-type": body.contentType ?? "application/octet-stream"
-          },
-          expiresAt: new Date(now + 10 * 60 * 1000)
-        }
-      })
-    );
+    if (!deps.prisma) {
+      throw new AppError("NOT_FOUND", "result not found", 404);
+    }
+    const result = await deps.prisma.testResult.findUnique({
+      where: { id: params.resultId },
+      select: { instance: { select: { run: { select: { projectId: true } } } } }
+    });
+    if (!result) {
+      throw new AppError("NOT_FOUND", "result not found", 404);
+    }
+    const storagePath = buildAttachmentStoragePath({
+      projectId: result.instance.run.projectId,
+      entity: "results",
+      entityId: params.resultId,
+      fileName: body.fileName
+    });
+    return reply.send(toJsonSafe({ data: createSignedUploadTarget(storagePath, body.contentType) }));
   });
 
   app.get("/api/attachments/:attachmentId", async (req, reply) => {
     const params = attachmentIdParamSchema.parse(req.params);
+    await requireAttachmentRoutePermission(req, deps, "read");
     if (!deps.prisma) {
       return reply.send(
         toJsonSafe({
@@ -417,23 +452,13 @@ export async function registerResultsRoutes(
   });
 
   app.delete("/api/attachments/:attachmentId", async (req, reply) => {
-    await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = attachmentIdParamSchema.parse(req.params);
+    await requireAttachmentRoutePermission(req, deps, "write");
     if (!deps.prisma) {
       return reply.status(204).send();
     }
     const user = await getAuthenticatedUser(req, deps);
-    const found = await deps.prisma.attachment.findFirst({
-      where: { id: params.attachmentId, deletedAt: null },
-      select: { id: true, resultId: true, fileName: true }
-    });
-    if (!found) {
-      throw new AppError("NOT_FOUND", "attachment not found", 404);
-    }
-    await deps.prisma.attachment.update({
-      where: { id: params.attachmentId },
-      data: { deletedAt: new Date(), updatedBy: user.id }
-    });
+    const found = await softDeleteAttachmentWithTombstone(deps.prisma, params.attachmentId, user.id);
     if (found.resultId) {
       await recordAttachmentActivity(deps.prisma, {
         resultId: found.resultId,
@@ -448,14 +473,15 @@ export async function registerResultsRoutes(
 
   app.post("/api/attachments/:attachmentId/download-url", async (req, reply) => {
     const params = attachmentIdParamSchema.parse(req.params);
-    const now = Date.now();
+    await requireAttachmentRoutePermission(req, deps, "read");
     if (!deps.prisma) {
+      const signed = createSignedDownloadTarget(`local://attachments/${params.attachmentId.toString()}`);
       return reply.send(
         toJsonSafe({
           data: {
             attachmentId: params.attachmentId,
-            downloadUrl: `https://storage.local/download/local-attachment-${params.attachmentId.toString()}`,
-            expiresAt: new Date(now + 10 * 60 * 1000)
+            downloadUrl: signed.downloadUrl,
+            expiresAt: signed.expiresAt
           }
         })
       );
@@ -467,12 +493,13 @@ export async function registerResultsRoutes(
     if (!row) {
       throw new AppError("NOT_FOUND", "attachment not found", 404);
     }
+    const signed = createSignedDownloadTarget(row.storagePath);
     return reply.send(
       toJsonSafe({
         data: {
           attachmentId: row.id,
-          downloadUrl: `https://storage.local/download/${encodeURIComponent(row.storagePath)}`,
-          expiresAt: new Date(now + 10 * 60 * 1000)
+          downloadUrl: signed.downloadUrl,
+          expiresAt: signed.expiresAt
         }
       })
     );

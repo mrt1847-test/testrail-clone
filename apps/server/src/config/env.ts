@@ -28,5 +28,9 @@ export const env = {
   smtpPort: Number(process.env.SMTP_PORT ?? 1025),
   smtpSecure: process.env.SMTP_SECURE === "true",
   smtpUser: process.env.SMTP_USER ?? "",
-  smtpPass: process.env.SMTP_PASS ?? ""
+  smtpPass: process.env.SMTP_PASS ?? "",
+  /** Base URL used for signed upload/download links (Supabase Storage or reverse proxy). */
+  storagePublicBaseUrl: process.env.STORAGE_PUBLIC_BASE_URL ?? "https://storage.local",
+  storageSignedUrlTtlSeconds: Number(process.env.STORAGE_SIGNED_URL_TTL_SECONDS ?? 600),
+  storageUploadUrlTtlSeconds: Number(process.env.STORAGE_UPLOAD_URL_TTL_SECONDS ?? 600)
 };

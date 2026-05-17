@@ -25,7 +25,6 @@ import { CaseMetadataQuickEdit } from "./CaseMetadataQuickEdit";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
 import { caseKeys } from "../hooks/useCases";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
-import { useQueryClient } from "@tanstack/react-query";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -864,7 +863,7 @@ export function ExpandableCaseDetail({
             }}
             onCancel={onClose}
           />
-          {editShowsBdd ? <BddScenarioEditor caseId={data.id} disabled={isSaving} /> : null}
+          {editShowsBdd ? <BddScenarioEditor caseId={String(data.id)} disabled={isSaving} /> : null}
         </div>
       ) : (
         <>

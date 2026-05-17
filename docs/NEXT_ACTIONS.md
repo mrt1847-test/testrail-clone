@@ -4,6 +4,8 @@ Last aligned: 2026-05-17
 
 Goal: keep the next development batch to roughly one PR. Direction lives in [ROADMAP.md](./ROADMAP.md). Progress should be tracked by flipping exactly one line in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) from `[ ]` to `[x]`.
 
+**`[x]` = baseline shipped, not full TestRail parity.** See [FEATURE_CHECKLIST.md — Completion depth](./FEATURE_CHECKLIST.md#completion-depth-what-x-does-not-mean) before interpreting progress counts.
+
 ## Loop
 
 1. Implement only the unchecked checklist line named in **Current batch**.
@@ -15,20 +17,21 @@ Goal: keep the next development batch to roughly one PR. Direction lives in [ROA
 
 ## Current batch
 
-**Section:** Test Execution
+**Section:** Evidence, Attachments
 
 **Checklist line (exact line done when this is `[x]`):**
 
-Pick the next unchecked **TR-Core** P1 line under **Test Execution** in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) and paste it here when starting work.
+- [ ] **TR-Core** P1 Attachment retention and cleanup policy.
 
 ### Scope (only what closes the line above)
 
-Follow the checklist line text and [ROADMAP.md](./ROADMAP.md) for that feature only.
+- Configurable retention for soft-deleted attachment metadata and storage tombstones.
+- Scheduled or on-demand cleanup job with tests.
 
 ### Out of scope for this batch
 
-- Plan-entry semantics (shipped).
-- Milestone forecasts / burndown hints.
+- Production object storage lifecycle and authorization hardening — shipped.
+- Defect integration test connection UI.
 
 ---
 
@@ -38,6 +41,7 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Test Execution | Next unchecked **TR-Core** P1 under test execution in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) |
-| 2 | Milestones, Plans | **TR-Pro** P2 Milestone forecasts and burndown-style hints |
-| 3 | Milestones, Plans | **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations |
+| 1 | Reporting / UI | **TR-Core** P1 Print-friendly case view and multi-case print (checklist line 312) |
+| 2 | Reporting / UI | **TR-Core** P1 Print-friendly run, plan, and milestone views (checklist line 313) |
+| 3 | Reporting / UI | **TR-Core** P1 Print-friendly report pages (checklist line 314) |
+| 4 | Evidence, Attachments | **TR-Pro** P1 Integration test connection and validation |

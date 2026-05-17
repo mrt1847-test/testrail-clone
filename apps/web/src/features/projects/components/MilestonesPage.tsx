@@ -13,6 +13,7 @@ import { orderMilestonesForHierarchy } from "../utils/milestoneDisplay";
 import { MilestoneDashboardPanel } from "./MilestoneDashboardPanel";
 import { MilestoneLifecycleBadge } from "./MilestoneLifecycleBadge";
 import { MilestoneProgressChip } from "./MilestoneProgressChip";
+import { MilestoneScheduleBadge } from "./MilestoneScheduleBadge";
 
 function lifecycleOf(row: { lifecycleStatus?: MilestoneLifecycleStatus; isCompleted: boolean }) {
   return row.lifecycleStatus ?? (row.isCompleted ? "completed" : "open");
@@ -170,6 +171,11 @@ export function MilestonesPage() {
                         includesSubMilestones={rollup.includesSubMilestones}
                         compact
                       />
+                    ) : null}
+                    {rollup?.forecast ? (
+                      <span title={rollup.forecast.hint}>
+                        <MilestoneScheduleBadge status={rollup.forecast.scheduleStatus} />
+                      </span>
                     ) : null}
                     <MilestoneLifecycleBadge status={status} />
                     {status === "upcoming" ? (

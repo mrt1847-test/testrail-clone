@@ -29,7 +29,8 @@ export async function buildMilestoneSummary(
       name: milestone.name,
       parentMilestoneId: milestone.parentMilestoneId?.toString() ?? null,
       isCompleted: milestone.isCompleted,
-      startDate: milestone.startDate
+      startDate: milestone.startDate,
+      dueDate: milestone.dueDate
     }));
     const directById = new Map<string, MilestoneDirectMetrics>();
 
@@ -62,7 +63,8 @@ export async function buildMilestoneSummary(
     name: milestone.name,
     parentMilestoneId: milestone.parentMilestoneId?.toString() ?? null,
     isCompleted: milestone.isCompleted,
-    startDate: milestone.startDate
+    startDate: milestone.startDate,
+    dueDate: milestone.dueDate
   }));
   const directById = new Map<string, MilestoneDirectMetrics>();
 
@@ -88,4 +90,17 @@ export async function buildMilestoneSummary(
   }
 
   return buildMilestoneSummaryPayload(metas, directById);
+}
+
+export async function buildMilestoneForecastForMilestone(
+  projectId: bigint,
+  milestoneId: bigint,
+  deps: { repo?: RunsRepository; prisma?: PrismaClient }
+) {
+  const summary = await buildMilestoneSummary(projectId, deps);
+  const item = summary.items.find((row) => row.milestoneId === milestoneId.toString());
+  if (!item) {
+    throw new Error("MILESTONE_NOT_FOUND");
+  }
+  return item.forecast;
 }

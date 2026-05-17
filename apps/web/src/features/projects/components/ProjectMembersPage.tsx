@@ -14,6 +14,10 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 
 const roles: ProjectMemberRow["role"][] = ["owner", "manager", "tester", "viewer"];
 
+function projectRoleOrViewer(value: string): ProjectMemberRow["role"] {
+  return roles.includes(value as ProjectMemberRow["role"]) ? (value as ProjectMemberRow["role"]) : "viewer";
+}
+
 export function ProjectMembersPage() {
   const { projectId = "" } = useParams();
   const [items, setItems] = useState<ProjectMemberRow[]>([]);
@@ -42,7 +46,7 @@ export function ProjectMembersPage() {
 
   useEffect(() => {
     void fetchAccessDefaults()
-      .then((row) => setRole(row.defaultProjectMemberRole))
+      .then((row) => setRole(projectRoleOrViewer(row.defaultProjectMemberRole)))
       .catch(() => undefined);
   }, []);
 
@@ -52,7 +56,7 @@ export function ProjectMembersPage() {
     setEmail("");
     setName("");
     void fetchAccessDefaults()
-      .then((row) => setRole(row.defaultProjectMemberRole))
+      .then((row) => setRole(projectRoleOrViewer(row.defaultProjectMemberRole)))
       .catch(() => setRole("viewer"));
     await load();
   }

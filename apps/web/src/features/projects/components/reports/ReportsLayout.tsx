@@ -13,6 +13,12 @@ export function ReportsLayout() {
         <NavLink to={base} end className={linkCls}>
           Overview
         </NavLink>
+        <NavLink to={`${base}/project-summary`} className={linkCls}>
+          Project summary
+        </NavLink>
+        <NavLink to={`${base}/users-workload`} className={linkCls}>
+          Users workload
+        </NavLink>
         <NavLink to={`${base}/runs`} className={linkCls}>
           Run summary
         </NavLink>
@@ -25,11 +31,38 @@ export function ReportsLayout() {
         <NavLink to={`${base}/traceability`} className={linkCls}>
           Traceability
         </NavLink>
+        <NavLink to={`${base}/refs-coverage`} className={linkCls}>
+          Refs coverage
+        </NavLink>
+        <NavLink to={`${base}/refs-comparison`} className={linkCls}>
+          Refs comparison
+        </NavLink>
+        <NavLink to={`${base}/refs-defects`} className={linkCls}>
+          Refs defects
+        </NavLink>
         <NavLink to={`${base}/coverage`} className={linkCls}>
           Coverage gap
         </NavLink>
+        <NavLink to={`${base}/case-activity`} className={linkCls}>
+          Case activity
+        </NavLink>
+        <NavLink to={`${base}/case-properties`} className={linkCls}>
+          Case properties
+        </NavLink>
+        <NavLink to={`${base}/status-tops`} className={linkCls}>
+          Status tops
+        </NavLink>
+        <NavLink to={`${base}/results-comparison`} className={linkCls}>
+          Results comparison
+        </NavLink>
+        <NavLink to={`${base}/results-properties`} className={linkCls}>
+          Results properties
+        </NavLink>
         <NavLink to={`${base}/defects`} className={linkCls}>
           Defect coverage
+        </NavLink>
+        <NavLink to={`${base}/defect-summary`} className={linkCls}>
+          Defect summary
         </NavLink>
         <NavLink to={`${base}/explorer`} className={linkCls}>
           Results explorer

@@ -6,6 +6,8 @@ import { ok } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import { milestoneIdParamSchema } from "../milestones/milestones.schema.js";
+import { AppError } from "../../common/errors/appError.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
 import { parseCaseRefs } from "../../domain/caseRefs.js";
@@ -24,7 +26,36 @@ import {
   toStatusCounters,
   toUniqueDefectKeys
 } from "./reportMetrics.service.js";
-import { buildMilestoneSummary } from "./milestoneSummary.service.js";
+import { buildMilestoneForecastForMilestone, buildMilestoneSummary } from "./milestoneSummary.service.js";
+import {
+  buildCaseActivitySummaryReport,
+  caseActivitySummaryQuerySchema
+} from "./caseActivitySummary.service.js";
+import {
+  buildCasePropertyDistributionReport,
+  buildCaseStatusTopsReport,
+  casePropertyDistributionQuerySchema
+} from "./casePropertyReports.service.js";
+import {
+  buildDefectSummaryReportForProject,
+  defectSummaryQuerySchema
+} from "./defectSummary.service.js";
+import {
+  buildResultsCaseComparisonReport,
+  buildResultsPropertyDistributionReport,
+  resultsCaseComparisonQuerySchema,
+  resultsPropertyDistributionQuerySchema
+} from "./resultReports.service.js";
+import {
+  buildRefsComparisonReportForProject,
+  buildRefsCoverageReportForProject,
+  buildRefsDefectSummaryReportForProject,
+  refsComparisonQuerySchema
+} from "./refsReports.service.js";
+import {
+  buildProjectExecutionSummaryForProject,
+  buildUserWorkloadSummaryForProject
+} from "./projectSummaryReports.service.js";
 
 type ReportActivityItem = {
   runId: string;
@@ -878,9 +909,95 @@ export async function registerReportsRoutes(
     return reply.send(toJsonSafe(ok(summary)));
   });
 
+  app.get("/api/projects/:projectId/milestones/:milestoneId/forecast", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+    try {
+      const forecast = await buildMilestoneForecastForMilestone(projectId, milestoneId, deps);
+      return reply.send(toJsonSafe(ok(forecast)));
+    } catch (error) {
+      if (error instanceof Error && error.message === "MILESTONE_NOT_FOUND") {
+        throw new AppError("NOT_FOUND", "milestone not found", 404);
+      }
+      throw error;
+    }
+  });
+
   app.get("/api/projects/:projectId/reports/plan-summary", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const items = await buildPlanSummaryItems(projectId, deps);
     return reply.send(toJsonSafe(ok({ items })));
+  });
+
+  app.get("/api/projects/:projectId/reports/case-activity-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = caseActivitySummaryQuerySchema.parse(req.query ?? {});
+    const summary = await buildCaseActivitySummaryReport(deps.prisma, projectId, query);
+    return reply.send(toJsonSafe(ok(summary)));
+  });
+
+  app.get("/api/projects/:projectId/reports/cases-property-distribution", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = casePropertyDistributionQuerySchema.parse(req.query ?? {});
+    const report = await buildCasePropertyDistributionReport(projectId, deps, query.field);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/status-tops", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const report = await buildCaseStatusTopsReport(projectId, deps);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/defect-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = defectSummaryQuerySchema.parse(req.query ?? {});
+    const report = await buildDefectSummaryReportForProject(projectId, deps, query);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/results-case-comparison", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = resultsCaseComparisonQuerySchema.parse(req.query ?? {});
+    const report = await buildResultsCaseComparisonReport(projectId, deps, query);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/results-property-distribution", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = resultsPropertyDistributionQuerySchema.parse(req.query ?? {});
+    const report = await buildResultsPropertyDistributionReport(projectId, deps, query);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/refs-coverage", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const report = await buildRefsCoverageReportForProject(projectId, deps);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/refs-comparison", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = refsComparisonQuerySchema.parse(req.query ?? {});
+    const report = await buildRefsComparisonReportForProject(projectId, deps, query);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/refs-defect-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const report = await buildRefsDefectSummaryReportForProject(projectId, deps);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/project-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const report = await buildProjectExecutionSummaryForProject(projectId, deps);
+    return reply.send(toJsonSafe(ok(report)));
+  });
+
+  app.get("/api/projects/:projectId/reports/users-workload-summary", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const report = await buildUserWorkloadSummaryForProject(projectId, deps);
+    return reply.send(toJsonSafe(ok(report)));
   });
 }

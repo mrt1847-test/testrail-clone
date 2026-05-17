@@ -77,6 +77,29 @@ export function mapSections(rows: SectionRow[]) {
     }));
 }
 
+export function testRailEpochToDate(epoch: number | null | undefined) {
+  if (epoch === undefined) return undefined;
+  if (epoch === null) return null;
+  if (!Number.isFinite(epoch)) return null;
+  return new Date(epoch * 1000);
+}
+
+export function mapConfigGroupForV2(group: { id: bigint; name: string }) {
+  return {
+    id: Number(group.id),
+    name: group.name,
+    configs: [] as Array<{ id: number; group_id: number; name: string }>
+  };
+}
+
+export function mapConfigForV2(config: { id: bigint; groupId: bigint; name: string }) {
+  return {
+    id: Number(config.id),
+    group_id: Number(config.groupId),
+    name: config.name
+  };
+}
+
 export function mapMilestone(row: {
   id: bigint;
   projectId: bigint;

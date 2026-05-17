@@ -11,6 +11,7 @@ import { buildCaseListPath } from "../caseRoute";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
 import { CaseEditDrawer } from "./CaseEditDrawer";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
 function parseSectionId(value: string | null): number | null {
@@ -98,6 +99,7 @@ export function CaseDetailPage() {
             >
               Back to cases
             </Link>
+            <PrintLinkButton to={`/projects/${projectId}/cases/${caseId}/print`} />
             {!isEditMode ? (
               <button
                 type="button"

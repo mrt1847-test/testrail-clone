@@ -39,6 +39,7 @@ import { registerTestRailRoutes } from "./modules/testrail/testrail.routes.js";
 import { registerAdminAccessDefaultsRoutes } from "./modules/admin/accessDefaults.routes.js";
 import { registerAdminUsersRoutes } from "./modules/admin/users.routes.js";
 import { registerExecutionCommentsRoutes } from "./modules/executionComments/executionComments.routes.js";
+import { registerPrintRoutes } from "./modules/print/print.routes.js";
 
 export function buildApp() {
   const app = Fastify({ logger: false });
@@ -93,6 +94,7 @@ export function buildApp() {
   });
   void registerMilestonesRoutes(app, { prisma, authService });
   void registerPlansRoutes(app, { prisma, authService, runsService, catalog: catalogRepo });
+  void registerPrintRoutes(app, { prisma, repo, casesService });
   void registerSettingsRoutes(app, { authService, prisma });
   void registerAdminAccessDefaultsRoutes(app, { authService, prisma });
   void registerAdminUsersRoutes(app, { authService, prisma });
