@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import { useProjectArchived } from "../../projects/context/ProjectArchiveContext";
-import type { CaseViewMode } from "../caseViewMode";
 import type {
   CaseFilterAutomation,
   CaseFilterPriority,
@@ -11,7 +10,6 @@ import type {
   CasePresenceFilter,
   SavedCaseView
 } from "../types";
-import { CaseViewModeToggle } from "./CaseViewModeToggle";
 
 type CaseListToolbarProps = {
   searchValue: string;
@@ -45,8 +43,6 @@ type CaseListToolbarProps = {
   onCancelSaveView: () => void;
   onDeleteSavedView: () => void;
   onAddCase?: () => void;
-  caseViewMode: CaseViewMode;
-  onCaseViewModeChange: (mode: CaseViewMode) => void;
 };
 
 export function CaseListToolbar({
@@ -80,9 +76,7 @@ export function CaseListToolbar({
   onSaveView,
   onCancelSaveView,
   onDeleteSavedView,
-  onAddCase,
-  caseViewMode,
-  onCaseViewModeChange
+  onAddCase
 }: CaseListToolbarProps) {
   const isProjectArchived = useProjectArchived();
   const [filtersOpen, setFiltersOpen] = useState(activeFilterCount > 0);
@@ -150,7 +144,6 @@ export function CaseListToolbar({
         >
           Add case
         </button>
-        <CaseViewModeToggle value={caseViewMode} onChange={onCaseViewModeChange} compact />
       </div>
 
       {filtersOpen ? (
@@ -264,9 +257,6 @@ export function CaseListToolbar({
                 {saveViewOpen ? "Close save" : "Save view"}
               </button>
             </div>
-          </div>
-          <div className="mt-3">
-            <CaseViewModeToggle value={caseViewMode} onChange={onCaseViewModeChange} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
             {columnOptions.map((option) => (

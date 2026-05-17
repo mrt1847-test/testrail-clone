@@ -27,7 +27,8 @@ export function CaseDetailBody({
   onDuplicated
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const isEditMode = searchParams.get("mode") === "edit";
+  const isEditMode =
+    searchParams.get("panelMode") === "edit" || searchParams.get("mode") === "edit";
   const { data, isLoading, isError, refetch } = useCaseDetail(caseId);
   const editor = useCaseEditorActions(projectId);
   const detailLayout = layout === "panel" ? "embedded" : "page";
@@ -61,13 +62,20 @@ export function CaseDetailBody({
 
   const openEdit = () => {
     const next = new URLSearchParams(searchParams);
-    next.set("mode", "edit");
+    if (layout === "panel") {
+      next.set("panelMode", "edit");
+      next.delete("mode");
+    } else {
+      next.set("mode", "edit");
+      next.delete("panelMode");
+    }
     setSearchParams(next);
   };
 
   const closeEdit = () => {
     const next = new URLSearchParams(searchParams);
     next.delete("mode");
+    next.delete("panelMode");
     setSearchParams(next, { replace: true });
   };
 

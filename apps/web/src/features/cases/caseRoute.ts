@@ -1,6 +1,9 @@
 export type CaseListPathOptions = {
   sectionId?: number | null;
+  /** @deprecated use panelCaseId */
   caseId?: number | null;
+  panelCaseId?: number | null;
+  panelMode?: "view" | "edit";
   mode?: "view" | "edit";
 };
 
@@ -11,8 +14,10 @@ export function buildCaseListPath(projectId: string, options?: CaseListPathOptio
       : options;
   const params = new URLSearchParams();
   if (normalized.sectionId != null) params.set("sectionId", String(normalized.sectionId));
-  if (normalized.caseId != null) params.set("caseId", String(normalized.caseId));
-  if (normalized.mode === "edit") params.set("mode", "edit");
+  const panelId = normalized.panelCaseId ?? normalized.caseId;
+  if (panelId != null) params.set("panelCaseId", String(panelId));
+  if (normalized.panelMode === "edit") params.set("panelMode", "edit");
+  else if (normalized.mode === "edit") params.set("panelMode", "edit");
   const query = params.toString();
   return `/projects/${projectId}/cases${query ? `?${query}` : ""}`;
 }

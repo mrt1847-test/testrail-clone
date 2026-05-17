@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
@@ -6,10 +5,8 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { buildCaseDetailPath, buildCaseListPath } from "../caseRoute";
-import { useCaseViewMode } from "../hooks/useCaseViewMode";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { CaseDetailBody } from "./CaseDetailBody";
-import { CaseViewModeToggle } from "./CaseViewModeToggle";
 
 function parseSectionId(value: string | null): number | null {
   if (value == null || value === "") return null;
@@ -21,30 +18,17 @@ export function CaseDetailPage() {
   const { projectId = "", caseId: caseIdParam = "" } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { viewMode, setViewMode } = useCaseViewMode();
   const caseId = Number(caseIdParam);
   const sectionId = parseSectionId(searchParams.get("sectionId"));
   const listPath = buildCaseListPath(projectId, { sectionId });
-  const { data, isLoading } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
-
-  useEffect(() => {
-    if (viewMode !== "panel" || Number.isNaN(caseId)) return;
-    navigate(
-      buildCaseListPath(projectId, {
-        sectionId,
-        caseId,
-        mode: searchParams.get("mode") === "edit" ? "edit" : "view"
-      }),
-      { replace: true }
-    );
-  }, [caseId, navigate, projectId, searchParams, sectionId, viewMode]);
+  const { data, isLoading, isError, refetch } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
 
   if (Number.isNaN(caseId)) {
     return <ErrorState title="Invalid case link" onRetry={() => navigate(listPath)} />;
   }
 
-  if (viewMode === "panel") {
-    return <LoadingState message="Opening case in side panel…" />;
+  if (isError) {
+    return <ErrorState title="Could not load test case" onRetry={() => void refetch()} />;
   }
 
   if (isLoading || !data) {
@@ -61,25 +45,8 @@ export function CaseDetailPage() {
         description={data.archivedAt ? `Archived on ${new Date(data.archivedAt).toLocaleString()}` : undefined}
         actions={
           <>
-            <CaseViewModeToggle
-              value={viewMode}
-              onChange={(mode) => {
-                setViewMode(mode);
-                if (mode === "panel") {
-                  navigate(
-                    buildCaseListPath(projectId, {
-                      sectionId,
-                      caseId,
-                      mode: searchParams.get("mode") === "edit" ? "edit" : "view"
-                    }),
-                    { replace: true }
-                  );
-                }
-              }}
-              compact
-            />
             <Link
-              to={buildCaseListPath(projectId, { sectionId, caseId, mode: "view" })}
+              to={listPath}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Back to cases

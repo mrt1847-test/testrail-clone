@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useCaseListDnD, type PendingMoveCopy } from "../hooks/useCaseListDnD";
-import { buildCaseDetailPath } from "../caseRoute";
-import { useCaseViewMode } from "../hooks/useCaseViewMode";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
 import { CaseDetailSidePanel } from "./CaseDetailSidePanel";
@@ -17,8 +15,6 @@ const suiteStorageKey = (projectId: string) => `cases:active-suite:${projectId}`
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
-  const navigate = useNavigate();
-  const { viewMode, setViewMode } = useCaseViewMode();
   const [selectedSuiteId, setSelectedSuiteId] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(suiteStorageKey(projectId)) ?? "";
@@ -28,7 +24,7 @@ export function TestCaseWorkspace() {
     selectedSuiteId || undefined
   );
   const sections = bundle?.sections ?? [];
-  const { selectedSectionId, expandedCaseId, mode, setSelectedSection, setExpandedCase } = useExpandedCase();
+  const { selectedSectionId, panelCaseId, panelMode, setSelectedSection, setPanelCase } = useExpandedCase();
   const dnd = useCaseListDnD();
   const [pendingMoveCopy, setPendingMoveCopy] = useState<PendingMoveCopy | null>(null);
   const activeSuiteId = bundle?.suiteId ?? selectedSuiteId;
@@ -36,24 +32,13 @@ export function TestCaseWorkspace() {
     selectedSectionId != null
       ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? activeSuiteId)
       : activeSuiteId;
-  const panelOpen = viewMode === "panel" && expandedCaseId != null;
+  const panelOpen = panelCaseId != null;
 
   useEffect(() => {
     if (!bundle?.suiteId) return;
     setSelectedSuiteId(bundle.suiteId);
     window.localStorage.setItem(suiteStorageKey(projectId), bundle.suiteId);
   }, [bundle?.suiteId, projectId]);
-
-  useEffect(() => {
-    if (viewMode !== "page" || expandedCaseId == null) return;
-    navigate(
-      buildCaseDetailPath(projectId, expandedCaseId, {
-        sectionId: selectedSectionId,
-        mode: mode === "edit" ? "edit" : "view"
-      }),
-      { replace: true }
-    );
-  }, [expandedCaseId, mode, navigate, projectId, selectedSectionId, viewMode]);
 
   useEffect(() => {
     if (sectionsLoading || sections.length === 0) return;
@@ -109,7 +94,7 @@ export function TestCaseWorkspace() {
           sections={sections}
           selectedSectionId={selectedSectionId}
           onSelectSection={setSelectedSection}
-          onClearExpand={() => setExpandedCase(null)}
+          onClearExpand={() => setPanelCase(null)}
           dnd={{
             isDragging: dnd.isDragging,
             draggingCount: dnd.draggingCount,
@@ -128,12 +113,6 @@ export function TestCaseWorkspace() {
         <CaseListPane
           projectId={projectId}
           sections={sections}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          expandedCaseId={expandedCaseId}
-          expandedMode={mode}
-          onSelectCase={(caseId, edit) => setExpandedCase(caseId, edit ? "edit" : "view")}
-          onClearExpandedCase={() => setExpandedCase(null)}
           dnd={dnd}
           pendingMoveCopy={pendingMoveCopy}
           onPendingMoveCopyChange={setPendingMoveCopy}
@@ -141,27 +120,12 @@ export function TestCaseWorkspace() {
         {panelOpen ? (
           <CaseDetailSidePanel
             projectId={projectId}
-            caseId={expandedCaseId}
+            caseId={panelCaseId}
             sectionId={selectedSectionId}
-            mode={mode}
-            onClose={() => setExpandedCase(null)}
-            onOpenFullPage={() => {
-              setViewMode("page");
-              navigate(
-                buildCaseDetailPath(projectId, expandedCaseId, {
-                  sectionId: selectedSectionId,
-                  mode: mode === "edit" ? "edit" : "view"
-                })
-              );
-            }}
-            onSwitchViewMode={setViewMode}
-            onDuplicated={(copiedCaseId) => setExpandedCase(copiedCaseId, "view")}
+            mode={panelMode}
+            onClose={() => setPanelCase(null)}
+            onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
           />
-        ) : viewMode === "panel" ? (
-          <aside className="hidden rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500 xl:flex xl:min-h-[320px] xl:flex-col xl:justify-center">
-            <p className="font-medium text-slate-700">Select a test case</p>
-            <p className="mt-1">Choose a case from the list to preview steps, preconditions, and other fields here without leaving the repository.</p>
-          </aside>
         ) : null}
       </div>
     </div>

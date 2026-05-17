@@ -4,8 +4,8 @@ import { buildCaseListPath } from "./caseRoute";
 
 describe("buildCaseListPath", () => {
   it("builds list path with section and case", () => {
-    expect(buildCaseListPath("p1", { sectionId: 3, caseId: 12, mode: "edit" })).toBe(
-      "/projects/p1/cases?sectionId=3&caseId=12&mode=edit"
+    expect(buildCaseListPath("p1", { sectionId: 3, panelCaseId: 12, panelMode: "edit" })).toBe(
+      "/projects/p1/cases?sectionId=3&panelCaseId=12&panelMode=edit"
     );
   });
 

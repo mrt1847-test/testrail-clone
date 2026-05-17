@@ -14,7 +14,7 @@ import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 type CaseRowProps = {
   item: TestCase;
   isExpanded: boolean;
-  isActive?: boolean;
+  isPanelOpen?: boolean;
   mode: "view" | "edit";
   detail: TestCase | null;
   versions?: CaseVersion[];
@@ -24,7 +24,8 @@ type CaseRowProps = {
   isSelected?: boolean;
   onSelectChange?: (checked: boolean) => void;
   onSelectClick?: (event: React.MouseEvent<HTMLInputElement>) => void;
-  onToggle: () => void;
+  onOpenCase: () => void;
+  onTogglePanel: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
   onSave: (patch: {
@@ -50,8 +51,6 @@ type CaseRowProps = {
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
   renderDetailInline?: boolean;
-  opensInDetailPage?: boolean;
-  panelMode?: boolean;
   draggable?: boolean;
   isDraggingThis?: boolean;
   dropIndicator?: "before" | "after" | null;
@@ -65,7 +64,7 @@ type CaseRowProps = {
 export function CaseRow({
   item,
   isExpanded,
-  isActive = false,
+  isPanelOpen = false,
   mode,
   detail,
   versions,
@@ -75,7 +74,8 @@ export function CaseRow({
   isSelected = false,
   onSelectChange,
   onSelectClick,
-  onToggle,
+  onOpenCase,
+  onTogglePanel,
   onEdit,
   onCloseDetail,
   onSave,
@@ -91,8 +91,6 @@ export function CaseRow({
   onDeleteStep,
   isStepsBusy,
   renderDetailInline = true,
-  opensInDetailPage = false,
-  panelMode = false,
   draggable = false,
   isDraggingThis = false,
   dropIndicator = null,
@@ -132,7 +130,7 @@ export function CaseRow({
 
   const rowClasses = [
     "relative flex items-center gap-2 pl-3 transition-colors",
-    isActive ? "bg-sky-50 ring-2 ring-inset ring-sky-200" : isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
+    isPanelOpen ? "bg-sky-50 ring-2 ring-inset ring-sky-200" : isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
     isDraggingThis ? "opacity-50" : ""
   ]
     .filter(Boolean)
@@ -189,9 +187,8 @@ export function CaseRow({
         ) : null}
         <button
           type="button"
-          aria-expanded={isExpanded}
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center justify-between gap-3 px-1 py-3 pr-4 text-left text-sm"
+          onClick={onOpenCase}
+          className="flex min-w-0 flex-1 items-center px-1 py-3 text-left text-sm"
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate">
@@ -237,10 +234,27 @@ export function CaseRow({
               </span>
             ) : null}
           </span>
-          <span className="shrink-0 text-right text-xs text-slate-500">
-            {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode}{" "}
-            {opensInDetailPage ? "Open →" : panelMode ? (isActive ? "Selected" : "") : isExpanded ? "▾" : "▸"}
-          </span>
+        </button>
+        <span className="hidden shrink-0 px-2 text-right text-xs text-slate-500 sm:block">
+          {summaryParts.length > 0 ? summaryParts.join(" / ") : null}
+        </span>
+        <button
+          type="button"
+          aria-label={isPanelOpen ? "Close side preview" : "Open side preview"}
+          aria-expanded={isPanelOpen}
+          title={isPanelOpen ? "Close side preview" : "Open side preview"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onTogglePanel();
+          }}
+          className={[
+            "mr-2 flex h-8 w-7 shrink-0 items-center justify-center rounded border text-sm transition-colors",
+            isPanelOpen
+              ? "border-sky-300 bg-sky-100 text-sky-800"
+              : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+          ].join(" ")}
+        >
+          {isPanelOpen ? "›" : "‹"}
         </button>
       </div>
       {renderDetailInline && isExpanded ? (

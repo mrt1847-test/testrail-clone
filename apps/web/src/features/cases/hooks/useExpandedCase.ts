@@ -69,14 +69,15 @@ function writeColumns(next: URLSearchParams, columns: CaseListColumn[]) {
 export function useExpandedCase() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const expandedCaseId = useMemo(() => {
-    const raw = searchParams.get("caseId");
+  const panelCaseId = useMemo(() => {
+    const raw = searchParams.get("panelCaseId") ?? searchParams.get("caseId");
     if (raw == null || raw === "") return null;
     const n = Number(raw);
     return Number.isNaN(n) ? null : n;
   }, [searchParams]);
 
-  const mode: "view" | "edit" = searchParams.get("mode") === "edit" ? "edit" : "view";
+  const panelMode: "view" | "edit" =
+    searchParams.get("panelMode") === "edit" || searchParams.get("mode") === "edit" ? "edit" : "view";
 
   const selectedSectionId = useMemo(() => {
     const raw = searchParams.get("sectionId");
@@ -100,25 +101,38 @@ export function useExpandedCase() {
   );
   const caseColumns = useMemo(() => parseColumns(searchParams.get("columns")), [searchParams]);
 
-  const setExpandedCase = useCallback((nextCaseId: number | null, nextMode: "view" | "edit" = "view") => {
+  const setPanelCase = useCallback((nextCaseId: number | null, nextMode: "view" | "edit" = "view") => {
     const next = new URLSearchParams(searchParams);
+    next.delete("caseId");
+    next.delete("mode");
 
     if (nextCaseId === null) {
-      next.delete("caseId");
-      next.delete("mode");
+      next.delete("panelCaseId");
+      next.delete("panelMode");
     } else {
-      next.set("caseId", String(nextCaseId));
-      next.set("mode", nextMode);
+      next.set("panelCaseId", String(nextCaseId));
+      if (nextMode === "edit") next.set("panelMode", "edit");
+      else next.delete("panelMode");
     }
 
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
+
+  const togglePanelCase = useCallback(
+    (caseId: number) => {
+      if (panelCaseId === caseId) setPanelCase(null);
+      else setPanelCase(caseId, "view");
+    },
+    [panelCaseId, setPanelCase]
+  );
 
   const setSelectedSection = useCallback((nextSectionId: number) => {
     const next = new URLSearchParams(searchParams);
     next.set("sectionId", String(nextSectionId));
     next.delete("caseId");
     next.delete("mode");
+    next.delete("panelCaseId");
+    next.delete("panelMode");
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
@@ -159,6 +173,8 @@ export function useExpandedCase() {
 
     next.delete("caseId");
     next.delete("mode");
+    next.delete("panelCaseId");
+    next.delete("panelMode");
     setSearchParams(next);
   }, [caseFilters, searchParams, setSearchParams]);
 
@@ -174,6 +190,8 @@ export function useExpandedCase() {
     next.delete("state");
     next.delete("caseId");
     next.delete("mode");
+    next.delete("panelCaseId");
+    next.delete("panelMode");
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
@@ -215,16 +233,19 @@ export function useExpandedCase() {
     writeColumns(next, view.columns ?? defaultCaseListColumns);
     next.delete("caseId");
     next.delete("mode");
+    next.delete("panelCaseId");
+    next.delete("panelMode");
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
   return {
-    expandedCaseId,
-    mode,
+    panelCaseId,
+    panelMode,
     selectedSectionId,
     caseFilters,
     caseColumns,
-    setExpandedCase,
+    setPanelCase,
+    togglePanelCase,
     setSelectedSection,
     setCaseFilters,
     setCaseColumns,

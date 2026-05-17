@@ -25,7 +25,6 @@ import {
   fetchAllCasesForSection,
   positionCases
 } from "../api/catalogApi";
-import type { CaseViewMode } from "../caseViewMode";
 import { buildCaseDetailPath } from "../caseRoute";
 import { extractApiErrorMessage } from "../caseErrors";
 import type { BulkCaseFeedback } from "../utils/bulkCaseFeedback";
@@ -50,12 +49,6 @@ import {
 type CaseListPaneProps = {
   projectId: string;
   sections: SectionNode[];
-  viewMode: CaseViewMode;
-  onViewModeChange: (mode: CaseViewMode) => void;
-  expandedCaseId: number | null;
-  expandedMode: "view" | "edit";
-  onSelectCase: (caseId: number, edit?: boolean) => void;
-  onClearExpandedCase: () => void;
   dnd?: CaseListDnD;
   pendingMoveCopy?: PendingMoveCopy | null;
   onPendingMoveCopyChange?: (pending: PendingMoveCopy | null) => void;
@@ -104,10 +97,6 @@ async function persistCreateDraftSteps(
 export function CaseListPane({
   projectId,
   sections,
-  viewMode,
-  onViewModeChange,
-  expandedCaseId,
-  onSelectCase,
   dnd,
   pendingMoveCopy = null,
   onPendingMoveCopyChange
@@ -120,12 +109,15 @@ export function CaseListPane({
   const { user } = useAuth();
   const {
     selectedSectionId,
+    panelCaseId,
     caseFilters,
     caseColumns,
     setCaseFilters,
     setCaseColumns,
     clearCaseFilters,
-    applySavedView
+    applySavedView,
+    togglePanelCase,
+    setPanelCase
   } = useExpandedCase();
 
   const directCaseFilters = useMemo(() => ({ ...caseFilters, sectionScope: "direct" as const }), [caseFilters]);
@@ -212,17 +204,13 @@ export function CaseListPane({
     () => sections.find((section) => section.id === selectedSectionId) ?? null,
     [sections, selectedSectionId]
   );
-  const openCaseDetail = (caseId: number, edit = false) => {
-    if (viewMode === "page") {
-      navigate(
-        buildCaseDetailPath(projectId, caseId, {
-          sectionId: selectedSectionId,
-          mode: edit ? "edit" : "view"
-        })
-      );
-      return;
-    }
-    onSelectCase(caseId, edit);
+  const openCasePage = (caseId: number, edit = false) => {
+    navigate(
+      buildCaseDetailPath(projectId, caseId, {
+        sectionId: selectedSectionId,
+        mode: edit ? "edit" : "view"
+      })
+    );
   };
 
   useEffect(() => {
@@ -309,7 +297,7 @@ export function CaseListPane({
       setShowAdd(false);
       setCreateFormError(null);
       setCreateFormVersion((current) => current + 1);
-      openCaseDetail(created.id);
+      openCasePage(created.id);
       if (stepsWarning) {
         setBulkFeedback({
           tone: "partial",
@@ -724,8 +712,6 @@ export function CaseListPane({
       setShowAdd(true);
       setCreateFormVersion((value) => value + 1);
     },
-    caseViewMode: viewMode,
-    onCaseViewModeChange: onViewModeChange
   } satisfies ComponentProps<typeof CaseListToolbar>;
 
   const clearFiltersAndSearch = () => {
@@ -1034,7 +1020,7 @@ export function CaseListPane({
                     key={item.id}
                     item={item}
                     isExpanded={false}
-                    isActive={viewMode === "panel" && expandedCaseId === item.id}
+                    isPanelOpen={panelCaseId === item.id}
                     mode="view"
                     detail={item}
                     versions={[]}
@@ -1069,20 +1055,22 @@ export function CaseListPane({
                         onCrossSectionDrop: handleCrossSectionDrop
                       });
                     }}
-                    onToggle={() => {
+                    onOpenCase={() => {
                       setShowAdd(false);
-                      openCaseDetail(item.id);
+                      openCasePage(item.id);
+                    }}
+                    onTogglePanel={() => {
+                      setShowAdd(false);
+                      togglePanelCase(item.id);
                     }}
                     onEdit={() => {
                       setShowAdd(false);
-                      openCaseDetail(item.id, true);
+                      setPanelCase(item.id, "edit");
                     }}
                     onCloseDetail={() => {}}
                     onSave={async () => {}}
                     onDelete={async () => {}}
                     renderDetailInline={false}
-                    opensInDetailPage={viewMode === "page"}
-                    panelMode={viewMode === "panel"}
                   />
                 );
               })}
