@@ -1,252 +1,202 @@
-# TestRail vs QA Rail — UI/UX Gap Analysis
+# TestRail UI/UX Gap Analysis - Reassessment
 
-Last aligned: 2026-05-16  
-Method: TestRail [Support Center](https://support.testrail.com/hc/en-us/) docs + screenshots only (no live TestRail session).  
-Scope: **Core daily workflows** — overview, cases, runs, My Tests, milestones, plans, basic reports.  
-Clone baseline: `apps/web` on `main` after BUILD_PLAN Waves 1–5.
+Last updated: 2026-05-18
 
-Related: [SUPPORT_URL_MAP.md](./references/testrail/SUPPORT_URL_MAP.md), [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md), [COMPONENT_MAP.md](./COMPONENT_MAP.md), [UX_BACKLOG.md](./UX_BACKLOG.md).
+This reassessment explains why the previous UX backlog did not produce a TestRail-like product, even after the listed waves were marked shipped. The previous analysis identified useful features, but it focused too much on individual interactions and too little on the full workbench shape of TestRail.
 
----
+## Diagnosis
 
-## 1. Evaluation rubric
+The earlier work missed three product-level constraints:
 
-Scores per screen: **1** = far from TestRail-like / blocks task, **2** = usable with friction, **3** = aligned for Core workflow.
+1. It treated TestRail parity as a set of components.
+   Status chips, drawers, filters, and shared badges help, but they do not by themselves create the TestRail flow.
 
-| Dimension | TestRail expectation (docs) | Clone check question |
-|-----------|----------------------------|----------------------|
-| **Navigation & IA** | Milestones/plans visible; short path to execution | Do primary tabs match TR priority? Is daily work buried under **More**? |
-| **Information density** | Scannable tables; status at a glance | Extra cards/columns vs TR sidebar + table? |
-| **Action priority** | Frequent actions ≤1–2 clicks | Result entry, next failed, assign — click count? |
-| **Execution speed** | Status click → result; filter sidebar | Modal vs inline? Keyboard / next-test? |
-| **Feedback & states** | Consistent empty/loading/error | Match [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md)? |
-| **Deep links** | Filters + selection in URL | `caseId`, run `status`/`q`/`page`/`testId`? |
-| **Progressive disclosure** | Secondary fields in dialog/drawer | Expandable row vs dedicated edit screen? |
+2. It allowed generic SaaS layout patterns.
+   Summary cards, dashboard sections, roomy panels, and generic page chrome can make the app feel polished while moving it away from TestRail's dense operational UI.
 
-**Severity:** **P0** blocks daily execution · **P1** daily friction vs TR · **P2** convenience/polish · **OOS** out of Core scope (Enterprise/admin).
+3. It lacked a hard acceptance gate.
+   A wave could be marked "shipped" when code existed, even if the route still did not behave like a TestRail workbench.
 
----
+## Stronger Evaluation Rubric
 
-## 2. TestRail UX pattern cards (document extraction)
+Use this rubric for each core route. A screen must score at least 2 in every category before it can be called TestRail-aligned.
 
-### 2.1 Project home / dashboard
+| Dimension | 1 - Off Target | 2 - Usable | 3 - TestRail-like |
+| --- | --- | --- | --- |
+| Information architecture | Work hidden behind generic nav or cards | Main route exists | Daily work is primary and context stays visible |
+| Density | Large cards and sparse blocks dominate | Tables exist but compete with panels | Compact tables, sidebars, toolbars, and panes dominate |
+| Workflow speed | Actions require context switching | Common actions exist | Repeated tester actions are one click from row/pane |
+| Continuity | Modals/pages lose list context | Some state preserved | Tree/list/detail context persists throughout task |
+| Drilldown | Summary is passive | Some links exist | Status/progress widgets become filtered work queues |
+| Visual grammar | Generic SaaS | Mixed | Test-management workbench: restrained, dense, status-first |
 
-**Refs:** [Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028-Introduction-to-TestRail), [Charts and dashboards](https://support.testrail.com/hc/en-us/articles/7101753582996-Charts-and-dashboards)
+## Official TestRail Patterns Used
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Project dashboard as landing; charts for activity, progress, failures |
-| Density | Widget grid; clickable chart segments drill to filtered tests |
-| Actions | Jump to runs, milestones, cases from summary widgets |
+The following official docs are the current parity anchors:
 
-### 2.2 Test case repository
+- Test cases are organized into sections and sub-sections, and users run tests from test runs: https://support.testrail.com/hc/en-us/articles/7076810203028
+- Adding test cases starts from Test Cases / Test Suites & Cases, with quick add options in sections: https://support.testrail.com/hc/en-us/articles/14438119644692-Adding-test-cases
+- Sections are hierarchical containers for organizing cases: https://support.testrail.com/hc/en-us/articles/14985199889812-Sections
+- Test run creation centers on include all, specific case selection, and filters: https://support.testrail.com/hc/en-us/articles/7076838639892
+- Results can be submitted through status dropdowns, Add Result, Pass & Next, bulk submission, and individual test pages: https://support.testrail.com/hc/en-us/articles/15813183376148-Submitting-test-results
+- Tests belong to runs and results capture execution history/status: https://support.testrail.com/hc/en-us/articles/7077819312404-Results
+- Runs Summary reports are generated report outputs with progress/activity/status breakdowns: https://support.testrail.com/hc/en-us/articles/9444425638292-Runs-Summary-report
+- Comparison for Cases reports use report configuration sections and selected test runs/cases: https://support.testrail.com/hc/en-us/articles/9171491041428-Comparison-for-Cases-Results-report
 
-**Refs:** [Cases](https://support.testrail.com/hc/en-us/articles/7076832010516-Cases), [Sections](https://support.testrail.com/hc/en-us/articles/7077918603412-Sections), [Suites](https://support.testrail.com/hc/en-us/articles/7077936624276-Suites)
+## Core Screen Gaps
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Left section tree; case list/grid; dedicated add/edit case views |
-| Density | Columns for ID, title, priority, refs; section-scoped list |
-| Actions | Add case in section; bulk select; filter bar above list |
-| Disclosure | Full-page or large panel edit; steps/fields tabs |
+### Project Shell
 
-### 2.3 Test runs — create & list
+Current risk:
 
-**Refs:** [Creating new test runs](https://support.testrail.com/hc/en-us/articles/7076838639892-Creating-new-test-runs), [Runs](https://support.testrail.com/hc/en-us/articles/7077874763156-Runs)
+- The app can read as a project dashboard instead of a test management workspace.
+- Some daily work areas are not visually promoted enough.
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Runs tab; wizard/form for suite, cases, milestone, include options |
-| Density | Run list with progress bar per row |
-| Actions | Dynamic filters; include all; case picker with sections |
+Target:
 
-### 2.4 Test runs — execution
+- Project-level navigation should make Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings obvious.
+- Overview widgets must be drilldown entry points, not decorative summaries.
 
-**Refs:** [Adding test results](https://support.testrail.com/hc/en-us/articles/7077882766612-Adding-test-results), [Best practices runs/results](https://support.testrail.com/hc/en-us/articles/32784099933844-Best-Practices-Guide-Test-Runs-and-Results)
+Severity: P1
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Run detail: **tests table + status sidebar** (filter by status counts) |
-| Density | Status column clickable; compact rows |
-| Actions | Click status → add result; assignee; next failed/blocked navigation |
-| Disclosure | Result dialog with comment, defects, elapsed, attachments |
+### Test Case Repository
 
-### 2.5 Milestones & plans
+Current risk:
 
-**Refs:** [Milestones](https://support.testrail.com/hc/en-us/articles/7077892766612-Milestones)
+- Case detail/edit flows can feel like generic CRUD.
+- Expanding or navigating away from the list can break repository context.
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Top-level **Milestones** and **Test Plans** tabs |
-| Density | Milestone detail: linked runs, progress rollup |
-| Actions | Complete milestone; create run under milestone/plan |
+Target:
 
-### 2.6 Reports (Core)
+- Left section tree, center case table, right selected case detail.
+- Edit in a full-height drawer or dedicated editor while preserving section/list context.
+- Bulk actions and add-case actions remain table/section-native.
 
-**Refs:** [Reports](https://support.testrail.com/hc/en-us/articles/7077902766612-Reports)
+Severity: P0 for UX parity
 
-| Pattern | TestRail (docs) |
-|---------|-----------------|
-| IA | Reports area with templates; run summary / progress |
-| Actions | Generate report; export; drill from chart to tests |
+### Run List
 
----
+Current risk:
 
-## 3. Scenario walkthroughs (Clone UI)
+- Runs can look like a normal table without enough execution signal.
 
-Approximate **clicks** from local UI review (`apps/web` components). TestRail clicks are **doc-informed estimates** (`검증 필요` where interaction unknown).
+Target:
 
-### S1 — Release prep (Overview → Milestone → Run → progress)
+- Dense rows with progress bars, status counts, milestone/plan, assignee, dates, and quick drilldown.
 
-| Step | TestRail (doc pattern) | QA Rail (Clone) | Gap |
-|------|------------------------|-----------------|-----|
-| Open project home | Dashboard widgets | `ProjectOverviewPage`: cards + chart + recent lists | TR: clickable chart → filtered tests; Clone: chips not clickable filters (P1) |
-| Open milestones | Primary tab | **More → Milestones** | Extra click; lower discoverability (P1) |
-| Create run | Runs → Add run wizard | **Test Runs** tab → New run | Aligned (2) |
-| Check progress | Run list progress bars | Run list `%` column | Aligned (2); detail uses chips not bar (P2) |
-
-### S2 — Case maintenance (section → add/edit → version)
+Severity: P1
 
-| Step | TestRail | QA Rail | Gap |
-|------|----------|---------|-----|
-| Pick section | Tree left | `SectionTreePane` | Aligned (3) |
-| Add case | Toolbar / dedicated form | `CaseListPane` toolbar | Aligned (2) |
-| Edit case | Full edit view | **Expandable row** `ExpandableCaseDetail` | Different IA; less screen space for steps (P1) |
-| Version history | Enterprise timeline UI | Drawer/timeline in expandable | Clone+ depth OK; compare UX denser in TR (P2) |
-
-### S3 — Smoke execution (run → result → history)
-
-| Step | TestRail | QA Rail | Gap |
-|------|----------|---------|-----|
-| Open run | Run detail | `RunDetailPage` | Aligned |
-| Filter by status | **Sidebar** count clicks | `<select>` in `TestInstanceFilterBar` | No count-driven sidebar; weaker scan (P1) |
-| Enter result | Status on row → dialog | Status badge → **modal** quick entry | Similar pattern (2) |
-| Full result + defects | Result panel | **320px aside** `ResultEntryPanel` + history below | Two-pane OK; must select row first (2) |
-| Deep link | — | URL: `status`, `q`, `page`, `testId` | Good (3) |
-
-### S4 — Bulk regression (filter → bulk → rerun)
-
-| Step | TestRail | QA Rail | Gap |
-|------|----------|---------|-----|
-| Bulk results | Multi-select + apply | Checkbox column + bulk form in `RunActionsPanel` | Present (2) |
-| Per-row failures | — | Bulk failure list | Clone+ helpful |
-| Rerun failed | — | Rerun dialog on run header | Present (2) |
-| Next failed only | Toolbar navigation | **Not found** in run detail | Missing TR ergonomics (P1) |
-
-### S5 — Assignee (My Tests)
-
-| Step | TestRail | QA Rail | Gap |
-|------|----------|---------|-----|
-| My work entry | Tests & Results / assignments | **More → My Tests** | Hidden under More (P1) |
-| Filter active | Status tabs | Status `<select>` + run filter | Functional (2) |
-| Open test in run | Link to execution | Link to `runs/:runId` | Aligned (3) |
-| Watch/subscribe | Email icon on test | **Watch** column on run table | Different surface (P2) |
-
-### S6 — Release review (run summary report)
-
-| Step | TestRail | QA Rail | Gap |
-|------|----------|---------|-----|
-| Open report | Reports templates | **Reports** tab → Run summary child route | Aligned (2) |
-| Filter + export | Template options | `ReportFilterBar`, `ReportExportButton`, Save view | Good chrome (3) |
-| Drilldown | Chart → tests | Table links to runs | Partial vs TR chart drill (P2) |
-
----
-
-## 4. Screen gap matrix (Core)
-
-| Route | Component | TR doc ref | Rubric (1–3) | Gap summary | Sev | Rec. type | Checklist xref |
-|-------|-----------|------------|--------------|-------------|-----|-----------|----------------|
-| `/projects/:id` | `ProjectOverviewPage` | Dashboards | Nav 2, Density 2 | Summary cards OK; status chips **not clickable** to filtered runs/tests | P1 | IA | — |
-| `/projects/:id` | `ProjectTabs` | Introduction | Nav **1** | Milestones primary in TR; Clone: Milestones primary tab OK but **Plans/My Tests/Activity** under **More** | P1 | IA | Convenience §Nav |
-| `/cases` | `TestCaseWorkspace` | Cases, Sections | Exec 2, Disclosure 2 | Expandable row vs TR dedicated edit; no suite selector in MVP policy | P1 | IA | SCREEN §3 |
-| `/runs` | `RunListPage` | Runs | Density 2 | Table OK; TR progress **bar** vs `%` text | P2 | Visual | — |
-| `/runs/new` | `RunCreatePage` | Creating runs | Actions 3 | Composition modes + filters present (Wave 1) | — | — | BUILD_PLAN W1 |
-| `/runs/:runId` | `RunDetailPage` | Adding results | Exec **1–2** | No **status sidebar** with counts; filters are dropdowns | P1 | IA / component | Convenience §Run shortcuts |
-| `/runs/:runId` | `TestInstanceTable` | Adding results | Actions 2 | Quick result modal; no **next/previous test** | P1 | Workflow | FEATURE §271–297 |
-| `/runs/:runId` | `RunSummaryBar` | Runs overview | Density 2 | Chips not clickable to filter table (TR bar segments click) | P1 | IA | — |
-| `/my-tests` | `MyTestsPage` | Assignments | Nav 2 | Buried in More; table OK | P1 | IA | — |
-| `/milestones` | `MilestonesPage` | Milestones | Nav 2 | Primary tab exists; detail rollup thinner than TR docs | P2 | Content | — |
-| `/plans` | `PlansPage` | Test plans | Nav **1** | Under More only | P1 | IA | — |
-| `/reports` | `ReportsLayout` | Reports | Nav 2 | Overview + children; not template gallery | P2 | IA | — |
-| `/reports/runs` | `ReportRunSummaryPage` | Reports | Actions 3 | Shared chrome, URL filters, save/export | — | — | — |
-
-**Known component debt** ([COMPONENT_MAP.md](./COMPONENT_MAP.md)): missing shared `FilterBar`, `StatusBadge`, `DataTable`, `PageHeader` — drives inconsistent run vs report vs settings UX (P1 engineering).
-
----
-
-## 5. Consolidated gap list (prioritized)
-
-### P0
-
-_None identified for Core daily execution in doc-only review — users can complete S1–S6 without blocked paths. Revisit if usability test finds otherwise._
-
-### P1 (top product impact)
-
-1. **Run execution: status sidebar** — Replace or augment status `<select>` with TR-like count sidebar; clicking filters table ([Runs docs](https://support.testrail.com/hc/en-us/articles/7077874763156-Runs)).
-2. **Navigation: elevate Plans + My Tests** — Move out of **More** menu or add dashboard shortcuts ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028-Introduction-to-TestRail)).
-3. **Run summary chips → filters** — `RunSummaryBar` counts should apply `statusFilter` (mirror TR bar segment click).
-4. **Execution navigation** — Next/previous test, jump to next failed/blocked/untested ([FEATURE_CHECKLIST](./FEATURE_CHECKLIST.md) § Case And Run Shortcuts).
-5. **Shared report/run filter primitives** — `FilterBar`, `StatusBadge`, `PageHeader` ([FEATURE_CHECKLIST](./FEATURE_CHECKLIST.md) § Clone Engineering).
-
-### P2
-
-- Clickable overview chart segments → drilldown runs/tests.
-- Run list progress **bar** visual parity.
-- Case workspace: optional dedicated edit route for power users.
-- Report template gallery vs fixed analysis pages.
-- Keyboard shortcuts overlay (`?`) — doc cannot validate; live TR check later.
-
-### Out of scope (logged only)
-
-- SSO, approval workflow, datasets — Enterprise.
-- Global search, command palette — Convenience § (not blocking Core).
-
----
-
-## 6. Execution flow comparison (run detail)
-
-```mermaid
-sequenceDiagram
-  participant User
-  participant TR as TestRail_DocPattern
-  participant Clone as QA_Rail_UI
-  User->>TR: OpenRun
-  TR-->>User: TablePlusStatusSidebar
-  User->>TR: ClickFailedCount
-  TR-->>User: FilteredTests
-  User->>TR: ClickStatusOnRow
-  TR-->>User: AddResultDialog
-  User->>Clone: OpenRun
-  Clone-->>User: TablePlusRightPanel
-  User->>Clone: SelectStatusDropdown
-  Clone-->>User: FilteredTests
-  User->>Clone: ClickStatusBadge
-  Clone-->>User: QuickResultModal
-  Note over TR,Clone: Clone lacks sidebar counts and next-failed navigation
-```
-
----
-
-## 7. FEATURE_CHECKLIST cross-reference
-
-| UX_GAP item | Existing checklist row |
-|-------------|------------------------|
-| Status sidebar / clickable counts | § Case And Run Shortcuts — clickable status counts, next/previous test (P1) |
-| Plans/My Tests IA | § Navigation — pinned projects, recent (partial overlap) |
-| Shared FilterBar / StatusBadge | § Clone Engineering P1 components |
-| Global search | § Navigation P1 global search |
-| UI/UX review pass | § Clone Engineering — mark `[x]` when UX_BACKLOG Wave UX-1 ships |
-
-New gaps **not** duplicated in checklist: overview chart drilldown (add to Convenience or Reports).
-
----
-
-## 8. Sign-off (analysis phase)
-
-| Criterion | Status |
-|-----------|--------|
-| Core screens in matrix | Yes (§4) |
-| 6 scenarios documented | Yes (§3) |
-| P1 list ≥5 with doc links | Yes (§5) |
-| FEATURE_CHECKLIST cross-ref | Yes (§7) |
-| Implementation backlog | [UX_BACKLOG.md](./UX_BACKLOG.md) |
+### Run Creation
+
+Current risk:
+
+- A form-first layout can obscure the main job: selecting which cases enter the run.
+
+Target:
+
+- Composition-first wizard: include all, select specific cases, dynamic filters, set/add/remove semantics.
+- Case picker mirrors the case repository with section tree and case table.
+
+Severity: P1
+
+### Run Execution
+
+Current risk:
+
+- This is the highest-risk area. If execution is not dense and fast, the clone will never feel like TestRail.
+
+Target:
+
+- Persistent status counts/sidebar.
+- Compact test table.
+- Selected test detail/result pane.
+- Status dropdown, Add Result, Pass & Next, bulk results, next failed/blocked/untested.
+- URL-preserved selection and filters.
+
+Severity: P0 for UX parity
+
+### My Tests
+
+Current risk:
+
+- Assigned work can feel like a secondary report.
+
+Target:
+
+- Queue-first view with due/status grouping and direct links into run execution.
+
+Severity: P1
+
+### Milestones And Plans
+
+Current risk:
+
+- They can become simple management lists rather than release planning hubs.
+
+Target:
+
+- Detail pages show linked runs/plans, progress, risk, dates, and direct drilldown into failing work.
+
+Severity: P1
+
+### Reports
+
+Current risk:
+
+- Report pages can drift into custom dashboards.
+
+Target:
+
+- Template catalog, add-report configuration sections, generated outputs, saved/scheduled report management.
+
+Severity: P2 after execution/cases are corrected
+
+## Why The Previous Backlog Was Insufficient
+
+| Previous item | Why it helped | Why it was not enough |
+| --- | --- | --- |
+| Clickable run summary chips | Added useful filtering | Did not reshape run execution around a persistent status/navigation rail |
+| Promote My Tests/Plans | Improved discoverability | Did not define a full project shell hierarchy |
+| Status sidebar | Correct feature direction | Needed stricter layout acceptance: sidebar + table + detail pane together |
+| Shared primitives | Reduced inconsistency | Generic primitives can still produce generic SaaS UI |
+| Case detail route/drawer | Better than row expansion | Still needed a repository-level 3-pane target |
+
+## New Priority Order
+
+1. Run execution workbench.
+2. Case repository workbench.
+3. Project shell/navigation.
+4. Run creation/case picker.
+5. Milestone/plan hubs.
+6. My Tests queue.
+7. Reports template/configuration flow.
+8. Visual density and component consolidation.
+
+## Acceptance Tests
+
+Before a UX task is marked done:
+
+- Walk through a tester adding five results in a run.
+- Walk through a manager finding all failed tests in a milestone.
+- Walk through a tester adding/editing a case inside a nested section.
+- Walk through creating a run from selected sections/cases.
+- Walk through opening assigned work from My Tests and submitting a result.
+
+For each walkthrough, record:
+
+- Click count.
+- Whether list/tree context was preserved.
+- Whether filters/selection stayed in the URL.
+- Whether the primary surface was table/list/pane-based.
+- Screenshot evidence.
+
+## Explicit Anti-Goals
+
+- Do not chase a modern dashboard aesthetic at the expense of execution speed.
+- Do not use large cards as the dominant layout for cases, runs, or execution.
+- Do not create isolated report-like screens for workflows that should be work queues.
+- Do not call a screen TestRail-like because it has the same nouns; the interaction structure must match.
+
+## Next Action
+
+Start with a design/implementation PR for the run execution workbench. It should be judged by the ability to execute, filter, navigate, and review tests without losing the table/detail context.

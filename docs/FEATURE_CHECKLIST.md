@@ -1,6 +1,6 @@
 # Feature Checklist
 
-Last aligned: 2026-05-17 (completion-depth legend)
+Last aligned: 2026-05-18 (UX realignment checklist)
 
 This file tracks implemented, partial, and missing capabilities. It should not contain the roadmap narrative or the execution queue.
 
@@ -77,6 +77,26 @@ Use this file as the **progress meter**: each development batch should advance *
 | Pick work from `[ ]` | Batch candidates are unchecked lines here, not free-form themes. |
 
 If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** here first, then queue one line per batch.
+
+---
+
+## TestRail UI/UX Realignment
+
+These lines track the TestRail workbench realignment from [UX_BACKLOG.md](./UX_BACKLOG.md) and [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md). Closing one of these lines requires more than a feature existing: the screen must preserve context, use dense table/list/pane layouts, avoid generic SaaS card/dashboard drift, and include desktop + narrow screenshot walkthrough notes.
+
+- [ ] **TR-Core** P0 UX gate: add a per-PR TestRail parity checklist and current-screen screenshot capture workflow for project overview, cases, run list, run detail, My Tests, milestones, plans, and reports. (Phase 0; do not mark feature work as UX-complete without this gate.)
+- [ ] **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings visible as daily workspace navigation, with consistent project context and compact page chrome.
+- [ ] **TR-Core** P0 Case repository workbench shell: left suite/section tree, center compact case table, right selected-case detail pane, with section/case/filter/page state preserved in the URL.
+- [ ] **TR-Core** P0 Case repository authoring flow: edit in full-height drawer or dedicated editor while preserving tree/table/detail context; keep Add Case and bulk actions table/section-native.
+- [ ] **TR-Core** P1 Run list realignment: dense run table with progress bars, status counts, milestone/plan/assignee/dates, and direct drilldown into filtered execution work.
+- [ ] **TR-Core** P1 Run creation composition workbench: include-all, selected-cases, dynamic-filter, and set/add/remove semantics shown through a section-tree + case-table picker rather than a generic form-only layout.
+- [ ] **TR-Core** P0 Run execution workbench shell: persistent status count sidebar/rail, compact test table, and selected-test detail/result pane visible together without losing context.
+- [ ] **TR-Core** P0 Run execution speed actions: row status dropdown, Add Result, Pass & Next, next failed/blocked/untested, bulk results, and closed-run read-only behavior all usable from the execution workbench.
+- [ ] **TR-Core** P1 My Tests queue realignment: assigned work becomes a primary queue with due/status grouping, direct run/test links, and quick execution entry without detached report-style UX.
+- [ ] **TR-Core** P1 Milestone hub realignment: milestone detail shows linked runs/plans, progress, risk, dates, and one/two-click drilldown to failing or overdue execution work.
+- [ ] **TR-Core** P1 Test Plan hub realignment: plan detail shows entries/configurations, generated runs, per-entry progress, and run creation under a plan without leaving planning context.
+- [ ] **TR-Core** P2 Reports UX realignment: reports start from a TestRail-like template catalog and Add Report configuration flow (Name/Description, Report Options, Access/Scheduling), not a generic dashboard-first layout.
+- [ ] **TR-Core** P1 Visual density pass: replace card-heavy product sections with compact toolbars, table sections, sidebars, drawers, status badges, and progress bars across core workflows.
 
 ---
 
