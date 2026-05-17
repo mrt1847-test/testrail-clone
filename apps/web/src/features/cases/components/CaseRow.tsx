@@ -14,6 +14,7 @@ import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 type CaseRowProps = {
   item: TestCase;
   isExpanded: boolean;
+  isActive?: boolean;
   mode: "view" | "edit";
   detail: TestCase | null;
   versions?: CaseVersion[];
@@ -50,6 +51,7 @@ type CaseRowProps = {
   isStepsBusy?: boolean;
   renderDetailInline?: boolean;
   opensInDetailPage?: boolean;
+  panelMode?: boolean;
   draggable?: boolean;
   isDraggingThis?: boolean;
   dropIndicator?: "before" | "after" | null;
@@ -63,6 +65,7 @@ type CaseRowProps = {
 export function CaseRow({
   item,
   isExpanded,
+  isActive = false,
   mode,
   detail,
   versions,
@@ -89,6 +92,7 @@ export function CaseRow({
   isStepsBusy,
   renderDetailInline = true,
   opensInDetailPage = false,
+  panelMode = false,
   draggable = false,
   isDraggingThis = false,
   dropIndicator = null,
@@ -128,7 +132,7 @@ export function CaseRow({
 
   const rowClasses = [
     "relative flex items-center gap-2 pl-3 transition-colors",
-    isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
+    isActive ? "bg-sky-50 ring-2 ring-inset ring-sky-200" : isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
     isDraggingThis ? "opacity-50" : ""
   ]
     .filter(Boolean)
@@ -235,7 +239,7 @@ export function CaseRow({
           </span>
           <span className="shrink-0 text-right text-xs text-slate-500">
             {summaryParts.length > 0 ? summaryParts.join(" / ") : item.caseCode}{" "}
-            {opensInDetailPage ? "Open →" : isExpanded ? "▾" : "▸"}
+            {opensInDetailPage ? "Open →" : panelMode ? (isActive ? "Selected" : "") : isExpanded ? "▾" : "▸"}
           </span>
         </button>
       </div>

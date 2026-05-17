@@ -25,6 +25,7 @@ import {
   fetchAllCasesForSection,
   positionCases
 } from "../api/catalogApi";
+import type { CaseViewMode } from "../caseViewMode";
 import { buildCaseDetailPath } from "../caseRoute";
 import { extractApiErrorMessage } from "../caseErrors";
 import type { BulkCaseFeedback } from "../utils/bulkCaseFeedback";
@@ -49,6 +50,12 @@ import {
 type CaseListPaneProps = {
   projectId: string;
   sections: SectionNode[];
+  viewMode: CaseViewMode;
+  onViewModeChange: (mode: CaseViewMode) => void;
+  expandedCaseId: number | null;
+  expandedMode: "view" | "edit";
+  onSelectCase: (caseId: number, edit?: boolean) => void;
+  onClearExpandedCase: () => void;
   dnd?: CaseListDnD;
   pendingMoveCopy?: PendingMoveCopy | null;
   onPendingMoveCopyChange?: (pending: PendingMoveCopy | null) => void;
@@ -97,6 +104,10 @@ async function persistCreateDraftSteps(
 export function CaseListPane({
   projectId,
   sections,
+  viewMode,
+  onViewModeChange,
+  expandedCaseId,
+  onSelectCase,
   dnd,
   pendingMoveCopy = null,
   onPendingMoveCopyChange
@@ -202,12 +213,16 @@ export function CaseListPane({
     [sections, selectedSectionId]
   );
   const openCaseDetail = (caseId: number, edit = false) => {
-    navigate(
-      buildCaseDetailPath(projectId, caseId, {
-        sectionId: selectedSectionId,
-        mode: edit ? "edit" : "view"
-      })
-    );
+    if (viewMode === "page") {
+      navigate(
+        buildCaseDetailPath(projectId, caseId, {
+          sectionId: selectedSectionId,
+          mode: edit ? "edit" : "view"
+        })
+      );
+      return;
+    }
+    onSelectCase(caseId, edit);
   };
 
   useEffect(() => {
@@ -708,7 +723,9 @@ export function CaseListPane({
       setCreateFormError(null);
       setShowAdd(true);
       setCreateFormVersion((value) => value + 1);
-    }
+    },
+    caseViewMode: viewMode,
+    onCaseViewModeChange: onViewModeChange
   } satisfies ComponentProps<typeof CaseListToolbar>;
 
   const clearFiltersAndSearch = () => {
@@ -1017,6 +1034,7 @@ export function CaseListPane({
                     key={item.id}
                     item={item}
                     isExpanded={false}
+                    isActive={viewMode === "panel" && expandedCaseId === item.id}
                     mode="view"
                     detail={item}
                     versions={[]}
@@ -1063,7 +1081,8 @@ export function CaseListPane({
                     onSave={async () => {}}
                     onDelete={async () => {}}
                     renderDetailInline={false}
-                    opensInDetailPage
+                    opensInDetailPage={viewMode === "page"}
+                    panelMode={viewMode === "panel"}
                   />
                 );
               })}

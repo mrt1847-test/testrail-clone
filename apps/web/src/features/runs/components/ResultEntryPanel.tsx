@@ -39,6 +39,7 @@ type ResultEntryPanelProps = {
   disableUntested?: boolean;
   hasResultHistory?: boolean;
   aiEvaluation?: { expectedOutput?: string };
+  showInstanceHeader?: boolean;
   onSubmit: (payload: ResultSubmitPayload) => void;
 };
 
@@ -52,6 +53,7 @@ export function ResultEntryPanel({
   disableUntested = false,
   hasResultHistory = false,
   aiEvaluation,
+  showInstanceHeader = true,
   onSubmit
 }: ResultEntryPanelProps) {
   const statusQuery = useProjectStatuses(projectId);
@@ -204,10 +206,14 @@ export function ResultEntryPanel({
 
   return (
     <div className="space-y-3 text-sm text-slate-700">
-      <div className="min-w-0 border-b border-slate-100 pb-3">
-        <p className="font-mono text-xs text-slate-500">{instance.caseCode}</p>
-        <p className="mt-1 text-sm font-medium leading-5 text-slate-900">{instance.title}</p>
-      </div>
+      {showInstanceHeader ? (
+        <div className="min-w-0 border-b border-slate-100 pb-3">
+          <p className="font-mono text-xs text-slate-500">{instance.caseCode}</p>
+          <p className="mt-1 text-sm font-medium leading-5 text-slate-900">{instance.title}</p>
+        </div>
+      ) : (
+        <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Record result</p>
+      )}
 
       <div className="space-y-3">
         <StatusPicker

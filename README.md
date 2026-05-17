@@ -187,6 +187,25 @@ For Supabase's transaction pooler on port `6543`, append `pgbouncer=true` to avo
 DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
 ```
 
+**Migrations in CI**
+
+- Build uses `npm run prisma:deploy -w apps/server` (via `render:build:server`), which runs `apps/server/scripts/migrate-deploy.mjs` once.
+- Do **not** add `prisma migrate dev`, `prisma migrate resolve --applied …`, or a second `prisma migrate deploy` in the Render Build Command or Pre-Deploy Command.
+- Running `migrate resolve --applied` for a migration that is already in `_prisma_migrations` causes **P3008** and fails the build.
+
+**P3008 / P3009 troubleshooting**
+
+| Error | Typical cause | What to do |
+|-------|----------------|------------|
+| **P3008** | `migrate resolve --applied` ran for a migration already recorded, or migrate ran twice in one deploy | Remove extra migrate/resolve steps from Render. Redeploy with only `render:build:server`. |
+| **P3009** | A previous deploy left a **failed** migration row | In Supabase SQL: `SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" ORDER BY started_at DESC LIMIT 10;` Then follow [Prisma migrate troubleshooting](https://www.prisma.io/docs/orm/prisma-migrate/workflows/troubleshooting) (`migrate resolve --rolled-back` or fix DB, then redeploy). |
+
+Check status from a machine with production env:
+
+```bash
+npm run prisma:status -w apps/server
+```
+
 ## Testing
 
 Server tests live in `apps/server/src/__tests__` and currently cover:

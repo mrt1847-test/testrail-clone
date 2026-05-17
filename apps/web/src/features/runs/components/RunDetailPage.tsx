@@ -61,6 +61,7 @@ import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { PushDefectDialog } from "./PushDefectDialog";
 import { DuplicateRunDialog } from "./DuplicateRunDialog";
 import { RunCompareWithRunDialog } from "./RunCompareWithRunDialog";
+import { RunCaseContextPanel } from "./RunCaseContextPanel";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
@@ -581,9 +582,16 @@ export function RunDetailPage() {
 
         {selected ? (
           <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              {selected.caseCode} · {selected.title}
-            </p>
+            <RunCaseContextPanel
+              projectId={projectId}
+              caseId={selected.caseId}
+              caseCode={selected.caseCode}
+              title={selected.title}
+              data={selectedCaseDetail.data}
+              scenarios={selectedCaseScenariosQuery.data}
+              isLoading={selectedCaseDetail.isLoading}
+              isError={selectedCaseDetail.isError}
+            />
             <div className="mt-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5">
               <p className="text-[11px] font-medium text-slate-500">Assignee</p>
               <p className="text-sm text-slate-800">{memberLabelForUserId(selected.assignedTo, members)}</p>
@@ -630,6 +638,7 @@ export function RunDetailPage() {
                     ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
                     : undefined
                 }
+                showInstanceHeader={false}
                 onSubmit={(payload) => {
                   void addResultMutation.mutateAsync({
                     testId: selected.id,

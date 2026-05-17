@@ -1,18 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { PageHeader } from "../../../shared/ui/PageHeader";
-import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
-import { fetchCaseVersions } from "../api/catalogApi";
-import { buildCaseDetailPath, buildCaseListPath } from "../caseRoute";
-import { useCaseDetail } from "../hooks/useCaseDetail";
-import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
-import { CaseEditDrawer } from "./CaseEditDrawer";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
-import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
+import { buildCaseDetailPath, buildCaseListPath } from "../caseRoute";
+import { useCaseViewMode } from "../hooks/useCaseViewMode";
+import { useCaseDetail } from "../hooks/useCaseDetail";
+import { CaseDetailBody } from "./CaseDetailBody";
+import { CaseViewModeToggle } from "./CaseViewModeToggle";
 
 function parseSectionId(value: string | null): number | null {
   if (value == null || value === "") return null;
@@ -22,61 +19,32 @@ function parseSectionId(value: string | null): number | null {
 
 export function CaseDetailPage() {
   const { projectId = "", caseId: caseIdParam = "" } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { viewMode, setViewMode } = useCaseViewMode();
   const caseId = Number(caseIdParam);
   const sectionId = parseSectionId(searchParams.get("sectionId"));
-  const isEditMode = searchParams.get("mode") === "edit";
-  const listPath = buildCaseListPath(projectId, sectionId);
-
-  const { data, isLoading, isError, refetch } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
-  const editor = useCaseEditorActions(projectId);
-
-  const { data: customFields = [] } = useQuery({
-    queryKey: ["case-custom-fields", projectId, data?.caseTemplateId ?? null],
-    queryFn: () =>
-      fetchCustomFieldsForUse(
-        projectId,
-        "case",
-        data?.caseTemplateId != null ? String(data.caseTemplateId) : null
-      ),
-    enabled: Boolean(projectId && data)
-  });
-  const { data: caseTemplates = [] } = useQuery({
-    queryKey: ["case-templates", projectId],
-    queryFn: () => fetchCaseTemplates(projectId),
-    enabled: Boolean(projectId)
-  });
-  const caseVersionsQuery = useQuery({
-    queryKey: ["case-versions", caseId],
-    queryFn: () => fetchCaseVersions(caseId),
-    enabled: !Number.isNaN(caseId)
-  });
-
-  const { clearEditErrors } = editor;
+  const listPath = buildCaseListPath(projectId, { sectionId });
+  const { data, isLoading } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
 
   useEffect(() => {
-    clearEditErrors();
-  }, [caseId, isEditMode, clearEditErrors]);
-
-  const openEdit = () => {
-    const next = new URLSearchParams(searchParams);
-    next.set("mode", "edit");
-    setSearchParams(next);
-  };
-
-  const closeEdit = () => {
-    const next = new URLSearchParams(searchParams);
-    next.delete("mode");
-    setSearchParams(next, { replace: true });
-  };
+    if (viewMode !== "panel" || Number.isNaN(caseId)) return;
+    navigate(
+      buildCaseListPath(projectId, {
+        sectionId,
+        caseId,
+        mode: searchParams.get("mode") === "edit" ? "edit" : "view"
+      }),
+      { replace: true }
+    );
+  }, [caseId, navigate, projectId, searchParams, sectionId, viewMode]);
 
   if (Number.isNaN(caseId)) {
     return <ErrorState title="Invalid case link" onRetry={() => navigate(listPath)} />;
   }
 
-  if (isError) {
-    return <ErrorState title="Could not load test case" onRetry={() => void refetch()} />;
+  if (viewMode === "panel") {
+    return <LoadingState message="Opening case in side panel…" />;
   }
 
   if (isLoading || !data) {
@@ -93,95 +61,46 @@ export function CaseDetailPage() {
         description={data.archivedAt ? `Archived on ${new Date(data.archivedAt).toLocaleString()}` : undefined}
         actions={
           <>
+            <CaseViewModeToggle
+              value={viewMode}
+              onChange={(mode) => {
+                setViewMode(mode);
+                if (mode === "panel") {
+                  navigate(
+                    buildCaseListPath(projectId, {
+                      sectionId,
+                      caseId,
+                      mode: searchParams.get("mode") === "edit" ? "edit" : "view"
+                    }),
+                    { replace: true }
+                  );
+                }
+              }}
+              compact
+            />
             <Link
-              to={listPath}
+              to={buildCaseListPath(projectId, { sectionId, caseId, mode: "view" })}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Back to cases
             </Link>
             <PrintLinkButton to={`/projects/${projectId}/cases/${caseId}/print`} />
-            {!isEditMode ? (
-              <button
-                type="button"
-                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-                onClick={openEdit}
-              >
-                Edit
-              </button>
-            ) : null}
           </>
         }
       />
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <ExpandableCaseDetail
-          data={data}
-          versions={caseVersionsQuery.data ?? []}
-          customFields={customFields}
-          caseTemplates={caseTemplates}
-          mode="view"
+        <CaseDetailBody
+          projectId={projectId}
+          caseId={caseId}
           layout="page"
-          showHeading={false}
-          onEdit={openEdit}
           onClose={() => navigate(listPath)}
-          onSave={async () => undefined}
-          onDelete={async () => {
-            await editor.deleteCaseMutation.mutateAsync(data.id);
-            navigate(listPath);
-          }}
-          onRestoreVersion={async (versionId) => {
-            await editor.restoreVersionMutation.mutateAsync({
-              caseId: data.id,
-              versionId,
-              expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
-            });
-          }}
-          isDeleting={editor.deleteCaseMutation.isPending}
-          isRestoring={editor.restoreVersionMutation.isPending}
-          restoreError={editor.restoreFormError}
+          onDeleted={() => navigate(listPath)}
           onDuplicated={(copiedCaseId) => {
             navigate(buildCaseDetailPath(projectId, copiedCaseId, { sectionId }));
           }}
         />
       </section>
-
-      <CaseEditDrawer open={isEditMode} title={headerTitle} onClose={closeEdit}>
-        <ExpandableCaseDetail
-          data={data}
-          versions={caseVersionsQuery.data ?? []}
-          customFields={customFields}
-          caseTemplates={caseTemplates}
-          mode="edit"
-          layout="page"
-          showHeading={false}
-          onEdit={openEdit}
-          onClose={closeEdit}
-          onSave={async (patch) => {
-            await editor.updateCaseMutation.mutateAsync({
-              caseId: data.id,
-              ...patch,
-              expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
-            });
-            closeEdit();
-          }}
-          onDelete={async () => {
-            await editor.deleteCaseMutation.mutateAsync(data.id);
-            navigate(listPath);
-          }}
-          isSaving={editor.updateCaseMutation.isPending}
-          submitError={editor.editFormError}
-          onCreateStep={async (input) => {
-            await editor.createStepMutation.mutateAsync({ caseId: data.id, ...input });
-          }}
-          onUpdateStep={async (stepId, patch) => {
-            await editor.updateStepMutation.mutateAsync({ caseId: data.id, stepId, patch });
-          }}
-          onDeleteStep={async (stepId) => {
-            await editor.deleteStepMutation.mutateAsync({ caseId: data.id, stepId });
-          }}
-          isStepsBusy={editor.stepsBusy}
-        />
-      </CaseEditDrawer>
     </div>
   );
 }
