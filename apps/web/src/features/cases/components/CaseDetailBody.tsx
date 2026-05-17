@@ -30,6 +30,7 @@ export function CaseDetailBody({
   const isEditMode = searchParams.get("mode") === "edit";
   const { data, isLoading, isError, refetch } = useCaseDetail(caseId);
   const editor = useCaseEditorActions(projectId);
+  const detailLayout = layout === "panel" ? "embedded" : "page";
 
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId, data?.caseTemplateId ?? null],
@@ -95,7 +96,7 @@ export function CaseDetailBody({
         customFields={customFields}
         caseTemplates={caseTemplates}
         mode="view"
-        layout={layout}
+        layout={detailLayout}
         showHeading={layout === "panel"}
         onEdit={openEdit}
         onClose={onClose}
@@ -124,7 +125,7 @@ export function CaseDetailBody({
           customFields={customFields}
           caseTemplates={caseTemplates}
           mode="edit"
-          layout={layout}
+          layout={detailLayout}
           showHeading={false}
           onEdit={openEdit}
           onClose={closeEdit}

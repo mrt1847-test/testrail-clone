@@ -1,5 +1,6 @@
 import type { ReportExportType } from "../../projects/api/reportsApi";
-import { apiFetch, type Ok } from "../../../shared/api/http";
+import { apiFetch } from "../../../shared/api/http";
+import type { Ok } from "../../../shared/api/types";
 import type { PrintDocument } from "./printApi";
 
 export const REPORT_PRINT_SLUG_BY_TYPE: Partial<Record<ReportExportType, string>> = {

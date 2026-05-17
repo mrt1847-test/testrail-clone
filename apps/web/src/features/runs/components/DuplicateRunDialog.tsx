@@ -95,7 +95,7 @@ export function DuplicateRunDialog({
             disabled={isPending}
             onClick={onConfirm}
           >
-            {isPending ? "Creating?? : "Duplicate run"}
+            {isPending ? "Creating..." : "Duplicate run"}
           </button>
         </div>
       </div>

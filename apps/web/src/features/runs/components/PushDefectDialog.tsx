@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { fetchDefectPushFields, type DefectPushFieldDefinition } from "../api/runApi";
-import type { DefectPushContext } from "../types";
+import { fetchDefectPushFields } from "../api/runApi";
+import type { DefectPushContext, DefectPushFieldDefinition } from "../types";
 
 type PushDefectDialogProps = {
   open: boolean;
@@ -168,7 +168,7 @@ export function PushDefectDialog({
           </p>
           {!fieldsQuery.data?.integrationEnabled ? (
             <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
-              Defect integration is disabled. Enable it under Project settings → Defect integration.
+              Defect integration is disabled. Enable it under Project settings - Defect integration.
             </p>
           ) : null}
         </div>
@@ -189,7 +189,7 @@ export function PushDefectDialog({
           </label>
 
           {fieldsQuery.isLoading ? (
-            <p className="text-sm text-slate-500">Loading provider fields…</p>
+            <p className="text-sm text-slate-500">Loading provider fields...</p>
           ) : (
             mappedFields.map((field) => (
               <label key={field.key} className="block space-y-1 text-sm text-slate-700">
@@ -262,7 +262,7 @@ export function PushDefectDialog({
             className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={submit}
           >
-            {isSubmitting ? "Pushing…" : "Push defect"}
+            {isSubmitting ? "Pushing..." : "Push defect"}
           </button>
         </div>
       </div>

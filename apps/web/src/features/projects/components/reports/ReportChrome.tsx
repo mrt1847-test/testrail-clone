@@ -162,12 +162,12 @@ export function ReportExportActions({
 export function ReportSaveViewButton({
   projectId,
   reportType,
-  filters,
+  filters = {},
   disabled
 }: {
   projectId: string;
   reportType: ReportExportType;
-  filters: SavedReportFilters;
+  filters?: SavedReportFilters;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);

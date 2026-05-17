@@ -29,8 +29,7 @@ export async function fetchCasePrintDocument(caseId: string) {
 export async function fetchCasesPrintDocument(projectId: string, caseIds: string[]) {
   const res = await apiFetch<Ok<PrintDocument>>(`/api/projects/${projectId}/cases/print`, {
     method: "POST",
-    body: JSON.stringify({ caseIds }),
-    headers: { "content-type": "application/json" }
+    body: { caseIds }
   });
   return res.data;
 }
