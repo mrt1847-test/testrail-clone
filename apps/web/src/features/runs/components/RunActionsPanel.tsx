@@ -23,8 +23,17 @@ type Props = {
   onAssigneeInputChange: (value: string) => void;
   isAssignPending: boolean;
   onAssignRun: () => void;
+  onAssignRunToMe?: () => void;
+  onClearRunAssignee?: () => void;
+  currentUserId?: string | null;
+  onAssignSelectedToMe?: () => void;
+  onClearSelectedAssignees?: () => void;
+  isTestAssignPending?: boolean;
   isRerunPending: boolean;
   onOpenRerunDialog: () => void;
+  isDuplicatePending?: boolean;
+  onOpenDuplicateDialog?: () => void;
+  onOpenCompareDialog?: () => void;
   canCloseRun: boolean;
   isCloseRunPending: boolean;
   onOpenCloseRunDialog: () => void;
@@ -62,8 +71,17 @@ export function RunActionsPanel(props: Props) {
     onAssigneeInputChange,
     isAssignPending,
     onAssignRun,
+    onAssignRunToMe,
+    onClearRunAssignee,
+    currentUserId,
+    onAssignSelectedToMe,
+    onClearSelectedAssignees,
+    isTestAssignPending = false,
     isRerunPending,
     onOpenRerunDialog,
+    isDuplicatePending = false,
+    onOpenDuplicateDialog,
+    onOpenCompareDialog,
     canCloseRun,
     isCloseRunPending,
     onOpenCloseRunDialog,
@@ -135,9 +153,30 @@ export function RunActionsPanel(props: Props) {
           >
             {isBulkPending ? "Applying…" : `Apply to selected (${selectedCount})`}
           </button>
+          {selectedCount > 0 && currentUserId && onAssignSelectedToMe && onClearSelectedAssignees ? (
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+              <button
+                type="button"
+                className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-900 disabled:opacity-50"
+                disabled={isTestAssignPending}
+                onClick={onAssignSelectedToMe}
+              >
+                {isTestAssignPending ? "Assigning…" : "Assign selected to me"}
+              </button>
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+                disabled={isTestAssignPending}
+                onClick={onClearSelectedAssignees}
+              >
+                Clear selected assignees
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
+        <p className="mb-2 font-medium text-slate-700">Run assignee</p>
         <div className="flex gap-2">
           <select
             className="flex-1 rounded border border-slate-300 px-2 py-1"
@@ -155,8 +194,47 @@ export function RunActionsPanel(props: Props) {
             Assign
           </button>
         </div>
+        {currentUserId && onAssignRunToMe && onClearRunAssignee ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-sky-900 disabled:opacity-50"
+              disabled={isAssignPending}
+              onClick={onAssignRunToMe}
+            >
+              Assign run to me
+            </button>
+            <button
+              type="button"
+              className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
+              disabled={isAssignPending}
+              onClick={onClearRunAssignee}
+            >
+              Clear run assignee
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
+        {onOpenDuplicateDialog ? (
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            disabled={isDuplicatePending}
+            onClick={onOpenDuplicateDialog}
+          >
+            Duplicate run…
+          </button>
+        ) : null}
+        {onOpenCompareDialog ? (
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-xs"
+            onClick={onOpenCompareDialog}
+          >
+            Compare with run…
+          </button>
+        ) : null}
         <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs" disabled={isRerunPending} onClick={onOpenRerunDialog}>
           Rerun…
         </button>

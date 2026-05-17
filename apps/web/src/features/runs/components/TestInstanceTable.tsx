@@ -1,4 +1,8 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  hasRangeMultiSelectModifier,
+  resolveRangeMultiSelectClick
+} from "../../../shared/selection/rangeMultiSelect";
 import type { TestInstanceRow } from "../types";
 import { DefectKeyInput } from "./DefectKeyInput";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
@@ -8,6 +12,9 @@ import { UntestedPolicyHint } from "./UntestedPolicyHint";
 import type { ResultStatus } from "./resultEntryTypes";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { normalizeElapsedInput } from "./resultEntryUtils";
+import type { ProjectMemberRow } from "../../projects/api/settingsApi";
+import { memberLabelForUserId } from "../utils/assigneeDisplay";
+import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 
 type Props = {
   projectId: string;
@@ -16,7 +23,10 @@ type Props = {
   onSelectInstance: (instance: TestInstanceRow) => void;
   selectedTestIds: string[];
   setSelectedTestIds: Dispatch<SetStateAction<string[]>>;
+  allPageSelected: boolean;
   allFilteredSelected: boolean;
+  onSelectAllMatchingFilter: () => void;
+  selectAllMatchingBusy: boolean;
   onQuickResultSave: (
     testId: string,
     payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
@@ -30,6 +40,11 @@ type Props = {
   subscribedTestIds?: Set<string>;
   onToggleSubscribe?: (testId: string, subscribed: boolean) => void;
   isSubscribePending?: boolean;
+  members?: ProjectMemberRow[];
+  currentUserId?: string | null;
+  onAssignTest: (testId: string, assignedTo: string | null) => void;
+  assigningTestId?: string | null;
+  runClosed?: boolean;
 };
 
 export function TestInstanceTable(props: Props) {
@@ -40,7 +55,10 @@ export function TestInstanceTable(props: Props) {
     onSelectInstance,
     selectedTestIds,
     setSelectedTestIds,
+    allPageSelected,
     allFilteredSelected,
+    onSelectAllMatchingFilter,
+    selectAllMatchingBusy,
     onQuickResultSave,
     isSavingQuickResult,
     page,
@@ -50,7 +68,12 @@ export function TestInstanceTable(props: Props) {
     onNextPage,
     subscribedTestIds,
     onToggleSubscribe,
-    isSubscribePending
+    isSubscribePending,
+    members = [],
+    currentUserId,
+    onAssignTest,
+    assigningTestId = null,
+    runClosed = false
   } = props;
   const [editingRow, setEditingRow] = useState<TestInstanceRow | null>(null);
   const statusQuery = useProjectStatuses(projectId);
@@ -73,6 +96,41 @@ export function TestInstanceTable(props: Props) {
     setDraftVersion("");
     setDraftDefects([]);
   }, [editingRow, statusOptions]);
+
+  const selectionAnchorIndexRef = useRef<number | null>(null);
+  const skipNextCheckboxChangeRef = useRef(false);
+  const orderedTestIds = useMemo(() => pagedInstances.map((row) => row.id), [pagedInstances]);
+
+  useEffect(() => {
+    selectionAnchorIndexRef.current = null;
+  }, [page]);
+
+  function handleTestSelectClick(event: React.MouseEvent<HTMLInputElement>, testId: string) {
+    if (!hasRangeMultiSelectModifier(event)) return;
+    event.preventDefault();
+    skipNextCheckboxChangeRef.current = true;
+    const result = resolveRangeMultiSelectClick({
+      orderedIds: orderedTestIds,
+      clickedId: testId,
+      selected: new Set(selectedTestIds),
+      anchorIndex: selectionAnchorIndexRef.current,
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey
+    });
+    if (result.kind === "applied") {
+      setSelectedTestIds(Array.from(result.selected));
+      selectionAnchorIndexRef.current = result.anchorIndex;
+    }
+  }
+
+  function toggleTestSelection(testId: string, checked: boolean) {
+    setSelectedTestIds((prev) =>
+      checked ? Array.from(new Set([...prev, testId])) : prev.filter((id) => id !== testId)
+    );
+    const index = orderedTestIds.indexOf(testId);
+    if (index >= 0) selectionAnchorIndexRef.current = index;
+  }
 
   const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions);
   const disableUntested = editingRow != null && editingRow.status !== "untested";
@@ -108,7 +166,7 @@ export function TestInstanceTable(props: Props) {
                 <input
                   type="checkbox"
                   title="Select all on this page"
-                  checked={allFilteredSelected}
+                  checked={allPageSelected}
                   onChange={(e) => {
                     if (e.target.checked) {
                       setSelectedTestIds((prev) =>
@@ -130,6 +188,9 @@ export function TestInstanceTable(props: Props) {
               <th className="w-28 px-3 py-2.5" scope="col">
                 Updated
               </th>
+              <th className="min-w-[9rem] px-3 py-2.5" scope="col">
+                Assignee
+              </th>
               <th className="w-36 px-3 py-2.5" scope="col">
                 Status
               </th>
@@ -149,12 +210,19 @@ export function TestInstanceTable(props: Props) {
                 <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
+                    aria-label={`Select ${row.caseCode}`}
                     checked={selectedTestIds.includes(row.id)}
-                    onChange={(e) =>
-                      setSelectedTestIds((prev) =>
-                        e.target.checked ? Array.from(new Set([...prev, row.id])) : prev.filter((id) => id !== row.id)
-                      )
-                    }
+                    onChange={(e) => {
+                      if (skipNextCheckboxChangeRef.current) {
+                        skipNextCheckboxChangeRef.current = false;
+                        return;
+                      }
+                      toggleTestSelection(row.id, e.target.checked);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTestSelectClick(e, row.id);
+                    }}
                   />
                 </td>
                 <td className="px-3 py-2 align-middle font-mono text-xs text-slate-800">{row.caseCode}</td>
@@ -176,6 +244,24 @@ export function TestInstanceTable(props: Props) {
                   ) : (
                     <span className="text-xs text-slate-400">—</span>
                   )}
+                </td>
+                <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+                  <div className="space-y-1">
+                    <p className="truncate text-xs text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
+                      {memberLabelForUserId(row.assignedTo, members)}
+                    </p>
+                    {!runClosed ? (
+                      <TestAssigneeQuickActions
+                        assignedTo={row.assignedTo}
+                        currentUserId={currentUserId}
+                        compact
+                        disabled={assigningTestId != null && assigningTestId !== row.id}
+                        pending={assigningTestId === row.id}
+                        onAssignToMe={() => onAssignTest(row.id, currentUserId ?? null)}
+                        onClearAssignee={() => onAssignTest(row.id, null)}
+                      />
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
                   <StatusBadge
@@ -205,11 +291,32 @@ export function TestInstanceTable(props: Props) {
         </table>
       </div>
       <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-        <p>
-          Page <span className="font-medium text-slate-800">{page}</span> of {totalPages}
-          <span className="mx-1 text-slate-300">·</span>
-          <span className="font-medium text-slate-800">{total}</span> tests match filters
-        </p>
+        <div className="space-y-1">
+          <p>
+            Page <span className="font-medium text-slate-800">{page}</span> of {totalPages}
+            <span className="mx-1 text-slate-300">·</span>
+            <span className="font-medium text-slate-800">{total}</span> tests match filters
+            {selectedTestIds.length > 0 ? (
+              <>
+                <span className="mx-1 text-slate-300">·</span>
+                <span className="font-medium text-slate-800">{selectedTestIds.length}</span> selected
+              </>
+            ) : null}
+          </p>
+          {total > pagedInstances.length && !allFilteredSelected ? (
+            <button
+              type="button"
+              className="font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={selectAllMatchingBusy}
+              onClick={onSelectAllMatchingFilter}
+            >
+              {selectAllMatchingBusy ? "Selecting…" : `Select all ${total} matching filters`}
+            </button>
+          ) : null}
+          {allFilteredSelected && total > pagedInstances.length ? (
+            <p className="font-medium text-slate-700">All matching tests are selected.</p>
+          ) : null}
+        </div>
         <div className="flex gap-2">
           <button
             type="button"

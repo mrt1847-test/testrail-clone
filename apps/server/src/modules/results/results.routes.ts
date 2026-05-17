@@ -19,6 +19,41 @@ import {
   createSignedDownloadTarget,
   createSignedUploadTarget
 } from "../../domain/attachmentStorage.js";
+import { normalizeDefectProvider } from "../../domain/defectIntegrationValidation.js";
+import { appendCustomFieldsToDescription } from "../../domain/defectPushFields.js";
+import { syncProviderIssueStatus } from "../../domain/defectProviderApi.js";
+import { loadDefectIntegration } from "../integrations/defectIntegration.service.js";
+import { resolveDefectPushOutcome, toDefectApiConfig } from "../integrations/defectIssue.service.js";
+import {
+  findInMemoryResultDefectLink,
+  listInMemoryResultDefectLinks,
+  updateInMemoryResultDefectLinkStatus,
+  upsertInMemoryResultDefectLink
+} from "./resultDefectLinks.memory.js";
+
+function toDefectLinkResponse(row: {
+  id: bigint;
+  defectKey: string;
+  url: string | null;
+  remoteStatus?: string | null;
+  remoteStatusLabel?: string | null;
+  remoteStatusSyncedAt?: Date | null;
+  providerIssueId?: string | null;
+  createMode?: string | null;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    defectKey: row.defectKey,
+    url: row.url ?? null,
+    remoteStatus: row.remoteStatus ?? null,
+    remoteStatusLabel: row.remoteStatusLabel ?? null,
+    remoteStatusSyncedAt: row.remoteStatusSyncedAt ?? null,
+    providerIssueId: row.providerIssueId ?? null,
+    createMode: row.createMode ?? null,
+    createdAt: row.createdAt
+  };
+}
 import {
   requireAttachmentRoutePermission,
   requireProjectPermissionForProject
@@ -77,7 +112,8 @@ const defectPushBodySchema = z.object({
   defectKey: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
-  provider: z.string().trim().optional()
+  provider: z.string().trim().optional(),
+  customFields: z.record(z.string(), z.string()).optional()
 });
 
 async function resultActivityContext(prisma: PrismaClient, resultId: bigint) {
@@ -507,19 +543,20 @@ export async function registerResultsRoutes(
 
   app.get("/api/results/:resultId/defects", async (req, reply) => {
     const params = resultIdParamSchema.parse(req.params);
-    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    if (!deps.prisma) {
+      return reply.send(
+        toJsonSafe(
+          listInMemoryResultDefectLinks(params.resultId).map((row) => toDefectLinkResponse(row))
+        )
+      );
+    }
     const rows = await deps.prisma.resultDefectLink.findMany({
       where: { resultId: params.resultId, deletedAt: null },
       orderBy: { id: "desc" }
     });
     return reply.send(
       toJsonSafe(
-        rows.map((row: (typeof rows)[number]) => ({
-          id: row.id,
-          defectKey: row.defectKey,
-          url: row.url ?? null,
-          createdAt: row.createdAt
-        }))
+        rows.map((row: (typeof rows)[number]) => toDefectLinkResponse(row))
       )
     );
   });
@@ -691,18 +728,70 @@ export async function registerResultsRoutes(
     await requireProjectMutationRole(req, deps, { permission: 'results.write' });
     const params = resultIdParamSchema.parse(req.params);
     const body = defectPushBodySchema.parse(req.body ?? {});
+    const user = await getAuthenticatedUser(req, deps);
     if (!deps.prisma) {
-      const generatedKey = body.defectKey ?? `DEF-${Date.now()}`;
+      const context = await deps.resultsService.findResultPushContext(params.resultId);
+      if (!context) {
+        throw new AppError("NOT_FOUND", "result not found", 404);
+      }
+      const setting = await loadDefectIntegration(context.projectId, undefined);
+      if (!setting.isEnabled) {
+        throw new AppError(
+          "VALIDATION_ERROR",
+          "Enable defect integration in project settings before pushing a defect",
+          400
+        );
+      }
+      const provider = normalizeDefectProvider(body.provider ?? setting.provider);
+      const title =
+        body.title?.trim() || `[${context.status}] ${context.titleSnapshot}`.slice(0, 240);
+      const customFields = body.customFields ?? {};
+      const description = appendCustomFieldsToDescription(
+        body.description?.trim() ||
+          [
+            `Test: ${context.titleSnapshot}`,
+            `Run: ${context.runName}`,
+            `Result #${params.resultId.toString()} (${context.status})`,
+            context.comment?.trim() ? `Comment: ${context.comment.trim()}` : null
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        customFields
+      );
+      const outcome = await resolveDefectPushOutcome(setting, {
+        title,
+        description,
+        defectKey: body.defectKey,
+        customFields
+      });
+      const upserted = upsertInMemoryResultDefectLink({
+        resultId: params.resultId,
+        defectKey: outcome.defectKey,
+        url: outcome.url,
+        remoteStatus: outcome.remoteStatus,
+        remoteStatusLabel: outcome.remoteStatusLabel,
+        remoteStatusSyncedAt: outcome.remoteStatusSyncedAt,
+        providerIssueId: outcome.providerIssueId,
+        createMode: outcome.createMode
+      });
       return reply.send(
         toJsonSafe({
           data: {
-            defectKey: generatedKey,
-            url: null
+            id: upserted.id,
+            provider,
+            defectKey: upserted.defectKey,
+            url: upserted.url ?? null,
+            remoteStatus: upserted.remoteStatus,
+            remoteStatusLabel: upserted.remoteStatusLabel,
+            remoteStatusSyncedAt: upserted.remoteStatusSyncedAt,
+            title,
+            description,
+            customFields
           }
         })
       );
     }
-    const user = await getAuthenticatedUser(req, deps);
+
     const result = await deps.prisma.testResult.findUnique({
       where: { id: params.resultId },
       include: { instance: { include: { run: true } } }
@@ -710,28 +799,57 @@ export async function registerResultsRoutes(
     if (!result) {
       throw new AppError("NOT_FOUND", "result not found", 404);
     }
-    const setting = await deps.prisma.defectIntegrationSetting.findFirst({
-      where: { projectId: result.instance.run.projectId, deletedAt: null }
+    const setting = await loadDefectIntegration(result.instance.run.projectId, deps.prisma);
+    if (!setting.isEnabled) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Enable defect integration in project settings before pushing a defect",
+        400
+      );
+    }
+    const provider = normalizeDefectProvider(body.provider ?? setting.provider);
+    const title =
+      body.title?.trim() || `[${result.status}] ${result.instance.titleSnapshot}`.slice(0, 240);
+    const customFields = body.customFields ?? {};
+    const description = appendCustomFieldsToDescription(
+      body.description?.trim() ||
+        [
+          `Test: ${result.instance.titleSnapshot}`,
+          `Run: ${result.instance.run.name}`,
+          `Result #${params.resultId.toString()} (${result.status})`,
+          result.comment?.trim() ? `Comment: ${result.comment.trim()}` : null
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      customFields
+    );
+    const outcome = await resolveDefectPushOutcome(setting, {
+      title,
+      description,
+      defectKey: body.defectKey,
+      customFields
     });
-    const provider = body.provider?.trim() || setting?.provider || "custom";
-    const generatedKey =
-      body.defectKey?.trim() ||
-      `${(setting?.defaultProjectKey ?? "DEF").toUpperCase()}-${Math.floor(Date.now() / 1000)}`;
-    const url =
-      setting?.issueUrlTemplate && setting.issueUrlTemplate.includes("{key}")
-        ? setting.issueUrlTemplate.replaceAll("{key}", generatedKey)
-        : null;
     const upserted = await deps.prisma.resultDefectLink.upsert({
-      where: { resultId_defectKey: { resultId: params.resultId, defectKey: generatedKey } },
+      where: { resultId_defectKey: { resultId: params.resultId, defectKey: outcome.defectKey } },
       create: {
         resultId: params.resultId,
-        defectKey: generatedKey,
-        url,
+        defectKey: outcome.defectKey,
+        url: outcome.url,
+        remoteStatus: outcome.remoteStatus,
+        remoteStatusLabel: outcome.remoteStatusLabel,
+        remoteStatusSyncedAt: outcome.remoteStatusSyncedAt,
+        providerIssueId: outcome.providerIssueId,
+        createMode: outcome.createMode,
         createdBy: user.id
       },
       update: {
         deletedAt: null,
-        url
+        url: outcome.url,
+        remoteStatus: outcome.remoteStatus,
+        remoteStatusLabel: outcome.remoteStatusLabel,
+        remoteStatusSyncedAt: outcome.remoteStatusSyncedAt,
+        providerIssueId: outcome.providerIssueId,
+        createMode: outcome.createMode
       }
     });
     await recordAuditLog(deps.prisma, {
@@ -741,9 +859,11 @@ export async function registerResultsRoutes(
       entityType: "result",
       entityId: params.resultId,
       changes: {
-        defectKey: generatedKey,
+        defectKey: outcome.defectKey,
         defectLinkId: upserted.id.toString(),
         provider,
+        title,
+        customFields,
         runId: result.instance.run.id.toString(),
         testId: result.instance.id.toString(),
         caseId: result.instance.caseId.toString()
@@ -756,12 +876,14 @@ export async function registerResultsRoutes(
       entityId: params.resultId,
       eventType: "defect.pushed",
       title: "Defect pushed",
-      body: `${generatedKey} was created or linked for ${result.instance.titleSnapshot}.`,
+      body: `${outcome.defectKey} was created or linked for ${result.instance.titleSnapshot}.`,
       payload: {
         resultId: params.resultId.toString(),
-        defectKey: generatedKey,
+        defectKey: outcome.defectKey,
         defectLinkId: upserted.id.toString(),
         provider,
+        pushTitle: title,
+        customFields,
         runId: result.instance.run.id.toString(),
         testId: result.instance.id.toString(),
         caseId: result.instance.caseId.toString(),
@@ -776,11 +898,73 @@ export async function registerResultsRoutes(
           provider,
           defectKey: upserted.defectKey,
           url: upserted.url ?? null,
-          title: body.title ?? null,
-          description: body.description ?? null
+          remoteStatus: upserted.remoteStatus ?? null,
+          remoteStatusLabel: upserted.remoteStatusLabel ?? null,
+          remoteStatusSyncedAt: upserted.remoteStatusSyncedAt ?? null,
+          title,
+          description,
+          customFields
         }
       })
     );
+  });
+
+  app.post("/api/results/:resultId/defects/:defectLinkId/sync", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "results.write" });
+    const params = defectLinkIdParamSchema.parse(req.params);
+
+    if (!deps.prisma) {
+      const context = await deps.resultsService.findResultPushContext(params.resultId);
+      if (!context) {
+        throw new AppError("NOT_FOUND", "result not found", 404);
+      }
+      const link = findInMemoryResultDefectLink(params.resultId, params.defectLinkId);
+      if (!link) {
+        throw new AppError("NOT_FOUND", "defect link not found", 404);
+      }
+      const setting = await loadDefectIntegration(context.projectId, undefined);
+      const snapshot = await syncProviderIssueStatus(toDefectApiConfig(setting), {
+        defectKey: link.defectKey,
+        providerIssueId: link.providerIssueId
+      });
+      const updated = updateInMemoryResultDefectLinkStatus(params.resultId, params.defectLinkId, {
+        remoteStatus: snapshot.remoteStatus,
+        remoteStatusLabel: snapshot.remoteStatusLabel,
+        remoteStatusSyncedAt: snapshot.syncedAt
+      });
+      if (!updated) {
+        throw new AppError("NOT_FOUND", "defect link not found", 404);
+      }
+      return reply.send(toJsonSafe({ data: toDefectLinkResponse(updated) }));
+    }
+
+    const link = await deps.prisma.resultDefectLink.findFirst({
+      where: { id: params.defectLinkId, resultId: params.resultId, deletedAt: null },
+      include: {
+        result: {
+          select: {
+            instance: { select: { run: { select: { projectId: true } } } }
+          }
+        }
+      }
+    });
+    if (!link) {
+      throw new AppError("NOT_FOUND", "defect link not found", 404);
+    }
+    const setting = await loadDefectIntegration(link.result.instance.run.projectId, deps.prisma);
+    const snapshot = await syncProviderIssueStatus(toDefectApiConfig(setting), {
+      defectKey: link.defectKey,
+      providerIssueId: link.providerIssueId
+    });
+    const updated = await deps.prisma.resultDefectLink.update({
+      where: { id: params.defectLinkId },
+      data: {
+        remoteStatus: snapshot.remoteStatus,
+        remoteStatusLabel: snapshot.remoteStatusLabel,
+        remoteStatusSyncedAt: snapshot.syncedAt
+      }
+    });
+    return reply.send(toJsonSafe({ data: toDefectLinkResponse(updated) }));
   });
 }
 

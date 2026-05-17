@@ -20,6 +20,7 @@ import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
+import { copyCaseAttachmentsForDuplicate } from "./caseDuplicateAttachments.js";
 import { CasesService } from "./cases.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
@@ -32,6 +33,7 @@ import {
   caseAttachmentPresignBodySchema,
   bulkArchiveCasesSchema,
   bulkCopyCasesSchema,
+  duplicateCaseSchema,
   caseIdParamSchema,
   caseVersionIdParamSchema,
   caseVersionAttachmentDownloadParamSchema,
@@ -458,6 +460,58 @@ export async function registerCasesRoutes(
       return reply.send(toJsonSafe(ok(row)));
     }
     return reply.send(toJsonSafe(ok(await applyCaseVisibilityRead(req, deps, row.projectId, row))));
+  });
+
+  app.post("/api/cases/:caseId/duplicate", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "cases.write" });
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const user = await getAuthenticatedUser(req, deps);
+    const body = duplicateCaseSchema.parse(req.body ?? {});
+    const source = await deps.casesService.getCase(caseId);
+    if (!source?.projectId) {
+      throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    }
+    const targetSectionId = body.targetSectionId ?? source.sectionId;
+    await deps.casesService.assertProjectScopedSection(source.projectId, targetSectionId);
+    const duplicated = await deps.casesService.duplicateCase(caseId, {
+      targetSectionId,
+      includeSteps: body.includeSteps,
+      includeFields: body.includeFields
+    });
+    if (body.includeAttachments && deps.prisma) {
+      await copyCaseAttachmentsForDuplicate(
+        deps.prisma,
+        user.id,
+        caseId,
+        duplicated.copiedCaseId,
+        duplicated.stepIdMap
+      );
+    }
+    const copied = await deps.casesService.getCase(duplicated.copiedCaseId);
+    if (!copied) {
+      throw new AppError("NOT_FOUND", "duplicated case not found", 404);
+    }
+    await recordActivityEvent(deps.prisma, {
+      projectId: source.projectId,
+      actorUserId: user.id,
+      entityType: "case",
+      entityId: duplicated.copiedCaseId,
+      eventType: "case.duplicated",
+      title: "Test case duplicated",
+      body: copied.title,
+      payload: {
+        sourceCaseId: caseId.toString(),
+        copiedCaseId: duplicated.copiedCaseId.toString(),
+        includeSteps: body.includeSteps,
+        includeFields: body.includeFields,
+        includeAttachments: body.includeAttachments
+      }
+    });
+    if (copied.suiteId) {
+      await syncRunsForCaseChange(deps.compositionSync, copied.projectId, copied.suiteId);
+    }
+    const responseRow = await applyCaseVisibilityRead(req, deps, source.projectId, copied);
+    return reply.send(toJsonSafe(ok(responseRow)));
   });
 
   app.get("/api/cases/:caseId/attachments", async (req, reply) => {

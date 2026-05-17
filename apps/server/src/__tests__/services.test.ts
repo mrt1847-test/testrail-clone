@@ -19,6 +19,30 @@ describe("phase1 services", () => {
     expect(created.instances.length).toBeGreaterThan(0);
   });
 
+  it("duplicateRun copies static run composition and instances", async () => {
+    const repo = new InMemoryRunsRepository();
+    const runService = new RunsService(repo);
+    const source = await runService.createRunWithInstances({
+      projectId: 1n,
+      suiteId: 1n,
+      name: "Cycle A",
+      includeAll: false,
+      caseIds: [101n, 102n],
+      assignedTo: 7n,
+      environment: "qa"
+    });
+    const duplicated = await runService.duplicateRun(source.run.id, {
+      name: "Cycle B",
+      copyAssignee: true,
+      copyEnvironment: true
+    });
+    expect(duplicated.run.name).toBe("Cycle B");
+    expect(duplicated.run.assignedTo).toBe(7n);
+    expect(duplicated.run.environment).toBe("qa");
+    expect(duplicated.instances.map((row) => row.caseId).sort()).toEqual([101n, 102n]);
+    expect(duplicated.run.id).not.toEqual(source.run.id);
+  });
+
   it("createRunWithInstances supports include-all with exclusions", async () => {
     const repo = new InMemoryRunsRepository();
     const runService = new RunsService(repo);

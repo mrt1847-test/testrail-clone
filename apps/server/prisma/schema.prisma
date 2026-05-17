@@ -516,13 +516,18 @@ model TestResult {
 }
 
 model ResultDefectLink {
-  id         BigInt   @id @default(autoincrement())
-  resultId   BigInt
-  defectKey  String
-  url        String?
-  createdBy  BigInt?
-  createdAt  DateTime @default(now())
-  deletedAt  DateTime?
+  id                   BigInt    @id @default(autoincrement())
+  resultId             BigInt
+  defectKey            String
+  url                  String?
+  remoteStatus         String?
+  remoteStatusLabel    String?
+  remoteStatusSyncedAt DateTime?
+  providerIssueId      String?
+  createMode           String?
+  createdBy            BigInt?
+  createdAt            DateTime  @default(now())
+  deletedAt            DateTime?
 
   result       TestResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
   createdByUser User?     @relation("ResultDefectLinkCreator", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -532,15 +537,18 @@ model ResultDefectLink {
 }
 
 model DefectIntegrationSetting {
-  id               BigInt   @id @default(autoincrement())
-  projectId        BigInt   @unique
-  provider         String   @default("custom")
-  isEnabled        Boolean  @default(false)
-  issueUrlTemplate String?
+  id                BigInt   @id @default(autoincrement())
+  projectId         BigInt   @unique
+  provider          String   @default("custom")
+  isEnabled         Boolean  @default(false)
+  createMode        String   @default("url_template")
+  issueUrlTemplate  String?
   defaultProjectKey String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  deletedAt        DateTime?
+  apiBaseUrl        String?
+  apiToken          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

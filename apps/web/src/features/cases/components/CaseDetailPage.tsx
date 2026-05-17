@@ -7,7 +7,7 @@ import { LoadingState } from "../../../shared/ui/LoadingState";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchCaseVersions } from "../api/catalogApi";
-import { buildCaseListPath } from "../caseRoute";
+import { buildCaseDetailPath, buildCaseListPath } from "../caseRoute";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
 import { CaseEditDrawer } from "./CaseEditDrawer";
@@ -139,6 +139,9 @@ export function CaseDetailPage() {
           isDeleting={editor.deleteCaseMutation.isPending}
           isRestoring={editor.restoreVersionMutation.isPending}
           restoreError={editor.restoreFormError}
+          onDuplicated={(copiedCaseId) => {
+            navigate(buildCaseDetailPath(projectId, copiedCaseId, { sectionId }));
+          }}
         />
       </section>
 

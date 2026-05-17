@@ -12,7 +12,10 @@ import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import type { RunSummary } from "../types";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { buildRunPrintPath } from "../../print/api/printApi";
 import { useRunsQuery } from "../hooks/useRunsApi";
+import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
 const columnHelper = createColumnHelper<RunSummary>();
 
@@ -54,6 +57,17 @@ export function RunListPage() {
       }),
       columnHelper.accessor("failed", { header: "Failed" }),
       columnHelper.accessor("createdAt", { header: "Created" }),
+      columnHelper.display({
+        id: "print",
+        header: "",
+        cell: (info) => (
+          <PrintLinkButton
+            to={buildRunPrintPath(projectId, info.row.original.id)}
+            label="Print"
+            className="rounded border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          />
+        )
+      })
     ],
     [projectId],
   );
@@ -110,6 +124,13 @@ export function RunListPage() {
             }
           >
             My runs
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(buildRunComparisonPath(projectId))}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Compare runs
           </button>
           <button
             type="button"

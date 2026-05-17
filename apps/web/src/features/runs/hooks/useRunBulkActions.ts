@@ -38,6 +38,8 @@ type Input = {
   projectId: string;
   runId: string;
   pagedInstances: TestInstanceRow[];
+  instanceLookup: Map<string, TestInstanceRow>;
+  filteredTotal: number;
 };
 
 function mapFailures(
@@ -59,7 +61,7 @@ function mapFailures(
 }
 
 export function useRunBulkActions(input: Input) {
-  const { projectId, runId, pagedInstances } = input;
+  const { projectId, runId, pagedInstances, instanceLookup, filteredTotal } = input;
   const qc = useQueryClient();
 
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
@@ -67,21 +69,15 @@ export function useRunBulkActions(input: Input) {
   const [bulkComment, setBulkComment] = useState("");
   const [bulkFeedback, setBulkFeedback] = useState<BulkResultFeedback | null>(null);
 
-  const instanceByTestId = useMemo(() => {
-    const map = new Map<string, TestInstanceRow>();
-    for (const row of pagedInstances) {
-      map.set(row.id, row);
-    }
-    return map;
-  }, [pagedInstances]);
+  const instanceByTestId = instanceLookup;
 
   const instanceByCaseId = useMemo(() => {
     const map = new Map<string, TestInstanceRow>();
-    for (const row of pagedInstances) {
+    for (const row of instanceLookup.values()) {
       map.set(row.caseId, row);
     }
     return map;
-  }, [pagedInstances]);
+  }, [instanceLookup]);
 
   const bulkDisableUntested = useMemo(
     () =>
@@ -182,8 +178,9 @@ export function useRunBulkActions(input: Input) {
     }
   });
 
-  const allFilteredSelected =
+  const allPageSelected =
     pagedInstances.length > 0 && pagedInstances.every((row) => selectedTestIds.includes(row.id));
+  const allFilteredSelected = filteredTotal > 0 && selectedTestIds.length === filteredTotal;
   const canBulkSubmit = selectedTestIds.length > 0 && !bulkResultMutation.isPending;
   const selectedCount = selectedTestIds.length;
   const rerunStatuses = useMemo(
@@ -201,6 +198,7 @@ export function useRunBulkActions(input: Input) {
     bulkResultMutation,
     bulkFeedback,
     setBulkFeedback,
+    allPageSelected,
     allFilteredSelected,
     canBulkSubmit,
     selectedCount,

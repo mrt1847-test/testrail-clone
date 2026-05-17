@@ -5,6 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { buildMilestonePrintPath } from "../../print/api/printApi";
 import { createMilestone, deleteMilestone, fetchMilestones, updateMilestone } from "../api/advancedApi";
 import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
 import type { MilestoneLifecycleStatus } from "../api/planningApi";
@@ -178,6 +180,11 @@ export function MilestonesPage() {
                       </span>
                     ) : null}
                     <MilestoneLifecycleBadge status={status} />
+                    <PrintLinkButton
+                      to={buildMilestonePrintPath(projectId, row.id)}
+                      label="Print"
+                      className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    />
                     {status === "upcoming" ? (
                       <button
                         type="button"

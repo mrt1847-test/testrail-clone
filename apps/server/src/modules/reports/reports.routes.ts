@@ -479,7 +479,7 @@ class ReportsQueryService {
 }
 
 
-async function buildPlanSummaryItems(projectId: bigint, deps: { repo: RunsRepository; prisma?: PrismaClient }) {
+export async function buildPlanSummaryItems(projectId: bigint, deps: { repo: RunsRepository; prisma?: PrismaClient }) {
   if (deps.prisma) {
     const plans = await deps.prisma.testPlan.findMany({
       where: { projectId, deletedAt: null },

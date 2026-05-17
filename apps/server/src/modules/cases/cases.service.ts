@@ -24,6 +24,21 @@ import {
 } from "../../domain/customFieldVisibility.js";
 import { loadActiveCustomFields } from "../settings/customFieldAccess.js";
 import { customFields as inMemoryCustomFields } from "../settings/settings.shared.js";
+import { buildDuplicateCaseTitle } from "../../domain/caseDuplicate.js";
+
+export type DuplicateCaseOptions = {
+  targetSectionId?: bigint;
+  includeSteps?: boolean;
+  includeFields?: boolean;
+  /** When false, keeps the source title (bulk copy). Default true for single-case duplicate. */
+  titleSuffix?: boolean;
+};
+
+export type DuplicateCaseResult = {
+  sourceCaseId: bigint;
+  copiedCaseId: bigint;
+  stepIdMap: Map<bigint, bigint>;
+};
 
 type ScalarCustomValue = CustomFieldValue;
 type CustomValues = Record<string, ScalarCustomValue>;
@@ -283,43 +298,50 @@ export class CasesService {
     };
   }
 
-  async bulkCopyCases(caseIds: bigint[], targetSectionId: bigint) {
-    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
-    const items = [];
+  async duplicateCase(sourceCaseId: bigint, options: DuplicateCaseOptions = {}): Promise<DuplicateCaseResult> {
+    const source = await this.repo.getCase(sourceCaseId);
+    if (!source) {
+      throw new AppError("NOT_FOUND", `case ${sourceCaseId.toString()} not found`, 404);
+    }
 
-    for (const sourceCaseId of uniqueCaseIds) {
-      const source = await this.repo.getCase(sourceCaseId);
-      if (!source) {
-        items.push({ sourceCaseId, copiedCaseId: null, success: false, error: "NOT_FOUND" });
-        continue;
-      }
+    const includeSteps = options.includeSteps ?? true;
+    const includeFields = options.includeFields ?? true;
+    const titleSuffix = options.titleSuffix ?? true;
+    const targetSectionId = options.targetSectionId ?? source.sectionId;
 
-      const copied = await this.repo.createCase({
-        projectId: source.projectId,
-        sectionId: targetSectionId,
-        title: source.title,
-        priority: source.priority,
-        caseType: source.caseType,
-        estimate: source.estimate,
-        refs: source.refs,
-        labels: [...(source.labels ?? [])],
-        automationKey: null,
-        externalId: null,
-        preconditions: source.preconditions,
-        expectedResult: source.expectedResult ?? null,
-        caseTemplateId: source.caseTemplateId ?? null,
-        customValues: { ...(source.customValues ?? {}) },
-        archivedAt: null
-      });
+    const copied = await this.repo.createCase({
+      projectId: source.projectId,
+      sectionId: targetSectionId,
+      title: titleSuffix ? buildDuplicateCaseTitle(source.title) : source.title,
+      priority: source.priority,
+      caseType: source.caseType,
+      estimate: includeFields ? source.estimate : null,
+      refs: includeFields ? source.refs : null,
+      labels: includeFields ? [...(source.labels ?? [])] : [],
+      automationKey: null,
+      externalId: null,
+      preconditions: includeFields ? source.preconditions : null,
+      expectedResult: includeFields ? (source.expectedResult ?? null) : null,
+      caseTemplateId: includeFields ? (source.caseTemplateId ?? null) : null,
+      customValues: includeFields ? { ...(source.customValues ?? {}) } : {},
+      mission: includeFields ? (source.mission ?? null) : null,
+      goals: includeFields ? (source.goals ?? null) : null,
+      aiInput: includeFields ? (source.aiInput ?? null) : null,
+      aiExpectedOutput: includeFields ? (source.aiExpectedOutput ?? null) : null,
+      archivedAt: null
+    });
 
+    const stepIdMap = new Map<bigint, bigint>();
+    if (includeSteps) {
       const steps = await this.repo.listCaseSteps(sourceCaseId);
       for (const step of steps) {
-        await this.repo.createCaseStep({
+        const createdStep = await this.repo.createCaseStep({
           caseId: copied.id,
           stepOrder: step.stepOrder,
           content: step.content,
           expectedResult: step.expectedResult ?? null
         });
+        stepIdMap.set(step.id, createdStep.id);
       }
       const scenarios = await this.repo.listCaseScenarios(sourceCaseId);
       for (const scenario of scenarios) {
@@ -330,9 +352,38 @@ export class CasesService {
           content: scenario.content
         });
       }
-      await this.repo.createCaseVersionSnapshot(copied.id, `case_copied:${sourceCaseId.toString()}`);
+    }
 
-      items.push({ sourceCaseId, copiedCaseId: copied.id, success: true, error: null });
+    await this.repo.createCaseVersionSnapshot(copied.id, `case_duplicated:${sourceCaseId.toString()}`);
+
+    return { sourceCaseId, copiedCaseId: copied.id, stepIdMap };
+  }
+
+  async bulkCopyCases(caseIds: bigint[], targetSectionId: bigint) {
+    const uniqueCaseIds = Array.from(new Set(caseIds.map((caseId) => caseId.toString()))).map((caseId) => BigInt(caseId));
+    const items = [];
+
+    for (const sourceCaseId of uniqueCaseIds) {
+      try {
+        const duplicated = await this.duplicateCase(sourceCaseId, {
+          targetSectionId,
+          includeSteps: true,
+          includeFields: true,
+          titleSuffix: false
+        });
+        items.push({
+          sourceCaseId,
+          copiedCaseId: duplicated.copiedCaseId,
+          success: true,
+          error: null
+        });
+      } catch (error) {
+        if (error instanceof AppError && error.code === "NOT_FOUND") {
+          items.push({ sourceCaseId, copiedCaseId: null, success: false, error: "NOT_FOUND" });
+          continue;
+        }
+        throw error;
+      }
     }
 
     return {

@@ -59,6 +59,65 @@ export function PrintDocumentView({ document }: PrintDocumentViewProps) {
           {note}
         </p>
       ))}
+
+      {(document.sections ?? []).map((section, index) => (
+        <article
+          key={`${section.title}-${index}`}
+          className="mt-10 border-t border-slate-200 pt-8 print:break-after-page"
+        >
+          <h2 className="text-xl font-semibold tracking-tight">{section.title}</h2>
+          {section.subtitle ? <p className="mt-1 text-sm text-slate-600">{section.subtitle}</p> : null}
+
+          {section.meta.length > 0 ? (
+            <table className="mt-4 w-full border-collapse text-sm">
+              <tbody>
+                {section.meta.map((row) => (
+                  <tr key={row.label} className="border-b border-slate-200">
+                    <th className="w-40 bg-slate-50 px-3 py-2 text-left font-medium text-slate-600">{row.label}</th>
+                    <td className="px-3 py-2 whitespace-pre-wrap">{row.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+
+          {section.tables.map((table) => (
+            <section key={table.title} className="mt-6">
+              <h3 className="mb-2 text-base font-semibold">{table.title}</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[480px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-300 bg-slate-50">
+                      {table.columns.map((col) => (
+                        <th key={col} className="px-3 py-2 text-left font-medium text-slate-600">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b border-slate-100">
+                        {row.map((cell, cellIndex) => (
+                          <td key={cellIndex} className="px-3 py-2 align-top whitespace-pre-wrap">
+                            {cell || "—"}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+
+          {(section.notes ?? []).map((note) => (
+            <p key={note} className="mt-4 text-xs text-slate-500">
+              {note}
+            </p>
+          ))}
+        </article>
+      ))}
     </article>
   );
 }

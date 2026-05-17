@@ -5,6 +5,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { FilterBar, type FilterField } from "../../../../shared/ui/FilterBar";
 import { PageHeader } from "../../../../shared/ui/PageHeader";
+import { PrintLinkButton } from "../../../print/components/PrintLinkButton";
+import { buildReportPrintPath } from "../../../print/api/reportPrintApi";
 import { requestReportExportJob } from "../../api/importExportApi";
 import { downloadReportCsv, type ReportExportType } from "../../api/reportsApi";
 import { createSavedReport, type SavedReportFilters } from "../../api/savedReportsApi";
@@ -121,9 +123,12 @@ export function ReportExportActions({
     }
   }
 
+  const printPath = buildReportPrintPath(routeProjectId, reportType, exportQuery);
+
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex flex-wrap justify-end gap-2">
+        {printPath ? <PrintLinkButton to={printPath} label="Print view" /> : null}
         <button
           type="button"
           disabled={disabled || busy != null}

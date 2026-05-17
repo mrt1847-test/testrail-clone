@@ -32,5 +32,9 @@ export const env = {
   /** Base URL used for signed upload/download links (Supabase Storage or reverse proxy). */
   storagePublicBaseUrl: process.env.STORAGE_PUBLIC_BASE_URL ?? "https://storage.local",
   storageSignedUrlTtlSeconds: Number(process.env.STORAGE_SIGNED_URL_TTL_SECONDS ?? 600),
-  storageUploadUrlTtlSeconds: Number(process.env.STORAGE_UPLOAD_URL_TTL_SECONDS ?? 600)
+  storageUploadUrlTtlSeconds: Number(process.env.STORAGE_UPLOAD_URL_TTL_SECONDS ?? 600),
+  attachmentRetentionDaysDefault: Number(process.env.ATTACHMENT_RETENTION_DAYS_DEFAULT ?? 90),
+  attachmentRetentionMinDays: Number(process.env.ATTACHMENT_RETENTION_MIN_DAYS ?? 30),
+  attachmentRetentionMaxDays: Number(process.env.ATTACHMENT_RETENTION_MAX_DAYS ?? 3650),
+  attachmentRetentionPruneBatchSize: Number(process.env.ATTACHMENT_RETENTION_PRUNE_BATCH_SIZE ?? 200)
 };

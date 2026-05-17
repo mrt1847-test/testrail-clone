@@ -183,6 +183,37 @@ describe("cases service", () => {
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
+  it("duplicates a case with optional steps and fields", async () => {
+    const { repo, service, sourceSection, firstCase } = await seedCatalog();
+    await repo.updateCase(firstCase.id, {
+      preconditions: "Signed in",
+      customValues: { area: "checkout" }
+    });
+    await service.createCaseStep(firstCase.id, { content: "Pay", expectedResult: "Receipt" });
+
+    const withoutSteps = await service.duplicateCase(firstCase.id, {
+      includeSteps: false,
+      includeFields: true
+    });
+    const withoutFields = await service.duplicateCase(firstCase.id, {
+      includeSteps: true,
+      includeFields: false
+    });
+
+    const copyNoSteps = await repo.getCase(withoutSteps.copiedCaseId);
+    expect(copyNoSteps?.title).toBe("Checkout happy path (copy)");
+    expect(copyNoSteps?.preconditions).toBe("Signed in");
+    expect(await repo.listCaseSteps(withoutSteps.copiedCaseId)).toEqual([]);
+
+    const copyNoFields = await repo.getCase(withoutFields.copiedCaseId);
+    expect(copyNoFields?.preconditions).toBeNull();
+    expect(copyNoFields?.customValues).toEqual({});
+    expect(await repo.listCaseSteps(withoutFields.copiedCaseId)).toMatchObject([
+      { content: "Pay", expectedResult: "Receipt" }
+    ]);
+    expect(copyNoFields?.sectionId).toBe(sourceSection.id);
+  });
+
   it("copies selected cases with custom values and ordered steps", async () => {
     const { repo, service, project, sourceSection, targetSection, firstCase } = await seedCatalog();
     await repo.updateCase(firstCase.id, {

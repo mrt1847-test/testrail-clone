@@ -60,6 +60,27 @@ export type RunDetailDto = {
   metrics?: RunProgressMetricsDto;
 };
 
+export type DefectPushContext = {
+  projectId: string;
+  runId: string;
+  runName: string;
+  testId: string;
+  testTitle: string;
+  resultId: string;
+  resultStatus: string;
+  resultComment?: string | null;
+};
+
+export type DefectPushFieldDefinition = {
+  key: string;
+  label: string;
+  type: "text" | "textarea" | "select";
+  required?: boolean;
+  placeholder?: string;
+  options?: string[];
+  mapsTo?: "defectKey" | "title" | "description";
+};
+
 export type TestResultHistoryItem = {
   id: string;
   status: string;
@@ -95,5 +116,8 @@ export type ResultDefectLinkItem = {
   id: string;
   defectKey: string;
   url?: string | null;
+  remoteStatus?: string | null;
+  remoteStatusLabel?: string | null;
+  remoteStatusSyncedAt?: string | null;
   createdAt: string;
 };

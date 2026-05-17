@@ -1,6 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { env } from "../../config/env.js";
 import { backfillTombstonedStoragePaths } from "./attachmentLifecycle.service.js";
+import { runScheduledAttachmentRetentionPrune } from "./attachmentRetention.service.js";
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -18,6 +20,14 @@ export function startAttachmentStorageWorker(deps: { prisma: PrismaClient; inter
       if (total > 0) {
         // eslint-disable-next-line no-console
         console.log(`Attachment storage worker tombstoned ${total} deleted attachment path(s).`);
+      }
+
+      const pruned = await runScheduledAttachmentRetentionPrune(deps.prisma);
+      if (pruned.deleted > 0 || pruned.tombstoneBackfilled > 0) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `Attachment retention worker pruned ${pruned.deleted} row(s) (default ${env.attachmentRetentionDaysDefault}d), tombstone backfill ${pruned.tombstoneBackfilled}.`
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

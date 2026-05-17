@@ -11,8 +11,13 @@ import {
   fetchCaseVersionAttachmentDownloadUrl,
   fetchCaseStepAttachments,
   uploadCaseAttachmentViaPresign,
-  uploadCaseStepAttachmentViaPresign
+  uploadCaseStepAttachmentViaPresign,
+  duplicateCase
 } from "../api/catalogApi";
+import { extractApiErrorMessage } from "../caseErrors";
+import { sectionKeys } from "../hooks/useSections";
+import { projectKeys } from "../../projects/hooks/useProjectsApi";
+import { DuplicateCaseDialog, type DuplicateCaseOptionsInput } from "./DuplicateCaseDialog";
 import type { CaseAttachmentItem, CaseStep, CaseVersion, TestCase } from "../types";
 import {
   CaseAuthoringForm,
@@ -63,6 +68,7 @@ type ExpandableCaseDetailProps = {
   isStepsBusy?: boolean;
   layout?: "embedded" | "page";
   showHeading?: boolean;
+  onDuplicated?: (copiedCaseId: number) => void;
 };
 
 type LocalStep = { id?: number; description: string; expected: string };
@@ -644,7 +650,8 @@ export function ExpandableCaseDetail({
   onDeleteStep,
   isStepsBusy = false,
   layout = "embedded",
-  showHeading = true
+  showHeading = true,
+  onDuplicated
 }: ExpandableCaseDetailProps) {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
@@ -655,7 +662,24 @@ export function ExpandableCaseDetail({
   );
   const [localSteps, setLocalSteps] = useState<LocalStep[]>(() => toLocalSteps(data.steps));
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [stepDeleteId, setStepDeleteId] = useState<number | null>(null);
+
+  const duplicateMutation = useMutation({
+    mutationFn: (options: DuplicateCaseOptionsInput) => duplicateCase(data.id, options),
+    onSuccess: (copied) => {
+      setDuplicateDialogOpen(false);
+      setDuplicateError(null);
+      void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      onDuplicated?.(copied.id);
+    },
+    onError: (error) => {
+      setDuplicateError(extractApiErrorMessage(error, "Could not duplicate the case."));
+    }
+  });
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [detailVersionId, setDetailVersionId] = useState<number | null>(null);
   const [restoreVersionId, setRestoreVersionId] = useState<number | null>(null);
@@ -1164,6 +1188,16 @@ export function ExpandableCaseDetail({
             </button>
             <button
               type="button"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+              onClick={() => {
+                setDuplicateError(null);
+                setDuplicateDialogOpen(true);
+              }}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
               className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 hover:bg-red-100"
               onClick={() => setConfirmDeleteOpen(true)}
             >
@@ -1172,6 +1206,22 @@ export function ExpandableCaseDetail({
           </div>
         </>
       )}
+
+      <DuplicateCaseDialog
+        open={duplicateDialogOpen}
+        caseTitle={data.title}
+        isPending={duplicateMutation.isPending}
+        error={duplicateError}
+        onCancel={() => {
+          if (duplicateMutation.isPending) return;
+          setDuplicateDialogOpen(false);
+          setDuplicateError(null);
+        }}
+        onConfirm={(options) => {
+          setDuplicateError(null);
+          void duplicateMutation.mutateAsync(options);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDeleteOpen}

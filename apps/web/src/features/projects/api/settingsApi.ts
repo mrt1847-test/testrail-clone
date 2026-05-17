@@ -202,12 +202,39 @@ export type AuditLogFilterOptions = {
   entityTypes: string[];
 };
 
+export type DefectCreateMode = "url_template" | "provider_api";
+
 export type DefectIntegrationSettings = {
   projectId: string;
   provider: string;
   isEnabled: boolean;
+  createMode: DefectCreateMode;
   issueUrlTemplate: string | null;
   defaultProjectKey: string | null;
+  apiBaseUrl: string | null;
+  hasApiToken: boolean;
+};
+
+export type DefectTemplatePreview = {
+  provider: string;
+  createMode: DefectCreateMode;
+  sampleIssueKey: string;
+  url: string | null;
+  providerLabel: string;
+  fieldHints: string[];
+};
+
+export type DefectIntegrationCheck = {
+  code: string;
+  status: "pass" | "fail" | "warn";
+  message: string;
+};
+
+export type DefectIntegrationConnectionTestResult = {
+  ok: boolean;
+  provider: string;
+  checks: DefectIntegrationCheck[];
+  sampleUrls: Array<{ key: string; url: string | null }>;
 };
 
 export type ActivityEventRow = {
@@ -640,40 +667,101 @@ export async function removeProjectMember(projectId: string, memberId: string) {
   await apiFetch<void>(`/api/projects/${projectId}/settings/members/${memberId}`, { method: "DELETE" });
 }
 
+function mapDefectIntegrationSettings(data: DefectIntegrationSettings): DefectIntegrationSettings {
+  return {
+    projectId: String(data.projectId),
+    provider: data.provider,
+    isEnabled: data.isEnabled,
+    createMode: data.createMode === "provider_api" ? "provider_api" : "url_template",
+    issueUrlTemplate: data.issueUrlTemplate ?? null,
+    defaultProjectKey: data.defaultProjectKey ?? null,
+    apiBaseUrl: data.apiBaseUrl ?? null,
+    hasApiToken: data.hasApiToken ?? false
+  };
+}
+
 export async function fetchDefectIntegrationSettings(projectId: string): Promise<DefectIntegrationSettings> {
   const res = await apiFetch<Ok<DefectIntegrationSettings>>(`/api/projects/${projectId}/integrations/defects`);
-  return {
-    projectId: String(res.data.projectId),
-    provider: res.data.provider,
-    isEnabled: res.data.isEnabled,
-    issueUrlTemplate: res.data.issueUrlTemplate ?? null,
-    defaultProjectKey: res.data.defaultProjectKey ?? null
-  };
+  return mapDefectIntegrationSettings(res.data);
+}
+
+export async function fetchDefectTemplatePreview(
+  projectId: string,
+  query: {
+    provider?: string;
+    createMode?: DefectCreateMode;
+    issueUrlTemplate?: string | null;
+    defaultProjectKey?: string | null;
+    sampleIssueKey?: string;
+  }
+): Promise<DefectTemplatePreview> {
+  const params = new URLSearchParams();
+  if (query.provider) params.set("provider", query.provider);
+  if (query.createMode) params.set("createMode", query.createMode);
+  if (query.issueUrlTemplate) params.set("issueUrlTemplate", query.issueUrlTemplate);
+  if (query.defaultProjectKey) params.set("defaultProjectKey", query.defaultProjectKey);
+  if (query.sampleIssueKey) params.set("sampleIssueKey", query.sampleIssueKey);
+  const res = await apiFetch<Ok<DefectTemplatePreview>>(
+    `/api/projects/${projectId}/integrations/defects/template-preview?${params.toString()}`
+  );
+  return res.data;
+}
+
+export async function testDefectIntegrationConnection(input: {
+  projectId: string;
+  provider?: string;
+  isEnabled?: boolean;
+  createMode?: DefectCreateMode;
+  issueUrlTemplate?: string | null;
+  defaultProjectKey?: string | null;
+  apiBaseUrl?: string | null;
+  apiToken?: string | null;
+  sampleIssueKey?: string;
+}): Promise<DefectIntegrationConnectionTestResult> {
+  const res = await apiFetch<Ok<DefectIntegrationConnectionTestResult>>(
+    `/api/projects/${input.projectId}/integrations/defects/test-connection`,
+    {
+      method: "POST",
+      body: {
+        ...(input.provider !== undefined ? { provider: input.provider } : {}),
+        ...(input.isEnabled !== undefined ? { isEnabled: input.isEnabled } : {}),
+        ...(input.createMode !== undefined ? { createMode: input.createMode } : {}),
+        ...(input.issueUrlTemplate !== undefined ? { issueUrlTemplate: input.issueUrlTemplate } : {}),
+        ...(input.defaultProjectKey !== undefined ? { defaultProjectKey: input.defaultProjectKey } : {}),
+        ...(input.apiBaseUrl !== undefined ? { apiBaseUrl: input.apiBaseUrl } : {}),
+        ...(input.apiToken !== undefined ? { apiToken: input.apiToken } : {}),
+        ...(input.sampleIssueKey ? { sampleIssueKey: input.sampleIssueKey } : {})
+      }
+    }
+  );
+  return res.data;
 }
 
 export async function updateDefectIntegrationSettings(input: {
   projectId: string;
   provider?: string;
   isEnabled?: boolean;
+  createMode?: DefectCreateMode;
   issueUrlTemplate?: string | null;
   defaultProjectKey?: string | null;
+  apiBaseUrl?: string | null;
+  apiToken?: string | null;
+  clearApiToken?: boolean;
 }): Promise<DefectIntegrationSettings> {
   const res = await apiFetch<Ok<DefectIntegrationSettings>>(`/api/projects/${input.projectId}/integrations/defects`, {
     method: "PATCH",
     body: {
       ...(input.provider !== undefined ? { provider: input.provider } : {}),
       ...(input.isEnabled !== undefined ? { isEnabled: input.isEnabled } : {}),
+      ...(input.createMode !== undefined ? { createMode: input.createMode } : {}),
       ...(input.issueUrlTemplate !== undefined ? { issueUrlTemplate: input.issueUrlTemplate } : {}),
-      ...(input.defaultProjectKey !== undefined ? { defaultProjectKey: input.defaultProjectKey } : {})
+      ...(input.defaultProjectKey !== undefined ? { defaultProjectKey: input.defaultProjectKey } : {}),
+      ...(input.apiBaseUrl !== undefined ? { apiBaseUrl: input.apiBaseUrl } : {}),
+      ...(input.apiToken !== undefined ? { apiToken: input.apiToken } : {}),
+      ...(input.clearApiToken ? { clearApiToken: true } : {})
     }
   });
-  return {
-    projectId: String(res.data.projectId),
-    provider: res.data.provider,
-    isEnabled: res.data.isEnabled,
-    issueUrlTemplate: res.data.issueUrlTemplate ?? null,
-    defaultProjectKey: res.data.defaultProjectKey ?? null
-  };
+  return mapDefectIntegrationSettings(res.data);
 }
 
 export type ProjectActivityFilters = {

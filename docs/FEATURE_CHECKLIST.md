@@ -246,11 +246,11 @@ Current clone mapping:
 - [x] **TR-Pro** Defect links, integration settings, URL-template push, provider feedback, and unlink baseline.
 - [x] **Clone+** P1 Production object storage lifecycle and authorization hardening. (project-scoped storage keys + path boundary checks; tombstone on delete + backfill worker; signed URL TTL env; project permission on attachment list/read/download/delete)
 - [x] **TR-Core** P1 Attachment preview drawer and upload progress/retry baseline for case and result evidence.
-- [ ] **TR-Core** P1 Attachment retention and cleanup policy.
-- [ ] **TR-Pro** P1 Integration test connection and validation ([Configuring defect integrations](https://support.testrail.com/hc/en-us/articles/7747085183636)).
-- [ ] **TR-Pro** P1 Push Defect dialog with provider field mapping (Jira/GitHub/Azure), including custom fields.
-- [ ] **TR-Pro** P1 Provider-native issue create/sync, remote status snapshots, template preview.
-- [ ] **TR-Pro** P2 Attachment import/export.
+- [x] **TR-Core** P1 Attachment retention and cleanup policy. (env retention bounds + `GET/POST .../settings/attachments/retention-*`; scheduled prune in attachment worker; hard-delete soft-deleted rows past cutoff)
+- [x] **TR-Pro** P1 Integration test connection and validation ([Configuring defect integrations](https://support.testrail.com/hc/en-us/articles/7747085183636)). (`POST .../integrations/defects/test-connection`; provider/template validation on save; settings UI Test connection + checks)
+- [x] **TR-Pro** P1 Push Defect dialog with provider field mapping (Jira/GitHub/Azure), including custom fields. (`GET .../defects/push-fields`; `PushDefectDialog` on failed/blocked/retest; custom field rows; push payload validation + result traceback)
+- [x] **TR-Pro** P1 Provider-native issue create/sync, remote status snapshots, template preview. (`createMode` url_template|provider_api; simulated/HTTP provider create; `POST .../defects/:id/sync`; template-preview API + settings UI; remote status on defect links)
+- [x] **TR-Pro** P2 Attachment import/export. (JSON manifest export/import for case, case_step, and result attachments; optional inline base64 + download URLs; async export job `attachments_json`; Import/Export UI section)
 
 ---
 
@@ -338,7 +338,7 @@ Secondary UX depth; many items mirror TestRail but are tracked here to keep doma
 ### Keyboard, Selection, And List Ergonomics
 
 - [x] P1 Keyboard shortcuts and `?` help overlay on run detail (global palette deferred).
-- [ ] P1 Shift/Ctrl range multi-select on case and run tables.
+- [x] P1 Shift/Ctrl range multi-select on case and run tables. (shared `rangeMultiSelect`; Shift range + Ctrl/Cmd toggle on `CaseRow` and `TestInstanceTable` checkboxes)
 - [ ] P1 Remember last filter, sort, and column set per page per user.
 - [ ] P1 Column width and visibility persistence.
 - [ ] P1 Inline quick-edit for safe fields.
@@ -347,16 +347,18 @@ Secondary UX depth; many items mirror TestRail but are tracked here to keep doma
 
 ### Case And Run Shortcuts
 
-- [ ] P1 Quick-add case inline in section tree.
-- [ ] P1 Duplicate case with options (steps, fields, attachments).
-- [ ] P1 Print-friendly case view and multi-case print.
-- [ ] P1 Collapsed section tree state per suite.
-- [ ] P1 Select all in section / select visible filter matches.
+- [x] P1 Quick-add case inline in section tree. (per-section + button and Add case menu; inline title form; `createCase` without leaving tree)
+- [x] P1 Duplicate case with options (steps, fields, attachments). (`POST /api/cases/:caseId/duplicate`; includeSteps/Fields/Attachments; DuplicateCaseDialog on case detail)
+- [x] P1 Print-friendly case view and multi-case print. (single-case `/cases/:id/print`; multi-case `POST/GET .../cases/print` + repository Print selected; composite print sections + HTML page breaks)
+- [x] **TR-Core** P1 Print-friendly run, plan, and milestone views. (detail + list Print links open in new tab; run status breakdown table; plan entry linked-run columns; plan/milestone print API tests)
+- [x] **TR-Core** P1 Print-friendly report pages. (`GET .../reports/print?reportType=`, template report Print view + HTML download; Print view on ReportExportActions for fixed templates)
+- [x] P1 Collapsed section tree state per suite. (`sectionTreeCollapse` localStorage per project+suite; `SectionTreePane` restore on suite switch)
+- [x] P1 Select all in section / select visible filter matches. (case list: Select all in section + matching filter via paged fetch; run table: page checkbox + Select all N matching filters across pages; bulk uses full lookup)
 - [x] P1 Next/previous test, jump to failed/blocked (run detail toolbar + shortcuts; see [UX_BACKLOG.md](./UX_BACKLOG.md) Wave UX-2).
 - [x] P1 Clickable status counts in run summary/sidebar (see [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md) §5).
-- [ ] P1 Assign to me / clear assignee quick actions.
-- [ ] P1 Duplicate run for regression cycles.
-- [ ] P2 Compare two runs side-by-side (relates to Comparison for Cases report).
+- [x] P1 Assign to me / clear assignee quick actions. (test table + selected-test sidebar + bulk/run actions panel; `TestAssigneeQuickActions`; PATCH run/test assignee)
+- [x] P1 Duplicate run for regression cycles. (`POST /api/runs/:runId/duplicate`; composition + assignee/schedule/env options; DuplicateRunDialog on run detail)
+- [x] P2 Compare two runs side-by-side (relates to Comparison for Cases report). (`/runs/compare` + run detail/list shortcuts; reuses `results-case-comparison` API; status badges)
 
 ### Reporting And Collaboration Shortcuts
 

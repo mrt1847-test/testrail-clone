@@ -24,15 +24,18 @@ type ResultHistoryListProps = {
   isOpeningAttachmentDownload: boolean;
   isDeletingAttachment: boolean;
   isAddingDefect: boolean;
-  isPushingDefect: boolean;
   isDeletingDefect: boolean;
+  isSyncingDefect?: boolean;
+  syncingDefectLinkId?: string | null;
   pushedDefectMessage?: string | null;
   onAddAttachment: (file: File, onProgress?: (progress: number) => void) => void;
   onOpenAttachmentDownload: (attachmentId: string) => void;
   onDeleteAttachment: (attachmentId: string) => void;
   onAddDefect: (input: { defectKey: string; url?: string }) => void;
-  onPushDefect: (input: { defectKey?: string; title?: string; description?: string; provider?: string }) => void;
+  onOpenPushDefect?: () => void;
+  canPushDefect?: boolean;
   onDeleteDefect: (defectLinkId: string) => void;
+  onSyncDefect?: (defectLinkId: string) => void;
 };
 
 function customValueEntries(item: TestResultHistoryItem) {
@@ -58,15 +61,18 @@ export function ResultHistoryList({
   isOpeningAttachmentDownload,
   isDeletingAttachment,
   isAddingDefect,
-  isPushingDefect,
   isDeletingDefect,
+  isSyncingDefect = false,
+  syncingDefectLinkId = null,
   pushedDefectMessage,
   onAddAttachment,
   onOpenAttachmentDownload,
   onDeleteAttachment,
   onAddDefect,
-  onPushDefect,
-  onDeleteDefect
+  onOpenPushDefect,
+  canPushDefect = false,
+  onDeleteDefect,
+  onSyncDefect
 }: ResultHistoryListProps) {
   const [selectedAttachmentFile, setSelectedAttachmentFile] = useState<File | null>(null);
   const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
@@ -77,7 +83,6 @@ export function ResultHistoryList({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [defectKey, setDefectKey] = useState("");
   const [defectUrl, setDefectUrl] = useState("");
-  const [pushProvider, setPushProvider] = useState("custom");
   const attachmentMutationError =
     !isAddingAttachment && attachmentUploadProgress !== null && attachmentUploadProgress < 100
       ? "Upload did not complete. You can retry the selected file."
@@ -317,16 +322,15 @@ export function ResultHistoryList({
                 value={defectUrl}
                 onChange={(e) => setDefectUrl(e.target.value)}
               />
-              <select
-                className="rounded border border-slate-300 px-2 py-1 text-xs"
-                value={pushProvider}
-                onChange={(e) => setPushProvider(e.target.value)}
-              >
-                <option value="custom">custom</option>
-                <option value="jira">jira</option>
-                <option value="github">github</option>
-                <option value="azure">azure</option>
-              </select>
+              {canPushDefect && onOpenPushDefect ? (
+                <button
+                  type="button"
+                  className="rounded border border-indigo-300 px-2 py-1 text-xs font-medium text-indigo-800 hover:bg-indigo-50"
+                  onClick={onOpenPushDefect}
+                >
+                  Push defect…
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
@@ -340,22 +344,7 @@ export function ResultHistoryList({
                   setDefectUrl("");
                 }}
               >
-                {isAddingDefect ? "Adding..." : "Add"}
-              </button>
-              <button
-                type="button"
-                className="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50"
-                disabled={isPushingDefect}
-                onClick={() =>
-                  onPushDefect({
-                    defectKey: defectKey.trim() || undefined,
-                    title: "Defect from test result",
-                    description: selectedResultId ? `Pushed from result ${selectedResultId}` : undefined,
-                    provider: pushProvider
-                  })
-                }
-              >
-                {isPushingDefect ? "Pushing..." : "Push"}
+                {isAddingDefect ? "Adding..." : "Add link"}
               </button>
             </div>
             {pushedDefectMessage ? <p className="mt-2 text-[11px] text-emerald-700">{pushedDefectMessage}</p> : null}
@@ -368,17 +357,39 @@ export function ResultHistoryList({
                 defects.map((item) => (
                   <div key={item.id} className="rounded border border-slate-100 px-2 py-1 text-[11px] text-slate-600">
                     <p>
-                      {item.defectKey}
-                      {item.url ? ` - ${item.url}` : ""}
+                      {item.url ? (
+                        <a href={item.url} className="font-medium text-indigo-800 underline" target="_blank" rel="noreferrer">
+                          {item.defectKey}
+                        </a>
+                      ) : (
+                        <span className="font-medium text-slate-800">{item.defectKey}</span>
+                      )}
+                      {item.remoteStatusLabel ? (
+                        <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-700">
+                          {item.remoteStatusLabel}
+                        </span>
+                      ) : null}
                     </p>
-                    <button
-                      type="button"
-                      className="mt-1 rounded border border-rose-300 px-1.5 py-0.5 text-[11px] text-rose-700 disabled:opacity-50"
-                      disabled={isDeletingDefect}
-                      onClick={() => onDeleteDefect(item.id)}
-                    >
-                      Unlink
-                    </button>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {onSyncDefect ? (
+                        <button
+                          type="button"
+                          className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] text-slate-700 disabled:opacity-50"
+                          disabled={isSyncingDefect}
+                          onClick={() => onSyncDefect(item.id)}
+                        >
+                          {isSyncingDefect && syncingDefectLinkId === item.id ? "Syncing…" : "Sync status"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="rounded border border-rose-300 px-1.5 py-0.5 text-[11px] text-rose-700 disabled:opacity-50"
+                        disabled={isDeletingDefect}
+                        onClick={() => onDeleteDefect(item.id)}
+                      >
+                        Unlink
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

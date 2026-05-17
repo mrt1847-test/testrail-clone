@@ -19,7 +19,10 @@ type Props = {
   onAssigneeFilterChange: (value: string) => void;
   selectedTestIds: string[];
   setSelectedTestIds: Dispatch<SetStateAction<string[]>>;
+  allPageSelected: boolean;
   allFilteredSelected: boolean;
+  onSelectAllMatchingFilter: () => void;
+  selectAllMatchingBusy: boolean;
   onQuickResultSave: (
     testId: string,
     payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
@@ -34,6 +37,10 @@ type Props = {
   onToggleSubscribe?: (testId: string, subscribed: boolean) => void;
   isSubscribePending?: boolean;
   hideStatusFilter?: boolean;
+  currentUserId?: string | null;
+  onAssignTest: (testId: string, assignedTo: string | null) => void;
+  assigningTestId?: string | null;
+  runClosed?: boolean;
 };
 
 export function RunInstancesSection(props: Props) {
@@ -51,7 +58,10 @@ export function RunInstancesSection(props: Props) {
     onAssigneeFilterChange,
     selectedTestIds,
     setSelectedTestIds,
+    allPageSelected,
     allFilteredSelected,
+    onSelectAllMatchingFilter,
+    selectAllMatchingBusy,
     onQuickResultSave,
     isSavingQuickResult,
     page,
@@ -62,7 +72,11 @@ export function RunInstancesSection(props: Props) {
     subscribedTestIds,
     onToggleSubscribe,
     isSubscribePending,
-    hideStatusFilter
+    hideStatusFilter,
+    currentUserId,
+    onAssignTest,
+    assigningTestId,
+    runClosed
   } = props;
 
   return (
@@ -84,7 +98,10 @@ export function RunInstancesSection(props: Props) {
         onSelectInstance={onSelectInstance}
         selectedTestIds={selectedTestIds}
         setSelectedTestIds={setSelectedTestIds}
+        allPageSelected={allPageSelected}
         allFilteredSelected={allFilteredSelected}
+        onSelectAllMatchingFilter={onSelectAllMatchingFilter}
+        selectAllMatchingBusy={selectAllMatchingBusy}
         onQuickResultSave={onQuickResultSave}
         isSavingQuickResult={isSavingQuickResult}
         page={page}
@@ -95,6 +112,11 @@ export function RunInstancesSection(props: Props) {
         subscribedTestIds={subscribedTestIds}
         onToggleSubscribe={onToggleSubscribe}
         isSubscribePending={isSubscribePending}
+        members={members}
+        currentUserId={currentUserId}
+        onAssignTest={onAssignTest}
+        assigningTestId={assigningTestId}
+        runClosed={runClosed}
       />
     </div>
   );

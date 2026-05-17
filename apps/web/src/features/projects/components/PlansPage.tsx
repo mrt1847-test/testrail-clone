@@ -5,6 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { buildPlanPrintPath } from "../../print/api/printApi";
 import { createPlan, deletePlan, fetchPlans, updatePlan } from "../api/advancedApi";
 
 export function PlansPage() {
@@ -103,6 +105,11 @@ export function PlansPage() {
                       {row.name}
                     </Link>
                     <div className="flex items-center gap-1">
+                      <PrintLinkButton
+                        to={buildPlanPrintPath(projectId, row.id)}
+                        label="Print"
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      />
                       <button
                         className="rounded border border-slate-300 px-2 py-1 text-xs"
                         onClick={() => {

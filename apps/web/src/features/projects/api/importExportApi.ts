@@ -392,3 +392,70 @@ export async function downloadCasesXml(projectId: string) {
 export async function downloadRunResultsCsv(projectId: string, runId: string) {
   await downloadCsv(`/api/projects/${projectId}/runs/${runId}/results/export/csv`, `run-${runId}-results.csv`);
 }
+
+export type AttachmentImportResult = {
+  job: ImportExportJobRow;
+  summary: {
+    total: number;
+    imported: number;
+    skipped: number;
+    failed: number;
+    withContent: number;
+  };
+  issues: Array<{ index: number; code: string; message: string }>;
+};
+
+export async function downloadAttachmentsExport(
+  projectId: string,
+  query?: { caseId?: string; runId?: string; includeContent?: boolean }
+) {
+  const params = new URLSearchParams();
+  if (query?.caseId) params.set("caseId", query.caseId);
+  if (query?.runId) params.set("runId", query.runId);
+  if (query?.includeContent) params.set("includeContent", "true");
+  params.set("includeDownloadUrls", "true");
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  await downloadFile(
+    `/api/projects/${projectId}/attachments/export${suffix}`,
+    `project-${projectId}-attachments.json`
+  );
+}
+
+export async function requestAttachmentsExportAsync(
+  projectId: string,
+  input?: { caseId?: string; runId?: string; includeContent?: boolean }
+) {
+  const res = await apiFetch<
+    Ok<{
+      job: ImportExportJobRow;
+      downloadUrl: string;
+      pollUrl: string;
+    }>
+  >(`/api/projects/${projectId}/attachments/export/async`, {
+    method: "POST",
+    body: {
+      caseId: input?.caseId,
+      runId: input?.runId,
+      includeContent: input?.includeContent ?? false,
+      includeDownloadUrls: true
+    }
+  });
+  return res.data;
+}
+
+export async function importAttachmentsManifest(input: {
+  projectId: string;
+  manifest: string;
+  dryRun?: boolean;
+  replaceExisting?: boolean;
+}): Promise<AttachmentImportResult> {
+  const res = await apiFetch<Ok<AttachmentImportResult>>(`/api/projects/${input.projectId}/attachments/import`, {
+    method: "POST",
+    body: {
+      manifest: input.manifest,
+      dryRun: input.dryRun,
+      replaceExisting: input.replaceExisting
+    }
+  });
+  return res.data;
+}

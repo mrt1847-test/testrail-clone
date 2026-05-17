@@ -22,6 +22,7 @@ import {
   addCasesToRunBodySchema,
   createProjectRunSchema,
   removeTestFromRunBodySchema,
+  duplicateRunSchema,
   rerunSchema,
   runInstancesQuerySchema,
   runIdParamSchema,
@@ -590,6 +591,30 @@ export async function registerRunsRoutes(
       title: "Rerun created",
       body: created.run.name,
       payload: { sourceRunId: runId.toString(), statuses }
+    });
+    return reply.send(toJsonSafe(created));
+  });
+
+  app.post("/api/runs/:runId/duplicate", async (req, reply) => {
+    await requireProjectMutationRole(req, deps, { permission: "runs.write" });
+    const user = await getAuthenticatedUser(req, deps);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const body = duplicateRunSchema.parse(req.body ?? {});
+    const created = await deps.runsService.duplicateRun(runId, body);
+    await recordActivityEvent(deps.prisma, {
+      projectId: created.run.projectId,
+      actorUserId: user.id,
+      entityType: "run",
+      entityId: created.run.id,
+      eventType: "run.duplicated",
+      title: "Run duplicated",
+      body: created.run.name,
+      payload: {
+        sourceRunId: runId.toString(),
+        copyAssignee: body.copyAssignee,
+        copySchedule: body.copySchedule,
+        copyEnvironment: body.copyEnvironment
+      }
     });
     return reply.send(toJsonSafe(created));
   });

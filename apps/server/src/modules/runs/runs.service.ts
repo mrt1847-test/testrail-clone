@@ -10,6 +10,7 @@ import {
 } from "./runComposition.js";
 import type { FilterSelectionMode } from "./runFilterSelection.js";
 import { applyExcludedSelectionMode, applyIdSelectionMode } from "./runFilterSelection.js";
+import { buildDuplicateRunCreateInput, type DuplicateRunOptions } from "./runDuplicate.js";
 import type { CreateRunWithInstancesInput, TestInstance } from "./runs.types.js";
 import type { RunsRepository } from "./runs.repository.js";
 
@@ -288,6 +289,40 @@ export class RunsService {
       return { run: updated, sync: await this.syncRunComposition(runId) };
     }
     return { run: updated, sync: null };
+  }
+
+  async duplicateRun(sourceRunId: bigint, options: DuplicateRunOptions = {}) {
+    const run = await this.repo.getRun(sourceRunId);
+    if (!run) {
+      throw new AppError("RUN_NOT_FOUND", `run ${sourceRunId.toString()} not found`, 404);
+    }
+
+    const composition = run.composition ?? defaultCompositionMetadata(run.includeAll);
+    let instanceCaseIds: bigint[] = [];
+    if (composition.compositionMode === "static" && !run.includeAll) {
+      const instances = await this.repo.listInstancesForRun(sourceRunId);
+      instanceCaseIds = instances.map((instance) => instance.caseId);
+      if (instanceCaseIds.length === 0) {
+        throw new AppError("NO_CASES_FOUND", "no test instances to duplicate");
+      }
+    }
+
+    const created = await this.createRunWithInstances(
+      buildDuplicateRunCreateInput(run, instanceCaseIds, options)
+    );
+
+    if (compositionNeedsLiveSync(composition)) {
+      try {
+        await this.syncRunComposition(created.run.id);
+      } catch (error) {
+        if (error instanceof AppError && error.code === "NOT_IMPLEMENTED") {
+          return created;
+        }
+        throw error;
+      }
+    }
+
+    return created;
   }
 
   async rerunByStatuses(runId: bigint, statuses: Array<"passed" | "failed" | "blocked" | "retest" | "untested">) {

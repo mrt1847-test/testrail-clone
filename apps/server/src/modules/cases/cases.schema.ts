@@ -97,6 +97,13 @@ export const bulkCopyCasesSchema = z.object({
   targetSectionId: z.coerce.bigint()
 });
 
+export const duplicateCaseSchema = z.object({
+  targetSectionId: z.coerce.bigint().optional(),
+  includeSteps: z.boolean().default(true),
+  includeFields: z.boolean().default(true),
+  includeAttachments: z.boolean().default(true)
+});
+
 export const bulkUpdateCasesSchema = z.object({
   caseIds: z.array(z.coerce.bigint()).min(1).max(200),
   patch: z

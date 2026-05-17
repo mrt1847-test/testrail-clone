@@ -94,7 +94,7 @@ export function buildApp() {
   });
   void registerMilestonesRoutes(app, { prisma, authService });
   void registerPlansRoutes(app, { prisma, authService, runsService, catalog: catalogRepo });
-  void registerPrintRoutes(app, { prisma, repo, casesService });
+  void registerPrintRoutes(app, { prisma, repo, casesService, authService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });
   void registerAdminAccessDefaultsRoutes(app, { authService, prisma });
   void registerAdminUsersRoutes(app, { authService, prisma });

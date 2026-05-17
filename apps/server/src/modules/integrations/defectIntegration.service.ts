@@ -9,6 +9,9 @@ import {
 export type DefectIntegrationRow = DefectIntegrationForRefs & {
   projectId: bigint;
   provider: string;
+  createMode: string;
+  apiBaseUrl: string | null;
+  apiToken: string | null;
 };
 
 const inMemorySettings = new Map<string, DefectIntegrationRow>();
@@ -18,8 +21,11 @@ export function defaultDefectIntegration(projectId: bigint): DefectIntegrationRo
     projectId,
     provider: "custom",
     isEnabled: false,
+    createMode: "url_template",
     issueUrlTemplate: null,
-    defaultProjectKey: null
+    defaultProjectKey: null,
+    apiBaseUrl: null,
+    apiToken: null
   };
 }
 
@@ -45,8 +51,24 @@ export async function loadDefectIntegration(
     projectId,
     provider: row?.provider ?? "custom",
     isEnabled: row?.isEnabled ?? false,
+    createMode: row?.createMode ?? "url_template",
     issueUrlTemplate: row?.issueUrlTemplate ?? null,
-    defaultProjectKey: row?.defaultProjectKey ?? null
+    defaultProjectKey: row?.defaultProjectKey ?? null,
+    apiBaseUrl: row?.apiBaseUrl ?? null,
+    apiToken: row?.apiToken ?? null
+  };
+}
+
+export function toDefectIntegrationPublicResponse(row: DefectIntegrationRow) {
+  return {
+    projectId: row.projectId,
+    provider: row.provider,
+    isEnabled: row.isEnabled,
+    createMode: row.createMode,
+    issueUrlTemplate: row.issueUrlTemplate,
+    defaultProjectKey: row.defaultProjectKey,
+    apiBaseUrl: row.apiBaseUrl,
+    hasApiToken: Boolean(row.apiToken?.trim())
   };
 }
 

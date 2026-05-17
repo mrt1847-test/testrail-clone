@@ -7,9 +7,12 @@ import {
   downloadCasesJson,
   downloadCasesXml,
   downloadExportJob,
+  downloadAttachmentsExport,
   downloadRunResultsCsv,
   fetchCaseImportProfile,
+  importAttachmentsManifest,
   importCasesStructured,
+  requestAttachmentsExportAsync,
   pollExportJobUntilReady,
   requestCasesExportAsync,
   requestRunResultsExportAsync,
@@ -71,6 +74,11 @@ export function ImportExportPage() {
   const [runId, setRunId] = useState("");
   const [lastImportResult, setLastImportResult] = useState<CaseImportResult | null>(null);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+  const [attachmentCaseId, setAttachmentCaseId] = useState("");
+  const [attachmentRunId, setAttachmentRunId] = useState("");
+  const [attachmentManifest, setAttachmentManifest] = useState("");
+  const [attachmentImportFeedback, setAttachmentImportFeedback] = useState<string | null>(null);
+  const [includeAttachmentContent, setIncludeAttachmentContent] = useState(false);
 
   const profileQuery = useQuery({
     queryKey: ["case-import-profile", projectId],
@@ -138,6 +146,53 @@ export function ImportExportPage() {
   const syncRunExport = useMutation({
     mutationFn: () => downloadRunResultsCsv(projectId, runId.trim()),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["export-jobs", projectId] })
+  });
+
+  const queueAttachmentsExport = useMutation({
+    mutationFn: () =>
+      requestAttachmentsExportAsync(projectId, {
+        caseId: attachmentCaseId.trim() || undefined,
+        runId: attachmentRunId.trim() || undefined,
+        includeContent: includeAttachmentContent
+      }),
+    onSuccess: async (data) => {
+      setExportFeedback(`Attachment export #${data.job.id} queued.`);
+      void qc.invalidateQueries({ queryKey: ["export-jobs", projectId] });
+      await pollExportJobUntilReady(projectId, data.job.id);
+      await downloadExportJob(projectId, data.job.id, `project-${projectId}-attachments.json`);
+      setExportFeedback(`Attachment export #${data.job.id} downloaded.`);
+    },
+    onError: (e) => setExportFeedback(e instanceof Error ? e.message : "Attachment export failed")
+  });
+
+  const syncAttachmentsExport = useMutation({
+    mutationFn: () =>
+      downloadAttachmentsExport(projectId, {
+        caseId: attachmentCaseId.trim() || undefined,
+        runId: attachmentRunId.trim() || undefined,
+        includeContent: includeAttachmentContent
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["export-jobs", projectId] })
+  });
+
+  const attachmentImportMutation = useMutation({
+    mutationFn: (dryRun: boolean) =>
+      importAttachmentsManifest({
+        projectId,
+        manifest: attachmentManifest,
+        dryRun,
+        replaceExisting: false
+      }),
+    onSuccess: (result, dryRun) => {
+      setAttachmentImportFeedback(
+        dryRun
+          ? `Dry run: ${result.summary.imported} would import (${result.summary.failed} failed, ${result.summary.skipped} skipped).`
+          : `Imported ${result.summary.imported} attachment(s).`
+      );
+      void qc.invalidateQueries({ queryKey: ["import-jobs", projectId] });
+    },
+    onError: (e) =>
+      setAttachmentImportFeedback(e instanceof Error ? e.message : "Attachment import failed")
   });
 
   const isStructuredBusy = structuredImportMutation.isPending;
@@ -318,6 +373,79 @@ export function ImportExportPage() {
             Quick run CSV
           </button>
         </div>
+      </section>
+
+      <section className="rounded border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Attachment import / export</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Export case and result attachment metadata as JSON (optional inline base64 when blobs were imported).
+          Re-import manifests to register links in another environment.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            value={attachmentCaseId}
+            onChange={(e) => setAttachmentCaseId(e.target.value)}
+            placeholder="Filter case ID (optional)"
+            className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+          />
+          <input
+            value={attachmentRunId}
+            onChange={(e) => setAttachmentRunId(e.target.value)}
+            placeholder="Filter run ID (optional)"
+            className="w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+          />
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={includeAttachmentContent}
+              onChange={(e) => setIncludeAttachmentContent(e.target.checked)}
+            />
+            Include inline content
+          </label>
+          <button
+            type="button"
+            disabled={queueAttachmentsExport.isPending}
+            onClick={() => void queueAttachmentsExport.mutateAsync()}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Queue export
+          </button>
+          <button
+            type="button"
+            disabled={syncAttachmentsExport.isPending}
+            onClick={() => syncAttachmentsExport.mutate()}
+            className="rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Quick export
+          </button>
+        </div>
+        <textarea
+          value={attachmentManifest}
+          onChange={(e) => setAttachmentManifest(e.target.value)}
+          placeholder='Paste attachment manifest JSON (version 1, "attachments" array)'
+          className="mt-3 min-h-[120px] w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs"
+        />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={attachmentImportMutation.isPending || !attachmentManifest.trim()}
+            onClick={() => attachmentImportMutation.mutate(true)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            Dry run import
+          </button>
+          <button
+            type="button"
+            disabled={attachmentImportMutation.isPending || !attachmentManifest.trim()}
+            onClick={() => attachmentImportMutation.mutate(false)}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Import attachments
+          </button>
+        </div>
+        {attachmentImportFeedback ? (
+          <p className="mt-2 text-xs text-slate-600">{attachmentImportFeedback}</p>
+        ) : null}
       </section>
 
       <ImportExportJobsPanel projectId={projectId} />

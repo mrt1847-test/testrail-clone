@@ -7,6 +7,7 @@ import { registerCustomFieldsRoutes } from "./customFields.routes.js";
 import { registerStatusesRoutes } from "./statuses.routes.js";
 import { registerTemplatesRoutes } from "./templates.routes.js";
 import { registerWebhooksRoutes } from "./webhooks.routes.js";
+import { registerAttachmentRetentionRoutes } from "./attachmentRetention.routes.js";
 import { registerAuditRoutes } from "./audit.routes.js";
 import { registerEmailOutboxRoutes } from "./emailOutbox.routes.js";
 import { registerMembersRoutes } from "./members.routes.js";
@@ -29,6 +30,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, deps: Setting
   await registerWebhooksRoutes(app, deps);
   await registerEmailOutboxRoutes(app, deps);
   await registerAuditRoutes(app, deps);
+  await registerAttachmentRetentionRoutes(app, deps);
   await registerMembersRoutes(app, deps);
   await registerCustomRolesRoutes(app, deps);
 }

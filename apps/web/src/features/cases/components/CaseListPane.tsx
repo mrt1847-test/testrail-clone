@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useEffect, useMemo, useState, type ComponentProps } from "react";
-import { useNavigate } from "react-router-dom";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { buildCasesPrintPath } from "../../print/api/printApi";
 
+import {
+  hasRangeMultiSelectModifier,
+  resolveRangeMultiSelectClick
+} from "../../../shared/selection/rangeMultiSelect";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -17,6 +22,7 @@ import {
   bulkUpdateCases,
   createCase,
   createCaseStep,
+  fetchAllCasesForSection,
   positionCases
 } from "../api/catalogApi";
 import { buildCaseDetailPath } from "../caseRoute";
@@ -34,6 +40,11 @@ import { CaseAuthoringForm } from "./CaseAuthoringForm";
 import { CaseListToolbar } from "./CaseListToolbar";
 import { CaseRow } from "./CaseRow";
 import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
+import {
+  buildSectionOnlyFilters,
+  hasActiveCaseListFilters,
+  mergeNumericIds
+} from "../utils/caseListSelection";
 
 type CaseListPaneProps = {
   projectId: string;
@@ -124,6 +135,8 @@ export function CaseListPane({
   const [createFormError, setCreateFormError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(caseFilters.q);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
+  const selectionAnchorIndexRef = useRef<number | null>(null);
+  const [selectAllBusy, setSelectAllBusy] = useState(false);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkUpdatePriority, setBulkUpdatePriority] = useState<BulkPriorityValue>("");
   const [bulkUpdateCaseType, setBulkUpdateCaseType] = useState<BulkCaseTypeValue>("");
@@ -161,7 +174,9 @@ export function CaseListPane({
     () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
     [selectedCaseIds, visibleCaseIds]
   );
+  const selectedCaseIdList = useMemo(() => Array.from(selectedCaseIds), [selectedCaseIds]);
   const allVisibleSelected = visibleCaseIds.length > 0 && selectedVisibleCaseIds.length === visibleCaseIds.length;
+  const listFiltersActive = hasActiveCaseListFilters(caseFilters);
   const activeFilterCount = useMemo(
     () =>
       [
@@ -218,12 +233,9 @@ export function CaseListPane({
   }, [caseFilters.q, deferredSearch, setCaseFilters]);
 
   useEffect(() => {
-    setSelectedCaseIds((current) => {
-      const visible = new Set(visibleCaseIds);
-      const next = new Set(Array.from(current).filter((caseId) => visible.has(caseId)));
-      return next.size === current.size ? current : next;
-    });
-  }, [visibleCaseIds]);
+    setSelectedCaseIds(new Set());
+    selectionAnchorIndexRef.current = null;
+  }, [selectedSectionId]);
 
   useEffect(() => {
     setBulkMoveTargetId((current) => {
@@ -424,6 +436,25 @@ export function CaseListPane({
     }
   });
 
+  const handleCaseSelectClick = (event: React.MouseEvent<HTMLInputElement>, caseId: number) => {
+    if (!hasRangeMultiSelectModifier(event)) return;
+    event.preventDefault();
+    setBulkFeedback(null);
+    const result = resolveRangeMultiSelectClick({
+      orderedIds: visibleCaseIds,
+      clickedId: caseId,
+      selected: selectedCaseIds,
+      anchorIndex: selectionAnchorIndexRef.current,
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey
+    });
+    if (result.kind === "applied") {
+      setSelectedCaseIds(result.selected);
+      selectionAnchorIndexRef.current = result.anchorIndex;
+    }
+  };
+
   const toggleCaseSelection = (caseId: number, checked: boolean) => {
     setBulkFeedback(null);
     setSelectedCaseIds((current) => {
@@ -432,6 +463,8 @@ export function CaseListPane({
       else next.delete(caseId);
       return next;
     });
+    const index = visibleCaseIds.indexOf(caseId);
+    if (index >= 0) selectionAnchorIndexRef.current = index;
   };
 
   const toggleAllVisible = (checked: boolean) => {
@@ -444,6 +477,44 @@ export function CaseListPane({
       }
       return next;
     });
+  };
+
+  const selectAllInSection = async () => {
+    if (selectedSectionId == null || selectAllBusy) return;
+    setSelectAllBusy(true);
+    setBulkFeedback(null);
+    try {
+      const rows = await fetchAllCasesForSection(
+        projectId,
+        selectedSectionId,
+        buildSectionOnlyFilters(caseFilters)
+      );
+      setSelectedCaseIds(mergeNumericIds(new Set(), rows.map((row) => row.id)));
+    } catch (error) {
+      setBulkFeedback({
+        tone: "error",
+        message: extractApiErrorMessage(error, "Could not select all cases in this section.")
+      });
+    } finally {
+      setSelectAllBusy(false);
+    }
+  };
+
+  const selectAllMatchingFilter = async () => {
+    if (selectedSectionId == null || selectAllBusy) return;
+    setSelectAllBusy(true);
+    setBulkFeedback(null);
+    try {
+      const rows = await fetchAllCasesForSection(projectId, selectedSectionId, directCaseFilters);
+      setSelectedCaseIds(mergeNumericIds(new Set(), rows.map((row) => row.id)));
+    } catch (error) {
+      setBulkFeedback({
+        tone: "error",
+        message: extractApiErrorMessage(error, "Could not select all cases matching the filter.")
+      });
+    } finally {
+      setSelectAllBusy(false);
+    }
   };
 
   const dndAnyMutationPending =
@@ -805,22 +876,53 @@ export function CaseListPane({
           {cases.length > 0 ? (
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={(e) => toggleAllVisible(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-                  />
-                  Select visible
-                </label>
-                {selectedVisibleCaseIds.length > 0 ? (
-                  <div className="text-sm text-slate-600">{selectedVisibleCaseIds.length} selected</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={(e) => toggleAllVisible(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                      title="Select all cases loaded in the list"
+                    />
+                    Select loaded
+                  </label>
+                  {selectedSectionId != null ? (
+                    <button
+                      type="button"
+                      disabled={selectAllBusy}
+                      className="text-sm font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => void selectAllInSection()}
+                    >
+                      {selectAllBusy ? "Selecting…" : "Select all in section"}
+                    </button>
+                  ) : null}
+                  {listFiltersActive ? (
+                    <button
+                      type="button"
+                      disabled={selectAllBusy}
+                      className="text-sm font-medium text-sky-700 underline hover:text-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => void selectAllMatchingFilter()}
+                    >
+                      {selectAllBusy ? "Selecting…" : "Select all matching filter"}
+                    </button>
+                  ) : null}
+                </div>
+                {selectedCaseIds.size > 0 ? (
+                  <div className="text-sm text-slate-600">{selectedCaseIds.size} selected</div>
                 ) : null}
               </div>
 
-              {selectedVisibleCaseIds.length > 0 ? (
+              {selectedCaseIds.size > 0 ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Link
+                    to={buildCasesPrintPath(projectId, selectedCaseIdList)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Print selected
+                  </Link>
                   <button
                     type="button"
                     disabled={bulkUpdateMutation.isPending}
@@ -923,6 +1025,7 @@ export function CaseListPane({
                     visibleColumns={caseColumns}
                     isSelected={selectedCaseIds.has(item.id)}
                     onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
+                    onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
                     draggable={Boolean(dnd) && selectedSectionId != null}
                     isDraggingThis={isDraggingThis}
                     dropIndicator={dropIndicator}
@@ -998,8 +1101,8 @@ export function CaseListPane({
         description={
           <div className="space-y-3">
             <p>
-              Apply shared field changes to {selectedVisibleCaseIds.length} selected test case
-              {selectedVisibleCaseIds.length === 1 ? "" : "s"}.
+              Apply shared field changes to {selectedCaseIdList.length} selected test case
+              {selectedCaseIdList.length === 1 ? "" : "s"}.
             </p>
             <label className="block">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1035,7 +1138,7 @@ export function CaseListPane({
         }
         confirmLabel={bulkUpdateMutation.isPending ? "Updating..." : "Update selected"}
         confirmDisabled={
-          bulkUpdateMutation.isPending || selectedVisibleCaseIds.length === 0 || !hasBulkUpdatePatch
+          bulkUpdateMutation.isPending || selectedCaseIdList.length === 0 || !hasBulkUpdatePatch
         }
         onCancel={() => {
           setBulkUpdateOpen(false);
@@ -1047,7 +1150,7 @@ export function CaseListPane({
           if (bulkUpdatePriority) patch.priority = bulkUpdatePriority;
           if (bulkUpdateCaseType) patch.caseType = bulkUpdateCaseType;
           void bulkUpdateMutation.mutateAsync({
-            caseIds: selectedVisibleCaseIds,
+            caseIds: selectedCaseIdList,
             patch
           });
         }}
@@ -1059,7 +1162,7 @@ export function CaseListPane({
         description={
           <div className="space-y-3">
             <p>
-              {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will
+              {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will
               be moved to another section.
             </p>
             <label className="block">
@@ -1082,13 +1185,13 @@ export function CaseListPane({
         }
         confirmLabel={bulkMoveMutation.isPending ? "Moving..." : "Move selected"}
         confirmDisabled={
-          bulkMoveMutation.isPending || selectedVisibleCaseIds.length === 0 || bulkMoveTargetId == null
+          bulkMoveMutation.isPending || selectedCaseIdList.length === 0 || bulkMoveTargetId == null
         }
         onCancel={() => setBulkMoveOpen(false)}
         onConfirm={() => {
           if (bulkMoveTargetId != null) {
             void bulkMoveMutation.mutateAsync({
-              caseIds: selectedVisibleCaseIds,
+              caseIds: selectedCaseIdList,
               targetSectionId: bulkMoveTargetId
             });
           }
@@ -1100,7 +1203,7 @@ export function CaseListPane({
         title={bulkArchiveMode === "archive" ? "Archive selected test cases?" : "Restore selected test cases?"}
         description={
           <span>
-            {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will be{" "}
+            {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will be{" "}
             {bulkArchiveMode === "archive"
               ? "hidden from the active repository list and run composition"
               : "returned to the active repository list"}
@@ -1116,11 +1219,11 @@ export function CaseListPane({
               ? "Archive selected"
               : "Restore selected"
         }
-        confirmDisabled={bulkArchiveMutation.isPending || selectedVisibleCaseIds.length === 0}
+        confirmDisabled={bulkArchiveMutation.isPending || selectedCaseIdList.length === 0}
         onCancel={() => setBulkArchiveOpen(false)}
         onConfirm={() =>
           void bulkArchiveMutation.mutateAsync({
-            caseIds: selectedVisibleCaseIds,
+            caseIds: selectedCaseIdList,
             archived: bulkArchiveMode === "archive"
           })
         }
@@ -1131,14 +1234,14 @@ export function CaseListPane({
         title="Delete selected test cases?"
         description={
           <span>
-            {selectedVisibleCaseIds.length} selected test case{selectedVisibleCaseIds.length === 1 ? "" : "s"} will be deleted from this project.
+            {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will be deleted from this project.
           </span>
         }
         variant="danger"
         confirmLabel={bulkDeleteMutation.isPending ? "Deleting..." : "Delete selected"}
-        confirmDisabled={bulkDeleteMutation.isPending || selectedVisibleCaseIds.length === 0}
+        confirmDisabled={bulkDeleteMutation.isPending || selectedCaseIdList.length === 0}
         onCancel={() => setBulkDeleteOpen(false)}
-        onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedVisibleCaseIds)}
+        onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedCaseIdList)}
       />
 
       <MoveCopyChooserDialog

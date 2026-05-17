@@ -725,4 +725,35 @@ export class PrismaRunsRepository implements RunsRepository {
       comment: row.comment ?? null
     }));
   }
+
+  async findResultPushContext(resultId: bigint) {
+    const row = await this.prisma.testResult.findUnique({
+      where: { id: resultId },
+      select: {
+        id: true,
+        status: true,
+        comment: true,
+        instance: {
+          select: {
+            id: true,
+            caseId: true,
+            titleSnapshot: true,
+            run: { select: { id: true, projectId: true, name: true } }
+          }
+        }
+      }
+    });
+    if (!row) return null;
+    return {
+      resultId: row.id,
+      status: mapStatus(row.status),
+      comment: row.comment ?? undefined,
+      projectId: row.instance.run.projectId,
+      runId: row.instance.run.id,
+      runName: row.instance.run.name,
+      testId: row.instance.id,
+      caseId: row.instance.caseId,
+      titleSnapshot: row.instance.titleSnapshot
+    };
+  }
 }

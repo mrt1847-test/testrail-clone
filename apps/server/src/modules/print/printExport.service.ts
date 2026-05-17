@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 
-import type { PrintDocument } from "../../domain/printDocument.js";
+import type { PrintDocument, PrintDocumentSection } from "../../domain/printDocument.js";
+import { MAX_CASES_PER_PRINT } from "../../domain/printDocument.js";
 import { buildMilestoneSummary } from "../reports/milestoneSummary.service.js";
-import { toRunSummaryMetrics } from "../reports/reportMetrics.service.js";
+import { toRunSummaryMetrics, toStatusCounters } from "../reports/reportMetrics.service.js";
 import type { CasesService } from "../cases/cases.service.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
 import { listMemoryMilestones } from "../milestones/milestones.routes.js";
@@ -31,6 +32,17 @@ async function projectLabel(prisma: PrismaClient | undefined, projectId: bigint)
     select: { name: true }
   });
   return row?.name ?? `Project ${projectId.toString()}`;
+}
+
+function toPrintSection(document: PrintDocument): PrintDocumentSection {
+  return {
+    entityType: document.entityType,
+    title: document.title,
+    subtitle: document.subtitle,
+    meta: document.meta,
+    tables: document.tables,
+    notes: document.notes
+  };
 }
 
 export async function buildCasePrintDocument(caseId: bigint, deps: PrintDeps): Promise<PrintDocument> {
@@ -74,6 +86,40 @@ export async function buildCasePrintDocument(caseId: bigint, deps: PrintDeps): P
   };
 }
 
+export async function buildCasesPrintDocument(
+  projectId: bigint,
+  caseIds: bigint[],
+  deps: PrintDeps
+): Promise<PrintDocument> {
+  if (caseIds.length === 0) {
+    throw new Error("NO_CASES_SELECTED");
+  }
+  if (caseIds.length > MAX_CASES_PER_PRINT) {
+    throw new Error("TOO_MANY_CASES");
+  }
+
+  const { scopedIds } = await deps.casesService.resolveProjectScopedCaseIds(projectId, caseIds);
+  if (scopedIds.length === 0) {
+    throw new Error("NO_CASES_FOUND");
+  }
+
+  const sections: PrintDocumentSection[] = [];
+  for (const caseId of scopedIds) {
+    const single = await buildCasePrintDocument(caseId, deps);
+    sections.push(toPrintSection(single));
+  }
+
+  return {
+    entityType: "cases",
+    title: `${sections.length} test case${sections.length === 1 ? "" : "s"}`,
+    subtitle: await projectLabel(deps.prisma, projectId),
+    generatedAt: isoNow(),
+    meta: [{ label: "Cases included", value: String(sections.length) }],
+    tables: [],
+    sections
+  };
+}
+
 export async function buildRunPrintDocument(
   projectId: bigint,
   runId: bigint,
@@ -85,8 +131,16 @@ export async function buildRunPrintDocument(
   }
 
   const instances = await deps.repo.listInstancesForRun(runId);
-  const metrics = toRunSummaryMetrics(instances.map((row) => row.status));
+  const statuses = instances.map((row) => row.status);
+  const metrics = toRunSummaryMetrics(statuses);
+  const counters = toStatusCounters(statuses);
   const subtitle = await projectLabel(deps.prisma, projectId);
+
+  const statusBreakdownRows = (
+    ["passed", "failed", "blocked", "retest", "untested"] as const
+  )
+    .filter((status) => counters[status] > 0)
+    .map((status) => [status, String(counters[status])]);
 
   return {
     entityType: "run",
@@ -100,9 +154,17 @@ export async function buildRunPrintDocument(
       { label: "Tests", value: String(metrics.total) },
       { label: "Passed", value: String(metrics.passed) },
       { label: "Failed", value: String(metrics.failed) },
+      { label: "Blocked", value: String(counters.blocked) },
+      { label: "Retest", value: String(counters.retest) },
+      { label: "Untested", value: String(counters.untested) },
       { label: "Progress", value: `${metrics.progress}%` }
     ],
     tables: [
+      {
+        title: "Status breakdown",
+        columns: ["Status", "Count"],
+        rows: statusBreakdownRows.length > 0 ? statusBreakdownRows : [["—", "0"]]
+      },
       {
         title: "Tests",
         columns: ["Test ID", "Case ID", "Title", "Status", "Assignee"],
@@ -131,7 +193,10 @@ export async function buildPlanPrintDocument(
 
     const entries = await deps.prisma.testPlanEntry.findMany({
       where: { planId, deletedAt: null },
-      orderBy: { id: "asc" }
+      orderBy: { id: "asc" },
+      include: {
+        run: { select: { id: true, name: true, status: true } }
+      }
     });
 
     return {
@@ -144,17 +209,23 @@ export async function buildPlanPrintDocument(
         { label: "Description", value: plan.description ?? "—" },
         { label: "Start date", value: formatDate(plan.startDate) },
         { label: "Due on", value: formatDate(plan.dueOn) },
-        { label: "Entries", value: String(entries.length) }
+        { label: "Entries", value: String(entries.length) },
+        {
+          label: "Linked runs",
+          value: String(entries.filter((entry) => entry.runId != null).length)
+        }
       ],
       tables: [
         {
           title: "Plan entries",
-          columns: ["Entry", "Environment", "Included", "Assigned to"],
+          columns: ["Entry", "Environment", "Included", "Assigned to", "Linked run", "Run status"],
           rows: entries.map((entry) => [
             entry.name,
             entry.environment ?? "—",
             entry.isIncluded ? "yes" : "no",
-            entry.assignedTo?.toString() ?? "—"
+            entry.assignedTo?.toString() ?? "—",
+            entry.run?.name ?? (entry.runId ? entry.runId.toString() : "—"),
+            entry.run?.status ?? "—"
           ])
         }
       ]
@@ -163,6 +234,30 @@ export async function buildPlanPrintDocument(
 
   const plan = findMemoryPlan(projectId, planId);
   if (!plan) throw new Error("PLAN_NOT_FOUND");
+
+  const entryRows = await Promise.all(
+    plan.entries.map(async (entry) => {
+      let linkedRun = "—";
+      let runStatus = "—";
+      if (entry.runId) {
+        const run = await deps.repo.getRun(entry.runId);
+        if (run) {
+          linkedRun = run.name;
+          runStatus = run.status;
+        } else {
+          linkedRun = entry.runId.toString();
+        }
+      }
+      return [
+        entry.name,
+        entry.environment ?? "—",
+        entry.isIncluded === false ? "no" : "yes",
+        entry.assignedTo?.toString() ?? "—",
+        linkedRun,
+        runStatus
+      ];
+    })
+  );
 
   return {
     entityType: "plan",
@@ -173,18 +268,17 @@ export async function buildPlanPrintDocument(
       { label: "Plan ID", value: plan.id.toString() },
       { label: "Start date", value: formatDate(plan.startDate) },
       { label: "Due on", value: formatDate(plan.dueOn) },
-      { label: "Entries", value: String(plan.entries.length) }
+      { label: "Entries", value: String(plan.entries.length) },
+      {
+        label: "Linked runs",
+        value: String(plan.entries.filter((entry) => entry.runId != null).length)
+      }
     ],
     tables: [
       {
         title: "Plan entries",
-        columns: ["Entry", "Environment", "Included", "Assigned to"],
-        rows: plan.entries.map((entry) => [
-          entry.name,
-          entry.environment ?? "—",
-          entry.isIncluded === false ? "no" : "yes",
-          entry.assignedTo?.toString() ?? "—"
-        ])
+        columns: ["Entry", "Environment", "Included", "Assigned to", "Linked run", "Run status"],
+        rows: entryRows
       }
     ]
   };

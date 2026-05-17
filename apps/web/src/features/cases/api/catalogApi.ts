@@ -259,13 +259,12 @@ export async function copySectionSubtree(
   return res.data;
 }
 
-export async function fetchCasesForSection(
-  projectId: string,
+function buildCasesForSectionQuery(
   sectionId: number,
   filters: CaseListFilters,
-  page = 1,
-  pageSize = 100
-): Promise<TestCase[]> {
+  page: number,
+  pageSize: number
+): string {
   const params = new URLSearchParams({
     sectionId: String(sectionId),
     page: String(page),
@@ -280,9 +279,33 @@ export async function fetchCasesForSection(
   if (filters.estimate) params.set("estimate", filters.estimate);
   if (filters.sectionScope) params.set("sectionScope", filters.sectionScope);
   if (filters.state === "archived") params.set("state", filters.state);
+  return params.toString();
+}
 
-  const res = await apiFetch<Paged<ApiCase>>(`/api/projects/${projectId}/cases?${params.toString()}`);
+export async function fetchCasesForSection(
+  projectId: string,
+  sectionId: number,
+  filters: CaseListFilters,
+  page = 1,
+  pageSize = 100
+): Promise<TestCase[]> {
+  const res = await apiFetch<Paged<ApiCase>>(
+    `/api/projects/${projectId}/cases?${buildCasesForSectionQuery(sectionId, filters, page, pageSize)}`
+  );
   return res.data.map(mapApiCaseToTestCase);
+}
+
+export async function fetchAllCasesForSection(
+  projectId: string,
+  sectionId: number,
+  filters: CaseListFilters
+): Promise<TestCase[]> {
+  const rows = await fetchAllPagedRows<ApiCase>(
+    (page, pageSize) =>
+      `/api/projects/${projectId}/cases?${buildCasesForSectionQuery(sectionId, filters, page, pageSize)}`,
+    100
+  );
+  return rows.map(mapApiCaseToTestCase);
 }
 
 export async function fetchCaseById(caseId: number): Promise<TestCase> {
@@ -314,6 +337,21 @@ export async function createCase(
       ...input,
       caseTemplateId: input.caseTemplateId ?? null
     }
+  });
+  return mapApiCaseToTestCase(res.data);
+}
+
+export type DuplicateCaseInput = {
+  targetSectionId?: number;
+  includeSteps?: boolean;
+  includeFields?: boolean;
+  includeAttachments?: boolean;
+};
+
+export async function duplicateCase(caseId: number, input: DuplicateCaseInput = {}): Promise<TestCase> {
+  const res = await apiFetch<Ok<ApiCase>>(`/api/cases/${caseId}/duplicate`, {
+    method: "POST",
+    body: input
   });
   return mapApiCaseToTestCase(res.data);
 }

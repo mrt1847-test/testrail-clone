@@ -23,7 +23,10 @@ import {
   fetchAttachmentDownloadUrl,
   fetchTestResultsPage,
   pushResultDefect,
+  syncResultDefectLink,
+  duplicateRun,
   rerunRun,
+  type DuplicateRunInput,
   updateTestAssignee,
   updateRunAssignee,
   updateRunSchedule,
@@ -362,6 +365,22 @@ export function useRerunMutation(projectId: string | undefined, runId: string | 
   });
 }
 
+export function useDuplicateRunMutation(projectId: string | undefined, sourceRunId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DuplicateRunInput) => duplicateRun(sourceRunId!, input),
+    onSuccess: (created) => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
+      void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+      void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+      const newRunId = String(created.run.id);
+      void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, newRunId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, newRunId) });
+    }
+  });
+}
+
 export function useUpdateTestAssigneeMutation(projectId: string | undefined, runId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
@@ -370,6 +389,7 @@ export function useUpdateTestAssigneeMutation(projectId: string | undefined, run
     onSuccess: () => {
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
+      void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "assigned-to-me"] });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
@@ -446,8 +466,13 @@ export function useAddResultDefectMutation(resultId: string | undefined) {
 export function usePushResultDefectMutation(resultId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { defectKey?: string; title?: string; description?: string; provider?: string }) =>
-      pushResultDefect(resultId!, input),
+    mutationFn: (input: {
+      defectKey?: string;
+      title?: string;
+      description?: string;
+      provider?: string;
+      customFields?: Record<string, string>;
+    }) => pushResultDefect(resultId!, input),
     onSuccess: () => {
       if (!resultId) return;
       void qc.invalidateQueries({ queryKey: runKeys.resultDefects(resultId) });
@@ -459,6 +484,17 @@ export function useDeleteResultDefectMutation(resultId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (defectLinkId: string) => deleteResultDefectLink(resultId!, defectLinkId),
+    onSuccess: () => {
+      if (!resultId) return;
+      void qc.invalidateQueries({ queryKey: runKeys.resultDefects(resultId) });
+    }
+  });
+}
+
+export function useSyncResultDefectMutation(resultId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (defectLinkId: string) => syncResultDefectLink(resultId!, defectLinkId),
     onSuccess: () => {
       if (!resultId) return;
       void qc.invalidateQueries({ queryKey: runKeys.resultDefects(resultId) });

@@ -135,6 +135,23 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
   }
 }
 
+function buildRunInstancesQuery(input: {
+  page: number;
+  pageSize: number;
+  status?: string;
+  assignee?: string;
+  search?: string;
+}): string {
+  const params = new URLSearchParams();
+  params.set("page", String(input.page));
+  params.set("pageSize", String(input.pageSize));
+  if (input.status && input.status !== "all") params.set("status", input.status);
+  if (input.assignee && input.assignee !== "all") params.set("assignedTo", input.assignee);
+  if (input.assignee === "") params.set("assignedTo", "null");
+  if (input.search?.trim()) params.set("q", input.search.trim());
+  return params.toString();
+}
+
 export async function fetchRunInstancesPage(input: {
   projectId: string;
   runId: string;
@@ -144,14 +161,42 @@ export async function fetchRunInstancesPage(input: {
   assignee?: string;
   search?: string;
 }): Promise<Paged<ApiInstance>> {
-  const params = new URLSearchParams();
-  params.set("page", String(input.page));
-  params.set("pageSize", String(input.pageSize));
-  if (input.status && input.status !== "all") params.set("status", input.status);
-  if (input.assignee && input.assignee !== "all") params.set("assignedTo", input.assignee);
-  if (input.assignee === "") params.set("assignedTo", "null");
-  if (input.search?.trim()) params.set("q", input.search.trim());
-  return apiFetch<Paged<ApiInstance>>(`/api/projects/${input.projectId}/runs/${input.runId}/instances?${params.toString()}`);
+  return apiFetch<Paged<ApiInstance>>(
+    `/api/projects/${input.projectId}/runs/${input.runId}/instances?${buildRunInstancesQuery(input)}`
+  );
+}
+
+async function fetchAllPagedInstances(buildPath: (page: number, pageSize: number) => string, pageSize = 100) {
+  const out: ApiInstance[] = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const res = await apiFetch<Paged<ApiInstance>>(buildPath(page, pageSize));
+    out.push(...res.data);
+    totalPages = Math.max(1, res.totalPages ?? 1);
+    page += 1;
+  }
+  return out;
+}
+
+export async function fetchAllRunInstances(input: {
+  projectId: string;
+  runId: string;
+  status?: string;
+  assignee?: string;
+  search?: string;
+}): Promise<ApiInstance[]> {
+  return fetchAllPagedInstances(
+    (page, pageSize) =>
+      `/api/projects/${input.projectId}/runs/${input.runId}/instances?${buildRunInstancesQuery({
+        page,
+        pageSize,
+        status: input.status,
+        assignee: input.assignee,
+        search: input.search
+      })}`,
+    100
+  );
 }
 
 export async function addRunResult(input: {
@@ -266,6 +311,21 @@ export async function rerunRun(runId: string, statuses: Array<"passed" | "failed
   return apiFetch(`/api/runs/${runId}/rerun`, {
     method: "POST",
     body: { statuses }
+  });
+}
+
+export type DuplicateRunInput = {
+  name?: string;
+  milestoneId?: string | null;
+  copyAssignee?: boolean;
+  copySchedule?: boolean;
+  copyEnvironment?: boolean;
+};
+
+export async function duplicateRun(runId: string, input: DuplicateRunInput = {}) {
+  return apiFetch<{ run: ApiRun; instances: ApiInstance[] }>(`/api/runs/${runId}/duplicate`, {
+    method: "POST",
+    body: input
   });
 }
 
@@ -687,6 +747,9 @@ type ApiResultDefectLink = {
   id: string;
   defectKey: string;
   url?: string | null;
+  remoteStatus?: string | null;
+  remoteStatusLabel?: string | null;
+  remoteStatusSyncedAt?: string | null;
   createdAt: string;
 };
 
@@ -696,8 +759,27 @@ export async function fetchResultDefectLinks(resultId: string): Promise<ResultDe
     id: String(row.id),
     defectKey: row.defectKey,
     url: row.url ?? null,
+    remoteStatus: row.remoteStatus ?? null,
+    remoteStatusLabel: row.remoteStatusLabel ?? null,
+    remoteStatusSyncedAt: row.remoteStatusSyncedAt ?? null,
     createdAt: row.createdAt
   }));
+}
+
+export async function syncResultDefectLink(resultId: string, defectLinkId: string) {
+  const res = await apiFetch<Ok<ApiResultDefectLink>>(
+    `/api/results/${resultId}/defects/${defectLinkId}/sync`,
+    { method: "POST" }
+  );
+  return {
+    id: String(res.data.id),
+    defectKey: res.data.defectKey,
+    url: res.data.url ?? null,
+    remoteStatus: res.data.remoteStatus ?? null,
+    remoteStatusLabel: res.data.remoteStatusLabel ?? null,
+    remoteStatusSyncedAt: res.data.remoteStatusSyncedAt ?? null,
+    createdAt: res.data.createdAt
+  };
 }
 
 export async function addResultDefectLink(resultId: string, input: { defectKey: string; url?: string }) {
@@ -716,9 +798,39 @@ export async function deleteResultDefectLink(resultId: string, defectLinkId: str
   });
 }
 
+export async function fetchDefectPushFields(
+  projectId: string,
+  query: import("../types").DefectPushContext & { provider?: string }
+) {
+  const params = new URLSearchParams();
+  if (query.provider) params.set("provider", query.provider);
+  params.set("runId", query.runId);
+  params.set("testId", query.testId);
+  params.set("resultId", query.resultId);
+  params.set("resultStatus", query.resultStatus);
+  params.set("runName", query.runName);
+  params.set("testTitle", query.testTitle);
+  if (query.resultComment) params.set("resultComment", query.resultComment);
+  const res = await apiFetch<
+    Ok<{
+      provider: string;
+      integrationEnabled: boolean;
+      fields: import("../types").DefectPushFieldDefinition[];
+      defaults: Record<string, string>;
+    }>
+  >(`/api/projects/${projectId}/integrations/defects/push-fields?${params.toString()}`);
+  return res.data;
+}
+
 export async function pushResultDefect(
   resultId: string,
-  input: { defectKey?: string; title?: string; description?: string; provider?: string }
+  input: {
+    defectKey?: string;
+    title?: string;
+    description?: string;
+    provider?: string;
+    customFields?: Record<string, string>;
+  }
 ) {
   const res = await apiFetch<
     Ok<{
@@ -726,8 +838,12 @@ export async function pushResultDefect(
       provider: string;
       defectKey: string;
       url?: string | null;
+      remoteStatus?: string | null;
+      remoteStatusLabel?: string | null;
+      remoteStatusSyncedAt?: string | null;
       title?: string | null;
       description?: string | null;
+      customFields?: Record<string, string>;
     }>
   >(`/api/results/${resultId}/defects/push`, {
     method: "POST",
@@ -735,7 +851,8 @@ export async function pushResultDefect(
       defectKey: input.defectKey,
       title: input.title,
       description: input.description,
-      provider: input.provider
+      provider: input.provider,
+      customFields: input.customFields
     }
   });
   return {
@@ -743,8 +860,12 @@ export async function pushResultDefect(
     provider: res.data.provider,
     defectKey: res.data.defectKey,
     url: res.data.url ?? null,
+    remoteStatus: res.data.remoteStatus ?? null,
+    remoteStatusLabel: res.data.remoteStatusLabel ?? null,
+    remoteStatusSyncedAt: res.data.remoteStatusSyncedAt ?? null,
     title: res.data.title ?? null,
-    description: res.data.description ?? null
+    description: res.data.description ?? null,
+    customFields: res.data.customFields ?? {}
   };
 }
 

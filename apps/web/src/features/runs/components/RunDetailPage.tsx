@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { useAuth } from "../../auth/context/AuthContext";
 import { fetchCaseScenarios } from "../../cases/api/bddApi";
 import { fetchCaseTemplates } from "../../projects/api/settingsApi";
 
@@ -10,8 +11,11 @@ import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
 import { KeyboardShortcutsDialog } from "../../../shared/ui/KeyboardShortcutsDialog";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
+import { fetchAllRunInstances, fetchRuns } from "../api/runApi";
 import type { TestInstanceRow } from "../types";
 import { useRunBulkActions } from "../hooks/useRunBulkActions";
+import { mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
+import { extractApiErrorMessage } from "../../cases/caseErrors";
 import { useRunDetailQueries } from "../hooks/useRunDetailQueries";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
@@ -27,8 +31,11 @@ import {
   useDeleteResultDefectMutation,
   useOpenAttachmentDownloadMutation,
   usePushResultDefectMutation,
+  useSyncResultDefectMutation,
+  useDuplicateRunMutation,
   useRerunMutation,
   useUpdateRunAssigneeMutation,
+  useUpdateTestAssigneeMutation,
   useUpdateRunScheduleMutation,
   useSyncRunCompositionMutation,
   useUpdateRunCompositionMutation,
@@ -51,8 +58,18 @@ import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionP
 import { RunSchedulePanel } from "./RunSchedulePanel";
 import { ExecutionCommentsPanel } from "./ExecutionCommentsPanel";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { PushDefectDialog } from "./PushDefectDialog";
+import { DuplicateRunDialog } from "./DuplicateRunDialog";
+import { RunCompareWithRunDialog } from "./RunCompareWithRunDialog";
+import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
+import { memberLabelForUserId } from "../utils/assigneeDisplay";
+import { buildRunComparisonPath } from "../utils/runComparisonUrl";
+
+const AT_RISK_STATUSES = new Set(["failed", "blocked", "retest"]);
 
 export function RunDetailPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { projectId = "", runId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
@@ -64,7 +81,15 @@ export function RunDetailPage() {
   const [addCasesInput, setAddCasesInput] = useState("");
   const [compositionFeedback, setCompositionFeedback] = useState<CompositionFeedback | null>(null);
   const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateName, setDuplicateName] = useState("");
+  const [duplicateCopyAssignee, setDuplicateCopyAssignee] = useState(true);
+  const [duplicateCopySchedule, setDuplicateCopySchedule] = useState(false);
+  const [duplicateCopyEnvironment, setDuplicateCopyEnvironment] = useState(true);
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pushDefectDialogOpen, setPushDefectDialogOpen] = useState(false);
+  const [pushDefectResultId, setPushDefectResultId] = useState<string | null>(null);
   const [rerunSelectedStatuses, setRerunSelectedStatuses] = useState<Array<"failed" | "blocked" | "retest">>(["failed"]);
   const instancePageSize = 50;
   const selectedCaseId = selected?.caseId ? Number(selected.caseId) : null;
@@ -113,6 +138,11 @@ export function RunDetailPage() {
     queryFn: () => fetchCaseTemplates(projectId),
     enabled: Boolean(projectId)
   });
+  const runsForCompareQuery = useQuery({
+    queryKey: ["runs", projectId, "compare-picker"],
+    queryFn: () => fetchRuns(projectId),
+    enabled: Boolean(projectId) && compareDialogOpen
+  });
   const isAiEvaluationCase = useMemo(() => {
     const templateId = selectedCaseDetail.data?.caseTemplateId;
     if (templateId == null) return false;
@@ -122,7 +152,18 @@ export function RunDetailPage() {
       ) ?? false
     );
   }, [caseTemplatesQuery.data, selectedCaseDetail.data?.caseTemplateId]);
-  const bulkActions = useRunBulkActions({ projectId, runId, pagedInstances });
+  const filteredInstanceTotal = runInstancesQuery.data?.total ?? 0;
+  const [instanceLookup, setInstanceLookup] = useState<Map<string, TestInstanceRow>>(() => new Map());
+  const [selectAllFilteredBusy, setSelectAllFilteredBusy] = useState(false);
+  const [assigningTestId, setAssigningTestId] = useState<string | null>(null);
+
+  const bulkActions = useRunBulkActions({
+    projectId,
+    runId,
+    pagedInstances,
+    instanceLookup,
+    filteredTotal: filteredInstanceTotal
+  });
   const {
     selectedTestIds,
     setSelectedTestIds,
@@ -133,11 +174,45 @@ export function RunDetailPage() {
     bulkResultMutation,
     bulkFeedback,
     setBulkFeedback,
+    allPageSelected,
     allFilteredSelected,
     canBulkSubmit,
     selectedCount,
     bulkDisableUntested
   } = bulkActions;
+
+  useEffect(() => {
+    setInstanceLookup((current) => mergeInstanceLookup(current, pagedInstances));
+  }, [pagedInstances]);
+
+  useEffect(() => {
+    setSelectedTestIds([]);
+    setInstanceLookup(new Map());
+  }, [runId, statusFilter, assigneeFilter, searchText, setSelectedTestIds]);
+
+  const selectAllMatchingFilter = async () => {
+    if (filteredInstanceTotal === 0 || selectAllFilteredBusy) return;
+    setSelectAllFilteredBusy(true);
+    try {
+      const instances = await fetchAllRunInstances({
+        projectId,
+        runId,
+        status: statusFilter,
+        assignee: assigneeFilter,
+        search: searchText
+      });
+      const rows = mapApiInstancesToRows(instances);
+      setInstanceLookup(mergeInstanceLookup(new Map(), rows));
+      setSelectedTestIds(rows.map((row) => row.id));
+    } catch (error) {
+      setBulkFeedback({
+        type: "error",
+        message: extractApiErrorMessage(error, "Could not select all matching tests.")
+      });
+    } finally {
+      setSelectAllFilteredBusy(false);
+    }
+  };
 
   const addResultMutation = useAddRunResultMutation(projectId, runId);
   const closeRunMutation = useCloseRunMutation(projectId, runId);
@@ -149,14 +224,18 @@ export function RunDetailPage() {
   const [filterPriority, setFilterPriority] = useState<"" | "low" | "medium" | "high">("");
   const [filterState, setFilterState] = useState<"active" | "archived">("active");
   const assigneeMutation = useUpdateRunAssigneeMutation(projectId, runId);
+  const testAssigneeMutation = useUpdateTestAssigneeMutation(projectId, runId);
   const scheduleMutation = useUpdateRunScheduleMutation(projectId, runId);
   const rerunMutation = useRerunMutation(projectId, runId);
+  const duplicateMutation = useDuplicateRunMutation(projectId, runId);
   const addAttachmentMutation = useAddResultAttachmentMutation(selectedResultId ?? undefined);
   const openAttachmentDownloadMutation = useOpenAttachmentDownloadMutation();
   const deleteAttachmentMutation = useDeleteAttachmentMutation(selectedResultId ?? undefined);
   const addDefectMutation = useAddResultDefectMutation(selectedResultId ?? undefined);
-  const pushDefectMutation = usePushResultDefectMutation(selectedResultId ?? undefined);
+  const pushDefectMutation = usePushResultDefectMutation(pushDefectResultId ?? selectedResultId ?? undefined);
   const deleteDefectMutation = useDeleteResultDefectMutation(selectedResultId ?? undefined);
+  const syncDefectMutation = useSyncResultDefectMutation(selectedResultId ?? undefined);
+  const [syncingDefectLinkId, setSyncingDefectLinkId] = useState<string | null>(null);
   const subscriptionsQuery = useRunTestSubscriptionsQuery(runId);
   const subscriptionMutation = useTestSubscriptionMutation(runId);
   const subscribedTestIds = useMemo(
@@ -185,7 +264,36 @@ export function RunDetailPage() {
     onNextBlocked: testNavigation.goNextBlocked
   });
   const run = runDetailQuery.data?.run;
+  const duplicateDefaultName = run ? `${run.name} (copy)` : "";
+  const runClosed = run?.status === "closed";
   const counts = runDetailQuery.data?.counts ?? { passed: 0, failed: 0, blocked: 0, retest: 0, untested: 0 };
+  const members = membersQuery.data ?? [];
+
+  const assignTest = async (testId: string, assignedTo: string | null) => {
+    if (runClosed) return;
+    setAssigningTestId(testId);
+    try {
+      await testAssigneeMutation.mutateAsync({ testId, assignedTo });
+      setSelected((prev) => (prev?.id === testId ? { ...prev, assignedTo } : prev));
+    } finally {
+      setAssigningTestId(null);
+    }
+  };
+
+  const assignSelectedTests = async (assignedTo: string | null) => {
+    if (runClosed || selectedTestIds.length === 0) return;
+    setAssigningTestId("__bulk__");
+    try {
+      await Promise.all(
+        selectedTestIds.map((testId) => testAssigneeMutation.mutateAsync({ testId, assignedTo }))
+      );
+      setSelected((prev) =>
+        prev && selectedTestIds.includes(prev.id) ? { ...prev, assignedTo } : prev
+      );
+    } finally {
+      setAssigningTestId(null);
+    }
+  };
 
   useEffect(() => {
     const selectedTestId = searchParams.get("testId");
@@ -216,6 +324,30 @@ export function RunDetailPage() {
     [rerunSelectedStatuses]
   );
 
+  const pushDefectTargetResult = useMemo(() => {
+    if (!selected) return null;
+    const items = historyQuery.data?.items ?? [];
+    if (selectedResultId) {
+      return items.find((row) => row.id === selectedResultId) ?? null;
+    }
+    return items.find((row) => AT_RISK_STATUSES.has(row.status)) ?? null;
+  }, [historyQuery.data?.items, selected, selectedResultId]);
+
+  const pushDefectContext = useMemo(() => {
+    const runRow = runDetailQuery.data?.run;
+    if (!selected || !runRow || !pushDefectTargetResult) return null;
+    return {
+      projectId,
+      runId,
+      runName: runRow.name,
+      testId: selected.id,
+      testTitle: selected.title,
+      resultId: pushDefectTargetResult.id,
+      resultStatus: pushDefectTargetResult.status,
+      resultComment: pushDefectTargetResult.comment ?? null
+    };
+  }, [projectId, runId, runDetailQuery.data?.run, selected, pushDefectTargetResult]);
+
   if (runDetailQuery.isLoading) return <LoadingState message="Loading run..." />;
   if (runDetailQuery.isError || !runDetailQuery.data || !run) {
     return <ErrorState title="Run not found" onRetry={() => runDetailQuery.refetch()} />;
@@ -227,6 +359,14 @@ export function RunDetailPage() {
   const pushedDefectMessage = pushDefectMutation.data
     ? `Pushed ${pushDefectMutation.data.defectKey}${pushDefectMutation.data.url ? ` (${pushDefectMutation.data.url})` : ""}`
     : null;
+  const canPushDefectForSelected = Boolean(selected && AT_RISK_STATUSES.has(selected.status) && pushDefectTargetResult);
+
+  const openPushDefectDialog = () => {
+    if (!pushDefectTargetResult) return;
+    setPushDefectResultId(pushDefectTargetResult.id);
+    setSelectedResultId(pushDefectTargetResult.id);
+    setPushDefectDialogOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -239,6 +379,21 @@ export function RunDetailPage() {
         onConfirm={async () => {
           await closeRunMutation.mutateAsync();
           setCloseRunDialogOpen(false);
+        }}
+      />
+      <PushDefectDialog
+        open={pushDefectDialogOpen}
+        projectId={projectId}
+        context={pushDefectContext}
+        isSubmitting={pushDefectMutation.isPending}
+        errorMessage={pushDefectMutation.isError ? "Could not push defect. Check integration settings." : null}
+        onClose={() => {
+          setPushDefectDialogOpen(false);
+          pushDefectMutation.reset();
+        }}
+        onSubmit={async (input) => {
+          await pushDefectMutation.mutateAsync(input);
+          setPushDefectDialogOpen(false);
         }}
       />
       <ConfirmDialog
@@ -274,6 +429,42 @@ export function RunDetailPage() {
         onConfirm={async () => {
           await rerunMutation.mutateAsync(rerunStatuses);
           setRerunDialogOpen(false);
+        }}
+      />
+      <RunCompareWithRunDialog
+        open={compareDialogOpen}
+        projectId={projectId}
+        sourceRunId={runId}
+        sourceRunName={run.name}
+        runs={(runsForCompareQuery.data ?? []).map((row) => ({ id: row.id, name: row.name }))}
+        onCancel={() => setCompareDialogOpen(false)}
+        onConfirm={(otherRunId) => {
+          setCompareDialogOpen(false);
+          navigate(buildRunComparisonPath(projectId, { runIdA: runId, runIdB: otherRunId }));
+        }}
+      />
+      <DuplicateRunDialog
+        open={duplicateDialogOpen}
+        defaultName={duplicateDefaultName}
+        name={duplicateName}
+        onNameChange={setDuplicateName}
+        copyAssignee={duplicateCopyAssignee}
+        onCopyAssigneeChange={setDuplicateCopyAssignee}
+        copySchedule={duplicateCopySchedule}
+        onCopyScheduleChange={setDuplicateCopySchedule}
+        copyEnvironment={duplicateCopyEnvironment}
+        onCopyEnvironmentChange={setDuplicateCopyEnvironment}
+        isPending={duplicateMutation.isPending}
+        onCancel={() => setDuplicateDialogOpen(false)}
+        onConfirm={async () => {
+          const created = await duplicateMutation.mutateAsync({
+            name: duplicateName.trim() || undefined,
+            copyAssignee: duplicateCopyAssignee,
+            copySchedule: duplicateCopySchedule,
+            copyEnvironment: duplicateCopyEnvironment
+          });
+          setDuplicateDialogOpen(false);
+          navigate(`/projects/${projectId}/runs/${String(created.run.id)}`);
         }}
       />
 
@@ -336,7 +527,7 @@ export function RunDetailPage() {
           pagedInstances={pagedInstances}
           selectedInstanceId={selected?.id ?? null}
           onSelectInstance={setSelected}
-          members={membersQuery.data ?? []}
+          members={members}
           searchText={searchText}
           onSearchTextChange={(value) => {
             setSearchText(value);
@@ -354,7 +545,10 @@ export function RunDetailPage() {
           }}
           selectedTestIds={selectedTestIds}
           setSelectedTestIds={setSelectedTestIds}
+          allPageSelected={allPageSelected}
           allFilteredSelected={allFilteredSelected}
+          onSelectAllMatchingFilter={() => void selectAllMatchingFilter()}
+          selectAllMatchingBusy={selectAllFilteredBusy}
           onQuickResultSave={(testId, payload) =>
             void addResultMutation.mutateAsync({
               testId,
@@ -377,6 +571,10 @@ export function RunDetailPage() {
           }
                 isSubscribePending={subscriptionMutation.isPending}
                 hideStatusFilter
+                currentUserId={user?.id ?? null}
+                onAssignTest={(testId, assignedTo) => void assignTest(testId, assignedTo)}
+                assigningTestId={assigningTestId}
+                runClosed={runClosed}
               />
             </div>
         </div>
@@ -386,6 +584,31 @@ export function RunDetailPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
               {selected.caseCode} · {selected.title}
             </p>
+            <div className="mt-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5">
+              <p className="text-[11px] font-medium text-slate-500">Assignee</p>
+              <p className="text-sm text-slate-800">{memberLabelForUserId(selected.assignedTo, members)}</p>
+              {!runClosed ? (
+                <div className="mt-1">
+                  <TestAssigneeQuickActions
+                    assignedTo={selected.assignedTo}
+                    currentUserId={user?.id ?? null}
+                    disabled={assigningTestId != null && assigningTestId !== selected.id}
+                    pending={assigningTestId === selected.id}
+                    onAssignToMe={() => void assignTest(selected.id, user?.id ?? null)}
+                    onClearAssignee={() => void assignTest(selected.id, null)}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {canPushDefectForSelected ? (
+              <button
+                type="button"
+                className="mt-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-900 hover:bg-indigo-100"
+                onClick={openPushDefectDialog}
+              >
+                Push defect…
+              </button>
+            ) : null}
             <div className="mt-2 space-y-3 text-sm text-slate-700">
               <ResultEntryPanel
                 key={selected.id}
@@ -449,17 +672,23 @@ export function RunDetailPage() {
                 isOpeningAttachmentDownload={openAttachmentDownloadMutation.isPending}
                 isDeletingAttachment={deleteAttachmentMutation.isPending}
                 isAddingDefect={addDefectMutation.isPending}
-                isPushingDefect={pushDefectMutation.isPending}
                 isDeletingDefect={deleteDefectMutation.isPending}
+                isSyncingDefect={syncDefectMutation.isPending}
+                syncingDefectLinkId={syncingDefectLinkId}
                 pushedDefectMessage={pushedDefectMessage}
+                canPushDefect={canPushDefectForSelected}
                 onAddAttachment={(file, onProgress) => void addAttachmentMutation.mutateAsync({ file, onProgress })}
                 onOpenAttachmentDownload={(attachmentId) =>
                   void openAttachmentDownloadMutation.mutateAsync(attachmentId)
                 }
                 onDeleteAttachment={(attachmentId) => void deleteAttachmentMutation.mutateAsync(attachmentId)}
                 onAddDefect={(input) => void addDefectMutation.mutateAsync(input)}
-                onPushDefect={(input) => void pushDefectMutation.mutateAsync(input)}
+                onOpenPushDefect={openPushDefectDialog}
                 onDeleteDefect={(defectLinkId) => void deleteDefectMutation.mutateAsync(defectLinkId)}
+                onSyncDefect={(defectLinkId) => {
+                  setSyncingDefectLinkId(defectLinkId);
+                  void syncDefectMutation.mutateAsync(defectLinkId).finally(() => setSyncingDefectLinkId(null));
+                }}
               />
               </CollapsibleSection>
               <CollapsibleSection title="Test discussion" defaultOpen={false}>
@@ -626,7 +855,7 @@ export function RunDetailPage() {
 
       <CollapsibleSection title="Run actions" defaultOpen={false}>
         <RunActionsPanel
-          members={membersQuery.data ?? []}
+          members={members}
           statusOptions={statusQuery.data ?? []}
           bulkDisableUntested={bulkDisableUntested}
           bulkStatus={bulkStatus}
@@ -643,8 +872,27 @@ export function RunDetailPage() {
           onAssigneeInputChange={setAssigneeInput}
           isAssignPending={assigneeMutation.isPending}
           onAssignRun={() => void assigneeMutation.mutateAsync(assigneeInput.trim() || null)}
+          currentUserId={user?.id ?? null}
+          onAssignRunToMe={
+            user?.id && !runClosed ? () => void assigneeMutation.mutateAsync(user.id) : undefined
+          }
+          onClearRunAssignee={!runClosed ? () => void assigneeMutation.mutateAsync(null) : undefined}
+          onAssignSelectedToMe={
+            user?.id && !runClosed ? () => void assignSelectedTests(user.id) : undefined
+          }
+          onClearSelectedAssignees={!runClosed ? () => void assignSelectedTests(null) : undefined}
+          isTestAssignPending={testAssigneeMutation.isPending}
           isRerunPending={rerunMutation.isPending}
           onOpenRerunDialog={() => setRerunDialogOpen(true)}
+          isDuplicatePending={duplicateMutation.isPending}
+          onOpenDuplicateDialog={() => {
+            setDuplicateName("");
+            setDuplicateCopyAssignee(true);
+            setDuplicateCopySchedule(false);
+            setDuplicateCopyEnvironment(true);
+            setDuplicateDialogOpen(true);
+          }}
+          onOpenCompareDialog={() => setCompareDialogOpen(true)}
           canCloseRun={run.status !== "closed"}
           isCloseRunPending={closeRunMutation.isPending}
           onOpenCloseRunDialog={() => setCloseRunDialogOpen(true)}

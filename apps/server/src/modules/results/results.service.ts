@@ -152,6 +152,10 @@ export class ResultsService {
     return this.repo.listResultScenariosByResultId(resultId);
   }
 
+  findResultPushContext(resultId: bigint) {
+    return this.repo.findResultPushContext(resultId);
+  }
+
   private normalizeResultInput(input: ResultInput): ResultInput {
     try {
       const ai = normalizeAiResultFields({

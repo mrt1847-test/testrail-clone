@@ -1,5 +1,6 @@
-import type { DragEvent } from "react";
+import { useRef, type DragEvent } from "react";
 
+import { hasRangeMultiSelectModifier } from "../../../shared/selection/rangeMultiSelect";
 import type { CaseListColumn, CaseVersion, TestCase } from "../types";
 
 import type {
@@ -21,6 +22,7 @@ type CaseRowProps = {
   visibleColumns: CaseListColumn[];
   isSelected?: boolean;
   onSelectChange?: (checked: boolean) => void;
+  onSelectClick?: (event: React.MouseEvent<HTMLInputElement>) => void;
   onToggle: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -69,6 +71,7 @@ export function CaseRow({
   visibleColumns,
   isSelected = false,
   onSelectChange,
+  onSelectClick,
   onToggle,
   onEdit,
   onCloseDetail,
@@ -95,6 +98,7 @@ export function CaseRow({
   onRowDragLeave,
   onRowDrop
 }: CaseRowProps) {
+  const skipNextSelectChangeRef = useRef(false);
   const visibleColumnSet = new Set(visibleColumns);
   const activeCustomFields = (customFields ?? []).filter((field) => field.isActive);
   const visibleCustomValueChips = activeCustomFields
@@ -154,8 +158,20 @@ export function CaseRow({
           type="checkbox"
           aria-label={`Select ${item.caseCode}`}
           checked={isSelected}
-          onChange={(e) => onSelectChange?.(e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            if (skipNextSelectChangeRef.current) {
+              skipNextSelectChangeRef.current = false;
+              return;
+            }
+            onSelectChange?.(e.target.checked);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasRangeMultiSelectModifier(e)) {
+              skipNextSelectChangeRef.current = true;
+              onSelectClick?.(e);
+            }
+          }}
           className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
         />
         {draggable ? (

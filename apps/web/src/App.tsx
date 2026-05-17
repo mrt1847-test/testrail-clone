@@ -47,6 +47,7 @@ import { ProjectMembersPage } from "./features/projects/components/ProjectMember
 import { DefectIntegrationSettingsPage } from "./features/projects/components/DefectIntegrationSettingsPage";
 import { ImportExportPage } from "./features/projects/components/ImportExportPage";
 import { NotificationsPage } from "./features/projects/components/NotificationsPage";
+import { RunComparisonPage } from "./features/runs/components/RunComparisonPage";
 import { RunCreatePage } from "./features/runs/components/RunCreatePage";
 import { RunDetailPage } from "./features/runs/components/RunDetailPage";
 import { RunListPage } from "./features/runs/components/RunListPage";
@@ -57,8 +58,10 @@ import { AdminAccessDefaultsPage } from "./features/admin/components/AdminAccess
 import { AdminUsersPage } from "./features/admin/components/AdminUsersPage";
 import { ProjectCustomRolesPage } from "./features/projects/components/ProjectCustomRolesPage";
 import { CasePrintPage } from "./features/print/components/CasePrintPage";
+import { CasesPrintPage } from "./features/print/components/CasesPrintPage";
 import { MilestonePrintPage } from "./features/print/components/MilestonePrintPage";
 import { PlanPrintPage } from "./features/print/components/PlanPrintPage";
+import { ReportPrintPage } from "./features/print/components/ReportPrintPage";
 import { RunPrintPage } from "./features/print/components/RunPrintPage";
 
 export function App() {
@@ -67,6 +70,7 @@ export function App() {
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
+        <Route path="projects/:projectId/cases/print" element={<CasesPrintPage />} />
         <Route path="projects/:projectId/cases/:caseId/print" element={<CasePrintPage />} />
         <Route path="projects/:projectId/runs/:runId/print" element={<RunPrintPage />} />
         <Route path="projects/:projectId/plans/:planId/print" element={<PlanPrintPage />} />
@@ -79,12 +83,14 @@ export function App() {
           <Route path="cases" element={<TestCaseWorkspacePage />} />
           <Route path="cases/:caseId" element={<CaseDetailPage />} />
           <Route path="runs" element={<RunListPage />} />
+          <Route path="runs/compare" element={<RunComparisonPage />} />
           <Route path="runs/new" element={<RunCreatePage />} />
           <Route path="runs/:runId" element={<RunDetailPage />} />
           <Route path="runs/:runId/results" element={<ResultExplorerPage />} />
           <Route path="my-tests" element={<MyTestsPage />} />
           <Route path="team-todo" element={<TeamTodoPage />} />
           <Route path="results" element={<ResultExplorerPage />} />
+          <Route path="reports/print/:reportSlug" element={<ReportPrintPage />} />
           <Route path="reports" element={<ReportsLayout />}>
             <Route index element={<ReportsOverviewPage />} />
             <Route path="project-summary" element={<ReportProjectSummaryPage />} />

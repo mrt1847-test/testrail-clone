@@ -1,19 +1,55 @@
 import { API_BASE, apiFetch, getAccessToken } from "../../../shared/api/http";
 import type { Ok } from "../../../shared/api/types";
 
+export type PrintDocumentSection = {
+  entityType: "case" | "cases" | "run" | "plan" | "milestone" | "report";
+  title: string;
+  subtitle?: string;
+  meta: Array<{ label: string; value: string }>;
+  tables: Array<{ title: string; columns: string[]; rows: string[][] }>;
+  notes?: string[];
+};
+
 export type PrintDocument = {
-  entityType: "case" | "run" | "plan" | "milestone";
+  entityType: "case" | "cases" | "run" | "plan" | "milestone" | "report";
   title: string;
   subtitle?: string;
   generatedAt: string;
   meta: Array<{ label: string; value: string }>;
   tables: Array<{ title: string; columns: string[]; rows: string[][] }>;
   notes?: string[];
+  sections?: PrintDocumentSection[];
 };
 
 export async function fetchCasePrintDocument(caseId: string) {
   const res = await apiFetch<Ok<PrintDocument>>(`/api/cases/${caseId}/print`);
   return res.data;
+}
+
+export async function fetchCasesPrintDocument(projectId: string, caseIds: string[]) {
+  const res = await apiFetch<Ok<PrintDocument>>(`/api/projects/${projectId}/cases/print`, {
+    method: "POST",
+    body: JSON.stringify({ caseIds }),
+    headers: { "content-type": "application/json" }
+  });
+  return res.data;
+}
+
+export function buildCasesPrintPath(projectId: string, caseIds: Array<string | number>) {
+  const ids = caseIds.map(String).join(",");
+  return `/projects/${projectId}/cases/print?ids=${encodeURIComponent(ids)}`;
+}
+
+export function buildRunPrintPath(projectId: string, runId: string) {
+  return `/projects/${projectId}/runs/${runId}/print`;
+}
+
+export function buildPlanPrintPath(projectId: string, planId: string) {
+  return `/projects/${projectId}/plans/${planId}/print`;
+}
+
+export function buildMilestonePrintPath(projectId: string, milestoneId: string) {
+  return `/projects/${projectId}/milestones/${milestoneId}/print`;
 }
 
 export async function fetchRunPrintDocument(projectId: string, runId: string) {

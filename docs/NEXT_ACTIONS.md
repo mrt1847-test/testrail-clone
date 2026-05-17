@@ -17,21 +17,20 @@ Goal: keep the next development batch to roughly one PR. Direction lives in [ROA
 
 ## Current batch
 
-**Section:** Evidence, Attachments
+**Section:** Keyboard, Selection, And List Ergonomics
 
 **Checklist line (exact line done when this is `[x]`):**
 
-- [ ] **TR-Core** P1 Attachment retention and cleanup policy.
+- [ ] P1 Remember last filter, sort, and column set per page per user.
 
 ### Scope (only what closes the line above)
 
-- Configurable retention for soft-deleted attachment metadata and storage tombstones.
-- Scheduled or on-demand cleanup job with tests.
+- Persist list filter, sort, and visible column preferences per user per page (localStorage baseline).
 
 ### Out of scope for this batch
 
-- Production object storage lifecycle and authorization hardening — shipped.
-- Defect integration test connection UI.
+- Compare two runs side-by-side — shipped.
+- Column width persistence (separate checklist line).
 
 ---
 
@@ -41,7 +40,7 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Reporting / UI | **TR-Core** P1 Print-friendly case view and multi-case print (checklist line 312) |
-| 2 | Reporting / UI | **TR-Core** P1 Print-friendly run, plan, and milestone views (checklist line 313) |
-| 3 | Reporting / UI | **TR-Core** P1 Print-friendly report pages (checklist line 314) |
-| 4 | Evidence, Attachments | **TR-Pro** P1 Integration test connection and validation |
+| 1 | Keyboard, Selection, And List Ergonomics | P1 Column width and visibility persistence |
+| 2 | Reporting And Collaboration Shortcuts | P1 Export current filtered view; report filter presets |
+| 3 | Reporting And Collaboration Shortcuts | P1 Copy chart/table summary to clipboard |
+| 4 | Reporting And Collaboration Shortcuts | P1 @mention autocomplete; comment templates; rich text comments |

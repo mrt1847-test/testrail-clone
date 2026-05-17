@@ -46,6 +46,14 @@ export const rerunSchema = z.object({
   statuses: z.array(z.enum(["passed", "failed", "blocked", "retest", "untested"])).min(1).default(["failed"])
 });
 
+export const duplicateRunSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  milestoneId: z.coerce.bigint().nullable().optional(),
+  copyAssignee: z.boolean().optional().default(true),
+  copySchedule: z.boolean().optional().default(false),
+  copyEnvironment: z.boolean().optional().default(true)
+});
+
 export const runIdParamSchema = z.object({
   runId: z.coerce.bigint()
 });

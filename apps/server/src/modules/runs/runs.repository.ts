@@ -215,7 +215,20 @@ export interface RunsRepository {
       assigneeId?: bigint | "all";
     }
   ): Promise<import("./assignmentListFilters.js").AssignmentTestRow[]>;
+  findResultPushContext(resultId: bigint): Promise<ResultPushContext | null>;
 }
+
+export type ResultPushContext = {
+  resultId: bigint;
+  status: TestStatus;
+  comment?: string;
+  projectId: bigint;
+  runId: bigint;
+  runName: string;
+  testId: bigint;
+  caseId: bigint;
+  titleSnapshot: string;
+};
 
 type ResultRow = {
   id: bigint;
@@ -568,6 +581,26 @@ export class InMemoryRunsRepository implements RunsRepository {
     const total = sorted.length;
     const start = (page - 1) * pageSize;
     return { items: sorted.slice(start, start + pageSize), total };
+  }
+
+  async findResultPushContext(resultId: bigint): Promise<ResultPushContext | null> {
+    const result = this.results.find((row) => row.id === resultId);
+    if (!result) return null;
+    const instance = this.instances.find((row) => row.id === result.testInstanceId);
+    if (!instance) return null;
+    const run = this.runs.find((row) => row.id === instance.runId);
+    if (!run) return null;
+    return {
+      resultId: result.id,
+      status: result.status,
+      comment: result.comment,
+      projectId: run.projectId,
+      runId: run.id,
+      runName: run.name,
+      testId: instance.id,
+      caseId: instance.caseId,
+      titleSnapshot: instance.titleSnapshot
+    };
   }
 
   async closeRun(runId: bigint): Promise<TestRun | null> {

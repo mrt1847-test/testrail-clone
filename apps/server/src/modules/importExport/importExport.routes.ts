@@ -48,6 +48,14 @@ import { PrismaRunsRepository } from "../runs/runs.prisma.repository.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
+  parseAttachmentManifestJson,
+  serializeAttachmentManifest
+} from "../../domain/attachmentImportExport.js";
+import {
+  buildProjectAttachmentManifest,
+  importAttachmentManifest
+} from "../attachments/attachmentImportExport.service.js";
+import {
   applyCaseCsvColumnMapping,
   buildCaseCsvImportProfile,
   extractCsvHeaders,
@@ -2117,7 +2125,96 @@ export class ImportExportService {
         body: csv
       };
     }
+    if (job.type === "attachments_json") {
+      const json = await this.exportAttachmentsJson(projectId, userId, {}, { recordJob: false });
+      return {
+        fileName: String(summary.fileName ?? `project-${projectId.toString()}-attachments.json`),
+        contentType: "application/json; charset=utf-8",
+        body: json
+      };
+    }
     throw new AppError("VALIDATION_ERROR", `export type ${job.type} cannot be downloaded by job id`, 400);
+  }
+
+  async exportAttachmentsJson(
+    projectId: bigint,
+    userId: bigint,
+    filters: {
+      caseId?: bigint;
+      runId?: bigint;
+      includeContent?: boolean;
+      includeDownloadUrls?: boolean;
+    } = {},
+    options: { existingJobId?: bigint; recordJob?: boolean } = {}
+  ) {
+    const prisma = this.getPrisma();
+    const manifest = await buildProjectAttachmentManifest(prisma, projectId, {
+      caseId: filters.caseId,
+      runId: filters.runId,
+      includeContent: filters.includeContent,
+      includeDownloadUrls: filters.includeDownloadUrls
+    });
+    const json = serializeAttachmentManifest(manifest);
+    const summary = {
+      attachmentCount: manifest.attachments.length,
+      includeContent: Boolean(filters.includeContent),
+      fileName: `project-${projectId.toString()}-attachments.json`
+    } as Prisma.InputJsonValue;
+    const recordJob = options.recordJob ?? true;
+    if (recordJob) {
+      if (options.existingJobId) {
+        await prisma.exportJob.update({
+          where: { id: options.existingJobId },
+          data: {
+            status: "completed",
+            summary,
+            filters: {
+              caseId: filters.caseId?.toString() ?? null,
+              runId: filters.runId?.toString() ?? null,
+              includeContent: filters.includeContent ?? false
+            } as Prisma.InputJsonValue
+          }
+        });
+      } else {
+        await prisma.exportJob.create({
+          data: {
+            projectId,
+            type: "attachments_json",
+            status: "completed",
+            summary,
+            filters: {
+              caseId: filters.caseId?.toString() ?? null,
+              runId: filters.runId?.toString() ?? null
+            } as Prisma.InputJsonValue,
+            createdBy: userId
+          }
+        });
+      }
+    }
+    return json;
+  }
+
+  async importAttachmentsFromManifest(
+    projectId: bigint,
+    userId: bigint,
+    manifestRaw: string,
+    options: { dryRun?: boolean; replaceExisting?: boolean } = {}
+  ) {
+    const prisma = this.getPrisma();
+    const manifest = parseAttachmentManifestJson(manifestRaw);
+    const result = await importAttachmentManifest(prisma, projectId, userId, manifest, options);
+    const job = await prisma.importJob.create({
+      data: {
+        projectId,
+        type: "attachments_json",
+        dryRun: options.dryRun ?? false,
+        status: result.issues.length > 0 ? "completed_with_errors" : "completed",
+        summary: result.summary as Prisma.InputJsonValue,
+        errors: result.issues as Prisma.InputJsonValue,
+        createdBy: userId
+      }
+    });
+    return { job, ...result };
   }
 
   async exportRunResultsTestRailJson(projectId: bigint, runId: bigint, userId: bigint) {
@@ -2300,8 +2397,9 @@ function scheduleCaseExportJob(
   jobId: bigint,
   projectId: bigint,
   userId: bigint,
-  type: "cases_csv" | "cases_json" | "cases_xml" | "run_results_csv",
-  runId?: bigint
+  type: "cases_csv" | "cases_json" | "cases_xml" | "run_results_csv" | "attachments_json",
+  runId?: bigint,
+  attachmentFilters?: { caseId?: bigint; runId?: bigint; includeContent?: boolean; includeDownloadUrls?: boolean }
 ) {
   setImmediate(() => {
     void (async () => {
@@ -2318,6 +2416,10 @@ function scheduleCaseExportJob(
           await importExportService.exportCasesXml(projectId, userId, { existingJobId: jobId });
         } else if (type === "run_results_csv" && runId) {
           await importExportService.exportRunResultsCsv(projectId, runId, userId, { existingJobId: jobId });
+        } else if (type === "attachments_json") {
+          await importExportService.exportAttachmentsJson(projectId, userId, attachmentFilters ?? {}, {
+            existingJobId: jobId
+          });
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "export failed";
@@ -2639,6 +2741,111 @@ export async function registerImportExportRoutes(
         })
       )
     );
+  });
+
+  const attachmentExportQuerySchema = z.object({
+    caseId: z.coerce.bigint().optional(),
+    runId: z.coerce.bigint().optional(),
+    includeContent: z.coerce.boolean().optional(),
+    includeDownloadUrls: z.coerce.boolean().optional()
+  });
+
+  const attachmentImportBodySchema = z.object({
+    manifest: z.string().trim().min(2),
+    dryRun: z.coerce.boolean().optional(),
+    replaceExisting: z.coerce.boolean().optional()
+  });
+
+  const attachmentExportAsyncBodySchema = z.object({
+    caseId: z.coerce.bigint().optional(),
+    runId: z.coerce.bigint().optional(),
+    includeContent: z.coerce.boolean().optional(),
+    includeDownloadUrls: z.coerce.boolean().optional()
+  });
+
+  app.get("/api/projects/:projectId/attachments/export", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = attachmentExportQuerySchema.parse(req.query ?? {});
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "attachment export requires prisma mode", 501);
+    const json = await importExportService.exportAttachmentsJson(projectId, user.id, {
+      caseId: query.caseId,
+      runId: query.runId,
+      includeContent: query.includeContent,
+      includeDownloadUrls: query.includeDownloadUrls ?? true
+    });
+    reply.header("content-type", "application/json; charset=utf-8");
+    reply.header(
+      "content-disposition",
+      `attachment; filename="project-${projectId.toString()}-attachments.json"`
+    );
+    return reply.send(json);
+  });
+
+  app.post("/api/projects/:projectId/attachments/export/async", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = attachmentExportAsyncBodySchema.parse(req.body ?? {});
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "attachment export requires prisma mode", 501);
+    const prisma = importExportService.getPrisma();
+    const job = await prisma.exportJob.create({
+      data: {
+        projectId,
+        type: "attachments_json",
+        status: "pending",
+        filters: {
+          caseId: body.caseId?.toString() ?? null,
+          runId: body.runId?.toString() ?? null,
+          includeContent: body.includeContent ?? false
+        } as Prisma.InputJsonValue,
+        summary: { phase: "queued" } as Prisma.InputJsonValue,
+        createdBy: user.id
+      }
+    });
+    scheduleCaseExportJob(importExportService, job.id, projectId, user.id, "attachments_json", body.runId, {
+      caseId: body.caseId,
+      runId: body.runId,
+      includeContent: body.includeContent,
+      includeDownloadUrls: body.includeDownloadUrls ?? true
+    });
+    return reply.status(202).send(
+      toJsonSafe(
+        ok({
+          job,
+          downloadUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}/download`,
+          pollUrl: `/api/projects/${projectId.toString()}/export-jobs/${job.id.toString()}`
+        })
+      )
+    );
+  });
+
+  app.post("/api/projects/:projectId/attachments/import", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = attachmentImportBodySchema.parse(req.body ?? {});
+    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "attachment import requires prisma mode", 501);
+    const result = await importExportService.importAttachmentsFromManifest(
+      projectId,
+      user.id,
+      body.manifest,
+      { dryRun: body.dryRun, replaceExisting: body.replaceExisting }
+    );
+    await recordActivityEvent(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      entityType: "import",
+      entityId: result.job.id,
+      eventType: body.dryRun ? "import.attachments_validated" : "import.attachments_committed",
+      title: body.dryRun ? "Attachment import validated" : "Attachments imported",
+      body: `imported ${result.summary.imported} of ${result.summary.total}`,
+      payload: {
+        jobId: result.job.id.toString(),
+        dryRun: body.dryRun ?? false,
+        summary: result.summary
+      }
+    });
+    return reply.send(toJsonSafe(ok(result)));
   });
 
   app.post("/api/projects/:projectId/runs/results/export/csv/async", async (req, reply) => {
