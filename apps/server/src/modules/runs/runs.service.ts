@@ -55,6 +55,7 @@ export class RunsService {
         name: input.name,
         includeAll,
         environment: input.environment ?? null,
+        assignedTo: input.assignedTo ?? null,
         startedAt: input.startedAt ?? null,
         dueOn: input.dueOn ?? null,
         metadata: toMetadataJson(metadata)
@@ -316,8 +317,21 @@ export class RunsService {
     return updated;
   }
 
-  async listAssignedToMe(projectId: bigint, userId: bigint) {
-    return this.repo.listAssignedTests({ projectId, userId });
+  async listAssignedToMe(
+    projectId: bigint,
+    userId: bigint,
+    filters: import("./assignmentListFilters.js").AssignmentListFilters = {}
+  ) {
+    return this.repo.listAssignedTests({ projectId, userId, ...filters });
+  }
+
+  async listTeamTodo(
+    projectId: bigint,
+    filters: import("./assignmentListFilters.js").AssignmentListFilters & {
+      assigneeId?: bigint | "all";
+    }
+  ) {
+    return this.repo.listTeamTodoTests({ projectId, ...filters });
   }
 
   async syncRunComposition(runId: bigint) {

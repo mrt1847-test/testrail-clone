@@ -32,6 +32,7 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
       { label: "Test Cases", to: `${base}/cases` },
       { label: "Test Runs", to: `${base}/runs` },
       { label: "My Tests", to: `${base}/my-tests` },
+      { label: "Team to-do", to: `${base}/team-todo` },
       { label: "Plans", to: `${base}/plans` },
       { label: "Milestones", to: `${base}/milestones` },
       { label: "Results", to: `${base}/results` },

@@ -15,8 +15,12 @@ import {
   fetchPlanEntryConfigurations,
   fetchPlanMatrix,
   fetchPlanRollupByConfiguration,
+  savePlanEntryConfigurations,
+  updatePlan,
   updatePlanEntry
 } from "../api/advancedApi";
+import { fetchProjectMembers } from "../api/settingsApi";
+import { formatCaseIdList, parseCaseIdList } from "../utils/planCaseSelection";
 
 export function PlanDetailPage() {
   const { projectId = "", planId = "" } = useParams();
@@ -26,11 +30,28 @@ export function PlanDetailPage() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editingEntryName, setEditingEntryName] = useState("");
   const [editingEntryEnvironment, setEditingEntryEnvironment] = useState("");
+  const [editingAssignedTo, setEditingAssignedTo] = useState("");
+  const [editingRefs, setEditingRefs] = useState("");
+  const [editingStartDate, setEditingStartDate] = useState("");
+  const [editingDueOn, setEditingDueOn] = useState("");
+  const [editingIncludeAll, setEditingIncludeAll] = useState(true);
+  const [editingIncludeCaseIds, setEditingIncludeCaseIds] = useState("");
+  const [editingExcludeCaseIds, setEditingExcludeCaseIds] = useState("");
+  const [editingIsIncluded, setEditingIsIncluded] = useState(true);
+  const [planAssignedTo, setPlanAssignedTo] = useState("");
+  const [planRefs, setPlanRefs] = useState("");
+  const [planStartDate, setPlanStartDate] = useState("");
+  const [planDueOn, setPlanDueOn] = useState("");
   const [selectedConfigurationIds, setSelectedConfigurationIds] = useState<string[]>([]);
   const planQuery = useQuery({
     queryKey: ["plan", projectId, planId],
     queryFn: () => fetchPlan(projectId, planId),
     enabled: Boolean(projectId && planId)
+  });
+  const membersQuery = useQuery({
+    queryKey: ["project-members", projectId],
+    queryFn: () => fetchProjectMembers(projectId),
+    enabled: Boolean(projectId)
   });
   const entriesQuery = useQuery({
     queryKey: ["plan-entries", projectId, planId],
@@ -75,14 +96,48 @@ export function PlanDetailPage() {
       void qc.invalidateQueries({ queryKey: ["plan-rollup", projectId, planId] });
     }
   });
+  const updatePlanMutation = useMutation({
+    mutationFn: () =>
+      updatePlan(projectId, planId, {
+        assignedTo: planAssignedTo ? planAssignedTo : null,
+        refs: planRefs.trim() ? planRefs.trim() : null,
+        startDate: planStartDate ? new Date(planStartDate).toISOString() : null,
+        dueOn: planDueOn ? new Date(planDueOn).toISOString() : null
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["plan", projectId, planId] });
+    }
+  });
   const updateEntryMutation = useMutation({
-    mutationFn: (input: { entryId: string; name: string; environment?: string | null }) =>
-      updatePlanEntry(projectId, planId, input.entryId, { name: input.name, environment: input.environment }),
+    mutationFn: (input: { entryId: string }) =>
+      updatePlanEntry(projectId, planId, input.entryId, {
+        name: editingEntryName.trim(),
+        environment: editingEntryEnvironment.trim() || null,
+        assignedTo: editingAssignedTo ? editingAssignedTo : null,
+        refs: editingRefs.trim() ? editingRefs.trim() : null,
+        startDate: editingStartDate ? new Date(editingStartDate).toISOString() : null,
+        dueOn: editingDueOn ? new Date(editingDueOn).toISOString() : null,
+        includeAll: editingIncludeAll,
+        includeCaseIds: editingIncludeAll ? [] : parseCaseIdList(editingIncludeCaseIds),
+        excludeCaseIds: parseCaseIdList(editingExcludeCaseIds),
+        isIncluded: editingIsIncluded
+      }),
     onSuccess: () => {
       setEditingEntryId(null);
-      setEditingEntryName("");
-      setEditingEntryEnvironment("");
       void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+    }
+  });
+  const saveConfigurationsMutation = useMutation({
+    mutationFn: () =>
+      savePlanEntryConfigurations({
+        projectId,
+        planId,
+        entryId: editingEntryId ?? "",
+        configurationIds: selectedConfigurationIds
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["plan-entry-configurations", projectId, planId, editingEntryId ?? "_none"] });
+      void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
     }
   });
   const deleteEntryMutation = useMutation({
@@ -98,6 +153,14 @@ export function PlanDetailPage() {
     }
   }, [selectedEntryConfigurationQuery.data]);
 
+  useEffect(() => {
+    if (!planQuery.data) return;
+    setPlanAssignedTo(planQuery.data.assignedTo ?? "");
+    setPlanRefs(planQuery.data.refs ?? "");
+    setPlanStartDate(planQuery.data.startDate ? planQuery.data.startDate.slice(0, 10) : "");
+    setPlanDueOn(planQuery.data.dueOn ? planQuery.data.dueOn.slice(0, 10) : "");
+  }, [planQuery.data]);
+
   if (planQuery.isLoading || entriesQuery.isLoading) return <LoadingState message="Loading test plan detail…" />;
   if (planQuery.isError || entriesQuery.isError || !planQuery.data) {
     return <ErrorState title="Could not load test plan detail" onRetry={() => void Promise.all([planQuery.refetch(), entriesQuery.refetch()])} />;
@@ -109,6 +172,63 @@ export function PlanDetailPage() {
         <p className="text-xs uppercase tracking-wide text-slate-500">Test Plan</p>
         <h2 className="text-xl font-semibold text-slate-900">{planQuery.data.name}</h2>
       </header>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan defaults</h3>
+        <p className="mt-1 text-xs text-slate-500">Assignee, refs, and dates inherit to entries unless overridden.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm text-slate-700">
+            <span>Assignee</span>
+            <select
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+              value={planAssignedTo}
+              onChange={(e) => setPlanAssignedTo(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {(membersQuery.data ?? []).map((member) => (
+                <option key={member.userId} value={member.userId}>
+                  {member.name || member.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm text-slate-700 sm:col-span-2">
+            <span>References</span>
+            <input
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+              placeholder="REQ-1, JIRA-42"
+              value={planRefs}
+              onChange={(e) => setPlanRefs(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-700">
+            <span>Start date</span>
+            <input
+              type="date"
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+              value={planStartDate}
+              onChange={(e) => setPlanStartDate(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-700">
+            <span>Due date</span>
+            <input
+              type="date"
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+              value={planDueOn}
+              onChange={(e) => setPlanDueOn(e.target.value)}
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          disabled={updatePlanMutation.isPending}
+          onClick={() => void updatePlanMutation.mutateAsync()}
+        >
+          Save plan defaults
+        </button>
+      </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add plan entry</h3>
@@ -177,7 +297,15 @@ export function PlanDetailPage() {
                 </div>
               </div>
             ))}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!editingEntryId || saveConfigurationsMutation.isPending}
+                className="rounded border border-indigo-300 px-3 py-1.5 text-sm text-indigo-900 disabled:opacity-50"
+                onClick={() => editingEntryId && void saveConfigurationsMutation.mutateAsync()}
+              >
+                Save combination
+              </button>
               <button
                 type="button"
                 disabled={!editingEntryId || createRunByConfigurationMutation.isPending}
@@ -192,7 +320,7 @@ export function PlanDetailPage() {
               >
                 Generate run by configuration
               </button>
-              <p className="text-xs text-slate-500">먼저 엔트리를 Edit로 선택한 뒤 구성값을 고르세요.</p>
+              <p className="text-xs text-slate-500">엔트리를 Edit로 선택한 뒤 조합을 저장하거나 run을 생성하세요.</p>
             </div>
             {editingEntryId ? (
               <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
@@ -251,17 +379,75 @@ export function PlanDetailPage() {
                       value={editingEntryEnvironment}
                       onChange={(e) => setEditingEntryEnvironment(e.target.value)}
                     />
+                    <select
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      value={editingAssignedTo}
+                      onChange={(e) => setEditingAssignedTo(e.target.value)}
+                    >
+                      <option value="">Assignee: inherit plan</option>
+                      {(membersQuery.data ?? []).map((member) => (
+                        <option key={member.userId} value={member.userId}>
+                          {member.name || member.email}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      placeholder="References"
+                      value={editingRefs}
+                      onChange={(e) => setEditingRefs(e.target.value)}
+                    />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input
+                        type="date"
+                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                        value={editingStartDate}
+                        onChange={(e) => setEditingStartDate(e.target.value)}
+                      />
+                      <input
+                        type="date"
+                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                        value={editingDueOn}
+                        onChange={(e) => setEditingDueOn(e.target.value)}
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editingIsIncluded}
+                        onChange={(e) => setEditingIsIncluded(e.target.checked)}
+                      />
+                      Include entry in run generation
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editingIncludeAll}
+                        onChange={(e) => setEditingIncludeAll(e.target.checked)}
+                      />
+                      Include all suite cases
+                    </label>
+                    {!editingIncludeAll ? (
+                      <textarea
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                        rows={2}
+                        placeholder="Include case IDs (comma-separated)"
+                        value={editingIncludeCaseIds}
+                        onChange={(e) => setEditingIncludeCaseIds(e.target.value)}
+                      />
+                    ) : null}
+                    <textarea
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                      rows={2}
+                      placeholder="Exclude case IDs (comma-separated)"
+                      value={editingExcludeCaseIds}
+                      onChange={(e) => setEditingExcludeCaseIds(e.target.value)}
+                    />
                     <div className="flex items-center gap-1">
                       <button
                         className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
                         disabled={!editingEntryName.trim() || updateEntryMutation.isPending}
-                        onClick={() =>
-                          void updateEntryMutation.mutateAsync({
-                            entryId: entry.id,
-                            name: editingEntryName.trim(),
-                            environment: editingEntryEnvironment.trim() || null
-                          })
-                        }
+                        onClick={() => void updateEntryMutation.mutateAsync({ entryId: entry.id })}
                       >
                         Save
                       </button>
@@ -288,6 +474,14 @@ export function PlanDetailPage() {
                             setEditingEntryId(entry.id);
                             setEditingEntryName(entry.name);
                             setEditingEntryEnvironment(entry.environment ?? "");
+                            setEditingAssignedTo(entry.assignedTo ?? "");
+                            setEditingRefs(entry.refs ?? "");
+                            setEditingStartDate(entry.startDate ? entry.startDate.slice(0, 10) : "");
+                            setEditingDueOn(entry.dueOn ? entry.dueOn.slice(0, 10) : "");
+                            setEditingIncludeAll(entry.includeAll);
+                            setEditingIncludeCaseIds(formatCaseIdList(entry.includeCaseIds));
+                            setEditingExcludeCaseIds(formatCaseIdList(entry.excludeCaseIds));
+                            setEditingIsIncluded(entry.isIncluded);
                           }}
                         >
                           Edit
@@ -301,7 +495,12 @@ export function PlanDetailPage() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500">environment: {entry.environment || "n/a"}</p>
+                    <p className="text-xs text-slate-500">
+                      environment: {entry.environment || "n/a"} ·{" "}
+                      {entry.isIncluded ? "included" : "excluded"} ·{" "}
+                      {entry.includeAll ? "all cases" : `${entry.includeCaseIds.length} included`}
+                      {entry.excludeCaseIds.length > 0 ? ` · ${entry.excludeCaseIds.length} excluded` : ""}
+                    </p>
                     {!entry.runId ? (
                       <button
                         className="mt-1 rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"

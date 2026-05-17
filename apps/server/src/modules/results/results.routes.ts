@@ -8,7 +8,17 @@ import type { ResultsService } from "./results.service.js";
 import { resultIdParamSchema, resultSchema, testIdParamSchema } from "./results.schema.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { AppError } from "../../common/errors/appError.js";
-import { getAuthenticatedUser, requireAuthenticated, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import {
+  getAuthenticatedUser,
+  requireAuthenticated,
+  requireProjectMutationRole,
+  requireProjectPermission
+} from "../../common/middlewares/authorization.js";
+import { projectIdParamSchema } from "../projects/projects.schema.js";
+import {
+  rejectResultRowMutation,
+  RESULT_CORRECTION_POLICY
+} from "../../domain/resultCorrectionPolicy.js";
 import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
 import { loadActiveCustomFields, visibilityContextFromAccess } from "../settings/customFieldAccess.js";
 import type { AuthService } from "../auth/auth.service.js";
@@ -113,6 +123,19 @@ export async function registerResultsRoutes(
   app: FastifyInstance,
   deps: { resultsService: ResultsService; prisma?: PrismaClient; authService: AuthService }
 ) {
+  app.get("/api/projects/:projectId/result-correction-policy", async (req, reply) => {
+    await requireProjectPermission(req, deps, "runs.read");
+    projectIdParamSchema.parse(req.params);
+    return reply.send(toJsonSafe(ok(RESULT_CORRECTION_POLICY)));
+  });
+
+  const blockResultRowMutation = async () => {
+    rejectResultRowMutation();
+  };
+  app.patch("/api/results/:resultId", blockResultRowMutation);
+  app.put("/api/results/:resultId", blockResultRowMutation);
+  app.delete("/api/results/:resultId", blockResultRowMutation);
+
   app.post("/api/attachments", async (req, reply) => {
     await requireAuthenticated(req, deps);
     const body = createAttachmentBodySchema.parse(req.body ?? {});

@@ -7,6 +7,10 @@ export type ResultInput = {
   elapsed?: string;
   version?: string;
   defects?: string[];
+  aiActualOutput?: string | null;
+  aiQualityRating?: number | null;
+  aiLatencyMs?: number | null;
+  aiTraces?: string | null;
   customValues?: Record<string, CustomFieldValue>;
   source?: "manual" | "automation" | "api";
   metadata?: Record<string, unknown>;

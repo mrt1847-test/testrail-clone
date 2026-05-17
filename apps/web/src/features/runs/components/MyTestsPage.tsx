@@ -1,23 +1,34 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
+import { fetchMilestones } from "../../projects/api/planningApi";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
-import { FilterBar, type FilterField } from "../../../shared/ui/FilterBar";
+import { FilterBar } from "../../../shared/ui/FilterBar";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
+import { defaultAssignmentListFilters, formatRunDueOn } from "../assignmentListFilters";
 import { useAssignedToMeQuery } from "../hooks/useRunsApi";
+import { AssignmentAgingBadge, assignmentRowAgingClass } from "./AssignmentAgingBadge";
+import { AssignmentWorkloadSummary } from "./AssignmentWorkloadSummary";
+import { buildAssignmentWorkloadFilterFields } from "./AssignmentWorkloadFilters";
 
-const statusOptions = ["all", "untested", "failed", "blocked", "retest", "passed"] as const;
 const activeStatuses = new Set(["untested", "failed", "blocked", "retest"]);
 
 export function MyTestsPage() {
   const { projectId = "" } = useParams();
-  const { data = [], isLoading, isError, refetch } = useAssignedToMeQuery(projectId);
-  const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("all");
-  const [runFilter, setRunFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(defaultAssignmentListFilters);
+
+  const milestonesQuery = useQuery({
+    queryKey: ["milestones", projectId, "assignment-list"],
+    queryFn: () => fetchMilestones(projectId),
+    enabled: Boolean(projectId)
+  });
+
+  const assignedQuery = useAssignedToMeQuery(projectId, filters);
+  const data = assignedQuery.data ?? [];
 
   const runOptions = useMemo(
     () =>
@@ -27,62 +38,20 @@ export function MyTestsPage() {
     [data]
   );
 
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: data.length };
-    for (const status of statusOptions) counts[status] = status === "all" ? data.length : 0;
-    for (const row of data) counts[row.status] = (counts[row.status] ?? 0) + 1;
-    return counts;
-  }, [data]);
-
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return data.filter((row) => {
-      if (statusFilter !== "all" && row.status !== statusFilter) return false;
-      if (runFilter !== "all" && row.runId !== runFilter) return false;
-      if (!q) return true;
-      return `${row.title} ${row.caseId} ${row.runName}`.toLowerCase().includes(q);
-    });
-  }, [data, runFilter, search, statusFilter]);
-
   const activeCount = data.filter((row) => activeStatuses.has(row.status)).length;
 
-  const filterFields: FilterField[] = [
-    {
-      kind: "search",
-      id: "search",
-      label: "Search",
-      value: search,
-      onChange: setSearch,
-      placeholder: "Search cases or runs"
-    },
-    {
-      kind: "select",
-      id: "status",
-      label: "Status",
-      value: statusFilter,
-      onChange: (value) => setStatusFilter(value as (typeof statusOptions)[number]),
-      options: statusOptions.map((status) => ({
-        value: status,
-        label: status === "all" ? `All (${statusCounts[status] ?? 0})` : `${status} (${statusCounts[status] ?? 0})`
-      }))
-    },
-    {
-      kind: "select",
-      id: "run",
-      label: "Run",
-      value: runFilter,
-      onChange: setRunFilter,
-      options: [
-        { value: "all", label: "All runs" },
-        ...runOptions.map(([runId, runName]) => ({ value: runId, label: runName }))
-      ]
-    }
-  ];
+  const filterFields = buildAssignmentWorkloadFilterFields({
+    filters,
+    onChange: (patch) => setFilters((current) => ({ ...current, ...patch })),
+    runOptions,
+    milestones: milestonesQuery.data ?? []
+  });
 
-  if (isLoading) return <LoadingState message="Loading assigned tests..." />;
-  if (isError) return <ErrorState title="Could not load assigned tests" onRetry={() => refetch()} />;
-  if (data.length === 0) {
-    return <EmptyState title="No assigned tests" description="Tests assigned to you will appear here." />;
+  if (assignedQuery.isLoading || milestonesQuery.isLoading) {
+    return <LoadingState message="Loading assigned tests..." />;
+  }
+  if (assignedQuery.isError) {
+    return <ErrorState title="Could not load assigned tests" onRetry={() => void assignedQuery.refetch()} />;
   }
 
   return (
@@ -93,10 +62,26 @@ export function MyTestsPage() {
         description={`${activeCount} active of ${data.length} assigned tests.`}
       />
 
-      <FilterBar fields={filterFields} ariaLabel="Filter assigned tests" variant="card" />
+      <AssignmentWorkloadSummary levels={data.map((row) => row.agingLevel)} />
 
-      {filteredRows.length === 0 ? (
-        <EmptyState title="No matching tests" description="Adjust the filters to widen the list." />
+      <FilterBar fields={filterFields} ariaLabel="Filter assigned tests" variant="card" />
+      {filters.dueFilter === "due_by" ? (
+        <label className="flex w-full max-w-xs flex-col gap-0.5 text-xs font-medium text-slate-600">
+          Due on or before
+          <input
+            type="date"
+            value={filters.dueBy}
+            onChange={(e) => setFilters((current) => ({ ...current, dueBy: e.target.value }))}
+            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-900"
+          />
+        </label>
+      ) : null}
+
+      {data.length === 0 ? (
+        <EmptyState
+          title="No matching tests"
+          description="Adjust filters or wait for new assignments on runs with due dates or milestones."
+        />
       ) : (
         <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -104,18 +89,26 @@ export function MyTestsPage() {
               <tr>
                 <th className="px-4 py-3">Case</th>
                 <th className="px-4 py-3">Run</th>
+                <th className="px-4 py-3">Milestone</th>
+                <th className="px-4 py-3">Due</th>
+                <th className="px-4 py-3">Aging</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredRows.map((row) => (
-                <tr key={row.testId} className="hover:bg-slate-50">
+              {data.map((row) => (
+                <tr key={row.testId} className={`hover:bg-slate-50 ${assignmentRowAgingClass(row.agingLevel)}`.trim()}>
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">C{row.caseId}</p>
                     <p className="mt-0.5 text-slate-600">{row.title}</p>
                   </td>
                   <td className="px-4 py-3 text-slate-700">{row.runName}</td>
+                  <td className="px-4 py-3 text-slate-700">{row.milestoneName ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatRunDueOn(row.runDueOn)}</td>
+                  <td className="px-4 py-3">
+                    <AssignmentAgingBadge level={row.agingLevel} />
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
                   </td>

@@ -1,3 +1,5 @@
+import type { AssignmentAgingLevel } from "@testrail-clone/shared";
+
 import { apiFetch } from "../../../shared/api/http";
 import { uploadFileToPresignedUrl } from "../../../shared/api/upload";
 import type { Ok, Paged } from "../../../shared/api/types";
@@ -163,6 +165,10 @@ export async function addRunResult(input: {
   customValues?: Record<string, string | number | boolean | null>;
   stepResults?: Array<{ stepOrder: number; status: "passed" | "failed" | "blocked" | "retest" | "untested"; actualResult?: string; comment?: string }>;
   scenarioResults?: Array<{ caseScenarioId: string; status: "passed" | "failed" | "blocked" | "retest" | "untested"; comment?: string }>;
+  aiActualOutput?: string;
+  aiQualityRating?: number;
+  aiLatencyMs?: number;
+  aiTraces?: string;
 }) {
   return apiFetch(`/api/runs/${input.runId}/results`, {
     method: "POST",
@@ -175,7 +181,11 @@ export async function addRunResult(input: {
       defects: input.defects,
       customValues: input.customValues,
       stepResults: input.stepResults,
-      scenarioResults: input.scenarioResults
+      scenarioResults: input.scenarioResults,
+      aiActualOutput: input.aiActualOutput,
+      aiQualityRating: input.aiQualityRating,
+      aiLatencyMs: input.aiLatencyMs,
+      aiTraces: input.aiTraces
     }
   });
 }
@@ -278,6 +288,16 @@ export async function updateTestSubscription(testId: string, subscribed: boolean
   });
 }
 
+export type AssignmentListFiltersInput = {
+  status?: string;
+  runId?: string;
+  q?: string;
+  milestoneId?: string;
+  dueUnset?: boolean;
+  overdue?: boolean;
+  dueBefore?: string;
+};
+
 export type AssignedTestRow = {
   testId: string;
   runId: string;
@@ -286,16 +306,94 @@ export type AssignedTestRow = {
   title: string;
   status: string;
   assignedTo: string | null;
+  runDueOn: string | null;
+  milestoneId: string | null;
+  milestoneName: string | null;
+  agingLevel: AssignmentAgingLevel;
 };
 
-export async function fetchAssignedToMe(projectId: string): Promise<AssignedTestRow[]> {
-  const res = await apiFetch<Ok<{ items: AssignedTestRow[] }>>(`/api/projects/${projectId}/tests/assigned-to-me`);
-  return (res.data.items ?? []).map((row) => ({
+function mapAssignedTestRow(row: AssignedTestRow): AssignedTestRow {
+  return {
     ...row,
     testId: String(row.testId),
     runId: String(row.runId),
     caseId: String(row.caseId),
-    assignedTo: row.assignedTo ? String(row.assignedTo) : null
+    assignedTo: row.assignedTo ? String(row.assignedTo) : null,
+    runDueOn: row.runDueOn ?? null,
+    milestoneId: row.milestoneId ? String(row.milestoneId) : null,
+    milestoneName: row.milestoneName ?? null,
+    agingLevel: row.agingLevel ?? "none"
+  };
+}
+
+function appendAssignmentListParams(params: URLSearchParams, filters: AssignmentListFiltersInput) {
+  if (filters.status?.trim() && filters.status !== "all") params.set("status", filters.status.trim());
+  if (filters.runId?.trim() && filters.runId !== "all") params.set("runId", filters.runId.trim());
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.milestoneId === "none") params.set("milestoneId", "none");
+  else if (filters.milestoneId?.trim() && filters.milestoneId !== "all") {
+    params.set("milestoneId", filters.milestoneId.trim());
+  }
+  if (filters.dueUnset) params.set("dueUnset", "true");
+  if (filters.overdue) params.set("overdue", "true");
+  if (filters.dueBefore?.trim()) params.set("dueBefore", filters.dueBefore.trim());
+}
+
+export type ResultCorrectionPolicy = {
+  mode: "append_only";
+  summary: string;
+  userGuidance: string;
+  allowNewResult: true;
+  allowEditHistoricalResult: false;
+  allowDeleteHistoricalResult: false;
+  correctionMethod: "add_result";
+  allowedPostSubmitActions: Array<"attachment" | "defect_link">;
+};
+
+export async function fetchResultCorrectionPolicy(projectId: string): Promise<ResultCorrectionPolicy> {
+  const res = await apiFetch<Ok<ResultCorrectionPolicy>>(
+    `/api/projects/${projectId}/result-correction-policy`
+  );
+  return res.data;
+}
+
+export async function fetchAssignedToMe(
+  projectId: string,
+  filters: AssignmentListFiltersInput = {}
+): Promise<AssignedTestRow[]> {
+  const params = new URLSearchParams();
+  appendAssignmentListParams(params, filters);
+  const query = params.toString();
+  const res = await apiFetch<Ok<{ items: AssignedTestRow[] }>>(
+    `/api/projects/${projectId}/tests/assigned-to-me${query ? `?${query}` : ""}`
+  );
+  return (res.data.items ?? []).map(mapAssignedTestRow);
+}
+
+export type TeamTodoRow = AssignedTestRow & {
+  assignee: { id: string; name: string; email: string } | null;
+};
+
+export async function fetchTeamTodo(
+  projectId: string,
+  filters: AssignmentListFiltersInput & { assigneeId?: string }
+): Promise<TeamTodoRow[]> {
+  const params = new URLSearchParams();
+  if (filters.assigneeId?.trim() && filters.assigneeId !== "all") {
+    params.set("assigneeId", filters.assigneeId.trim());
+  } else {
+    params.set("assigneeId", "all");
+  }
+  appendAssignmentListParams(params, filters);
+  const query = params.toString();
+  const res = await apiFetch<Ok<{ items: TeamTodoRow[] }>>(
+    `/api/projects/${projectId}/tests/team-todo?${query}`
+  );
+  return (res.data.items ?? []).map((row) => ({
+    ...mapAssignedTestRow(row),
+    assignee: row.assignee
+      ? { id: String(row.assignee.id), name: row.assignee.name, email: row.assignee.email }
+      : null
   }));
 }
 
@@ -677,7 +775,7 @@ export async function fetchProjectResultExplorer(input: {
   createdFrom?: string;
   createdTo?: string;
   q?: string;
-  customFilters?: Record<string, string>;
+  customFilters?: Record<string, { op?: string; value: string }>;
 }): Promise<{ items: ResultExplorerRow[]; page: number; pageSize: number; total: number; totalPages: number }> {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
@@ -690,8 +788,13 @@ export async function fetchProjectResultExplorer(input: {
   if (input.createdFrom?.trim()) params.set("createdFrom", input.createdFrom.trim());
   if (input.createdTo?.trim()) params.set("createdTo", input.createdTo.trim());
   if (input.q?.trim()) params.set("q", input.q.trim());
-  for (const [systemName, value] of Object.entries(input.customFilters ?? {})) {
-    if (value.trim()) params.set(`custom_${systemName}`, value.trim());
+  for (const [systemName, filter] of Object.entries(input.customFilters ?? {})) {
+    const op = filter.op?.trim().toLowerCase();
+    const value = filter.value.trim();
+    const valueless = op === "empty" || op === "not_empty";
+    if (!valueless && !value) continue;
+    if (op && op !== "eq") params.set(`custom_${systemName}_op`, op);
+    params.set(`custom_${systemName}`, valueless ? "" : value);
   }
   const res = await apiFetch<
     Ok<{ items: ResultExplorerRow[]; page: number; pageSize: number; total: number; totalPages: number }>

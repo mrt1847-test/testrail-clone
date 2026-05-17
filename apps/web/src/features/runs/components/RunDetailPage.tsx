@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { fetchCaseScenarios } from "../../cases/api/bddApi";
+import { fetchCaseTemplates } from "../../projects/api/settingsApi";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
@@ -106,6 +107,20 @@ export function RunDetailPage() {
     queryFn: () => fetchCaseScenarios(selected!.caseId),
     enabled: Boolean(selected?.caseId)
   });
+  const caseTemplatesQuery = useQuery({
+    queryKey: ["case-templates", projectId],
+    queryFn: () => fetchCaseTemplates(projectId),
+    enabled: Boolean(projectId)
+  });
+  const isAiEvaluationCase = useMemo(() => {
+    const templateId = selectedCaseDetail.data?.caseTemplateId;
+    if (templateId == null) return false;
+    return (
+      caseTemplatesQuery.data?.some(
+        (template) => String(template.id) === String(templateId) && template.systemKey === "ai_evaluation"
+      ) ?? false
+    );
+  }, [caseTemplatesQuery.data, selectedCaseDetail.data?.caseTemplateId]);
   const bulkActions = useRunBulkActions({ projectId, runId, pagedInstances });
   const {
     selectedTestIds,
@@ -378,6 +393,12 @@ export function RunDetailPage() {
                 isCaseStepsLoading={selectedCaseDetail.isLoading}
                 isSubmitting={addResultMutation.isPending}
                 disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
+                hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
+                aiEvaluation={
+                  isAiEvaluationCase
+                    ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
+                    : undefined
+                }
                 onSubmit={(payload) => {
                   void addResultMutation.mutateAsync({
                     testId: selected.id,
@@ -388,7 +409,11 @@ export function RunDetailPage() {
                     defects: payload.defects,
                     customValues: payload.customValues,
                     stepResults: payload.stepResults,
-                    scenarioResults: payload.scenarioResults
+                    scenarioResults: payload.scenarioResults,
+                    aiActualOutput: payload.aiActualOutput,
+                    aiQualityRating: payload.aiQualityRating,
+                    aiLatencyMs: payload.aiLatencyMs,
+                    aiTraces: payload.aiTraces
                   });
                 }}
               />

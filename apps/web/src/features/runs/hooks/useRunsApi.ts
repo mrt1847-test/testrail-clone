@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
+import { assignmentListFiltersToApi, type AssignmentListFilterState } from "../assignmentListFilters";
 import {
   addResultDefectLink,
   deleteResultDefectLink,
@@ -16,6 +17,7 @@ import {
   fetchRunInstancesPage,
   fetchRuns,
   fetchAssignedToMe,
+  fetchTeamTodo,
   fetchRunTestSubscriptions,
   updateTestSubscription,
   fetchAttachmentDownloadUrl,
@@ -57,7 +59,37 @@ export const runKeys = {
   resultSteps: (resultId: string) => ["result-steps", resultId] as const,
   resultAttachments: (resultId: string) => ["result-attachments", resultId] as const,
   resultDefects: (resultId: string) => ["result-defects", resultId] as const,
-  assignedToMe: (projectId: string) => [...runKeys.all(projectId), "assigned-to-me"] as const
+  assignedToMe: (
+    projectId: string,
+    status: string,
+    runId: string,
+    search: string,
+    milestoneId: string,
+    dueFilter: string,
+    dueBy: string
+  ) =>
+    [...runKeys.all(projectId), "assigned-to-me", status, runId, search, milestoneId, dueFilter, dueBy] as const,
+  teamTodo: (
+    projectId: string,
+    assigneeId: string,
+    status: string,
+    runId: string,
+    search: string,
+    milestoneId: string,
+    dueFilter: string,
+    dueBy: string
+  ) =>
+    [
+      ...runKeys.all(projectId),
+      "team-todo",
+      assigneeId,
+      status,
+      runId,
+      search,
+      milestoneId,
+      dueFilter,
+      dueBy
+    ] as const
 };
 
 export function useRunsQuery(projectId: string | undefined) {
@@ -176,6 +208,10 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
         status: "passed" | "failed" | "blocked" | "retest" | "untested";
         comment?: string;
       }>;
+      aiActualOutput?: string;
+      aiQualityRating?: number;
+      aiLatencyMs?: number;
+      aiTraces?: string;
     }) =>
       addRunResult({ runId: runId!, ...payload }),
     onSuccess: (_, vars) => {
@@ -293,6 +329,7 @@ export function useUpdateRunAssigneeMutation(projectId: string | undefined, runI
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.assignedToMe(projectId) });
+      void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
   });
 }
@@ -334,14 +371,49 @@ export function useUpdateTestAssigneeMutation(projectId: string | undefined, run
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.assignedToMe(projectId) });
+      void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
   });
 }
 
-export function useAssignedToMeQuery(projectId: string | undefined) {
+export function useAssignedToMeQuery(projectId: string | undefined, filters: AssignmentListFilterState) {
   return useQuery({
-    queryKey: runKeys.assignedToMe(projectId ?? ""),
-    queryFn: () => fetchAssignedToMe(projectId!),
+    queryKey: runKeys.assignedToMe(
+      projectId ?? "",
+      filters.status,
+      filters.runId,
+      filters.search,
+      filters.milestoneId,
+      filters.dueFilter,
+      filters.dueBy
+    ),
+    queryFn: () => fetchAssignedToMe(projectId!, assignmentListFiltersToApi(filters)),
+    enabled: Boolean(projectId),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false
+  });
+}
+
+export function useTeamTodoQuery(
+  projectId: string | undefined,
+  filters: AssignmentListFilterState & { assigneeId: string }
+) {
+  return useQuery({
+    queryKey: runKeys.teamTodo(
+      projectId ?? "",
+      filters.assigneeId,
+      filters.status,
+      filters.runId,
+      filters.search,
+      filters.milestoneId,
+      filters.dueFilter,
+      filters.dueBy
+    ),
+    queryFn: () =>
+      fetchTeamTodo(projectId!, {
+        assigneeId: filters.assigneeId,
+        ...assignmentListFiltersToApi(filters)
+      }),
     enabled: Boolean(projectId),
     refetchInterval: 30000,
     refetchIntervalInBackground: false

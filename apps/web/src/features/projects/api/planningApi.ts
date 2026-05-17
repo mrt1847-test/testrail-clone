@@ -15,12 +15,17 @@ export type TokenRow = {
   createdAt?: string;
 };
 
+export type MilestoneLifecycleStatus = "upcoming" | "open" | "completed";
+
 export type MilestoneRow = {
   id: string;
   name: string;
   isCompleted: boolean;
   startDate?: string | null;
   dueDate?: string | null;
+  parentMilestoneId?: string | null;
+  lifecycleStatus?: MilestoneLifecycleStatus;
+  children?: MilestoneRow[];
 };
 
 export type MilestoneRunRow = {
@@ -30,16 +35,40 @@ export type MilestoneRunRow = {
   progress: number;
 };
 
+export type PlanSchedulingFields = {
+  assignedTo: string | null;
+  refs: string | null;
+  startDate: string | null;
+  dueOn: string | null;
+};
+
 export type PlanRow = {
   id: string;
   name: string;
-};
+} & PlanSchedulingFields;
 
 export type PlanEntryRow = {
   id: string;
   name: string;
   environment?: string;
+  suiteId?: string | null;
   runId?: string;
+  includeAll: boolean;
+  includeCaseIds: string[];
+  excludeCaseIds: string[];
+  isIncluded: boolean;
+} & PlanSchedulingFields;
+
+export type PlanWriteInput = Partial<PlanSchedulingFields> & { name?: string };
+export type PlanEntryWriteInput = Partial<PlanSchedulingFields> & {
+  name?: string;
+  environment?: string | null;
+  suiteId?: string | null;
+  includeAll?: boolean;
+  includeCaseIds?: string[];
+  excludeCaseIds?: string[];
+  isIncluded?: boolean;
+  configurationIds?: string[];
 };
 
 export type ConfigurationGroupRow = {
@@ -125,10 +154,23 @@ export async function fetchMilestones(projectId: string): Promise<MilestoneRow[]
   return res.data.map((row) => ({ ...row, id: String(row.id) }));
 }
 
-export async function createMilestone(projectId: string, name: string): Promise<MilestoneRow> {
+export async function createMilestone(
+  projectId: string,
+  input: {
+    name: string;
+    parentMilestoneId?: string | null;
+    startDate?: string | null;
+    dueDate?: string | null;
+  }
+): Promise<MilestoneRow> {
   const res = await apiFetch<Ok<MilestoneRow>>(`/api/projects/${projectId}/milestones`, {
     method: "POST",
-    body: { name }
+    body: {
+      name: input.name,
+      ...(input.parentMilestoneId !== undefined ? { parentMilestoneId: input.parentMilestoneId } : {}),
+      ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+      ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {})
+    }
   });
   return { ...res.data, id: String(res.data.id) };
 }
@@ -143,12 +185,20 @@ export async function updateMilestone(input: {
   milestoneId: string;
   name?: string;
   isCompleted?: boolean;
+  parentMilestoneId?: string | null;
+  startDate?: string | null;
+  dueDate?: string | null;
+  startNow?: boolean;
 }): Promise<MilestoneRow> {
   const res = await apiFetch<Ok<MilestoneRow>>(`/api/projects/${input.projectId}/milestones/${input.milestoneId}`, {
     method: "PATCH",
     body: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.isCompleted !== undefined ? { isCompleted: input.isCompleted } : {})
+      ...(input.isCompleted !== undefined ? { isCompleted: input.isCompleted } : {}),
+      ...(input.parentMilestoneId !== undefined ? { parentMilestoneId: input.parentMilestoneId } : {}),
+      ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+      ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+      ...(input.startNow !== undefined ? { startNow: input.startNow } : {})
     }
   });
   return { ...res.data, id: String(res.data.id) };
@@ -170,7 +220,14 @@ export async function fetchPlans(projectId: string): Promise<PlanRow[]> {
 
 export async function fetchPlan(projectId: string, planId: string): Promise<PlanRow> {
   const res = await apiFetch<Ok<PlanRow>>(`/api/projects/${projectId}/plans/${planId}`);
-  return { ...res.data, id: String(res.data.id) };
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    assignedTo: res.data.assignedTo ?? null,
+    refs: res.data.refs ?? null,
+    startDate: res.data.startDate ?? null,
+    dueOn: res.data.dueOn ?? null
+  };
 }
 
 export async function fetchPlanEntries(projectId: string, planId: string): Promise<PlanEntryRow[]> {
@@ -178,22 +235,30 @@ export async function fetchPlanEntries(projectId: string, planId: string): Promi
   return res.data.map((row) => ({
     ...row,
     id: String(row.id),
-    runId: row.runId ? String(row.runId) : undefined
+    runId: row.runId ? String(row.runId) : undefined,
+    assignedTo: row.assignedTo ?? null,
+    refs: row.refs ?? null,
+    startDate: row.startDate ?? null,
+    dueOn: row.dueOn ?? null,
+    includeAll: row.includeAll ?? true,
+    includeCaseIds: row.includeCaseIds ?? [],
+    excludeCaseIds: row.excludeCaseIds ?? [],
+    isIncluded: row.isIncluded ?? true
   }));
 }
 
-export async function createPlan(projectId: string, name: string): Promise<PlanRow> {
+export async function createPlan(projectId: string, input: PlanWriteInput): Promise<PlanRow> {
   const res = await apiFetch<Ok<PlanRow>>(`/api/projects/${projectId}/plans`, {
     method: "POST",
-    body: { name }
+    body: input
   });
   return { ...res.data, id: String(res.data.id) };
 }
 
-export async function updatePlan(projectId: string, planId: string, name: string): Promise<PlanRow> {
+export async function updatePlan(projectId: string, planId: string, input: PlanWriteInput): Promise<PlanRow> {
   const res = await apiFetch<Ok<PlanRow>>(`/api/projects/${projectId}/plans/${planId}`, {
     method: "PATCH",
-    body: { name }
+    body: input
   });
   return { ...res.data, id: String(res.data.id) };
 }
@@ -205,7 +270,7 @@ export async function deletePlan(projectId: string, planId: string) {
 export async function createPlanEntry(
   projectId: string,
   planId: string,
-  input: { name: string; environment?: string }
+  input: PlanEntryWriteInput & { name: string }
 ): Promise<PlanEntryRow> {
   const res = await apiFetch<Ok<PlanEntryRow>>(`/api/projects/${projectId}/plans/${planId}/entries`, {
     method: "POST",
@@ -222,7 +287,7 @@ export async function updatePlanEntry(
   projectId: string,
   planId: string,
   entryId: string,
-  input: { name?: string; environment?: string | null }
+  input: PlanEntryWriteInput
 ): Promise<PlanEntryRow> {
   const res = await apiFetch<Ok<PlanEntryRow>>(`/api/projects/${projectId}/plans/${planId}/entries/${entryId}`, {
     method: "PATCH",
@@ -312,6 +377,25 @@ export async function fetchPlanRollupByConfiguration(projectId: string, planId: 
     configurationId: String(item.configurationId),
     groupId: String(item.groupId)
   }));
+}
+
+export async function savePlanEntryConfigurations(input: {
+  projectId: string;
+  planId: string;
+  entryId: string;
+  configurationIds: string[];
+}) {
+  const res = await apiFetch<Ok<{ entryId: string; configurationIds: string[] }>>(
+    `/api/projects/${input.projectId}/plans/${input.planId}/entries/${input.entryId}/configurations`,
+    {
+      method: "PUT",
+      body: { configurationIds: input.configurationIds }
+    }
+  );
+  return {
+    entryId: String(res.data.entryId),
+    configurationIds: (res.data.configurationIds ?? []).map((id) => String(id))
+  };
 }
 
 export async function fetchPlanEntryConfigurations(

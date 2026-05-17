@@ -16,6 +16,10 @@ export const resultSchema = z.object({
   elapsed: z.string().optional(),
   version: z.string().optional(),
   defects: z.array(z.string()).optional(),
+  aiActualOutput: z.string().nullable().optional(),
+  aiQualityRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  aiLatencyMs: z.coerce.number().int().min(0).nullable().optional(),
+  aiTraces: z.string().nullable().optional(),
   customValues: z.record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()])).optional(),
   source: z.enum(["manual", "automation", "api"]).optional(),
   stepResults: z

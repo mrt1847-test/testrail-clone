@@ -9,6 +9,7 @@ import type { TestCase, TestInstance, TestRun } from "./runs.types.js";
 import { enrichTestInstancesWithCaseChange } from "./instanceCaseChange.js";
 import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
 import type { CustomFieldValue } from "../../domain/customFieldTypes.js";
+import { assignmentAgingForRow } from "./assignmentListFilters.js";
 
 type ResultCustomValues = Record<string, CustomFieldValue>;
 
@@ -204,20 +205,16 @@ export interface RunsRepository {
   resolveFilterCaseIds(input: import("./runCompositionFilter.js").RunCompositionScope): Promise<bigint[]>;
   listSuiteCaseIds(projectId: bigint, suiteId: bigint): Promise<bigint[]>;
   updateTestAssignee(testId: bigint, assignedTo: bigint | null): Promise<TestInstance | null>;
-  listAssignedTests(input: {
+  listAssignedTests(input: import("./assignmentListFilters.js").AssignmentListFilters & {
     projectId: bigint;
     userId: bigint;
-  }): Promise<
-    Array<{
-      testId: bigint;
-      runId: bigint;
-      runName: string;
-      caseId: bigint;
-      title: string;
-      status: TestStatus;
-      assignedTo: bigint | null;
-    }>
-  >;
+  }): Promise<import("./assignmentListFilters.js").AssignmentTestRow[]>;
+  listTeamTodoTests(
+    input: import("./assignmentListFilters.js").AssignmentListFilters & {
+      projectId: bigint;
+      assigneeId?: bigint | "all";
+    }
+  ): Promise<import("./assignmentListFilters.js").AssignmentTestRow[]>;
 }
 
 type ResultRow = {
@@ -227,6 +224,10 @@ type ResultRow = {
   comment?: string;
   elapsed?: string;
   version?: string;
+  aiActualOutput?: string | null;
+  aiQualityRating?: number | null;
+  aiLatencyMs?: number | null;
+  aiTraces?: string | null;
   defects: string[];
   customValues?: ResultCustomValues;
   source: "manual" | "automation" | "api";
@@ -455,6 +456,10 @@ export class InMemoryRunsRepository implements RunsRepository {
           comment: input.comment,
           elapsed: input.elapsed,
           version: input.version,
+          aiActualOutput: input.aiActualOutput ?? null,
+          aiQualityRating: input.aiQualityRating ?? null,
+          aiLatencyMs: input.aiLatencyMs ?? null,
+          aiTraces: input.aiTraces ?? null,
           defects: input.defects ?? [],
           customValues: input.customValues ?? {},
           source: input.source ?? "manual",
@@ -644,23 +649,89 @@ export class InMemoryRunsRepository implements RunsRepository {
     return instance;
   }
 
-  async listAssignedTests(input: { projectId: bigint; userId: bigint }) {
+  async listAssignedTests(input: import("./assignmentListFilters.js").AssignmentListFilters & {
+    projectId: bigint;
+    userId: bigint;
+  }) {
+    const { matchesAssignmentListFiltersInMemory } = await import("./assignmentListFilters.js");
     const runMap = new Map(this.runs.filter((run) => run.projectId === input.projectId).map((run) => [run.id, run]));
     const caseMap = new Map(this.cases.map((c) => [c.id, c]));
+    const q = input.q?.trim().toLowerCase();
     return this.instances
-      .filter((instance) => instance.assignedTo === input.userId && runMap.has(instance.runId))
-      .map((instance) => {
+      .filter((instance) => {
+        if (instance.assignedTo !== input.userId || !runMap.has(instance.runId)) return false;
         const run = runMap.get(instance.runId)!;
+        if (input.status && instance.status !== input.status) return false;
+        if (input.runId && instance.runId !== input.runId) return false;
+        if (!matchesAssignmentListFiltersInMemory(run, input)) return false;
+        if (!q) return true;
         const testCase = caseMap.get(instance.caseId);
-        return {
-          testId: instance.id,
-          runId: run.id,
-          runName: run.name,
-          caseId: instance.caseId,
-          title: testCase?.title ?? instance.titleSnapshot,
-          status: instance.status,
-          assignedTo: instance.assignedTo
-        };
-      });
+        const title = testCase?.title ?? instance.titleSnapshot;
+        return `${title} ${instance.caseId} ${run.name}`.toLowerCase().includes(q);
+      })
+      .map((instance) => this.mapInMemoryAssignmentRow(instance, runMap, caseMap));
+  }
+
+  async listTeamTodoTests(
+    input: import("./assignmentListFilters.js").AssignmentListFilters & {
+      projectId: bigint;
+      assigneeId?: bigint | "all";
+    }
+  ) {
+    const { matchesAssignmentListFiltersInMemory } = await import("./assignmentListFilters.js");
+    const runMap = new Map(this.runs.filter((run) => run.projectId === input.projectId).map((run) => [run.id, run]));
+    const caseMap = new Map(this.cases.map((c) => [c.id, c]));
+    const q = input.q?.trim().toLowerCase();
+    return this.instances
+      .filter((instance) => {
+        if (!instance.assignedTo || !runMap.has(instance.runId)) return false;
+        if (input.assigneeId && input.assigneeId !== "all" && instance.assignedTo !== input.assigneeId) return false;
+        if (input.status && instance.status !== input.status) return false;
+        if (input.runId && instance.runId !== input.runId) return false;
+        const run = runMap.get(instance.runId)!;
+        if (!matchesAssignmentListFiltersInMemory(run, input)) return false;
+        if (!q) return true;
+        const testCase = caseMap.get(instance.caseId);
+        const title = testCase?.title ?? instance.titleSnapshot;
+        return `${title} ${instance.caseId} ${run.name}`.toLowerCase().includes(q);
+      })
+      .map((instance) => this.mapInMemoryAssignmentRow(instance, runMap, caseMap, true));
+  }
+
+  private mapInMemoryAssignmentRow(
+    instance: TestInstance,
+    runMap: Map<bigint, TestRun>,
+    caseMap: Map<bigint, TestCase>,
+    includeAssignee = false
+  ): import("./assignmentListFilters.js").AssignmentTestRow {
+    const run = runMap.get(instance.runId)!;
+    const testCase = caseMap.get(instance.caseId);
+    const assigneeId = instance.assignedTo!;
+    const runDueOn = run.dueOn ?? null;
+    const status = instance.status;
+    return {
+      testId: instance.id,
+      runId: run.id,
+      runName: run.name,
+      caseId: instance.caseId,
+      title: testCase?.title ?? instance.titleSnapshot,
+      status,
+      assignedTo: instance.assignedTo,
+      runDueOn,
+      milestoneId: run.milestoneId ?? null,
+      milestoneName: null,
+      agingLevel: assignmentAgingForRow({
+        status,
+        runDueOn,
+        updatedAt: new Date()
+      }),
+      assignee: includeAssignee
+        ? {
+            id: assigneeId,
+            name: `User ${assigneeId.toString()}`,
+            email: `user-${assigneeId.toString()}@local`
+          }
+        : null
+    };
   }
 }

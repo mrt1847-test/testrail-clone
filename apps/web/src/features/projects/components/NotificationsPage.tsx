@@ -7,7 +7,8 @@ import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
   getActivityCompositionCaseLinks,
-  getActivityPrimaryHref
+  getActivityPrimaryHref,
+  getActivitySecondaryLinks
 } from "../../../shared/activity/activityLinks";
 import {
   fetchNotificationPreferences,
@@ -22,6 +23,7 @@ type PreferenceKey = keyof NotificationPreferences;
 
 const preferenceLabels: Array<{ key: PreferenceKey; label: string }> = [
   { key: "assignmentEnabled", label: "Assignments" },
+  { key: "activityEnabled", label: "Comments & results on your tests" },
   { key: "failedResultEnabled", label: "Failed results" },
   { key: "mentionEnabled", label: "Mentions" },
   { key: "digestEnabled", label: "Digest" }
@@ -107,7 +109,10 @@ export function NotificationsPage() {
       ) : null}
 
       {rows.length === 0 ? (
-        <EmptyState title="No notifications" description="Assignments, failed results, and important project events will appear here." />
+        <EmptyState
+          title="No notifications"
+          description="Assignments, comments and results on your tests, failed results, and mentions will appear here."
+        />
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <ul className="divide-y divide-slate-200">
@@ -122,7 +127,14 @@ export function NotificationsPage() {
                   }
                 : null;
               const primaryHref = target ? getActivityPrimaryHref(projectId, target) : null;
+              const secondaryLinks = target ? getActivitySecondaryLinks(projectId, target) : [];
               const caseLinks = target ? getActivityCompositionCaseLinks(projectId, target) : [];
+              const openLabel =
+                activity?.eventType === "test.assigned" || activity?.eventType === "run.assigned"
+                  ? "Open test"
+                  : activity?.eventType === "run.tests_added" || activity?.eventType === "run.test_removed"
+                    ? "Open run"
+                    : "Open source";
               return (
               <li key={row.id} className={row.readAt ? "px-4 py-3" : "bg-slate-50 px-4 py-3"}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -135,11 +147,14 @@ export function NotificationsPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                       {primaryHref ? (
                         <Link to={primaryHref} className="text-xs font-medium text-slate-700 underline">
-                          {activity?.eventType === "run.tests_added" || activity?.eventType === "run.test_removed"
-                            ? "Open run"
-                            : "Open source"}
+                          {openLabel}
                         </Link>
                       ) : null}
+                      {secondaryLinks.map((link) => (
+                        <Link key={link.href} to={link.href} className="text-xs font-medium text-slate-600 underline">
+                          {link.label}
+                        </Link>
+                      ))}
                       {caseLinks.map((link) => (
                         <Link key={link.caseId} to={link.href} className="text-xs text-slate-600 underline">
                           Case {link.label}

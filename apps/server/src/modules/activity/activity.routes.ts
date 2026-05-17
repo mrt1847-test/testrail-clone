@@ -29,6 +29,7 @@ const notificationIdParamSchema = z.object({
 const preferencesSchema = z.object({
   assignmentEnabled: z.boolean().optional(),
   failedResultEnabled: z.boolean().optional(),
+  activityEnabled: z.boolean().optional(),
   mentionEnabled: z.boolean().optional(),
   digestEnabled: z.boolean().optional()
 });
@@ -36,6 +37,7 @@ const preferencesSchema = z.object({
 const defaultPreferences = {
   assignmentEnabled: true,
   failedResultEnabled: true,
+  activityEnabled: true,
   mentionEnabled: true,
   digestEnabled: false
 };

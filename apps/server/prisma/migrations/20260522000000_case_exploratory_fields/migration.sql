@@ -1,0 +1,2 @@
+ALTER TABLE "TestCase" ADD COLUMN "mission" TEXT;
+ALTER TABLE "TestCase" ADD COLUMN "goals" TEXT;

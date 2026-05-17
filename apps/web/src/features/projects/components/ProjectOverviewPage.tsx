@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
+import { reportKeys } from "../hooks/reportKeys";
 import { ExecutionSummaryChart } from "./ExecutionSummaryChart";
+import { MilestoneDashboardPanel } from "./MilestoneDashboardPanel";
 import { ProjectSummaryCards } from "./ProjectSummaryCards";
 import { RecentFailureTable } from "./RecentFailureTable";
 import { RecentRunList } from "./RecentRunList";
@@ -14,6 +18,15 @@ const MAX_RECENT_RUNS = 5;
 export function ProjectOverviewPage() {
   const { projectId = "" } = useParams();
   const { data, isLoading, isError, refetch } = useProjectOverviewQuery(projectId);
+  const milestoneSummaryQuery = useQuery({
+    queryKey: reportKeys.milestoneSummary(projectId),
+    queryFn: () => fetchMilestoneSummary(projectId),
+    enabled: Boolean(projectId)
+  });
+  const summaryById = useMemo(
+    () => new Map((milestoneSummaryQuery.data?.items ?? []).map((row) => [row.milestoneId, row])),
+    [milestoneSummaryQuery.data?.items]
+  );
   const [activityTab, setActivityTab] = useState<"runs" | "failures">("runs");
 
   if (isLoading) return <LoadingState message="Loading overview…" />;
@@ -30,6 +43,16 @@ export function ProjectOverviewPage() {
           <ExecutionSummaryChart projectId={projectId} execution={data.execution} compact />
         </div>
       </section>
+
+      {milestoneSummaryQuery.data?.dashboard &&
+      milestoneSummaryQuery.data.dashboard.milestoneCount > 0 ? (
+        <MilestoneDashboardPanel
+          projectId={projectId}
+          dashboard={milestoneSummaryQuery.data.dashboard}
+          itemsById={summaryById}
+          compact
+        />
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">

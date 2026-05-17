@@ -41,6 +41,7 @@ import { RunDetailPage } from "./features/runs/components/RunDetailPage";
 import { RunListPage } from "./features/runs/components/RunListPage";
 import { ResultExplorerPage } from "./features/runs/components/ResultExplorerPage";
 import { MyTestsPage } from "./features/runs/components/MyTestsPage";
+import { TeamTodoPage } from "./features/runs/components/TeamTodoPage";
 import { AdminAccessDefaultsPage } from "./features/admin/components/AdminAccessDefaultsPage";
 import { AdminUsersPage } from "./features/admin/components/AdminUsersPage";
 import { ProjectCustomRolesPage } from "./features/projects/components/ProjectCustomRolesPage";
@@ -63,6 +64,7 @@ export function App() {
           <Route path="runs/:runId" element={<RunDetailPage />} />
           <Route path="runs/:runId/results" element={<ResultExplorerPage />} />
           <Route path="my-tests" element={<MyTestsPage />} />
+          <Route path="team-todo" element={<TeamTodoPage />} />
           <Route path="results" element={<ResultExplorerPage />} />
           <Route path="reports" element={<ReportsLayout />}>
             <Route index element={<ReportsOverviewPage />} />

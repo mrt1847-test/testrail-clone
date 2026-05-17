@@ -257,6 +257,7 @@ export type NotificationResult = {
 export type NotificationPreferences = {
   assignmentEnabled: boolean;
   failedResultEnabled: boolean;
+  activityEnabled: boolean;
   mentionEnabled: boolean;
   digestEnabled: boolean;
 };

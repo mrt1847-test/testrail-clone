@@ -7,6 +7,14 @@ import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchProjectResultExplorer } from "../api/runApi";
+import {
+  hasActiveResultCustomFilter,
+  isValuelessResultFilterOp,
+  operatorsForResultFieldType,
+  RESULT_CUSTOM_FILTER_OPERATOR_LABELS,
+  type ResultCustomFieldFilterOperator,
+  type ResultCustomFilterEntry
+} from "../resultCustomFieldFilterOps";
 
 export function ResultExplorerPage() {
   const { projectId = "", runId } = useParams();
@@ -18,7 +26,7 @@ export function ResultExplorerPage() {
   const [testId, setTestId] = useState("");
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
-  const [customFilters, setCustomFilters] = useState<Record<string, string>>({});
+  const [customFilters, setCustomFilters] = useState<Record<string, ResultCustomFilterEntry>>({});
   const pageSize = 50;
   const customFilterKey = useMemo(() => JSON.stringify(customFilters), [customFilters]);
   const queryKey = useMemo(
@@ -48,7 +56,9 @@ export function ResultExplorerPage() {
         createdFrom,
         createdTo,
         q: query,
-        customFilters
+        customFilters: Object.fromEntries(
+          Object.entries(customFilters).filter(([, entry]) => hasActiveResultCustomFilter(entry))
+        )
       }),
     enabled: Boolean(projectId),
     refetchInterval: false,
@@ -139,52 +149,83 @@ export function ResultExplorerPage() {
               setPage(1);
             }}
           />
-          {activeResultFields.map((field) =>
-            field.fieldType === "select" ? (
-              <select
-                key={field.systemName}
-                className="rounded border border-slate-300 px-2 py-1"
-                value={customFilters[field.systemName] ?? ""}
-                onChange={(e) => {
-                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
-                  setPage(1);
-                }}
-              >
-                <option value="">{field.name}</option>
-                {field.options.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : field.fieldType === "boolean" ? (
-              <select
-                key={field.systemName}
-                className="rounded border border-slate-300 px-2 py-1"
-                value={customFilters[field.systemName] ?? ""}
-                onChange={(e) => {
-                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
-                  setPage(1);
-                }}
-              >
-                <option value="">{field.name}</option>
-                <option value="true">True</option>
-                <option value="false">False</option>
-              </select>
-            ) : (
-              <input
-                key={field.systemName}
-                className="w-32 rounded border border-slate-300 px-2 py-1"
-                placeholder={field.name}
-                type={field.fieldType === "number" ? "number" : "text"}
-                value={customFilters[field.systemName] ?? ""}
-                onChange={(e) => {
-                  setCustomFilters((current) => ({ ...current, [field.systemName]: e.target.value }));
-                  setPage(1);
-                }}
-              />
-            )
-          )}
+          {activeResultFields.map((field) => {
+            const operators = operatorsForResultFieldType(field.fieldType);
+            const entry = customFilters[field.systemName] ?? { op: operators[0] ?? "eq", value: "" };
+            const valueless = isValuelessResultFilterOp(entry.op);
+            const patchFilter = (patch: Partial<ResultCustomFilterEntry>) => {
+              setCustomFilters((current) => ({
+                ...current,
+                [field.systemName]: {
+                  op: current[field.systemName]?.op ?? operators[0] ?? "eq",
+                  value: current[field.systemName]?.value ?? "",
+                  ...patch
+                }
+              }));
+              setPage(1);
+            };
+            return (
+              <div key={field.systemName} className="flex flex-wrap items-center gap-1">
+                <span className="text-xs text-slate-500">{field.name}</span>
+                <select
+                  className="rounded border border-slate-300 px-2 py-1"
+                  value={entry.op}
+                  onChange={(e) => {
+                    const op = e.target.value as ResultCustomFieldFilterOperator;
+                    patchFilter({
+                      op,
+                      value: isValuelessResultFilterOp(op) ? "" : entry.value
+                    });
+                  }}
+                >
+                  {operators.map((op) => (
+                    <option key={op} value={op}>
+                      {RESULT_CUSTOM_FILTER_OPERATOR_LABELS[op]}
+                    </option>
+                  ))}
+                </select>
+                {!valueless &&
+                  (field.fieldType === "select" || field.fieldType === "dropdown" ? (
+                    <select
+                      className="rounded border border-slate-300 px-2 py-1"
+                      value={entry.value}
+                      onChange={(e) => patchFilter({ value: e.target.value })}
+                    >
+                      <option value="">value</option>
+                      {field.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.fieldType === "boolean" || field.fieldType === "checkbox" ? (
+                    <select
+                      className="rounded border border-slate-300 px-2 py-1"
+                      value={entry.value}
+                      onChange={(e) => patchFilter({ value: e.target.value })}
+                    >
+                      <option value="">value</option>
+                      <option value="true">True</option>
+                      <option value="false">False</option>
+                    </select>
+                  ) : (
+                    <input
+                      className="w-28 rounded border border-slate-300 px-2 py-1"
+                      placeholder="value"
+                      type={
+                        field.fieldType === "number" || field.fieldType === "integer" || field.fieldType === "rating"
+                          ? "number"
+                          : field.fieldType === "date"
+                            ? "date"
+                            : "text"
+                      }
+                      value={entry.value}
+                      onChange={(e) => patchFilter({ value: e.target.value })}
+                    />
+                  ))}
+              </div>
+            );
+          })}
         </div>
 
         {explorerQuery.isLoading ? (

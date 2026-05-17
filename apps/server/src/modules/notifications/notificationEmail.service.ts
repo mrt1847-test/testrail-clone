@@ -1,7 +1,13 @@
 import type { Notification, PrismaClient } from "@prisma/client";
 
 import { env } from "../../config/env.js";
-import { buildDigestBodyForTest, shouldSendImmediateEmail, type EmailPreferenceInput } from "./notificationEmail.helpers.js";
+import {
+  buildDigestBodyForTest,
+  buildImmediateEmailBody,
+  buildNotificationActionUrl,
+  shouldSendImmediateEmail,
+  type EmailPreferenceInput
+} from "./notificationEmail.helpers.js";
 import { sendEmailMessage } from "./emailTransport.js";
 
 const MAX_DIGEST_ITEMS = 50;
@@ -14,15 +20,6 @@ function typeAllowed(type: string, preference: EmailPreferenceInput) {
   return shouldSendImmediateEmail({ ...preference, digestEnabled: false }, type);
 }
 
-function buildImmediateBody(notification: Pick<Notification, "title" | "body" | "type">, projectName: string) {
-  const lines = [
-    `Project: ${projectName}`,
-    `Type: ${notification.type}`,
-    notification.title,
-    notification.body ?? ""
-  ].filter(Boolean);
-  return lines.join("\n");
-}
 
 function buildDigestBody(
   projectName: string,
@@ -52,6 +49,7 @@ export async function queueEmailsForNotifications(
         userId: true,
         assignmentEnabled: true,
         failedResultEnabled: true,
+        activityEnabled: true,
         mentionEnabled: true,
         digestEnabled: true,
         lastDigestSentAt: true
@@ -61,6 +59,18 @@ export async function queueEmailsForNotifications(
 
   const userById = new Map(users.map((row) => [row.id, row]));
   const preferenceByUser = new Map(preferences.map((row) => [row.userId, row]));
+
+  const eventIds = notifications
+    .map((row) => row.activityEventId)
+    .filter((id): id is bigint => id != null);
+  const activityEvents =
+    eventIds.length > 0
+      ? await prisma.activityEvent.findMany({
+          where: { id: { in: eventIds } },
+          select: { id: true, payload: true }
+        })
+      : [];
+  const activityById = new Map(activityEvents.map((row) => [row.id, row]));
 
   const outboxRows: Array<{
     userId: bigint;
@@ -79,6 +89,7 @@ export async function queueEmailsForNotifications(
     const preference: PreferenceRow = preferenceByUser.get(notification.userId) ?? {
       assignmentEnabled: true,
       failedResultEnabled: true,
+      activityEnabled: true,
       mentionEnabled: true,
       digestEnabled: false,
       lastDigestSentAt: null
@@ -86,13 +97,27 @@ export async function queueEmailsForNotifications(
 
     if (!shouldSendImmediateEmail(preference, notification.type)) continue;
 
+    const activity = notification.activityEventId
+      ? activityById.get(notification.activityEventId)
+      : undefined;
+    const payload =
+      activity?.payload && typeof activity.payload === "object" && !Array.isArray(activity.payload)
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const actionUrl = buildNotificationActionUrl(
+      env.webOrigin,
+      notification.projectId,
+      notification.type,
+      payload
+    );
+
     outboxRows.push({
       userId: notification.userId,
       projectId: notification.projectId,
       recipientEmail: user.email,
       kind: "immediate",
       subject: `[TestRail Clone] ${notification.title}`,
-      bodyText: buildImmediateBody(notification, projectName),
+      bodyText: buildImmediateEmailBody(notification, projectName, actionUrl),
       notificationIds: [notification.id.toString()]
     });
   }
@@ -124,6 +149,7 @@ export async function enqueueDigestEmails(prisma: PrismaClient) {
       lastDigestSentAt: true,
       assignmentEnabled: true,
       failedResultEnabled: true,
+      activityEnabled: true,
       mentionEnabled: true,
       digestEnabled: true,
       user: { select: { email: true, deletedAt: true } },

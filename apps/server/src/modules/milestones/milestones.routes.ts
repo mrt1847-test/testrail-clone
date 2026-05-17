@@ -7,16 +7,35 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import {
+  createMilestoneSchema,
+  milestoneIdParamSchema,
+  updateMilestoneSchema
+} from "./milestones.schema.js";
+import {
+  parseOptionalDate,
+  toMilestoneDto,
+  validateMilestoneParent,
+  type MilestoneRecord
+} from "./milestones.shared.js";
 
-type MilestoneRow = {
-  id: bigint;
-  projectId: bigint;
-  name: string;
-  isCompleted: boolean;
-};
-
-const milestones: MilestoneRow[] = [];
+const milestones: MilestoneRecord[] = [];
 const milestoneRuns = new Map<bigint, Array<{ runId: bigint; runName: string; status: string; progress: number }>>();
+
+export function listMemoryMilestones(projectId: bigint) {
+  return milestones.filter((item) => item.projectId === projectId);
+}
+
+function findMemoryMilestone(projectId: bigint, milestoneId: bigint) {
+  return milestones.find((item) => item.projectId === projectId && item.id === milestoneId) ?? null;
+}
+
+async function listProjectMilestoneParents(prisma: PrismaClient, projectId: bigint) {
+  return prisma.milestone.findMany({
+    where: { projectId, deletedAt: null },
+    select: { id: true, parentMilestoneId: true }
+  });
+}
 
 export async function registerMilestonesRoutes(
   app: FastifyInstance,
@@ -27,40 +46,33 @@ export async function registerMilestonesRoutes(
     if (deps.prisma) {
       const rows = await deps.prisma.milestone.findMany({
         where: { projectId, deletedAt: null },
-        orderBy: { id: "desc" },
-        take: 100
+        orderBy: [{ parentMilestoneId: "asc" }, { name: "asc" }],
+        take: 250
       });
-      return reply.send(
-        toJsonSafe(
-          paged(
-            rows.map((row: (typeof rows)[number]) => ({
-              id: row.id,
-              projectId: row.projectId,
-              name: row.name,
-              isCompleted: row.isCompleted,
-              startDate: row.startDate?.toISOString() ?? null,
-              dueDate: row.dueDate?.toISOString() ?? null
-            })),
-            1,
-            100
-          )
-        )
-      );
+      return reply.send(toJsonSafe(paged(rows.map((row) => toMilestoneDto(row)), 1, 250)));
     }
-    const rows = milestones.filter((item) => item.projectId === projectId);
-    return reply.send(toJsonSafe(paged(rows, 1, 100)));
+    return reply.send(toJsonSafe(paged(listMemoryMilestones(projectId).map((row) => toMilestoneDto(row)), 1, 250)));
   });
 
   app.post("/api/projects/:projectId/milestones", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const body = req.body as { name?: string };
+    const body = createMilestoneSchema.parse(req.body ?? {});
+    const parentMilestoneId = body.parentMilestoneId ?? null;
+    const startDate = parseOptionalDate(body.startDate);
+    const dueDate = parseOptionalDate(body.dueDate);
+
     if (deps.prisma) {
+      const parentRows = await listProjectMilestoneParents(deps.prisma, projectId);
+      validateMilestoneParent({ milestoneId: null, parentMilestoneId, rows: parentRows });
       const created = await deps.prisma.milestone.create({
         data: {
           projectId,
-          name: body.name?.trim() || "New milestone"
+          name: body.name?.trim() || "New milestone",
+          parentMilestoneId,
+          ...(startDate !== undefined ? { startDate } : {}),
+          ...(dueDate !== undefined ? { dueDate } : {})
         }
       });
       await recordActivityEvent(deps.prisma, {
@@ -71,51 +83,73 @@ export async function registerMilestonesRoutes(
         eventType: "milestone.created",
         title: "Milestone created",
         body: created.name,
-        payload: { milestoneId: created.id.toString(), name: created.name }
+        payload: {
+          milestoneId: created.id.toString(),
+          name: created.name,
+          ...(parentMilestoneId ? { parentMilestoneId: parentMilestoneId.toString() } : {})
+        }
       });
-      return reply.send(
-        toJsonSafe({
-          data: {
-            id: created.id,
-            projectId: created.projectId,
-            name: created.name,
-            isCompleted: created.isCompleted
-          }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toMilestoneDto(created) }));
     }
-    const row: MilestoneRow = {
+
+    const parentRows = listMemoryMilestones(projectId);
+    validateMilestoneParent({ milestoneId: null, parentMilestoneId, rows: parentRows });
+    const row: MilestoneRecord = {
       id: BigInt(Date.now()),
       projectId,
+      parentMilestoneId,
       name: body.name?.trim() || "New milestone",
+      startDate: startDate ?? null,
+      dueDate: dueDate ?? null,
       isCompleted: false
     };
     milestones.unshift(row);
-    return reply.send(toJsonSafe({ data: row }));
+    return reply.send(toJsonSafe({ data: toMilestoneDto(row) }));
   });
 
   app.patch("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const params = req.params as { milestoneId: string };
-    const milestoneId = BigInt(params.milestoneId);
-    const body = req.body as { name?: string; isCompleted?: boolean };
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+    const body = updateMilestoneSchema.parse(req.body ?? {});
+
     if (deps.prisma) {
       const found = await deps.prisma.milestone.findFirst({
-        where: { id: milestoneId, projectId, deletedAt: null },
-        select: { id: true, name: true, isCompleted: true }
+        where: { id: milestoneId, projectId, deletedAt: null }
       });
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
       }
+
+      const parentRows = await listProjectMilestoneParents(deps.prisma, projectId);
+      if (body.parentMilestoneId !== undefined) {
+        validateMilestoneParent({
+          milestoneId,
+          parentMilestoneId: body.parentMilestoneId,
+          rows: parentRows
+        });
+      }
+
+      const startDate =
+        body.startNow === true
+          ? new Date()
+          : body.startDate !== undefined
+            ? parseOptionalDate(body.startDate)
+            : undefined;
+      const dueDate = body.dueDate !== undefined ? parseOptionalDate(body.dueDate) : undefined;
+
       const updated = await deps.prisma.milestone.update({
         where: { id: milestoneId },
         data: {
           ...(body.name !== undefined ? { name: body.name.trim() || "Untitled milestone" } : {}),
-          ...(body.isCompleted !== undefined ? { isCompleted: body.isCompleted } : {})
+          ...(body.isCompleted !== undefined ? { isCompleted: body.isCompleted } : {}),
+          ...(body.parentMilestoneId !== undefined ? { parentMilestoneId: body.parentMilestoneId } : {}),
+          ...(startDate !== undefined ? { startDate } : {}),
+          ...(dueDate !== undefined ? { dueDate } : {})
         }
       });
+
       const completionChanged = body.isCompleted !== undefined && found.isCompleted !== updated.isCompleted;
       await recordActivityEvent(deps.prisma, {
         projectId,
@@ -133,32 +167,35 @@ export async function registerMilestonesRoutes(
             : {})
         }
       });
-      return reply.send(
-        toJsonSafe({
-          data: {
-            id: updated.id,
-            projectId: updated.projectId,
-            name: updated.name,
-            isCompleted: updated.isCompleted
-          }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toMilestoneDto(updated) }));
     }
-    const row = milestones.find((item) => item.projectId === projectId && item.id === milestoneId);
+
+    const row = findMemoryMilestone(projectId, milestoneId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
     }
+    if (body.parentMilestoneId !== undefined) {
+      validateMilestoneParent({
+        milestoneId,
+        parentMilestoneId: body.parentMilestoneId,
+        rows: listMemoryMilestones(projectId)
+      });
+      row.parentMilestoneId = body.parentMilestoneId;
+    }
     if (body.name !== undefined) row.name = body.name.trim() || "Untitled milestone";
     if (body.isCompleted !== undefined) row.isCompleted = body.isCompleted;
-    return reply.send(toJsonSafe({ data: row }));
+    if (body.startNow === true) row.startDate = new Date();
+    else if (body.startDate !== undefined) row.startDate = parseOptionalDate(body.startDate);
+    if (body.dueDate !== undefined) row.dueDate = parseOptionalDate(body.dueDate);
+    return reply.send(toJsonSafe({ data: toMilestoneDto(row) }));
   });
 
   app.delete("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const params = req.params as { milestoneId: string };
-    const milestoneId = BigInt(params.milestoneId);
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+
     if (deps.prisma) {
       const found = await deps.prisma.milestone.findFirst({
         where: { id: milestoneId, projectId, deletedAt: null },
@@ -169,7 +206,11 @@ export async function registerMilestonesRoutes(
       }
       await deps.prisma.milestone.update({
         where: { id: milestoneId },
-        data: { deletedAt: new Date() }
+        data: { deletedAt: new Date(), parentMilestoneId: null }
+      });
+      await deps.prisma.milestone.updateMany({
+        where: { projectId, parentMilestoneId: milestoneId, deletedAt: null },
+        data: { parentMilestoneId: null }
       });
       await recordActivityEvent(deps.prisma, {
         projectId,
@@ -183,9 +224,15 @@ export async function registerMilestonesRoutes(
       });
       return reply.status(204).send();
     }
+
     const index = milestones.findIndex((item) => item.projectId === projectId && item.id === milestoneId);
     if (index < 0) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
+    }
+    for (const item of milestones) {
+      if (item.projectId === projectId && item.parentMilestoneId === milestoneId) {
+        item.parentMilestoneId = null;
+      }
     }
     milestones.splice(index, 1);
     return reply.status(204).send();
@@ -193,8 +240,8 @@ export async function registerMilestonesRoutes(
 
   app.get("/api/projects/:projectId/milestones/:milestoneId", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const params = req.params as { milestoneId: string };
-    const milestoneId = BigInt(params.milestoneId);
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+
     if (deps.prisma) {
       const found = await deps.prisma.milestone.findFirst({
         where: { id: milestoneId, projectId, deletedAt: null }
@@ -202,30 +249,39 @@ export async function registerMilestonesRoutes(
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
       }
+      const children = await deps.prisma.milestone.findMany({
+        where: { projectId, parentMilestoneId: milestoneId, deletedAt: null },
+        orderBy: { name: "asc" }
+      });
       return reply.send(
         toJsonSafe({
           data: {
-            id: found.id,
-            projectId: found.projectId,
-            name: found.name,
-            isCompleted: found.isCompleted,
-            startDate: found.startDate?.toISOString() ?? null,
-            dueDate: found.dueDate?.toISOString() ?? null
+            ...toMilestoneDto(found),
+            children: children.map((row) => toMilestoneDto(row))
           }
         })
       );
     }
-    const row = milestones.find((item) => item.projectId === projectId && item.id === milestoneId);
+
+    const row = findMemoryMilestone(projectId, milestoneId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
     }
-    return reply.send(toJsonSafe({ data: row }));
+    const children = listMemoryMilestones(projectId).filter((item) => item.parentMilestoneId === milestoneId);
+    return reply.send(
+      toJsonSafe({
+        data: {
+          ...toMilestoneDto(row),
+          children: children.map((item) => toMilestoneDto(item))
+        }
+      })
+    );
   });
 
   app.get("/api/projects/:projectId/milestones/:milestoneId/runs", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const params = req.params as { milestoneId: string };
-    const milestoneId = BigInt(params.milestoneId);
+    const { milestoneId } = milestoneIdParamSchema.parse(req.params);
+
     if (deps.prisma) {
       const row = await deps.prisma.milestone.findFirst({
         where: { id: milestoneId, projectId, deletedAt: null },
@@ -242,9 +298,9 @@ export async function registerMilestonesRoutes(
       return reply.send(
         toJsonSafe(
           paged(
-            runs.map((item: (typeof runs)[number]) => {
+            runs.map((item) => {
               const total = item.instances.length;
-              const completed = item.instances.filter((instance: (typeof item.instances)[number]) => instance.status !== "untested").length;
+              const completed = item.instances.filter((instance) => instance.status !== "untested").length;
               return {
                 runId: item.id,
                 runName: item.name,
@@ -258,7 +314,8 @@ export async function registerMilestonesRoutes(
         )
       );
     }
-    const row = milestones.find((item) => item.projectId === projectId && item.id === milestoneId);
+
+    const row = findMemoryMilestone(projectId, milestoneId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
     }

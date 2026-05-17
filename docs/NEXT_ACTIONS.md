@@ -15,25 +15,20 @@ Goal: keep the next development batch to roughly one PR. Direction lives in [ROA
 
 ## Current batch
 
-**Section:** Results And Custom Fields
+**Section:** Test Execution
 
 **Checklist line (exact line done when this is `[x]`):**
 
-```text
-- [ ] **TR-Core** P1 Advanced result custom field filtering semantics.
-```
+Pick the next unchecked **TR-Core** P1 line under **Test Execution** in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) and paste it here when starting work.
 
 ### Scope (only what closes the line above)
 
-1. Extend result explorer (and related APIs) beyond exact-match custom field filters.
-2. Support the product-defined operators (contains, range, empty, etc.) per field type.
-3. Wire UI controls that map to server filter semantics.
-4. Add focused tests for filter matrix per type.
+Follow the checklist line text and [ROADMAP.md](./ROADMAP.md) for that feature only.
 
 ### Out of scope for this batch
 
-- Execution workflow discussion comments (shipped).
-- Import mapping wizard (already `[x]` in checklist).
+- Plan-entry semantics (shipped).
+- Milestone forecasts / burndown hints.
 
 ---
 
@@ -43,5 +38,6 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | Test Execution And Runs | `- [ ] **TR-Core** P1 Email when tests are assigned and when others comment or add results to your tests.` |
-| 2 | Assignments And To-Do | `- [ ] **TR-Core** P1 **Team to-do** view: see other members’ or whole-team to-dos for workload balancing ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028)).` |
+| 1 | Test Execution | Next unchecked **TR-Core** P1 under test execution in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) |
+| 2 | Milestones, Plans | **TR-Pro** P2 Milestone forecasts and burndown-style hints |
+| 3 | Milestones, Plans | **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations |

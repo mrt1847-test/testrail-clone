@@ -24,6 +24,8 @@ function serializeCaseSnapshot(input: {
   priority?: string | null;
   caseType?: string | null;
   preconditions?: string | null;
+  mission?: string | null;
+  goals?: string | null;
   customValues?: Record<string, CaseCustomValue>;
   stepsSnapshot: Array<{ stepOrder: number; content: string; expectedResult?: string | null }>;
   attachmentSnapshots: unknown;
@@ -97,6 +99,10 @@ const caseSelect = {
   externalId: true,
   preconditions: true,
   expectedResult: true,
+  mission: true,
+  goals: true,
+  aiInput: true,
+  aiExpectedOutput: true,
   caseTemplateId: true,
   customValues: true,
   lockVersion: true,
@@ -207,6 +213,10 @@ function mapCaseRow(row: {
   externalId: string | null;
   preconditions: string | null;
   expectedResult: string | null;
+  mission: string | null;
+  goals: string | null;
+  aiInput: string | null;
+  aiExpectedOutput: string | null;
   caseTemplateId: bigint | null;
   customValues: unknown;
   lockVersion: number;
@@ -229,6 +239,10 @@ function mapCaseRow(row: {
     externalId: row.externalId,
     preconditions: row.preconditions,
     expectedResult: row.expectedResult,
+    mission: row.mission,
+    goals: row.goals,
+    aiInput: row.aiInput,
+    aiExpectedOutput: row.aiExpectedOutput,
     caseTemplateId: row.caseTemplateId,
     customValues: jsonObject(row.customValues),
     lockVersion: row.lockVersion,
@@ -620,6 +634,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ? { preconditions: input.preconditions }
           : {}),
         ...(input.expectedResult !== undefined ? { expectedResult: input.expectedResult } : {}),
+        ...(input.mission !== undefined ? { mission: input.mission } : {}),
+        ...(input.goals !== undefined ? { goals: input.goals } : {}),
+        ...(input.aiInput !== undefined ? { aiInput: input.aiInput } : {}),
+        ...(input.aiExpectedOutput !== undefined ? { aiExpectedOutput: input.aiExpectedOutput } : {}),
         ...(input.caseTemplateId !== undefined ? { caseTemplateId: input.caseTemplateId } : {}),
         customValues: input.customValues ?? {}
       },
@@ -911,17 +929,23 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         priority: current.priority ?? null,
         caseType: current.caseType ?? null,
         preconditions: current.preconditions ?? null,
+        mission: current.mission ?? null,
+        goals: current.goals ?? null,
         customValues: current.customValues ?? {},
         stepsSnapshot,
         attachmentSnapshots
       });
       if (latest) {
+        const latestCustomValues = jsonObject(latest.customValuesSnapshot);
         const latestSignature = serializeCaseSnapshot({
           title: latest.title,
           priority: latest.priority ?? null,
           caseType: latest.caseType ?? null,
           preconditions: latest.preconditions ?? null,
-          customValues: jsonObject(latest.customValuesSnapshot),
+          mission:
+            typeof latestCustomValues.mission === "string" ? latestCustomValues.mission : null,
+          goals: typeof latestCustomValues.goals === "string" ? latestCustomValues.goals : null,
+          customValues: latestCustomValues,
           stepsSnapshot:
             (Array.isArray(latest.stepsSnapshot)
               ? latest.stepsSnapshot
@@ -931,7 +955,11 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         if (latestSignature === snapshotSignature) return null;
       }
 
-      const customValuesSnapshot = current.customValues ?? {};
+      const customValuesSnapshot = {
+        ...(current.customValues ?? {}),
+        ...(current.mission ? { mission: current.mission } : {}),
+        ...(current.goals ? { goals: current.goals } : {})
+      };
       const stepsPayload = stepsSnapshot;
       const attachmentPayload = attachmentSnapshots;
 
@@ -1087,6 +1115,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
           ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
           ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
           ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {}),
+          ...(patch.mission !== undefined ? { mission: patch.mission } : {}),
+          ...(patch.goals !== undefined ? { goals: patch.goals } : {}),
+          ...(patch.aiInput !== undefined ? { aiInput: patch.aiInput } : {}),
+          ...(patch.aiExpectedOutput !== undefined ? { aiExpectedOutput: patch.aiExpectedOutput } : {}),
           ...(patch.caseTemplateId !== undefined ? { caseTemplateId: patch.caseTemplateId } : {}),
           ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
           ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
@@ -1107,6 +1139,10 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
         ...(patch.caseType !== undefined ? { caseType: patch.caseType } : {}),
         ...(patch.preconditions !== undefined ? { preconditions: patch.preconditions } : {}),
         ...(patch.expectedResult !== undefined ? { expectedResult: patch.expectedResult } : {}),
+        ...(patch.mission !== undefined ? { mission: patch.mission } : {}),
+        ...(patch.goals !== undefined ? { goals: patch.goals } : {}),
+        ...(patch.aiInput !== undefined ? { aiInput: patch.aiInput } : {}),
+        ...(patch.aiExpectedOutput !== undefined ? { aiExpectedOutput: patch.aiExpectedOutput } : {}),
         ...(patch.caseTemplateId !== undefined ? { caseTemplateId: patch.caseTemplateId } : {}),
         ...(patch.refs !== undefined ? { refs: patch.refs } : {}),
         ...(patch.labels !== undefined ? { labels: patch.labels } : {}),

@@ -9,7 +9,13 @@ import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import type { RunsRepository } from "../runs/runs.repository.js";
 import { parseCaseRefs } from "../../domain/caseRefs.js";
-import { customValuesFromJson, parseReportFilterValue, type CustomFieldValue } from "../../domain/customFieldTypes.js";
+import { customValuesFromJson, type CustomFieldValue } from "../../domain/customFieldTypes.js";
+import {
+  buildPrismaResultCustomValueWhere,
+  extractResultCustomFieldFilters,
+  matchesResultCustomFieldFilter,
+  type ParsedResultCustomFieldFilter
+} from "../../domain/resultCustomFieldFilters.js";
 import { formatDurationSeconds, sumDurationSeconds } from "../../domain/timeTracking.js";
 import {
   latestByCreatedAt,
@@ -18,6 +24,7 @@ import {
   toStatusCounters,
   toUniqueDefectKeys
 } from "./reportMetrics.service.js";
+import { buildMilestoneSummary } from "./milestoneSummary.service.js";
 
 type ReportActivityItem = {
   runId: string;
@@ -64,17 +71,6 @@ function toIsoDate(offsetDays: number) {
   return now.toISOString().slice(0, 10);
 }
 
-function extractCustomValueFilters(query: unknown) {
-  if (!query || typeof query !== "object" || Array.isArray(query)) return [];
-  return Object.entries(query as Record<string, unknown>)
-    .filter(([key, value]) => key.startsWith("custom_") && typeof value === "string" && value.trim().length > 0)
-    .map(([key, value]) => ({
-      systemName: key.slice("custom_".length),
-      rawValue: String(value).trim()
-    }))
-    .filter((item) => item.systemName.length > 0);
-}
-
 type ResultExplorerFilters = {
   runId?: bigint;
   caseId?: bigint;
@@ -84,7 +80,7 @@ type ResultExplorerFilters = {
   createdFrom?: string;
   createdTo?: string;
   q?: string;
-  customFilters: Array<{ systemName: string; rawValue: string }>;
+  customFilters: ParsedResultCustomFieldFilter[];
 };
 
 class ReportsQueryService {
@@ -167,12 +163,7 @@ class ReportsQueryService {
       .map((filter): Prisma.TestResultWhereInput | null => {
         const field = customFieldByName.get(filter.systemName);
         if (!field) return null;
-        return {
-          customValues: {
-            path: [filter.systemName],
-            equals: parseReportFilterValue(filter.rawValue, field.fieldType)
-          }
-        };
+        return buildPrismaResultCustomValueWhere(filter.systemName, field.fieldType, filter);
       })
       .filter((item): item is Prisma.TestResultWhereInput => item !== null);
     const where: Prisma.TestResultWhereInput = {
@@ -456,71 +447,6 @@ class ReportsQueryService {
   }
 }
 
-async function buildMilestoneSummaryItems(
-  projectId: bigint,
-  deps: { repo: RunsRepository; prisma?: PrismaClient }
-) {
-  if (deps.prisma) {
-    const milestones = await deps.prisma.milestone.findMany({
-      where: { projectId, deletedAt: null },
-      orderBy: [{ isCompleted: "asc" }, { id: "desc" }]
-    });
-    const items = [];
-    for (const milestone of milestones) {
-      const runs = await deps.prisma.testRun.findMany({
-        where: { projectId, milestoneId: milestone.id, deletedAt: null },
-        include: { instances: { where: { deletedAt: null }, select: { status: true } } }
-      });
-      const statuses = runs.flatMap((run) => run.instances.map((instance) => instance.status));
-      const metrics = toRunSummaryMetrics(statuses);
-      items.push({
-        milestoneId: milestone.id.toString(),
-        name: milestone.name,
-        isCompleted: milestone.isCompleted,
-        runCount: runs.length,
-        openRunCount: runs.filter((run) => run.status === "open").length,
-        total: metrics.total,
-        passed: metrics.passed,
-        failed: metrics.failed,
-        progress: metrics.progress
-      });
-    }
-    return items;
-  }
-
-  const runs = await deps.repo.listRunsByProject(projectId);
-  const grouped = new Map<string, { name: string; isCompleted: boolean; statuses: string[]; runCount: number; openRunCount: number }>();
-  for (const run of runs) {
-    if (run.milestoneId == null) continue;
-    const key = run.milestoneId.toString();
-    const bucket = grouped.get(key) ?? {
-      name: `Milestone ${key}`,
-      isCompleted: false,
-      statuses: [],
-      runCount: 0,
-      openRunCount: 0
-    };
-    bucket.runCount += 1;
-    if (run.status === "open") bucket.openRunCount += 1;
-    const instances = await deps.repo.listInstancesForRun(run.id);
-    bucket.statuses.push(...instances.map((instance) => instance.status));
-    grouped.set(key, bucket);
-  }
-  return Array.from(grouped.entries()).map(([milestoneId, bucket]) => {
-    const metrics = toRunSummaryMetrics(bucket.statuses);
-    return {
-      milestoneId,
-      name: bucket.name,
-      isCompleted: bucket.isCompleted,
-      runCount: bucket.runCount,
-      openRunCount: bucket.openRunCount,
-      total: metrics.total,
-      passed: metrics.passed,
-      failed: metrics.failed,
-      progress: metrics.progress
-    };
-  });
-}
 
 async function buildPlanSummaryItems(projectId: bigint, deps: { repo: RunsRepository; prisma?: PrismaClient }) {
   if (deps.prisma) {
@@ -773,7 +699,7 @@ export async function registerReportsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
     const { runId, caseId, testId, status, source, createdFrom, createdTo, q } = resultExplorerQuerySchema.parse(req.query ?? {});
-    const customFilters = extractCustomValueFilters(req.query);
+    const customFilters = extractResultCustomFieldFilters(req.query);
 
     const prismaExplorer = await reportsQueryService.queryResultsExplorer(projectId, page, pageSize, {
       runId,
@@ -796,6 +722,22 @@ export async function registerReportsRoutes(
           totalPages: Math.max(1, Math.ceil(prismaExplorer.total / pageSize))
         }))
       );
+    }
+
+    const customFieldTypeByName = new Map<string, string>();
+    if (customFilters.length > 0 && deps.prisma) {
+      const fieldNames = [...new Set(customFilters.map((filter) => filter.systemName))];
+      const fields = await deps.prisma.customField.findMany({
+        where: {
+          projectId,
+          scope: "result",
+          deletedAt: null,
+          isActive: true,
+          systemName: { in: fieldNames }
+        },
+        select: { systemName: true, fieldType: true }
+      });
+      for (const field of fields) customFieldTypeByName.set(field.systemName, field.fieldType);
     }
 
     const runs = await deps.repo.listRunsByProject(projectId);
@@ -836,8 +778,9 @@ export async function registerReportsRoutes(
           if (createdTo && row.createdAt > new Date(createdTo)) continue;
           if (
             customFilters.some((filter) => {
-              const value = row.customValues?.[filter.systemName];
-              return value == null || String(value) !== filter.rawValue;
+              const fieldType = customFieldTypeByName.get(filter.systemName) ?? "text";
+              const values = customValuesFromJson(row.customValues);
+              return !matchesResultCustomFieldFilter(values[filter.systemName], fieldType, filter);
             })
           ) {
             continue;
@@ -931,8 +874,8 @@ export async function registerReportsRoutes(
 
   app.get("/api/projects/:projectId/reports/milestone-summary", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const items = await buildMilestoneSummaryItems(projectId, deps);
-    return reply.send(toJsonSafe(ok({ items })));
+    const summary = await buildMilestoneSummary(projectId, deps);
+    return reply.send(toJsonSafe(ok(summary)));
   });
 
   app.get("/api/projects/:projectId/reports/plan-summary", async (req, reply) => {

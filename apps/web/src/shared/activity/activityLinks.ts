@@ -30,6 +30,23 @@ export function runHref(projectId: string, runId: string, testId?: string | null
   return `/projects/${projectId}/runs/${runId}`;
 }
 
+export function myTestsHref(projectId: string) {
+  return `/projects/${projectId}/my-tests`;
+}
+
+export type ActivitySecondaryLink = {
+  label: string;
+  href: string;
+};
+
+/** Extra navigation targets for assignment-related notifications. */
+export function getActivitySecondaryLinks(projectId: string, row: ActivityLinkTarget): ActivitySecondaryLink[] {
+  if (row.eventType === "test.assigned" || row.eventType === "run.assigned") {
+    return [{ label: "My Tests", href: myTestsHref(projectId) }];
+  }
+  return [];
+}
+
 /** Primary navigation target for an activity or notification row. */
 export function getActivityPrimaryHref(projectId: string, row: ActivityLinkTarget): string | null {
   const payload = row.payload ?? {};

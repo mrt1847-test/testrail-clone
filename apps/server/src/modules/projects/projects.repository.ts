@@ -45,6 +45,10 @@ export type CaseRow = {
   externalId?: string | null;
   preconditions?: string | null;
   expectedResult?: string | null;
+  mission?: string | null;
+  goals?: string | null;
+  aiInput?: string | null;
+  aiExpectedOutput?: string | null;
   caseTemplateId?: bigint | null;
   customValues?: Record<string, CaseCustomValue>;
   lockVersion: number;

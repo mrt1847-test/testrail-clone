@@ -58,6 +58,35 @@ export const updateTestAssigneeSchema = z.object({
   assignedTo: z.coerce.bigint().nullable()
 });
 
+const milestoneIdFilterSchema = z
+  .preprocess((value) => {
+    if (value === undefined || value === "" || value === "all") return undefined;
+    if (value === "none" || value === "null") return "none";
+    return value;
+  }, z.union([z.literal("none"), z.coerce.bigint()]))
+  .optional();
+
+export const assignmentListQuerySchema = z.object({
+  status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
+  runId: z.coerce.bigint().optional(),
+  q: z.string().trim().min(1).optional(),
+  milestoneId: milestoneIdFilterSchema,
+  dueBefore: z.coerce.date().optional(),
+  dueAfter: z.coerce.date().optional(),
+  overdue: z.coerce.boolean().optional(),
+  dueUnset: z.coerce.boolean().optional()
+});
+
+export const teamTodoQuerySchema = assignmentListQuerySchema.extend({
+  assigneeId: z
+    .preprocess((value) => {
+      if (value === undefined || value === "" || value === "all") return "all";
+      return value;
+    }, z.union([z.literal("all"), z.coerce.bigint()]))
+    .optional()
+    .default("all")
+});
+
 export const runInstancesQuerySchema = z.object({
   status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
   assignedTo: z

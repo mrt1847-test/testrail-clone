@@ -21,6 +21,11 @@ import {
 } from "./CaseAuthoringForm";
 import { CaseRefTokens } from "./CaseRefTokens";
 import { BddScenarioEditor } from "./BddScenarioEditor";
+import { CaseMetadataQuickEdit } from "./CaseMetadataQuickEdit";
+import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
+import { caseKeys } from "../hooks/useCases";
+import { caseDetailKeys } from "../hooks/useCaseDetail";
+import { useQueryClient } from "@tanstack/react-query";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -36,6 +41,10 @@ type ExpandableCaseDetailProps = {
     estimate: string | null;
     references: string;
     expectedResult: string;
+    mission: string;
+    goals: string;
+    aiInput: string;
+    aiExpectedOutput: string;
     templateId: string | null;
     customValues: Record<string, string | number | boolean | string[] | null>;
   }) => Promise<void>;
@@ -639,6 +648,7 @@ export function ExpandableCaseDetail({
   showHeading = true
 }: ExpandableCaseDetailProps) {
   const { projectId = "" } = useParams();
+  const qc = useQueryClient();
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
   const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | string[] | null>>(
@@ -734,7 +744,13 @@ export function ExpandableCaseDetail({
             initialReferences={data.references}
             initialExpectedResult={data.expectedResult}
             initialCaseTemplateId={data.caseTemplateId != null ? String(data.caseTemplateId) : null}
-            initialCustomValues={customValues}
+            initialCustomValues={{
+              ...customValues,
+              ...(data.mission.trim() ? { mission: data.mission } : {}),
+              ...(data.goals.trim() ? { goals: data.goals } : {}),
+              ...(data.aiInput.trim() ? { ai_input: data.aiInput } : {}),
+              ...(data.aiExpectedOutput.trim() ? { ai_expected_output: data.aiExpectedOutput } : {})
+            }}
             customFields={customFields}
             templates={caseTemplates}
             submitLabel={isSaving ? "Saving..." : "Save"}
@@ -838,6 +854,10 @@ export function ExpandableCaseDetail({
                 estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
                 references: input.references,
                 expectedResult: input.expectedResult,
+                mission: input.mission,
+                goals: input.goals,
+                aiInput: input.aiInput,
+                aiExpectedOutput: input.aiExpectedOutput,
                 templateId: input.templateId,
                 customValues: input.customValues
               });
@@ -861,15 +881,46 @@ export function ExpandableCaseDetail({
             )}{" "}
             / <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
           </p>
-          <p className="text-sm text-slate-700">
-            <span className="font-medium">Labels:</span> {data.labels.length > 0 ? data.labels.join(", ") : "-"}
-          </p>
+          <div className="text-sm text-slate-700">
+            <span className="font-medium">Labels:</span>{" "}
+            {data.labels.length > 0 ? (
+              <span className="mt-1 inline-flex flex-wrap gap-1">
+                {data.labels.map((label) => (
+                  <span key={label} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
+                    {label}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              "-"
+            )}
+          </div>
           <p className="text-sm text-slate-700">
             <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}
           </p>
           {data.expectedResult.trim().length > 0 ? (
             <p className="text-sm text-slate-700">
               <span className="font-medium">Expected result:</span> {data.expectedResult}
+            </p>
+          ) : null}
+          {data.mission.trim().length > 0 ? (
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              <span className="font-medium">Mission:</span> {data.mission}
+            </p>
+          ) : null}
+          {data.goals.trim().length > 0 ? (
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              <span className="font-medium">Goals:</span> {data.goals}
+            </p>
+          ) : null}
+          {data.aiInput.trim().length > 0 ? (
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              <span className="font-medium">Input:</span> {data.aiInput}
+            </p>
+          ) : null}
+          {data.aiExpectedOutput.trim().length > 0 ? (
+            <p className="whitespace-pre-wrap text-sm text-slate-700">
+              <span className="font-medium">Expected output:</span> {data.aiExpectedOutput}
             </p>
           ) : null}
           {activeCaseTemplate ? (
@@ -1050,17 +1101,39 @@ export function ExpandableCaseDetail({
           {customFields.filter((field) => field.isActive).length > 0 ? (
             <div className="mt-2 rounded border border-slate-200 bg-white p-2">
               <p className="text-xs font-medium text-slate-700">Custom fields</p>
-              <dl className="mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+              <ul className="mt-2 space-y-2 text-xs text-slate-700">
                 {customFields
                   .filter((field) => field.isActive)
-                  .map((field) => (
-                    <div key={field.systemName} className="flex gap-1">
-                      <dt className="font-medium">{field.name}:</dt>
-                      <dd>{data.customValues[field.systemName] == null ? "-" : String(data.customValues[field.systemName])}</dd>
-                    </div>
-                  ))}
-              </dl>
+                  .map((field) => {
+                    const display = formatCustomFieldDisplayValue(data.customValues[field.systemName]);
+                    return (
+                      <li
+                        key={field.systemName}
+                        className="flex flex-col gap-0.5 rounded border border-slate-100 bg-slate-50 px-2 py-1.5 sm:flex-row sm:items-start sm:gap-2"
+                      >
+                        <span className="shrink-0 font-medium text-slate-600 sm:w-36">{field.name}</span>
+                        <span className="min-w-0 whitespace-pre-wrap break-words">{display || "—"}</span>
+                      </li>
+                    );
+                  })}
+              </ul>
             </div>
+          ) : null}
+
+          {!data.archivedAt && projectId ? (
+            <CaseMetadataQuickEdit
+              projectId={projectId}
+              caseId={data.id}
+              lockVersion={data.lockVersion}
+              references={data.references}
+              labels={data.labels}
+              customValues={data.customValues}
+              customFields={customFields}
+              onSaved={() => {
+                void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(data.id) });
+                void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
+              }}
+            />
           ) : null}
 
           {data.steps.length === 0 ? (

@@ -57,14 +57,24 @@ function preferenceEnabled(
   preference?: {
     assignmentEnabled: boolean;
     failedResultEnabled: boolean;
+    activityEnabled: boolean;
     mentionEnabled: boolean;
   }
 ) {
   if (!preference) return true;
   if (type === "assignment") return preference.assignmentEnabled;
   if (type === "failed_result") return preference.failedResultEnabled;
+  if (type === "activity") return preference.activityEnabled;
   if (type === "mention") return preference.mentionEnabled;
   return true;
+}
+
+function assigneeNotifyPayload(assignedToUserId: bigint, testId?: bigint | null) {
+  return {
+    assignedToUserId: assignedToUserId.toString(),
+    notifyUserId: assignedToUserId.toString(),
+    ...(testId ? { testId: testId.toString() } : {})
+  };
 }
 
 function eventMatches(pattern: string, eventType: string) {
@@ -169,6 +179,7 @@ export async function recordActivityEvent(prisma: PrismaClient | undefined, inpu
             select: {
               assignmentEnabled: true,
               failedResultEnabled: true,
+              activityEnabled: true,
               mentionEnabled: true
             }
           }
@@ -309,20 +320,40 @@ export async function recordExecutionCommentActivity(
   }
 ) {
   const scopeLabel = input.entityType === "test_run" ? "run" : "test";
+  let assigneeId: bigint | null = null;
+  let testId: bigint | null = null;
+  if (input.entityType === "test_instance") {
+    const instance = await prisma.testInstance.findUnique({
+      where: { id: input.entityId },
+      select: { assignedTo: true }
+    });
+    assigneeId = instance?.assignedTo ?? null;
+    testId = input.entityId;
+  } else {
+    const run = await prisma.testRun.findUnique({
+      where: { id: input.entityId },
+      select: { assignedTo: true }
+    });
+    assigneeId = run?.assignedTo ?? null;
+  }
+  const notifyAssignee = assigneeId != null && assigneeId !== input.actorUserId;
+
   const event = await recordActivityEvent(prisma, {
     projectId: input.projectId,
     actorUserId: input.actorUserId,
     entityType: "execution_comment",
     entityId: input.commentId,
     eventType: "execution_comment.created",
-    title: "Execution comment added",
+    title: notifyAssignee ? "New comment on your assigned test" : "Execution comment added",
     body: `${scopeLabel} discussion on ${input.contextTitle}`,
     payload: {
       commentId: input.commentId.toString(),
       entityType: input.entityType,
       entityId: input.entityId.toString(),
-      runName: input.runName ?? null
-    }
+      runName: input.runName ?? null,
+      ...(notifyAssignee ? assigneeNotifyPayload(assigneeId!, testId) : {})
+    },
+    notificationType: notifyAssignee ? "activity" : undefined
   });
   if (event) {
     await queueMentionNotifications(prisma, {
@@ -361,13 +392,28 @@ export async function recordResultActivity(
   });
   if (!result) return null;
 
+  const assigneeId = result.instance.assignedTo;
+  const notifyAssignee =
+    assigneeId != null && (input.actorUserId == null || assigneeId !== input.actorUserId);
+  const notificationType =
+    result.status === "failed"
+      ? "failed_result"
+      : notifyAssignee
+        ? "activity"
+        : undefined;
+
   const event = await recordActivityEvent(prisma, {
     projectId: result.instance.run.projectId,
     actorUserId: input.actorUserId ?? null,
     entityType: "result",
     entityId: result.id,
     eventType: result.status === "failed" ? "result.failed" : "result.created",
-    title: result.status === "failed" ? "Failed result added" : "Result added",
+    title:
+      result.status === "failed"
+        ? "Failed result added"
+        : notifyAssignee
+          ? "New result on your assigned test"
+          : "Result added",
     body: `${result.instance.titleSnapshot} in ${result.instance.run.name} was marked ${result.status}.`,
     payload: {
       resultId: result.id.toString(),
@@ -375,9 +421,11 @@ export async function recordResultActivity(
       caseId: result.instance.caseId.toString(),
       runId: result.instance.run.id.toString(),
       status: result.status,
-      assignedToUserId: result.instance.assignedTo?.toString() ?? null
+      ...(assigneeId && notificationType
+        ? assigneeNotifyPayload(assigneeId, result.instance.id)
+        : { assignedToUserId: assigneeId?.toString() ?? null })
     },
-    notificationType: result.status === "failed" ? "failed_result" : undefined
+    notificationType
   });
   if (event && result.comment) {
     await queueMentionNotifications(prisma, {

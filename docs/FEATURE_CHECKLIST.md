@@ -64,8 +64,8 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** Case CRUD, case steps, section tree, and suite organization baseline.
 - [x] **TR-Core** Case custom values, required-field validation, **field layout templates** (admin), and CSV import/export columns.
 - [x] **TR-Core** P1 Default **case templates**: Test Case (Text), Test Case (Steps), Exploratory Session, Behaviour Driven Development, AI Evaluation ([Test case templates](https://support.testrail.com/hc/en-us/articles/14927678348052)). (Five built-in templates per project, template-driven authoring UX, `caseTemplateId` + `expectedResult` on cases; BDD `.feature` import and AI execution pipeline out of scope.)
-- [ ] **TR-Core** P1 Exploratory template fields (Mission, Goals).
-- [ ] **TR-Core** P1 AI Evaluation template and result fields (Quality Rating, Input, Output, Traces, Latency).
+- [x] **TR-Core** P1 Exploratory template fields (Mission, Goals). (`mission`/`goals` columns; template authoring + read view; CSV import/export; legacy customValues lift)
+- [x] **TR-Core** P1 AI Evaluation template and result fields (Quality Rating, Input, Output, Traces, Latency). (`aiInput`/`aiExpectedOutput` on cases; `aiActualOutput`/`aiQualityRating`/`aiLatencyMs`/`aiTraces` on results; authoring + run entry UI; CSV round-trip; legacy customValues lift)
 - [x] **TR-Pro** P2 BDD/Gherkin scenarios, scenario-level execution, `.feature` import/export and BDD API ([BDD](https://support.testrail.com/hc/en-us/articles/7827238336916-Behavior-Driven-Development-BDD)). (TestCaseScenario model, case scenario CRUD, result scenarioResults, .feature import/export, BDD UI + v2 get_scenarios/add_scenario.)
 - [x] **Clone+** Case version persistence, timeline, compare/restore UI, conflict messaging, and snapshot detail drawer (TestRail Enterprise also offers versioning).
 - [x] **TR-Core** Bulk delete, move, copy, archive/restore, priority/type update, saved views, rich filters, optional list columns, and metadata chips.
@@ -74,7 +74,7 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** P1 Dedicated case detail route (`/projects/:projectId/cases/:caseId`) with read-only page and edit drawer; legacy `?caseId=` redirects ([UX_BACKLOG.md](./UX_BACKLOG.md) UX-4).
 - [x] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)). (`refs` validate/normalize, `reference-urls` + `issues/search` APIs, `CaseRefTokens` + `ReferencesInput` UI; full provider matrix out of scope.)
 - [x] **TR-Core** P1 Section move/copy compatibility with saved views, run composition filters, and stale drilldown links.
-- [ ] **TR-Core** P1 Deeper field edits, labels/refs/custom field list presentation, and partial-failure polish.
+- [x] **TR-Core** P1 Deeper field edits, labels/refs/custom field list presentation, and partial-failure polish. (Quick-edit metadata panel; label chips + ref tokens in list; custom-field list rows; bulk partial-failure banner with per-case errors)
 - [x] **TR-Core** P2 Attachment preview drawer and upload progress/retry baseline for cases, case steps, and result evidence.
 - [x] **TR-Core** P2 Historical attachment download semantics for version snapshots.
 - [ ] **TR-Core** P2 Shared steps ([Shared Steps](https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps)).
@@ -117,8 +117,8 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** Boolean custom field type for definitions, validation, forms, import, exports, and filtering.
 - [x] **TR-Core** P1 Remaining TestRail field types: Checkbox, Date, Dropdown, Integer, Multi-select, String, Text, URL, User, Milestone, Rating, Steps, Step Results, Scenarios, Scenario Results ([Configuring custom fields](https://support.testrail.com/hc/en-us/articles/7373850291220)). (shared type registry + API validation; case/result forms; legacy text/number/select/boolean aliases)
 - [x] **TR-Core** P1 Custom field visibility rules per role or template. (`visibility` JSON on definitions; case/result read filtering and write enforcement; `forUse` field list with `access`; settings UI)
-- [ ] **TR-Core** P1 Advanced result custom field filtering semantics.
-- [ ] **TR-Core** P2 Result editing/correction policy (product decision; TestRail allows limited correction via new results).
+- [x] **TR-Core** P1 Advanced result custom field filtering semantics. (operator query params `custom_{name}_op`; contains/range/empty per field type; Result Explorer UI)
+- [x] **TR-Core** P2 Result editing/correction policy (product decision; TestRail allows limited correction via new results). (append-only `RESULT_CORRECTION_POLICY`; block PATCH/PUT/DELETE on results; UI hints + add-result copy)
 
 ---
 
@@ -126,10 +126,10 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 
 - [x] **TR-Core** Run assignment, test assignment, My Tests page, status/run/search filters, and execution shortcuts.
 - [x] **Clone+** Assignment-related notifications in in-app inbox.
-- [ ] **TR-Core** P1 **Team to-do** view: see other members’ or whole-team to-dos for workload balancing ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028)).
-- [ ] **TR-Core** P1 Due date and milestone filters when fields are available.
-- [ ] **TR-Core** P1 Aging indicators and notification-driven assignment workflow polish.
-- [ ] **TR-Core** P1 Email when tests are assigned and when others comment or add results to your tests.
+- [x] **TR-Core** P1 **Team to-do** view: see other members’ or whole-team to-dos for workload balancing ([Introduction](https://support.testrail.com/hc/en-us/articles/7076810203028)). (`GET .../tests/team-todo`; member/run/status filters; Team to-do tab + execution links)
+- [x] **TR-Core** P1 Due date and milestone filters when fields are available. (`milestoneId`/`dueBefore`/`overdue`/`dueUnset` on assigned-to-me + team-todo; My Tests & Team to-do UI)
+- [x] **TR-Core** P1 Aging indicators and notification-driven assignment workflow polish. (`agingLevel` on assignment lists; overdue/due soon/stale badges + summary chips; assignment email deep links + inbox My Tests link)
+- [x] **TR-Core** P1 Email when tests are assigned and when others comment or add results to your tests. (`activity` notifications + `activityEnabled` preference; assignee email on execution comments and non-failed results)
 - [x] **TR-Core** P1 Subscribe to tests (per-test **Watch** on run rows, email on assignment/failed for subscribers).
 
 ---
@@ -141,9 +141,9 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 - [x] **TR-Core** Plan detail matrix/rollup web binding and entry-configuration mapping read baseline.
 - [x] **TR-Core** P1 Milestone summary report API, CSV export, report page, milestone detail execution rollup.
 - [x] **TR-Core** P1 Plan summary report API, CSV export, and report page.
-- [ ] **TR-Core** P1 Milestone lifecycle: Upcoming vs Open, manual complete, parent/child milestones ([Milestones](https://support.testrail.com/hc/en-us/articles/15545364561044)).
-- [ ] **TR-Core** P1 Sub-milestones and richer milestone dashboard widgets beyond current rollup.
-- [ ] **TR-Core** P1 Full plan-entry semantics: plan-level assignee, refs, start/due dates, per-entry include/exclude and combination editing ([Plans](https://support.testrail.com/hc/en-us/articles/7077711537684)).
+- [x] **TR-Core** P1 Milestone lifecycle: Upcoming vs Open, manual complete, parent/child milestones ([Milestones](https://support.testrail.com/hc/en-us/articles/15545364561044)). (`lifecycleStatus` from dates/completion; parentMilestoneId hierarchy; start-now/complete/reopen API + list/detail UI)
+- [x] **TR-Core** P1 Sub-milestones and richer milestone dashboard widgets beyond current rollup. (hierarchy rollup in milestone-summary API + dashboard; hub/overview/detail progress chips)
+- [x] **TR-Core** P1 Full plan-entry semantics: plan-level assignee, refs, start/due dates, per-entry include/exclude and combination editing ([Plans](https://support.testrail.com/hc/en-us/articles/7077711537684)). (plan/entry scheduling fields; include/exclude case selection on run generation; PUT entry configurations + detail UI)
 - [ ] **TR-Pro** P2 Milestone forecasts and burndown-style hints.
 - [ ] **TR-Core** P2 `/api/v2` compatibility for milestones, plans, and configurations.
 

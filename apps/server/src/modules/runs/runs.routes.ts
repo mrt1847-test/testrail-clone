@@ -4,7 +4,11 @@ import type { FastifyInstance } from "fastify";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
-import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
+import {
+  getAuthenticatedUser,
+  requireProjectMutationRole,
+  requireProjectPermission
+} from "../../common/middlewares/authorization.js";
 import { AppError } from "../../common/errors/appError.js";
 import { validateRunSuiteBinding } from "../../domain/runSuitePolicy.js";
 import type { AuthService } from "../auth/auth.service.js";
@@ -24,8 +28,11 @@ import {
   testIdParamSchema,
   updateRunCompositionSchema,
   updateRunSchema,
-  updateTestAssigneeSchema
+  updateTestAssigneeSchema,
+  teamTodoQuerySchema,
+  assignmentListQuerySchema
 } from "./runs.schema.js";
+import type { AssignmentListFilters } from "./assignmentListFilters.js";
 import { runProgressMetricsToApi } from "../../domain/runProgress.js";
 import { calculateRunSummary } from "../reports/reports.service.js";
 import { loadRunProgressMetrics } from "./runProgressMetrics.js";
@@ -42,6 +49,32 @@ import { runDateWarningsForRun } from "./runSchedule.js";
 const testSubscriptionBodySchema = z.object({
   subscribed: z.boolean()
 });
+
+async function resolveAssignmentListFilters(
+  prisma: PrismaClient | undefined,
+  projectId: bigint,
+  query: z.infer<typeof assignmentListQuerySchema>
+): Promise<AssignmentListFilters> {
+  if (query.milestoneId && query.milestoneId !== "none" && prisma) {
+    const milestone = await prisma.milestone.findFirst({
+      where: { id: query.milestoneId, projectId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!milestone) {
+      throw new AppError("VALIDATION_ERROR", "milestone not found in project", 400);
+    }
+  }
+  return {
+    status: query.status,
+    runId: query.runId,
+    q: query.q,
+    milestoneId: query.milestoneId,
+    dueBefore: query.dueBefore,
+    dueAfter: query.dueAfter,
+    overdue: query.overdue,
+    dueUnset: query.dueUnset
+  };
+}
 
 async function projectIdForRun(repo: RunsRepository, runId: bigint) {
   const run = await repo.getRun(runId);
@@ -262,14 +295,14 @@ export async function registerRunsRoutes(
       entityType: "run",
       entityId: updated.id,
       eventType: "run.assigned",
-      title: "Run assignment changed",
+      title: updated.assignedTo ? "You were assigned a run" : "Run assignment cleared",
       body: updated.name,
       payload: {
         runId: updated.id.toString(),
         assignedTo: updated.assignedTo?.toString() ?? null,
         assignedToUserId: updated.assignedTo?.toString() ?? null
       },
-      notificationType: "assignment"
+      ...(updated.assignedTo ? { notificationType: "assignment" as const } : {})
     });
     return reply.send(toJsonSafe(ok(updated)));
   });
@@ -570,7 +603,7 @@ export async function registerRunsRoutes(
     if (deps.prisma) {
       const instance = await deps.prisma.testInstance.findUnique({
         where: { id: testId },
-        select: { caseId: true, run: { select: { id: true, projectId: true } }, titleSnapshot: true }
+        select: { caseId: true, run: { select: { id: true, projectId: true, name: true } }, titleSnapshot: true }
       });
       if (instance) {
         await recordAuditLog(deps.prisma, {
@@ -591,8 +624,8 @@ export async function registerRunsRoutes(
           entityType: "test",
           entityId: testId,
           eventType: "test.assigned",
-          title: "Test assignment changed",
-          body: instance.titleSnapshot,
+          title: assignedTo ? "You were assigned a test" : "Test assignment cleared",
+          body: assignedTo ? `${instance.titleSnapshot} · ${instance.run.name}` : instance.titleSnapshot,
           payload: {
             runId: instance.run.id.toString(),
             testId: testId.toString(),
@@ -600,7 +633,7 @@ export async function registerRunsRoutes(
             assignedTo: assignedTo?.toString() ?? null,
             assignedToUserId: assignedTo?.toString() ?? null
           },
-          notificationType: "assignment"
+          ...(assignedTo ? { notificationType: "assignment" as const } : {})
         });
       }
     }
@@ -610,7 +643,32 @@ export async function registerRunsRoutes(
   app.get("/api/projects/:projectId/tests/assigned-to-me", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
-    const rows = await deps.runsService.listAssignedToMe(projectId, user.id);
+    const query = assignmentListQuerySchema.parse(req.query ?? {});
+    const filters = await resolveAssignmentListFilters(deps.prisma, projectId, query);
+    const rows = await deps.runsService.listAssignedToMe(projectId, user.id, filters);
+    return reply.send(toJsonSafe(ok({ items: rows })));
+  });
+
+  app.get("/api/projects/:projectId/tests/team-todo", async (req, reply) => {
+    await requireProjectPermission(req, deps, "runs.read");
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = teamTodoQuerySchema.parse(req.query ?? {});
+
+    if (query.assigneeId !== "all" && deps.prisma) {
+      const member = await deps.prisma.projectMember.findFirst({
+        where: { projectId, userId: query.assigneeId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!member) {
+        throw new AppError("VALIDATION_ERROR", "assignee is not a project member", 400);
+      }
+    }
+
+    const filters = await resolveAssignmentListFilters(deps.prisma, projectId, query);
+    const rows = await deps.runsService.listTeamTodo(projectId, {
+      assigneeId: query.assigneeId,
+      ...filters
+    });
     return reply.send(toJsonSafe(ok({ items: rows })));
   });
 

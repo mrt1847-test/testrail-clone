@@ -14,22 +14,19 @@ import type { AuthService } from "../auth/auth.service.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import type { RunsService } from "../runs/runs.service.js";
-
-type PlanEntry = {
-  id: bigint;
-  name: string;
-  environment?: string;
-  suiteId?: bigint;
-  runId?: bigint;
-  configurationIds?: bigint[];
-};
-
-type PlanRow = {
-  id: bigint;
-  projectId: bigint;
-  name: string;
-  entries: PlanEntry[];
-};
+import {
+  buildPlanCreateData,
+  buildPlanEntryCreateData,
+  buildPlanEntryWriteData,
+  buildPlanWriteData,
+  createRunForPlanEntry,
+  persistEntryConfigurations,
+  toPlanDto,
+  toPlanEntryDto,
+  type MemoryPlanEntry,
+  type MemoryPlanRow
+} from "./plans.shared.js";
+import { entryConfigurationsBodySchema, planBodySchema, planEntryBodySchema } from "./plans.schema.js";
 
 type ConfigurationGroupRow = {
   id: bigint;
@@ -46,7 +43,7 @@ type ConfigurationRow = {
   isActive: boolean;
 };
 
-const plans: PlanRow[] = [];
+const plans: MemoryPlanRow[] = [];
 const configurationGroups: ConfigurationGroupRow[] = [];
 const configurations: ConfigurationRow[] = [];
 
@@ -117,12 +114,7 @@ export async function registerPlansRoutes(
       return reply.send(
         toJsonSafe(
           paged(
-            rows.map((row: (typeof rows)[number]) => ({
-              id: row.id,
-              projectId: row.projectId,
-              name: row.name,
-              entries: []
-            })),
+            rows.map((row: (typeof rows)[number]) => toPlanDto(row)),
             1,
             100
           )
@@ -136,13 +128,10 @@ export async function registerPlansRoutes(
     await requireProjectMutationRole(req, deps);
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
-    const body = req.body as { name?: string };
+    const body = planBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
       const created = await deps.prisma.testPlan.create({
-        data: {
-          projectId,
-          name: body.name?.trim() || "New test plan"
-        }
+        data: buildPlanCreateData(projectId, body)
       });
       await recordActivityEvent(deps.prisma, {
         projectId,
@@ -154,16 +143,16 @@ export async function registerPlansRoutes(
         body: created.name,
         payload: { planId: created.id.toString(), name: created.name }
       });
-      return reply.send(
-        toJsonSafe({
-          data: { id: created.id, projectId: created.projectId, name: created.name, entries: [] }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toPlanDto(created) }));
     }
-    const row: PlanRow = {
+    const row: MemoryPlanRow = {
       id: BigInt(Date.now()),
       projectId,
       name: body.name?.trim() || "New test plan",
+      assignedTo: body.assignedTo ?? null,
+      refs: body.refs ?? null,
+      startDate: body.startDate ?? null,
+      dueOn: body.dueOn ?? null,
       entries: []
     };
     plans.unshift(row);
@@ -176,7 +165,7 @@ export async function registerPlansRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
-    const body = req.body as { name?: string };
+    const body = planBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
       const found = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
@@ -187,7 +176,7 @@ export async function registerPlansRoutes(
       }
       const updated = await deps.prisma.testPlan.update({
         where: { id: planId },
-        data: { ...(body.name !== undefined ? { name: body.name.trim() || "Untitled plan" } : {}) }
+        data: buildPlanWriteData(body)
       });
       await recordActivityEvent(deps.prisma, {
         projectId,
@@ -202,18 +191,18 @@ export async function registerPlansRoutes(
           ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {})
         }
       });
-      return reply.send(
-        toJsonSafe({
-          data: { id: updated.id, projectId: updated.projectId, name: updated.name, entries: [] }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toPlanDto(updated) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
     }
     if (body.name !== undefined) row.name = body.name.trim() || "Untitled plan";
-    return reply.send(toJsonSafe({ data: row }));
+    if (body.assignedTo !== undefined) row.assignedTo = body.assignedTo;
+    if (body.refs !== undefined) row.refs = body.refs;
+    if (body.startDate !== undefined) row.startDate = body.startDate;
+    if (body.dueOn !== undefined) row.dueOn = body.dueOn;
+    return reply.send(toJsonSafe({ data: toPlanDto(row) }));
   });
 
   app.delete("/api/projects/:projectId/plans/:planId", async (req, reply) => {
@@ -265,17 +254,13 @@ export async function registerPlansRoutes(
       if (!found) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
       }
-      return reply.send(
-        toJsonSafe({
-          data: { id: found.id, projectId: found.projectId, name: found.name, entries: [] }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toPlanDto(found) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
     }
-    return reply.send(toJsonSafe({ data: row }));
+    return reply.send(toJsonSafe({ data: toPlanDto(row) }));
   });
 
   app.get("/api/projects/:projectId/plans/:planId/entries", async (req, reply) => {
@@ -298,12 +283,7 @@ export async function registerPlansRoutes(
       return reply.send(
         toJsonSafe(
           paged(
-            entries.map((entry: (typeof entries)[number]) => ({
-              id: entry.id,
-              name: entry.name,
-              environment: entry.environment ?? undefined,
-              runId: entry.runId ?? undefined
-            })),
+            entries.map((entry: (typeof entries)[number]) => toPlanEntryDto(entry)),
             1,
             100
           )
@@ -323,7 +303,7 @@ export async function registerPlansRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const params = req.params as { planId: string };
     const planId = BigInt(params.planId);
-    const body = req.body as { name?: string; environment?: string };
+    const body = planEntryBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
       const plan = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
@@ -333,12 +313,11 @@ export async function registerPlansRoutes(
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
       }
       const created = await deps.prisma.testPlanEntry.create({
-        data: {
-          planId,
-          name: body.name?.trim() || "Entry",
-          environment: body.environment?.trim()
-        }
+        data: buildPlanEntryCreateData(planId, body)
       });
+      if (body.configurationIds?.length) {
+        await persistEntryConfigurations(deps.prisma, projectId, created.id, body.configurationIds, validateOnePerGroup);
+      }
       await recordActivityEvent(deps.prisma, {
         projectId,
         actorUserId: user.id,
@@ -354,28 +333,29 @@ export async function registerPlansRoutes(
           environment: created.environment ?? null
         }
       });
-      return reply.send(
-        toJsonSafe({
-          data: {
-            id: created.id,
-            name: created.name,
-            environment: created.environment ?? undefined,
-            runId: created.runId ?? undefined
-          }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toPlanEntryDto(created) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
     }
-    const entry: PlanEntry = {
+    const entry: MemoryPlanEntry = {
       id: BigInt(Date.now()),
       name: body.name?.trim() || "Entry",
-      environment: body.environment?.trim()
+      environment: body.environment?.trim() || undefined,
+      suiteId: body.suiteId ?? undefined,
+      assignedTo: body.assignedTo ?? null,
+      refs: body.refs ?? null,
+      startDate: body.startDate ?? null,
+      dueOn: body.dueOn ?? null,
+      includeAll: body.includeAll ?? true,
+      includeCaseIds: body.includeCaseIds,
+      excludeCaseIds: body.excludeCaseIds,
+      isIncluded: body.isIncluded ?? true,
+      configurationIds: body.configurationIds
     };
     row.entries.unshift(entry);
-    return reply.send(toJsonSafe({ data: entry }));
+    return reply.send(toJsonSafe({ data: toPlanEntryDto(entry) }));
   });
 
   app.patch("/api/projects/:projectId/plans/:planId/entries/:entryId", async (req, reply) => {
@@ -385,7 +365,7 @@ export async function registerPlansRoutes(
     const params = req.params as { planId: string; entryId: string };
     const planId = BigInt(params.planId);
     const entryId = BigInt(params.entryId);
-    const body = req.body as { name?: string; environment?: string | null };
+    const body = planEntryBodySchema.parse(req.body ?? {});
     if (deps.prisma) {
       const plan = await deps.prisma.testPlan.findFirst({
         where: { id: planId, projectId, deletedAt: null },
@@ -403,13 +383,17 @@ export async function registerPlansRoutes(
       }
       const updated = await deps.prisma.testPlanEntry.update({
         where: { id: entryId },
-        data: {
-          ...(body.name !== undefined ? { name: body.name.trim() || "Untitled entry" } : {}),
-          ...(body.environment !== undefined
-            ? { environment: body.environment === null ? null : body.environment.trim() || null }
-            : {})
-        }
+        data: buildPlanEntryWriteData(body)
       });
+      if (body.configurationIds !== undefined) {
+        await persistEntryConfigurations(
+          deps.prisma,
+          projectId,
+          entryId,
+          body.configurationIds,
+          validateOnePerGroup
+        );
+      }
       await recordActivityEvent(deps.prisma, {
         projectId,
         actorUserId: user.id,
@@ -427,16 +411,7 @@ export async function registerPlansRoutes(
             : {})
         }
       });
-      return reply.send(
-        toJsonSafe({
-          data: {
-            id: updated.id,
-            name: updated.name,
-            environment: updated.environment ?? undefined,
-            runId: updated.runId ?? undefined
-          }
-        })
-      );
+      return reply.send(toJsonSafe({ data: toPlanEntryDto(updated) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
     if (!row) {
@@ -450,7 +425,65 @@ export async function registerPlansRoutes(
     if (body.environment !== undefined) {
       entry.environment = body.environment === null ? undefined : body.environment.trim() || undefined;
     }
-    return reply.send(toJsonSafe({ data: entry }));
+    if (body.suiteId !== undefined) entry.suiteId = body.suiteId ?? undefined;
+    if (body.assignedTo !== undefined) entry.assignedTo = body.assignedTo;
+    if (body.refs !== undefined) entry.refs = body.refs;
+    if (body.startDate !== undefined) entry.startDate = body.startDate;
+    if (body.dueOn !== undefined) entry.dueOn = body.dueOn;
+    if (body.includeAll !== undefined) entry.includeAll = body.includeAll;
+    if (body.includeCaseIds !== undefined) entry.includeCaseIds = body.includeCaseIds;
+    if (body.excludeCaseIds !== undefined) entry.excludeCaseIds = body.excludeCaseIds;
+    if (body.isIncluded !== undefined) entry.isIncluded = body.isIncluded;
+    if (body.configurationIds !== undefined) entry.configurationIds = body.configurationIds;
+    return reply.send(toJsonSafe({ data: toPlanEntryDto(entry) }));
+  });
+
+  app.put("/api/projects/:projectId/plans/:planId/entries/:entryId/configurations", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const params = req.params as { planId: string; entryId: string };
+    const planId = BigInt(params.planId);
+    const entryId = BigInt(params.entryId);
+    const { configurationIds } = entryConfigurationsBodySchema.parse(req.body ?? {});
+
+    if (deps.prisma) {
+      const entry = await deps.prisma.testPlanEntry.findFirst({
+        where: { id: entryId, planId, deletedAt: null, plan: { projectId, deletedAt: null } },
+        select: { id: true }
+      });
+      if (!entry) return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
+      const saved = await persistEntryConfigurations(
+        deps.prisma,
+        projectId,
+        entryId,
+        configurationIds,
+        validateOnePerGroup
+      );
+      return reply.send(toJsonSafe(ok({ entryId, configurationIds: saved.map((id) => id.toString()) })));
+    }
+
+    const plan = plans.find((p) => p.id === planId && p.projectId === projectId);
+    if (!plan) return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
+    const target = plan.entries.find((e) => e.id === entryId);
+    if (!target) return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
+    if (configurationIds.length > 0) {
+      const selectedConfigurations = configurations.filter(
+        (c) => configurationIds.includes(c.id) && c.isActive && configurationGroups.some((g) => g.id === c.groupId && g.projectId === projectId)
+      );
+      if (selectedConfigurations.length !== configurationIds.length) {
+        throw new AppError("VALIDATION_ERROR", "invalid configurationIds for this project", 400);
+      }
+      validateOnePerGroup(
+        selectedConfigurations.map((c) => ({
+          configurationId: c.id,
+          groupId: c.groupId
+        }))
+      );
+    }
+    target.configurationIds = configurationIds;
+    return reply.send(
+      toJsonSafe(ok({ entryId, configurationIds: configurationIds.map((id) => id.toString()) }))
+    );
   });
 
   app.delete("/api/projects/:projectId/plans/:planId/entries/:entryId", async (req, reply) => {
@@ -530,8 +563,7 @@ export async function registerPlansRoutes(
 
     if (deps.prisma) {
       const plan = await deps.prisma.testPlan.findFirst({
-        where: { id: planId, projectId, deletedAt: null },
-        select: { id: true, name: true, milestoneId: true }
+        where: { id: planId, projectId, deletedAt: null }
       });
       if (!plan) {
         return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
@@ -559,13 +591,12 @@ export async function registerPlansRoutes(
         return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
       }
       try {
-        const { run } = await deps.runsService.createRunWithInstances({
+        const { run } = await createRunForPlanEntry({
+          runsService: deps.runsService,
           projectId,
-          suiteId,
-          milestoneId: plan.milestoneId ?? null,
-          name: `${plan.name} — ${target.name}`,
-          includeAll: true,
-          environment: target.environment?.trim() ?? null
+          plan,
+          entry: target,
+          suiteId
         });
         await deps.prisma.$transaction([
           deps.prisma.testPlanEntry.update({
@@ -579,7 +610,7 @@ export async function registerPlansRoutes(
         ]);
         return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: run.id } }));
       } catch (err) {
-        if (err instanceof AppError && err.code === "NO_CASES_FOUND") {
+        if (err instanceof AppError && (err.code === "NO_CASES_FOUND" || err.code === "VALIDATION_ERROR")) {
           return reply.status(400).send({ error: err.code, message: err.message });
         }
         throw err;
@@ -606,18 +637,17 @@ export async function registerPlansRoutes(
       return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
     }
     try {
-      const { run } = await deps.runsService.createRunWithInstances({
+      const { run } = await createRunForPlanEntry({
+        runsService: deps.runsService,
         projectId,
-        suiteId,
-        milestoneId: null,
-        name: `${row.name} — ${target.name}`,
-        includeAll: true,
-        environment: target.environment?.trim() ?? null
+        plan: row,
+        entry: target,
+        suiteId
       });
       target.runId = run.id;
       return reply.send(toJsonSafe({ data: { planId, entryId: target.id, runId: run.id } }));
     } catch (err) {
-      if (err instanceof AppError && err.code === "NO_CASES_FOUND") {
+      if (err instanceof AppError && (err.code === "NO_CASES_FOUND" || err.code === "VALIDATION_ERROR")) {
         return reply.status(400).send({ error: err.code, message: err.message });
       }
       throw err;
@@ -726,8 +756,7 @@ export async function registerPlansRoutes(
 
     if (deps.prisma) {
       const plan = await deps.prisma.testPlan.findFirst({
-        where: { id: planId, projectId, deletedAt: null },
-        select: { id: true, name: true, milestoneId: true }
+        where: { id: planId, projectId, deletedAt: null }
       });
       if (!plan) return reply.status(404).send({ error: "NOT_FOUND", message: "plan not found" });
 
@@ -743,39 +772,18 @@ export async function registerPlansRoutes(
       if (!target) return reply.status(404).send({ error: "NOT_FOUND", message: "plan entry not found" });
 
       const linkedConfigurations = configurationIds ?? [];
-      if (linkedConfigurations.length > 0) {
-        const selectedConfigurations = await deps.prisma.configuration.findMany({
-          where: {
-            id: { in: linkedConfigurations },
-            deletedAt: null,
-            isActive: true,
-            group: { projectId, deletedAt: null }
-          },
-          select: { id: true, groupId: true }
-        });
-        if (selectedConfigurations.length !== linkedConfigurations.length) {
-          throw new AppError("VALIDATION_ERROR", "invalid configurationIds for this project", 400);
-        }
-        validateOnePerGroup(
-          selectedConfigurations.map((c: (typeof selectedConfigurations)[number]) => ({
-            configurationId: c.id,
-            groupId: c.groupId
-          }))
-        );
-      }
       const suiteId = await resolveSuiteId(target.suiteId);
       if (!suiteId) return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
 
       const runId =
         target.runId ??
         (
-          await deps.runsService.createRunWithInstances({
+          await createRunForPlanEntry({
+            runsService: deps.runsService,
             projectId,
-            suiteId,
-            milestoneId: plan.milestoneId ?? null,
-            name: `${plan.name} — ${target.name}`,
-            includeAll: true,
-            environment: target.environment?.trim() ?? null
+            plan,
+            entry: target,
+            suiteId
           })
         ).run.id;
 
@@ -790,17 +798,16 @@ export async function registerPlansRoutes(
             data: { planId }
           });
         }
-        if (linkedConfigurations.length > 0) {
-          await tx.testPlanEntryConfiguration.deleteMany({
-            where: { planEntryId: target.id }
-          });
-          for (const configurationId of linkedConfigurations) {
-            await tx.testPlanEntryConfiguration.create({
-              data: { planEntryId: target.id, configurationId }
-            });
-          }
-        }
       });
+      if (linkedConfigurations.length > 0) {
+        await persistEntryConfigurations(
+          deps.prisma,
+          projectId,
+          target.id,
+          linkedConfigurations,
+          validateOnePerGroup
+        );
+      }
 
       return reply.send(
         toJsonSafe(
@@ -838,13 +845,12 @@ export async function registerPlansRoutes(
       const suiteId = await resolveSuiteId(target.suiteId);
       if (!suiteId) return reply.status(400).send({ error: "BAD_REQUEST", message: "no suite available for plan run" });
       target.runId = (
-        await deps.runsService.createRunWithInstances({
+        await createRunForPlanEntry({
+          runsService: deps.runsService,
           projectId,
-          suiteId,
-          milestoneId: null,
-          name: `${plan.name} — ${target.name}`,
-          includeAll: true,
-          environment: target.environment?.trim() ?? null
+          plan,
+          entry: target,
+          suiteId
         })
       ).run.id;
     }

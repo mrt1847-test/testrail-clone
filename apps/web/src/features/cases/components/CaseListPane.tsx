@@ -21,6 +21,9 @@ import {
 } from "../api/catalogApi";
 import { buildCaseDetailPath } from "../caseRoute";
 import { extractApiErrorMessage } from "../caseErrors";
+import type { BulkCaseFeedback } from "../utils/bulkCaseFeedback";
+import { buildBulkCaseFeedback } from "../utils/bulkCaseFeedback";
+import { BulkCaseResultBanner } from "./BulkCaseResultBanner";
 import type { CaseListDnD, PendingMoveCopy } from "../hooks/useCaseListDnD";
 import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
 import { useCases, caseKeys } from "../hooks/useCases";
@@ -128,11 +131,15 @@ export function CaseListPane({
   const [bulkMoveTargetId, setBulkMoveTargetId] = useState<number | null>(null);
   const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [bulkActionMessage, setBulkActionMessage] = useState<string | null>(null);
+  const [bulkFeedback, setBulkFeedback] = useState<BulkCaseFeedback | null>(null);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [saveViewName, setSaveViewName] = useState("");
 
   const deferredSearch = useDeferredValue(searchDraft);
+  const caseLabelById = useMemo(
+    () => new Map(cases.map((row) => [row.id, `${row.caseCode} ${row.title}`])),
+    [cases]
+  );
   const validSectionIds = useMemo(() => new Set(sections.map((section) => section.id)), [sections]);
   const currentView = useMemo(
     () => ({
@@ -241,6 +248,10 @@ export function CaseListPane({
       estimate: string;
       references: string;
       expectedResult: string;
+      mission: string;
+      goals: string;
+      aiInput: string;
+      aiExpectedOutput: string;
       templateId: string | null;
       customValues: Record<string, string | number | boolean | string[] | null>;
       draftSteps: Array<{ description: string; expected: string }>;
@@ -250,6 +261,10 @@ export function CaseListPane({
         preconditions: input.preconditions,
         estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
         expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
+        mission: input.mission.trim().length > 0 ? input.mission.trim() : null,
+        goals: input.goals.trim().length > 0 ? input.goals.trim() : null,
+        aiInput: input.aiInput.trim().length > 0 ? input.aiInput.trim() : null,
+        aiExpectedOutput: input.aiExpectedOutput.trim().length > 0 ? input.aiExpectedOutput.trim() : null,
         caseTemplateId: input.templateId ? Number(input.templateId) : null,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
         customValues: input.customValues
@@ -269,9 +284,10 @@ export function CaseListPane({
       setCreateFormVersion((current) => current + 1);
       openCaseDetail(created.id);
       if (stepsWarning) {
-        setBulkActionMessage(
-          `Case was created, but saving one or more steps failed (${stepsWarning}). Open the case and add steps from edit mode.`
-        );
+        setBulkFeedback({
+          tone: "partial",
+          message: `Case was created, but saving one or more steps failed (${stepsWarning}). Open the case and add steps from edit mode.`
+        });
       }
     },
     onError: (error) => {
@@ -285,10 +301,15 @@ export function CaseListPane({
       invalidateCases();
       const deletedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
       setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !deletedIds.has(caseId))));
-      setBulkActionMessage(
-        result.failed > 0
-          ? `Deleted ${result.deleted}; ${result.failed} could not be deleted.`
-          : `Deleted ${result.deleted} selected case${result.deleted === 1 ? "" : "s"}.`
+      setBulkFeedback(
+        buildBulkCaseFeedback({
+          successCount: result.deleted,
+          failedCount: result.failed,
+          successLabel: "Deleted",
+          failureLabel: "Could not delete",
+          items: result.items,
+          caseLabelById
+        })
       );
       setBulkDeleteOpen(false);
     }
@@ -301,10 +322,15 @@ export function CaseListPane({
       invalidateCases();
       const movedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
       setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !movedIds.has(caseId))));
-      setBulkActionMessage(
-        result.failed > 0
-          ? `Moved ${result.moved}; ${result.failed} could not be moved.`
-          : `Moved ${result.moved} selected case${result.moved === 1 ? "" : "s"}.`
+      setBulkFeedback(
+        buildBulkCaseFeedback({
+          successCount: result.moved,
+          failedCount: result.failed,
+          successLabel: "Moved",
+          failureLabel: "Could not move",
+          items: result.items,
+          caseLabelById
+        })
       );
       setBulkMoveOpen(false);
     }
@@ -315,10 +341,15 @@ export function CaseListPane({
       bulkUpdateCases(projectId, input.caseIds, input.patch),
     onSuccess: (result) => {
       invalidateCases();
-      setBulkActionMessage(
-        result.failed > 0
-          ? `Updated ${result.updated}; ${result.failed} could not be updated.`
-          : `Updated ${result.updated} selected case${result.updated === 1 ? "" : "s"}.`
+      setBulkFeedback(
+        buildBulkCaseFeedback({
+          successCount: result.updated,
+          failedCount: result.failed,
+          successLabel: "Updated",
+          failureLabel: "Could not update",
+          items: result.items,
+          caseLabelById
+        })
       );
       setBulkUpdateOpen(false);
       setBulkUpdatePriority("");
@@ -333,10 +364,15 @@ export function CaseListPane({
       invalidateCases();
       const changedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
       setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !changedIds.has(caseId))));
-      setBulkActionMessage(
-        result.failed > 0
-          ? `${result.archived ? "Archived" : "Restored"} ${result.changed}; ${result.failed} could not be changed.`
-          : `${result.archived ? "Archived" : "Restored"} ${result.changed} selected case${result.changed === 1 ? "" : "s"}.`
+      setBulkFeedback(
+        buildBulkCaseFeedback({
+          successCount: result.changed,
+          failedCount: result.failed,
+          successLabel: result.archived ? "Archived" : "Restored",
+          failureLabel: "Could not change",
+          items: result.items,
+          caseLabelById
+        })
       );
       setBulkArchiveOpen(false);
     }
@@ -347,14 +383,19 @@ export function CaseListPane({
       bulkCopyCases(projectId, input.caseIds, input.targetSectionId),
     onSuccess: (result) => {
       invalidateCases();
-      setBulkActionMessage(
-        result.failed > 0
-          ? `Copied ${result.copied}; ${result.failed} could not be copied.`
-          : `Copied ${result.copied} case${result.copied === 1 ? "" : "s"} to the target section.`
+      setBulkFeedback(
+        buildBulkCaseFeedback({
+          successCount: result.copied,
+          failedCount: result.failed,
+          successLabel: "Copied",
+          failureLabel: "Could not copy",
+          items: result.items,
+          caseLabelById
+        })
       );
     },
     onError: (error) => {
-      setBulkActionMessage(extractApiErrorMessage(error, "Could not copy the selected cases."));
+      setBulkFeedback({ tone: "error", message: extractApiErrorMessage(error, "Could not copy the selected cases.") });
     }
   });
 
@@ -373,17 +414,18 @@ export function CaseListPane({
       }),
     onSuccess: (result, variables) => {
       invalidateCases();
-      setBulkActionMessage(
-        `Reordered ${variables.caseIds.length} case${variables.caseIds.length === 1 ? "" : "s"} within the section (${result.updated} positions updated).`
-      );
+      setBulkFeedback({
+        tone: "success",
+        message: `Reordered ${variables.caseIds.length} case${variables.caseIds.length === 1 ? "" : "s"} within the section (${result.updated} positions updated).`
+      });
     },
     onError: (error) => {
-      setBulkActionMessage(extractApiErrorMessage(error, "Could not reorder cases."));
+      setBulkFeedback({ tone: "error", message: extractApiErrorMessage(error, "Could not reorder cases.") });
     }
   });
 
   const toggleCaseSelection = (caseId: number, checked: boolean) => {
-    setBulkActionMessage(null);
+    setBulkFeedback(null);
     setSelectedCaseIds((current) => {
       const next = new Set(current);
       if (checked) next.add(caseId);
@@ -393,7 +435,7 @@ export function CaseListPane({
   };
 
   const toggleAllVisible = (checked: boolean) => {
-    setBulkActionMessage(null);
+    setBulkFeedback(null);
     setSelectedCaseIds((current) => {
       const next = new Set(current);
       for (const caseId of visibleCaseIds) {
@@ -425,7 +467,7 @@ export function CaseListPane({
     anchorPosition: "before" | "after";
   }) => {
     if (positionCasesMutation.isPending) return;
-    setBulkActionMessage(null);
+    setBulkFeedback(null);
     void positionCasesMutation.mutateAsync({
       sectionId: input.sectionId,
       caseIds: input.caseIds,
@@ -437,7 +479,7 @@ export function CaseListPane({
 
   const handleSameSectionAppend = (input: { caseIds: number[]; sectionId: number }) => {
     if (positionCasesMutation.isPending) return;
-    setBulkActionMessage(null);
+    setBulkFeedback(null);
     void positionCasesMutation.mutateAsync({
       sectionId: input.sectionId,
       caseIds: input.caseIds
@@ -477,9 +519,10 @@ export function CaseListPane({
         const positionInput = buildPendingPositionInput(pending, movedCaseIds);
         if (positionInput) {
           await positionCasesMutation.mutateAsync(positionInput);
-          setBulkActionMessage(
-            `Moved ${movedCaseIds.length} case${movedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
-          );
+          setBulkFeedback({
+            tone: "success",
+            message: `Moved ${movedCaseIds.length} case${movedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
+          });
         }
       } finally {
         if (committed) onPendingMoveCopyChange?.(null);
@@ -507,9 +550,10 @@ export function CaseListPane({
         const positionInput = buildPendingPositionInput(pending, copiedCaseIds);
         if (positionInput) {
           await positionCasesMutation.mutateAsync(positionInput);
-          setBulkActionMessage(
-            `Copied ${copiedCaseIds.length} case${copiedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
-          );
+          setBulkFeedback({
+            tone: "success",
+            message: `Copied ${copiedCaseIds.length} case${copiedCaseIds.length === 1 ? "" : "s"} to the dropped position.`
+          });
         }
       } finally {
         if (committed) onPendingMoveCopyChange?.(null);
@@ -589,7 +633,7 @@ export function CaseListPane({
       setSaveViewName("");
     },
     onAddCase: () => {
-      setBulkActionMessage(null);
+      setBulkFeedback(null);
       setCreateFormError(null);
       setShowAdd(true);
       setCreateFormVersion((value) => value + 1);
@@ -735,9 +779,13 @@ export function CaseListPane({
                   await createCaseMutation.mutateAsync({
                     title: input.title,
                     preconditions: input.preconditions,
-                    estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
+                    estimate: input.estimate,
                     references: input.references,
                     expectedResult: input.expectedResult,
+                    mission: input.mission,
+                    goals: input.goals,
+                    aiInput: input.aiInput,
+                    aiExpectedOutput: input.aiExpectedOutput,
                     templateId: input.templateId,
                     customValues: input.customValues,
                     draftSteps: createUsesSteps
@@ -808,7 +856,9 @@ export function CaseListPane({
                 </div>
               ) : null}
 
-              {bulkActionMessage ? <p className="mt-3 text-sm text-slate-600">{bulkActionMessage}</p> : null}
+              <div className="mt-3">
+                <BulkCaseResultBanner feedback={bulkFeedback} onDismiss={() => setBulkFeedback(null)} />
+              </div>
             </div>
           ) : null}
 

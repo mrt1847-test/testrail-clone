@@ -6,6 +6,9 @@ import {
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { caseRefsValidationError, prepareCaseRefsInput } from "../../domain/caseRefs.js";
+import { caseRowWithAiCaseFields, normalizeAiCaseFields } from "../../domain/aiEvaluationFields.js";
+import { normalizeCaseLabels } from "../../domain/caseLabels.js";
+import { caseRowWithExploratoryFields, normalizeExploratoryCaseFields } from "../../domain/exploratoryCaseFields.js";
 import {
   fieldOptions as parseFieldOptions,
   mapValidationErrorToResponse,
@@ -52,11 +55,25 @@ export class CasesService {
     estimate?: string | null;
     preconditions?: string;
     expectedResult?: string | null;
+    mission?: string | null;
+    goals?: string | null;
+    aiInput?: string | null;
+    aiExpectedOutput?: string | null;
     caseTemplateId?: bigint | null;
     refs?: string | null;
     labels?: string[];
     customValues?: Record<string, CustomFieldValue>;
   }) {
+    const exploratory = normalizeExploratoryCaseFields({
+      mission: input.mission,
+      goals: input.goals,
+      customValues: input.customValues
+    });
+    const ai = normalizeAiCaseFields({
+      aiInput: input.aiInput,
+      aiExpectedOutput: input.aiExpectedOutput,
+      customValues: exploratory.customValues
+    });
     let refs = input.refs;
     if (refs !== undefined) {
       try {
@@ -69,10 +86,12 @@ export class CasesService {
     }
     const created = await this.repo.createCase({
       ...input,
+      ...exploratory,
+      ...ai,
       refs
     });
     await this.repo.createCaseVersionSnapshot(created.id, "case_created");
-    return created;
+    return caseRowWithAiCaseFields(caseRowWithExploratoryFields(created));
   }
   async getCase(caseId: bigint) {
     const found = await this.repo.getCase(caseId);
@@ -81,7 +100,7 @@ export class CasesService {
       this.repo.listCaseSteps(caseId),
       this.repo.listCaseScenarios(caseId)
     ]);
-    return { ...found, steps, scenarios };
+    return { ...caseRowWithAiCaseFields(caseRowWithExploratoryFields(found)), steps, scenarios };
   }
   async listCaseVersions(caseId: bigint) {
     const found = await this.repo.getCase(caseId);
@@ -161,14 +180,27 @@ export class CasesService {
       estimate?: string | null;
       preconditions?: string | null;
       expectedResult?: string | null;
+      mission?: string | null;
+      goals?: string | null;
       caseTemplateId?: bigint | null;
       refs?: string | null;
+      labels?: string[];
       customValues?: Record<string, CustomFieldValue>;
       expectedUpdatedAt?: string;
       expectedVersion?: number;
     }
   ) {
-    const { expectedUpdatedAt: _legacy, expectedVersion, refs: rawRefs, ...rest } = patch;
+    const { expectedUpdatedAt: _legacy, expectedVersion, refs: rawRefs, labels: rawLabels, ...rest } = patch;
+    const exploratory = normalizeExploratoryCaseFields({
+      mission: rest.mission,
+      goals: rest.goals,
+      customValues: rest.customValues
+    });
+    const ai = normalizeAiCaseFields({
+      aiInput: rest.aiInput,
+      aiExpectedOutput: rest.aiExpectedOutput,
+      customValues: exploratory.customValues
+    });
     let refs = rawRefs;
     if (refs !== undefined) {
       try {
@@ -179,9 +211,18 @@ export class CasesService {
         throw e;
       }
     }
+    const labels = rawLabels !== undefined ? normalizeCaseLabels(rawLabels) : undefined;
     const nextPatch = {
       ...rest,
-      ...(refs !== undefined ? { refs } : {})
+      ...(rest.mission !== undefined ||
+      rest.goals !== undefined ||
+      rest.aiInput !== undefined ||
+      rest.aiExpectedOutput !== undefined ||
+      rest.customValues !== undefined
+        ? { ...exploratory, ...ai }
+        : {}),
+      ...(refs !== undefined ? { refs } : {}),
+      ...(labels !== undefined ? { labels } : {})
     };
     const updated = await this.repo.updateCase(caseId, nextPatch, expectedVersion);
     if (updated === "conflict") {
@@ -189,7 +230,7 @@ export class CasesService {
     }
     if (!updated) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
     await this.repo.createCaseVersionSnapshot(caseId, "case_updated");
-    return updated;
+    return caseRowWithAiCaseFields(caseRowWithExploratoryFields(updated));
   }
 
   async deleteCase(caseId: bigint) {

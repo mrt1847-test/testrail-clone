@@ -26,6 +26,10 @@ type ApiCase = {
   externalId?: string | null;
   preconditions?: string | null;
   expectedResult?: string | null;
+  mission?: string | null;
+  goals?: string | null;
+  aiInput?: string | null;
+  aiExpectedOutput?: string | null;
   caseTemplateId?: string | null;
   customValues?: Record<string, string | number | boolean | string[] | null>;
   lockVersion?: number;
@@ -107,6 +111,10 @@ export function mapApiCaseToTestCase(row: ApiCase): TestCase {
     automationKey: row.automationKey ?? "",
     preconditions: row.preconditions ?? "",
     expectedResult: row.expectedResult ?? "",
+    mission: row.mission ?? "",
+    goals: row.goals ?? "",
+    aiInput: row.aiInput ?? "",
+    aiExpectedOutput: row.aiExpectedOutput ?? "",
     caseTemplateId: row.caseTemplateId ? asNum(row.caseTemplateId) : null,
     customValues: row.customValues ?? {},
     steps: [],
@@ -291,6 +299,10 @@ export async function createCase(
     estimate?: string | null;
     preconditions?: string;
     expectedResult?: string | null;
+    mission?: string | null;
+    goals?: string | null;
+    aiInput?: string | null;
+    aiExpectedOutput?: string | null;
     caseTemplateId?: number | null;
     refs?: string | null;
     customValues?: Record<string, string | number | boolean | string[] | null>;
@@ -312,8 +324,13 @@ export async function updateCase(
     title?: string;
     preconditions?: string | null;
     expectedResult?: string | null;
+    mission?: string | null;
+    goals?: string | null;
+    aiInput?: string | null;
+    aiExpectedOutput?: string | null;
     caseTemplateId?: number | null;
     refs?: string | null;
+    labels?: string[];
     priority?: string;
     caseType?: string;
     estimate?: string | null;

@@ -80,20 +80,24 @@ export function mapSections(rows: SectionRow[]) {
 export function mapMilestone(row: {
   id: bigint;
   projectId: bigint;
+  parentMilestoneId?: bigint | null;
   name: string;
   description?: string | null;
   startDate?: Date | null;
   dueDate?: Date | null;
   isCompleted: boolean;
 }) {
+  const now = new Date();
+  const isUpcoming = !row.isCompleted && row.startDate != null && row.startDate.getTime() > now.getTime();
   return {
     id: Number(row.id),
     project_id: Number(row.projectId),
+    parent_id: row.parentMilestoneId ? Number(row.parentMilestoneId) : null,
     name: row.name,
     description: row.description ?? null,
     start_on: row.startDate ? Math.floor(row.startDate.getTime() / 1000) : null,
     due_on: row.dueDate ? Math.floor(row.dueDate.getTime() / 1000) : null,
-    is_started: row.startDate != null,
+    is_started: row.startDate != null && !isUpcoming,
     is_completed: row.isCompleted,
     completed_on: row.isCompleted && row.dueDate ? Math.floor(row.dueDate.getTime() / 1000) : null
   };

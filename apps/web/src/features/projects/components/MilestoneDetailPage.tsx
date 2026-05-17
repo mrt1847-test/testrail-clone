@@ -1,20 +1,21 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { apiFetch } from "../../../shared/api/http";
-import type { Ok } from "../../../shared/api/types";
-import { fetchMilestone, fetchMilestoneRuns } from "../api/advancedApi";
+import { fetchMilestone, fetchMilestoneRuns, updateMilestone } from "../api/advancedApi";
+import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
+import { MilestoneLifecycleBadge } from "./MilestoneLifecycleBadge";
+import { MilestoneProgressChip } from "./MilestoneProgressChip";
 import { reportKeys } from "../hooks/reportKeys";
 import { ExecutionSummaryChart } from "./ExecutionSummaryChart";
 import { ReportSummaryStrip } from "./reports/ReportChrome";
-import type { MilestoneSummaryRow } from "./reports/ReportMilestoneSummaryPage";
 
 export function MilestoneDetailPage() {
   const { projectId = "", milestoneId = "" } = useParams();
+  const qc = useQueryClient();
   const milestoneQuery = useQuery({
     queryKey: ["milestone", projectId, milestoneId],
     queryFn: () => fetchMilestone(projectId, milestoneId),
@@ -27,19 +28,18 @@ export function MilestoneDetailPage() {
   });
   const summaryQuery = useQuery({
     queryKey: reportKeys.milestoneSummary(projectId),
-    queryFn: async () => {
-      const res = await apiFetch<Ok<{ items: MilestoneSummaryRow[] }>>(
-        `/api/projects/${projectId}/reports/milestone-summary`
-      );
-      return res.data.items ?? [];
-    },
+    queryFn: () => fetchMilestoneSummary(projectId),
     enabled: Boolean(projectId)
   });
 
   const rollup = useMemo(
-    () => summaryQuery.data?.find((row) => row.milestoneId === milestoneId) ?? null,
+    () => summaryQuery.data?.items.find((row) => row.milestoneId === milestoneId) ?? null,
     [summaryQuery.data, milestoneId]
   );
+  const childRollups = useMemo(() => {
+    const items = summaryQuery.data?.items ?? [];
+    return items.filter((row) => row.parentMilestoneId === milestoneId);
+  }, [summaryQuery.data, milestoneId]);
 
   const execution = useMemo(() => {
     if (!rollup) return { total: 0, passed: 0, failed: 0, remaining: 0 };
@@ -47,10 +47,26 @@ export function MilestoneDetailPage() {
     return { total: rollup.total, passed: rollup.passed, failed: rollup.failed, remaining };
   }, [rollup]);
 
+  const updateMutation = useMutation({
+    mutationFn: (input: { isCompleted?: boolean; startNow?: boolean }) =>
+      updateMilestone({ projectId, milestoneId, ...input }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["milestone", projectId, milestoneId] });
+      void qc.invalidateQueries({ queryKey: ["milestones", projectId] });
+    }
+  });
+
+  const milestone = milestoneQuery.data;
+  const lifecycleStatus =
+    milestone?.lifecycleStatus ?? (milestone?.isCompleted ? "completed" : "open");
+
   const summaryItems = useMemo(() => {
     if (!rollup) return [];
     return [
       { label: "Linked runs", value: rollup.runCount, tone: "neutral" as const },
+      ...(rollup.includesSubMilestones
+        ? [{ label: "Direct runs", value: rollup.directRunCount, tone: "neutral" as const }]
+        : []),
       { label: "Open runs", value: rollup.openRunCount, tone: "amber" as const },
       { label: "Progress", value: `${rollup.progress}%`, tone: "violet" as const },
       { label: "Passed", value: rollup.passed, tone: "emerald" as const },
@@ -75,7 +91,41 @@ export function MilestoneDetailPage() {
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Milestone</p>
             <h2 className="text-xl font-semibold text-slate-900">{milestoneQuery.data.name}</h2>
-            <p className="text-sm text-slate-600">{milestoneQuery.data.isCompleted ? "completed" : "open"}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <MilestoneLifecycleBadge status={lifecycleStatus} />
+              {milestone?.parentMilestoneId ? (
+                <Link
+                  to={`/projects/${projectId}/milestones/${milestone.parentMilestoneId}`}
+                  className="text-xs text-slate-600 underline"
+                >
+                  View parent milestone
+                </Link>
+              ) : null}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {lifecycleStatus === "upcoming" ? (
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+                  disabled={updateMutation.isPending}
+                  onClick={() => void updateMutation.mutateAsync({ startNow: true })}
+                >
+                  Start now
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+                disabled={updateMutation.isPending}
+                onClick={() =>
+                  void updateMutation.mutateAsync({
+                    isCompleted: lifecycleStatus !== "completed"
+                  })
+                }
+              >
+                {lifecycleStatus === "completed" ? "Reopen" : "Complete"}
+              </button>
+            </div>
           </div>
           <Link
             to={`/projects/${projectId}/reports/milestones`}
@@ -88,6 +138,19 @@ export function MilestoneDetailPage() {
 
       {rollup ? (
         <>
+          <div className="flex flex-wrap items-center gap-2">
+            <MilestoneProgressChip
+              progress={rollup.progress}
+              runCount={rollup.runCount}
+              childCount={rollup.childCount}
+              includesSubMilestones={rollup.includesSubMilestones}
+            />
+            {rollup.includesSubMilestones ? (
+              <span className="text-xs text-slate-600">
+                Includes sub-milestone runs ({rollup.directRunCount} direct · {rollup.runCount} total runs)
+              </span>
+            ) : null}
+          </div>
           <ReportSummaryStrip items={summaryItems} />
           <ExecutionSummaryChart projectId={projectId} execution={execution} />
         </>
@@ -112,6 +175,39 @@ export function MilestoneDetailPage() {
       ) : (
         <EmptyState title="No linked runs" description="Runs connected to this milestone will appear here." />
       )}
+
+      {milestone?.children && milestone.children.length > 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Sub-milestones</h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            {milestone.children.map((child) => {
+              const childRollup = childRollups.find((row) => row.milestoneId === child.id);
+              return (
+                <li
+                  key={child.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2"
+                >
+                  <Link to={`/projects/${projectId}/milestones/${child.id}`} className="font-medium underline">
+                    {child.name}
+                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {childRollup ? (
+                      <MilestoneProgressChip
+                        progress={childRollup.progress}
+                        runCount={childRollup.runCount}
+                        compact
+                      />
+                    ) : null}
+                    <MilestoneLifecycleBadge
+                      status={child.lifecycleStatus ?? (child.isCompleted ? "completed" : "open")}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

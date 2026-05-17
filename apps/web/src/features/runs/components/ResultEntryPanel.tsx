@@ -9,12 +9,14 @@ import {
   validateCustomFieldValues,
   valueForSubmit
 } from "./ResultCustomFields";
+import { AiEvaluationResultFields } from "./AiEvaluationResultFields";
 import { StepResultEditor } from "./StepResultEditor";
 import { ScenarioResultEditor, createScenarioResultDrafts, type ScenarioResultDraft } from "./ScenarioResultEditor";
 import type { CaseScenarioRow } from "../../cases/api/bddApi";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
 import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
+import { ResultCorrectionPolicyHint } from "./ResultCorrectionPolicyHint";
 import { UntestedPolicyHint } from "./UntestedPolicyHint";
 import type { CaseStepContext, ResultStatus, ResultSubmitPayload, StepResultDraft } from "./resultEntryTypes";
 import {
@@ -35,6 +37,8 @@ type ResultEntryPanelProps = {
   isCaseStepsLoading?: boolean;
   isSubmitting: boolean;
   disableUntested?: boolean;
+  hasResultHistory?: boolean;
+  aiEvaluation?: { expectedOutput?: string };
   onSubmit: (payload: ResultSubmitPayload) => void;
 };
 
@@ -46,6 +50,8 @@ export function ResultEntryPanel({
   isCaseStepsLoading = false,
   isSubmitting,
   disableUntested = false,
+  hasResultHistory = false,
+  aiEvaluation,
   onSubmit
 }: ResultEntryPanelProps) {
   const statusQuery = useProjectStatuses(projectId);
@@ -66,6 +72,11 @@ export function ResultEntryPanel({
   );
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [showDetails, setShowDetails] = useState(false);
+  const [aiActualOutput, setAiActualOutput] = useState("");
+  const [aiQualityRating, setAiQualityRating] = useState("");
+  const [aiLatencyMs, setAiLatencyMs] = useState("");
+  const [aiTraces, setAiTraces] = useState("");
+  const showAiEvaluation = Boolean(aiEvaluation);
 
   const { data: resultFields = [] } = useQuery({
     queryKey: ["custom-fields", projectId, "result"],
@@ -136,6 +147,9 @@ export function ResultEntryPanel({
     const submittedCustomValues = Object.fromEntries(
       activeResultFields.map((field) => [field.systemName, valueForSubmit(field, customValues[field.systemName] ?? "")])
     );
+    const parsedQuality = aiQualityRating.trim() ? Number(aiQualityRating) : undefined;
+    const parsedLatency = aiLatencyMs.trim() ? Number(aiLatencyMs) : undefined;
+
     onSubmit({
       status: activeStatus.canonicalStatus,
       comment: comment.trim() || undefined,
@@ -143,6 +157,15 @@ export function ResultEntryPanel({
       version: version.trim() || undefined,
       defects,
       customValues: submittedCustomValues,
+      ...(showAiEvaluation
+        ? {
+            aiActualOutput: aiActualOutput.trim() || undefined,
+            aiQualityRating:
+              parsedQuality !== undefined && Number.isInteger(parsedQuality) ? parsedQuality : undefined,
+            aiLatencyMs: parsedLatency !== undefined && Number.isInteger(parsedLatency) ? parsedLatency : undefined,
+            aiTraces: aiTraces.trim() || undefined
+          }
+        : {}),
       stepResults: stepResults.map((step, index) => ({
         stepOrder: Number.isInteger(step.stepOrder) && step.stepOrder > 0 ? step.stepOrder : index + 1,
         status: step.status,
@@ -169,6 +192,10 @@ export function ResultEntryPanel({
     setScenarioResults(createScenarioResultDrafts(caseScenarios));
     setCustomValues({});
     setCustomValueErrors({});
+    setAiActualOutput("");
+    setAiQualityRating("");
+    setAiLatencyMs("");
+    setAiTraces("");
   }
 
   const detailsCount = [elapsed, version, defects.length > 0 ? defects.join(",") : "", activeResultFields.length > 0 ? "fields" : ""].filter(
@@ -190,6 +217,7 @@ export function ResultEntryPanel({
           onSelect={setSelectedStatus}
         />
         <UntestedPolicyHint visible={disableUntested} />
+        <ResultCorrectionPolicyHint hasHistory={hasResultHistory} />
 
         <label className="block text-xs font-medium text-slate-600">
           Comment
@@ -200,6 +228,20 @@ export function ResultEntryPanel({
             onChange={(e) => setComment(e.target.value)}
           />
         </label>
+
+        {showAiEvaluation ? (
+          <AiEvaluationResultFields
+            expectedOutput={aiEvaluation?.expectedOutput}
+            actualOutput={aiActualOutput}
+            qualityRating={aiQualityRating}
+            latencyMs={aiLatencyMs}
+            traces={aiTraces}
+            onActualOutputChange={setAiActualOutput}
+            onQualityRatingChange={setAiQualityRating}
+            onLatencyMsChange={setAiLatencyMs}
+            onTracesChange={setAiTraces}
+          />
+        ) : null}
 
         <details className="group border-t border-slate-100 pt-2" open={showDetails} onToggle={(event) => setShowDetails(event.currentTarget.open)}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-slate-700">
@@ -271,7 +313,7 @@ export function ResultEntryPanel({
           disabled={isSubmitting}
           onClick={handleSubmit}
         >
-          {isSubmitting ? "Saving..." : "Save result"}
+          {isSubmitting ? "Saving..." : hasResultHistory ? "Add result" : "Save result"}
         </button>
       </div>
     </div>

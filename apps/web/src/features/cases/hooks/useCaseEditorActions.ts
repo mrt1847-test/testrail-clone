@@ -44,6 +44,10 @@ export function useCaseEditorActions(projectId: string) {
       estimate: string | null;
       references: string;
       expectedResult: string;
+      mission: string;
+      goals: string;
+      aiInput: string;
+      aiExpectedOutput: string;
       templateId: string | null;
       customValues: Record<string, string | number | boolean | string[] | null>;
       expectedVersion?: number;
@@ -54,6 +58,10 @@ export function useCaseEditorActions(projectId: string) {
         estimate: input.estimate,
         refs: input.references.trim().length > 0 ? input.references.trim() : null,
         expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
+        mission: input.mission.trim().length > 0 ? input.mission.trim() : null,
+        goals: input.goals.trim().length > 0 ? input.goals.trim() : null,
+        aiInput: input.aiInput.trim().length > 0 ? input.aiInput.trim() : null,
+        aiExpectedOutput: input.aiExpectedOutput.trim().length > 0 ? input.aiExpectedOutput.trim() : null,
         caseTemplateId: input.templateId ? Number(input.templateId) : null,
         customValues: input.customValues,
         expectedVersion: input.expectedVersion

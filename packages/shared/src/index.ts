@@ -36,3 +36,15 @@ export type ApiError = {
     requestId?: string;
   };
 };
+
+export {
+  activeAssignmentStatuses,
+  ASSIGNMENT_DUE_SOON_DAYS,
+  ASSIGNMENT_STALE_DAYS,
+  assignmentAgingLabel,
+  computeAssignmentAging,
+  isActiveAssignmentStatus,
+  summarizeAssignmentAging,
+  type AssignmentAgingInput,
+  type AssignmentAgingLevel
+} from "./assignmentAging.js";

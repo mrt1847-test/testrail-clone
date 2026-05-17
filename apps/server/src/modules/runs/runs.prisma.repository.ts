@@ -14,6 +14,8 @@ import {
   type InstanceDbRow
 } from "./instanceCaseChange.js";
 import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
+import { resultRowWithAiFields } from "../../domain/aiEvaluationFields.js";
+import { assignmentAgingForRow, buildRunScheduleWhereForAssignmentList } from "./assignmentListFilters.js";
 
 function mapRunRow(r: {
   id: bigint;
@@ -173,13 +175,29 @@ function toTxAdapter(tx: Prisma.TransactionClient): Tx {
           comment: input.comment,
           elapsed: input.elapsed,
           version: input.version,
+          aiActualOutput: input.aiActualOutput ?? undefined,
+          aiQualityRating: input.aiQualityRating ?? undefined,
+          aiLatencyMs: input.aiLatencyMs ?? undefined,
+          aiTraces: input.aiTraces ?? undefined,
           defects: input.defects ?? [],
           customValues: (input.customValues as Prisma.InputJsonValue | undefined) ?? undefined,
           source: input.source ?? "manual",
           metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined
         }
       });
-      return { id: row.id, testInstanceId: row.testInstanceId, status: mapStatus(row.status) };
+      return {
+        id: row.id,
+        testInstanceId: row.testInstanceId,
+        status: mapStatus(row.status),
+        aiActualOutput: row.aiActualOutput ?? null,
+        aiQualityRating: row.aiQualityRating ?? null,
+        aiLatencyMs: row.aiLatencyMs ?? null,
+        aiTraces: row.aiTraces ?? null,
+        customValues:
+          row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+            ? (row.customValues as Record<string, import("../../domain/customFieldTypes.js").CustomFieldValue>)
+            : {}
+      };
     },
     async createResultSteps(resultId, steps) {
       await tx.testResultStep.createMany({
@@ -459,29 +477,138 @@ export class PrismaRunsRepository implements RunsRepository {
     };
   }
 
-  async listAssignedTests(input: { projectId: bigint; userId: bigint }) {
-    const rows = await this.prisma.testInstance.findMany({
-      where: {
-        assignedTo: input.userId,
-        deletedAt: null,
-        run: { projectId: input.projectId, deletedAt: null }
-      },
-      include: {
-        run: { select: { id: true, name: true } },
-        testCase: { select: { id: true, title: true } }
-      },
-      orderBy: { id: "desc" },
-      take: 200
-    });
-    return rows.map((row: (typeof rows)[number]) => ({
+  private mapAssignmentTestRow(row: {
+    id: bigint;
+    assignedTo: bigint | null;
+    status: string;
+    updatedAt: Date;
+    run: {
+      id: bigint;
+      name: string;
+      dueOn: Date | null;
+      milestoneId: bigint | null;
+      milestone: { id: bigint; name: string } | null;
+    };
+    testCase: { id: bigint; title: string };
+    assignee?: { id: bigint; email: string; name: string } | null;
+  }) {
+    const status = mapStatus(row.status);
+    const runDueOn = row.run.dueOn ?? null;
+    return {
       testId: row.id,
       runId: row.run.id,
       runName: row.run.name,
       caseId: row.testCase.id,
       title: row.testCase.title,
-      status: mapStatus(row.status),
-      assignedTo: row.assignedTo ?? null
-    }));
+      status,
+      assignedTo: row.assignedTo ?? null,
+      runDueOn,
+      milestoneId: row.run.milestoneId ?? null,
+      milestoneName: row.run.milestone?.name ?? null,
+      agingLevel: assignmentAgingForRow({ status, runDueOn, updatedAt: row.updatedAt }),
+      assignee: row.assignee
+        ? { id: row.assignee.id, name: row.assignee.name, email: row.assignee.email }
+        : null
+    };
+  }
+
+  async listTeamTodoTests(input: {
+    projectId: bigint;
+    assigneeId?: bigint | "all";
+    status?: import("../../domain/status.js").TestStatus;
+    runId?: bigint;
+    q?: string;
+    milestoneId?: bigint | "none";
+    dueBefore?: Date;
+    dueAfter?: Date;
+    overdue?: boolean;
+    dueUnset?: boolean;
+  }) {
+    const assigneeFilter =
+      input.assigneeId && input.assigneeId !== "all" ? { assignedTo: input.assigneeId } : { assignedTo: { not: null } };
+    const scheduleWhere = buildRunScheduleWhereForAssignmentList(input);
+    const rows = await this.prisma.testInstance.findMany({
+      where: {
+        deletedAt: null,
+        ...assigneeFilter,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.runId ? { runId: input.runId } : {}),
+        run: { projectId: input.projectId, deletedAt: null, ...scheduleWhere },
+        ...(input.q
+          ? {
+              OR: [
+                { titleSnapshot: { contains: input.q, mode: "insensitive" as const } },
+                { testCase: { title: { contains: input.q, mode: "insensitive" as const } } },
+                { run: { name: { contains: input.q, mode: "insensitive" as const } } }
+              ]
+            }
+          : {})
+      },
+      include: {
+        run: {
+          select: {
+            id: true,
+            name: true,
+            dueOn: true,
+            milestoneId: true,
+            milestone: { select: { id: true, name: true } }
+          }
+        },
+        testCase: { select: { id: true, title: true } },
+        assignee: { select: { id: true, email: true, name: true } }
+      },
+      orderBy: [{ run: { dueOn: "asc" } }, { run: { name: "asc" } }, { id: "desc" }],
+      take: 500
+    });
+    return rows.map((row) => this.mapAssignmentTestRow(row));
+  }
+
+  async listAssignedTests(input: {
+    projectId: bigint;
+    userId: bigint;
+    status?: import("../../domain/status.js").TestStatus;
+    runId?: bigint;
+    q?: string;
+    milestoneId?: bigint | "none";
+    dueBefore?: Date;
+    dueAfter?: Date;
+    overdue?: boolean;
+    dueUnset?: boolean;
+  }) {
+    const scheduleWhere = buildRunScheduleWhereForAssignmentList(input);
+    const rows = await this.prisma.testInstance.findMany({
+      where: {
+        assignedTo: input.userId,
+        deletedAt: null,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.runId ? { runId: input.runId } : {}),
+        run: { projectId: input.projectId, deletedAt: null, ...scheduleWhere },
+        ...(input.q
+          ? {
+              OR: [
+                { titleSnapshot: { contains: input.q, mode: "insensitive" as const } },
+                { testCase: { title: { contains: input.q, mode: "insensitive" as const } } },
+                { run: { name: { contains: input.q, mode: "insensitive" as const } } }
+              ]
+            }
+          : {})
+      },
+      include: {
+        run: {
+          select: {
+            id: true,
+            name: true,
+            dueOn: true,
+            milestoneId: true,
+            milestone: { select: { id: true, name: true } }
+          }
+        },
+        testCase: { select: { id: true, title: true } }
+      },
+      orderBy: [{ run: { dueOn: "asc" } }, { id: "desc" }],
+      take: 500
+    });
+    return rows.map((row) => this.mapAssignmentTestRow(row));
   }
 
   async listResultsForTestInstance(testId: bigint) {
@@ -489,21 +616,27 @@ export class PrismaRunsRepository implements RunsRepository {
       where: { testInstanceId: testId },
       orderBy: { id: "desc" }
     });
-    return rows.map((row: (typeof rows)[number]) => ({
-      id: row.id,
-      testInstanceId: row.testInstanceId,
-      status: mapStatus(row.status),
-      comment: row.comment ?? undefined,
-      elapsed: row.elapsed ?? undefined,
-      version: row.version ?? undefined,
-      defects: row.defects,
-      customValues:
-        row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-          ? customValuesFromJson(row.customValues)
-          : {},
-      source: row.source as "manual" | "automation" | "api",
-      createdAt: row.createdAt
-    }));
+    return rows.map((row: (typeof rows)[number]) =>
+      resultRowWithAiFields({
+        id: row.id,
+        testInstanceId: row.testInstanceId,
+        status: mapStatus(row.status),
+        comment: row.comment ?? undefined,
+        elapsed: row.elapsed ?? undefined,
+        version: row.version ?? undefined,
+        defects: row.defects,
+        aiActualOutput: row.aiActualOutput ?? null,
+        aiQualityRating: row.aiQualityRating ?? null,
+        aiLatencyMs: row.aiLatencyMs ?? null,
+        aiTraces: row.aiTraces ?? null,
+        customValues:
+          row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+            ? customValuesFromJson(row.customValues)
+            : {},
+        source: row.source as "manual" | "automation" | "api",
+        createdAt: row.createdAt
+      })
+    );
   }
 
   async listResultsForTestInstancePage(testId: bigint, page: number, pageSize: number) {
@@ -517,21 +650,27 @@ export class PrismaRunsRepository implements RunsRepository {
       }),
       this.prisma.testResult.count({ where })
     ]);
-    const items = rows.map((row: (typeof rows)[number]) => ({
-      id: row.id,
-      testInstanceId: row.testInstanceId,
-      status: mapStatus(row.status),
-      comment: row.comment ?? undefined,
-      elapsed: row.elapsed ?? undefined,
-      version: row.version ?? undefined,
-      defects: row.defects,
-      customValues:
-        row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
-          ? customValuesFromJson(row.customValues)
-          : {},
-      source: row.source as "manual" | "automation" | "api",
-      createdAt: row.createdAt
-    }));
+    const items = rows.map((row: (typeof rows)[number]) =>
+      resultRowWithAiFields({
+        id: row.id,
+        testInstanceId: row.testInstanceId,
+        status: mapStatus(row.status),
+        comment: row.comment ?? undefined,
+        elapsed: row.elapsed ?? undefined,
+        version: row.version ?? undefined,
+        defects: row.defects,
+        aiActualOutput: row.aiActualOutput ?? null,
+        aiQualityRating: row.aiQualityRating ?? null,
+        aiLatencyMs: row.aiLatencyMs ?? null,
+        aiTraces: row.aiTraces ?? null,
+        customValues:
+          row.customValues && typeof row.customValues === "object" && !Array.isArray(row.customValues)
+            ? customValuesFromJson(row.customValues)
+            : {},
+        source: row.source as "manual" | "automation" | "api",
+        createdAt: row.createdAt
+      })
+    );
     return { items, total };
   }
 

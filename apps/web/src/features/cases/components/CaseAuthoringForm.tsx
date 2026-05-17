@@ -45,6 +45,10 @@ type CaseAuthoringFormProps = {
     estimate: string;
     references: string;
     expectedResult: string;
+    mission: string;
+    goals: string;
+    aiInput: string;
+    aiExpectedOutput: string;
     customValues: Record<string, ScalarCustomValue>;
     templateId: string | null;
   }) => Promise<void> | void;
@@ -451,6 +455,19 @@ export function CaseAuthoringForm({
         customValues[field.systemName] ?? null
       );
     }
+    const mission = String(normalizedCustomValues.mission ?? "").trim();
+    const goals = String(normalizedCustomValues.goals ?? "").trim();
+    const aiInput = String(normalizedCustomValues.ai_input ?? "").trim();
+    const aiExpectedOutput = String(normalizedCustomValues.ai_expected_output ?? "").trim();
+    const exploratoryCustomValues = { ...normalizedCustomValues };
+    delete exploratoryCustomValues.mission;
+    delete exploratoryCustomValues.goals;
+    delete exploratoryCustomValues.ai_input;
+    delete exploratoryCustomValues.ai_expected_output;
+    delete exploratoryCustomValues.ai_quality_rating;
+    delete exploratoryCustomValues.ai_latency_ms;
+    delete exploratoryCustomValues.ai_traces;
+
     try {
       await onSubmit({
         title: title.trim(),
@@ -458,7 +475,11 @@ export function CaseAuthoringForm({
         estimate: estimate.trim(),
         references: references.trim(),
         expectedResult: expectedResult.trim(),
-        customValues: normalizedCustomValues,
+        mission,
+        goals,
+        aiInput,
+        aiExpectedOutput,
+        customValues: exploratoryCustomValues,
         templateId: selectedTemplateId || null
       });
     } catch {

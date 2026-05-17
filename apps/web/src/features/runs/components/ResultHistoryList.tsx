@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AttachmentPreviewDrawer } from "../../../shared/ui/AttachmentPreviewDrawer";
 import { fetchAttachmentDownloadUrl } from "../api/runApi";
+import { ResultCorrectionPolicyHint } from "./ResultCorrectionPolicyHint";
 import type { ResultAttachmentItem, ResultDefectLinkItem, TestResultHistoryItem, TestResultStepItem } from "../types";
 
 type ResultHistoryListProps = {
@@ -132,6 +133,7 @@ export function ResultHistoryList({
             </div>
           ) : null}
         </div>
+        <ResultCorrectionPolicyHint hasHistory={history.length > 0} className="mt-2" />
         <div className="mt-2 max-h-64 space-y-2 overflow-auto">
           {isHistoryLoading ? (
             <p className="text-xs text-slate-500">Loading history...</p>

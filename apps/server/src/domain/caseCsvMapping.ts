@@ -30,6 +30,26 @@ export const CASE_CSV_CORE_FIELDS: readonly CaseCsvFieldDefinition[] = [
     aliases: ["preconditions", "Preconditions", "precondition", "Precondition"]
   },
   {
+    key: "mission",
+    label: "Mission",
+    aliases: ["mission", "Mission", "charter", "Charter"]
+  },
+  {
+    key: "goals",
+    label: "Goals",
+    aliases: ["goals", "Goals", "goal", "Goal"]
+  },
+  {
+    key: "ai_input",
+    label: "AI input",
+    aliases: ["ai_input", "aiInput", "AI Input", "input", "Input"]
+  },
+  {
+    key: "ai_expected_output",
+    label: "AI expected output",
+    aliases: ["ai_expected_output", "aiExpectedOutput", "AI Expected Output", "expected_output", "Expected Output"]
+  },
+  {
     key: "priority",
     label: "Priority",
     aliases: ["priority", "Priority"]
@@ -248,6 +268,10 @@ export function buildCaseCsvImportProfile(customFields: Array<{
       "section_id",
       "title",
       "preconditions",
+      "mission",
+      "goals",
+      "ai_input",
+      "ai_expected_output",
       "priority",
       "type",
       CASE_CSV_REFS_COLUMN,

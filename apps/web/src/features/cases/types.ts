@@ -52,6 +52,10 @@ export interface TestCase {
   automationKey: string;
   preconditions: string;
   expectedResult: string;
+  mission: string;
+  goals: string;
+  aiInput: string;
+  aiExpectedOutput: string;
   caseTemplateId: number | null;
   customValues: Record<string, string | number | boolean | string[] | null>;
   steps: CaseStep[];

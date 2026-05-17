@@ -54,15 +54,7 @@ export const DEFAULT_CASE_TEMPLATE_DEFINITIONS: DefaultCaseTemplateDefinition[] 
     systemKey: "ai_evaluation",
     name: "AI Evaluation",
     description: "Capture AI prompt, expected output, and evaluation metadata.",
-    fields: [
-      "title",
-      "ai_input",
-      "ai_expected_output",
-      "ai_quality_rating",
-      "ai_latency_ms",
-      "ai_traces",
-      "refs"
-    ],
+    fields: ["title", "ai_input", "ai_expected_output", "refs"],
     isDefault: false,
     displayOrder: 4
   }

@@ -15,6 +15,7 @@ import {
   toRunSummaryMetrics,
   toUniqueDefectKeys
 } from "../reports/reportMetrics.service.js";
+import { buildMilestoneSummary } from "../reports/milestoneSummary.service.js";
 import { runIdParamSchema } from "../runs/runs.schema.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import {
@@ -340,6 +341,10 @@ type CaseExportRecord = {
   section_id: string;
   title: string;
   preconditions: string | null;
+  mission: string | null;
+  goals: string | null;
+  ai_input: string | null;
+  ai_expected_output: string | null;
   priority: string | null;
   type: string | null;
   refs: string;
@@ -373,6 +378,10 @@ function caseExportRecordToCsvRow(record: CaseExportRecord, customFieldNames: st
     section_id: record.section_id,
     title: record.title,
     preconditions: record.preconditions,
+    mission: record.mission,
+    goals: record.goals,
+    ai_input: record.ai_input,
+    ai_expected_output: record.ai_expected_output,
     priority: record.priority,
     type: record.type,
     refs: record.refs,
@@ -664,43 +673,45 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
   }
 
   if (input.reportType === "milestone_summary") {
-    const milestones = await prisma.milestone.findMany({
-      where: { projectId, deletedAt: null },
-      orderBy: [{ isCompleted: "asc" }, { id: "desc" }],
-      take: input.maxRows
-    });
-    const rows = [];
-    for (const milestone of milestones) {
-      const runs = await prisma.testRun.findMany({
-        where: { projectId, milestoneId: milestone.id, deletedAt: null },
-        include: { instances: { where: { deletedAt: null }, select: { status: true } } }
-      });
-      const metrics = toRunSummaryMetrics(runs.flatMap((run) => run.instances.map((item) => item.status)));
-      rows.push({
-        milestone_id: milestone.id,
-        name: milestone.name,
-        is_completed: milestone.isCompleted,
-        run_count: runs.length,
-        open_run_count: runs.filter((run) => run.status === "open").length,
-        total: metrics.total,
-        passed: metrics.passed,
-        failed: metrics.failed,
-        progress: metrics.progress
-      });
-    }
+    const { items } = await buildMilestoneSummary(projectId, { prisma });
+    const rows = items.slice(0, input.maxRows).map((row) => ({
+      milestone_id: row.milestoneId,
+      parent_milestone_id: row.parentMilestoneId ?? "",
+      name: row.name,
+      lifecycle_status: row.lifecycleStatus,
+      is_completed: row.isCompleted,
+      child_count: row.childCount,
+      includes_sub_milestones: row.includesSubMilestones,
+      run_count: row.runCount,
+      open_run_count: row.openRunCount,
+      direct_run_count: row.directRunCount,
+      total: row.total,
+      passed: row.passed,
+      failed: row.failed,
+      progress: row.progress,
+      direct_total: row.directTotal,
+      direct_progress: row.directProgress
+    }));
     return {
       fileName: `project-${projectId.toString()}-milestone-summary.csv`,
       csv: toCsv(
         [
           "milestone_id",
+          "parent_milestone_id",
           "name",
+          "lifecycle_status",
           "is_completed",
+          "child_count",
+          "includes_sub_milestones",
           "run_count",
           "open_run_count",
+          "direct_run_count",
           "total",
           "passed",
           "failed",
-          "progress"
+          "progress",
+          "direct_total",
+          "direct_progress"
         ],
         rows
       ),
@@ -966,6 +977,10 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
     sectionId: bigint;
     title: string;
     preconditions?: string;
+    mission?: string;
+    goals?: string;
+    ai_input?: string;
+    ai_expected_output?: string;
     priority?: string;
     caseType?: string;
     refs?: string;
@@ -1017,6 +1032,16 @@ async function validateImportRows(prisma: PrismaClient, projectId: bigint, rows:
       sectionId,
       title,
       preconditions: firstValue(row, ["preconditions", "Preconditions"]),
+      mission: firstValue(row, ["mission", "Mission", "charter", "Charter"]),
+      goals: firstValue(row, ["goals", "Goals", "goal", "Goal"]),
+      ai_input: firstValue(row, ["ai_input", "aiInput", "AI Input", "input", "Input"]),
+      ai_expected_output: firstValue(row, [
+        "ai_expected_output",
+        "aiExpectedOutput",
+        "AI Expected Output",
+        "expected_output",
+        "Expected Output"
+      ]),
       priority: firstValue(row, ["priority", "Priority"]),
       caseType: firstValue(row, ["type", "case_type", "caseType", "Type"]),
       refs: caseRefsFromCsvCell(firstValue(row, [...caseRefsCsvAliases()])) ?? undefined,
@@ -1120,6 +1145,10 @@ export class ImportExportService {
     sectionId: bigint;
     title: string;
     preconditions?: string;
+    mission?: string;
+    goals?: string;
+    ai_input?: string;
+    ai_expected_output?: string;
     priority?: string;
     caseType?: string;
     refs?: string;
@@ -1145,6 +1174,10 @@ export class ImportExportService {
             sectionId: item.sectionId,
             title: item.title,
             preconditions: item.preconditions,
+            mission: item.mission,
+            goals: item.goals,
+            aiInput: item.ai_input,
+            aiExpectedOutput: item.ai_expected_output,
             priority: item.priority,
             caseType: item.caseType,
             refs: item.refs,
@@ -1280,6 +1313,10 @@ export class ImportExportService {
       section_id: row.sectionId.toString(),
       title: row.title,
       preconditions: row.preconditions,
+      mission: row.mission,
+      goals: row.goals,
+      ai_input: row.aiInput,
+      ai_expected_output: row.aiExpectedOutput,
       priority: row.priority,
       type: row.caseType,
       refs: formatCaseRefsForCsv(row.refs),
@@ -1315,6 +1352,10 @@ export class ImportExportService {
       "section_id",
       "title",
       "preconditions",
+      "mission",
+      "goals",
+      "ai_input",
+      "ai_expected_output",
       "priority",
       "type",
       CASE_CSV_REFS_COLUMN,

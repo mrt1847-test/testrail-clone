@@ -65,6 +65,7 @@ export type CreateRunWithInstancesInput = {
   includedSectionIds?: bigint[];
   excludedSectionIds?: bigint[];
   environment?: string | null;
+  assignedTo?: bigint | null;
   compositionMode?: CompositionMode;
   filterDefinition?: RunCaseFilterDefinition;
 };

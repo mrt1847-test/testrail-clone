@@ -6,6 +6,8 @@ import type {
   CaseAuthoringCustomFieldDefinition,
   CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
+import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
+import { CaseRefTokens } from "./CaseRefTokens";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
 type CaseRowProps = {
@@ -99,7 +101,9 @@ export function CaseRow({
     .map((field) => {
       const value = item.customValues[field.systemName];
       if (value == null || value === "") return null;
-      return { key: field.systemName, label: field.name, value: String(value) };
+      const formatted = formatCustomFieldDisplayValue(value);
+      if (!formatted) return null;
+      return { key: field.systemName, label: field.name, value: formatted };
     })
     .filter((chip): chip is { key: string; label: string; value: string } => chip != null)
     .slice(0, 3);
@@ -182,7 +186,10 @@ export function CaseRow({
             {hasMetaLine ? (
               <span className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
                 {visibleColumnSet.has("refs") && item.references.trim().length > 0 ? (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5">Refs: {item.references}</span>
+                  <span className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+                    <span className="font-medium text-slate-600">Refs:</span>
+                    <CaseRefTokens refsValue={item.references} />
+                  </span>
                 ) : null}
                 {visibleColumnSet.has("automation") && item.automationKey.trim().length > 0 ? (
                   <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">

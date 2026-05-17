@@ -32,6 +32,8 @@ model User {
   apiTokens      ApiToken[]
   auditLogs      AuditLog[]      @relation("AuditActor")
   assignedRuns   TestRun[]       @relation("RunAssignee")
+  assignedPlans  TestPlan[]      @relation("PlanAssignee")
+  assignedPlanEntries TestPlanEntry[] @relation("PlanEntryAssignee")
   assignedTests  TestInstance[]  @relation("TestAssignee")
   createdResults TestResult[]     @relation("ResultCreator")
   createdDefectLinks ResultDefectLink[] @relation("ResultDefectLinkCreator")
@@ -222,6 +224,10 @@ model TestCase {
   title          String
   preconditions  String?
   expectedResult String?
+  mission            String?
+  goals              String?
+  aiInput            String?
+  aiExpectedOutput   String?
   priority       String?
   caseType       String?
   estimate       String?
@@ -349,24 +355,28 @@ model TestCaseScenario {
 }
 
 model Milestone {
-  id          BigInt    @id @default(autoincrement())
-  projectId   BigInt
-  name        String
-  description String?
-  startDate   DateTime?
-  dueDate     DateTime?
-  isCompleted Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  createdBy   BigInt?
-  updatedBy   BigInt?
+  id                BigInt    @id @default(autoincrement())
+  projectId         BigInt
+  parentMilestoneId BigInt?
+  name              String
+  description       String?
+  startDate         DateTime?
+  dueDate           DateTime?
+  isCompleted       Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  createdBy         BigInt?
+  updatedBy         BigInt?
 
-  project Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  runs    TestRun[]
-  plans   TestPlan[]
+  project  Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  parent   Milestone?  @relation("MilestoneHierarchy", fields: [parentMilestoneId], references: [id], onDelete: SetNull)
+  children Milestone[] @relation("MilestoneHierarchy")
+  runs     TestRun[]
+  plans    TestPlan[]
 
   @@index([projectId])
+  @@index([parentMilestoneId])
 }
 
 model TestPlan {
@@ -376,6 +386,10 @@ model TestPlan {
   name        String
   description String?
   status      String    @default("open")
+  assignedTo  BigInt?
+  refs        String?
+  startDate   DateTime?
+  dueOn       DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
@@ -384,11 +398,13 @@ model TestPlan {
 
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
   milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  assignee  User?      @relation("PlanAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   runs      TestRun[]
   entries   TestPlanEntry[]
 
   @@index([projectId])
   @@index([milestoneId])
+  @@index([assignedTo])
 }
 
 model TestRun {
@@ -470,9 +486,13 @@ model TestResult {
   id             BigInt     @id @default(autoincrement())
   testInstanceId BigInt
   status         TestStatus
-  comment        String?
-  elapsed        String?
-  version        String?
+  comment          String?
+  elapsed          String?
+  version          String?
+  aiActualOutput   String?
+  aiQualityRating  Int?
+  aiLatencyMs      Int?
+  aiTraces         String?
   defects        String[]
   customValues   Json       @default("{}")
   source         String     @default("manual")
@@ -580,25 +600,35 @@ model ExecutionComment {
 }
 
 model TestPlanEntry {
-  id          BigInt    @id @default(autoincrement())
-  planId      BigInt
-  name        String
-  environment String?
-  suiteId     BigInt?
-  runId       BigInt?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  createdBy   BigInt?
-  updatedBy   BigInt?
+  id             BigInt    @id @default(autoincrement())
+  planId         BigInt
+  name           String
+  environment    String?
+  suiteId        BigInt?
+  runId          BigInt?
+  assignedTo     BigInt?
+  refs           String?
+  startDate      DateTime?
+  dueOn          DateTime?
+  includeAll     Boolean   @default(true)
+  includeCaseIds Json?
+  excludeCaseIds Json?
+  isIncluded     Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      BigInt?
+  updatedBy      BigInt?
 
   plan  TestPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
   suite TestSuite? @relation(fields: [suiteId], references: [id], onDelete: SetNull)
   run   TestRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  assignee User?  @relation("PlanEntryAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   configurations TestPlanEntryConfiguration[]
 
   @@index([planId])
   @@index([runId])
+  @@index([assignedTo])
 }
 
 model ConfigurationGroup {
@@ -804,6 +834,7 @@ model NotificationPreference {
   projectId           BigInt
   assignmentEnabled   Boolean   @default(true)
   failedResultEnabled Boolean   @default(true)
+  activityEnabled     Boolean   @default(true)
   mentionEnabled      Boolean   @default(true)
   digestEnabled       Boolean   @default(false)
   lastDigestSentAt    DateTime?

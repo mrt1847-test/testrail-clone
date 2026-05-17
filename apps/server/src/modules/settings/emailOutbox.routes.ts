@@ -163,6 +163,7 @@ export async function registerEmailOutboxRoutes(app: FastifyInstance, deps: Sett
         lastDigestSentAt: true,
         assignmentEnabled: true,
         failedResultEnabled: true,
+        activityEnabled: true,
         mentionEnabled: true,
         user: { select: { email: true, deletedAt: true } },
         project: { select: { name: true, deletedAt: true } }
@@ -187,6 +188,7 @@ export async function registerEmailOutboxRoutes(app: FastifyInstance, deps: Sett
     const filtered = notifications.filter((row) => {
       if (row.type === "assignment") return preference.assignmentEnabled;
       if (row.type === "failed_result") return preference.failedResultEnabled;
+      if (row.type === "activity") return preference.activityEnabled;
       if (row.type === "mention") return preference.mentionEnabled;
       return true;
     });

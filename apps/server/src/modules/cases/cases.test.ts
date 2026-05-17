@@ -252,6 +252,32 @@ describe("cases service", () => {
     ).resolves.toMatchObject([{ title: "Profile save" }]);
   });
 
+  it("updates labels, refs, and custom values on a case", async () => {
+    const { repo, service, project, sourceSection } = await seedCatalog();
+
+    const created = await repo.createCase({
+      projectId: project.id,
+      sectionId: sourceSection.id,
+      title: "Metadata case",
+      priority: "medium",
+      caseType: "functional",
+      refs: "REQ-1",
+      labels: ["smoke"],
+      customValues: { component: "auth" },
+      archivedAt: null
+    });
+
+    const updated = await service.updateCase(created.id, {
+      refs: "REQ-2, REQ-3",
+      labels: ["smoke", "Regression"],
+      customValues: { component: "checkout" }
+    });
+
+    expect(updated.refs).toContain("REQ-2");
+    expect(updated.labels).toEqual(["smoke", "Regression"]);
+    expect(updated.customValues.component).toBe("checkout");
+  });
+
   it("bulk updates selected cases", async () => {
     const { repo, service, project, firstCase, secondCase } = await seedCatalog();
 

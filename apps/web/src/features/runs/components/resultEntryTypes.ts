@@ -9,6 +9,10 @@ export type ResultSubmitPayload = {
   version?: string;
   defects: string[];
   customValues?: Record<string, CustomValue>;
+  aiActualOutput?: string;
+  aiQualityRating?: number;
+  aiLatencyMs?: number;
+  aiTraces?: string;
   stepResults: Array<{ stepOrder: number; status: ResultStatus; actualResult?: string; comment?: string }>;
   scenarioResults?: Array<{ caseScenarioId: string; status: ResultStatus; comment?: string }>;
 };

@@ -4,9 +4,12 @@ import { Link, useParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
-import { apiFetch } from "../../../../shared/api/http";
-import type { Ok } from "../../../../shared/api/types";
+import { fetchMilestoneSummary, type MilestoneSummaryRow } from "../../api/milestoneSummaryApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { orderMilestonesForHierarchy } from "../../utils/milestoneDisplay";
+import { MilestoneDashboardPanel } from "../MilestoneDashboardPanel";
+import { MilestoneLifecycleBadge } from "../MilestoneLifecycleBadge";
+import { MilestoneProgressChip } from "../MilestoneProgressChip";
 import {
   ReportExportButton,
   ReportSaveViewButton,
@@ -16,17 +19,7 @@ import {
   ReportTablePanel
 } from "./ReportChrome";
 
-export type MilestoneSummaryRow = {
-  milestoneId: string;
-  name: string;
-  isCompleted: boolean;
-  runCount: number;
-  openRunCount: number;
-  total: number;
-  passed: number;
-  failed: number;
-  progress: number;
-};
+export type { MilestoneSummaryRow };
 
 export function ReportMilestoneSummaryPage() {
   const { projectId = "" } = useParams();
@@ -35,44 +28,53 @@ export function ReportMilestoneSummaryPage() {
 
   const q = useQuery({
     queryKey: reportKeys.milestoneSummary(projectId),
-    queryFn: async (): Promise<MilestoneSummaryRow[]> => {
-      const res = await apiFetch<Ok<{ items: MilestoneSummaryRow[] }>>(
-        `/api/projects/${projectId}/reports/milestone-summary`
-      );
-      return res.data.items ?? [];
-    },
+    queryFn: () => fetchMilestoneSummary(projectId),
     enabled: Boolean(projectId)
   });
 
-  const rows = q.data ?? [];
+  const rows = q.data?.items ?? [];
+  const itemsById = useMemo(() => new Map(rows.map((row) => [row.milestoneId, row])), [rows]);
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return rows.filter((row) => {
-      if (statusFilter === "open" && row.isCompleted) return false;
-      if (statusFilter === "completed" && !row.isCompleted) return false;
+      if (statusFilter === "open" && row.lifecycleStatus !== "open") return false;
+      if (statusFilter === "upcoming" && row.lifecycleStatus !== "upcoming") return false;
+      if (statusFilter === "completed" && row.lifecycleStatus !== "completed") return false;
       if (statusFilter === "with_runs" && row.runCount === 0) return false;
+      if (statusFilter === "with_sub" && row.childCount === 0) return false;
       if (!needle) return true;
       return row.name.toLowerCase().includes(needle);
     });
   }, [rows, search, statusFilter]);
 
+  const orderedRows = useMemo(
+    () =>
+      orderMilestonesForHierarchy(
+        filteredRows.map((row) => ({
+          id: row.milestoneId,
+          name: row.name,
+          parentMilestoneId: row.parentMilestoneId
+        }))
+      ).map((ordered) => {
+        const row = itemsById.get(ordered.id);
+        return row ? { ...row, depth: ordered.depth } : null;
+      }).filter((row): row is MilestoneSummaryRow & { depth: number } => Boolean(row)),
+    [filteredRows, itemsById]
+  );
+
   const summaryItems = useMemo(() => {
-    if (filteredRows.length === 0) return [];
-    const totalTests = filteredRows.reduce((acc, r) => acc + r.total, 0);
-    const totalPassed = filteredRows.reduce((acc, r) => acc + r.passed, 0);
-    const totalFailed = filteredRows.reduce((acc, r) => acc + r.failed, 0);
-    const openMilestones = filteredRows.filter((r) => !r.isCompleted).length;
-    const linkedRuns = filteredRows.reduce((acc, r) => acc + r.runCount, 0);
+    const dashboard = q.data?.dashboard;
+    if (!dashboard) return [];
     return [
-      { label: "Milestones", value: filteredRows.length, tone: "neutral" as const },
-      { label: "Open", value: openMilestones, tone: "amber" as const },
-      { label: "Linked runs", value: linkedRuns, tone: "violet" as const },
-      { label: "Tests", value: totalTests, tone: "neutral" as const },
-      { label: "Passed", value: totalPassed, tone: "emerald" as const },
-      { label: "Failed", value: totalFailed, tone: "rose" as const }
+      { label: "Milestones", value: dashboard.milestoneCount, tone: "neutral" as const },
+      { label: "Open", value: dashboard.openCount, tone: "amber" as const },
+      { label: "Linked runs", value: dashboard.linkedRunCount, tone: "violet" as const },
+      { label: "Tests", value: dashboard.totalTests, tone: "neutral" as const },
+      { label: "Passed", value: dashboard.passed, tone: "emerald" as const },
+      { label: "Failed", value: dashboard.failed, tone: "rose" as const }
     ];
-  }, [filteredRows]);
+  }, [q.data?.dashboard]);
 
   if (q.isLoading) return <LoadingState message="Loading milestone summary…" />;
   if (q.isError) return <ErrorState title="Could not load milestone summary" onRetry={() => void q.refetch()} />;
@@ -81,8 +83,11 @@ export function ReportMilestoneSummaryPage() {
     <div className="space-y-3">
       <ReportPageHeader
         title="Milestone summary"
-        description="Release milestones rolled up across linked runs and test instances. Open a milestone to review runs or drill into execution."
+        description="Release milestones rolled up across linked runs, sub-milestones, and test instances."
       />
+      {q.data?.dashboard ? (
+        <MilestoneDashboardPanel projectId={projectId} dashboard={q.data.dashboard} itemsById={itemsById} />
+      ) : null}
       <ReportFilterBar
         fields={[
           {
@@ -101,9 +106,11 @@ export function ReportMilestoneSummaryPage() {
             onChange: setStatusFilter,
             options: [
               { value: "all", label: "All milestones" },
-              { value: "open", label: "Open only" },
-              { value: "completed", label: "Completed only" },
-              { value: "with_runs", label: "With linked runs" }
+              { value: "open", label: "Open" },
+              { value: "upcoming", label: "Upcoming" },
+              { value: "completed", label: "Completed" },
+              { value: "with_runs", label: "With linked runs" },
+              { value: "with_sub", label: "With sub-milestones" }
             ]
           }
         ]}
@@ -122,13 +129,13 @@ export function ReportMilestoneSummaryPage() {
           </div>
         }
       >
-        {filteredRows.length === 0 ? (
+        {orderedRows.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             {rows.length === 0 ? "No milestones." : "No milestones match the current filters."}
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[840px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
                   <th className="py-2 pr-2">Milestone</th>
@@ -141,24 +148,40 @@ export function ReportMilestoneSummaryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row) => (
+                {orderedRows.map((row) => (
                   <tr key={row.milestoneId} className="border-b border-slate-100">
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2" style={{ paddingLeft: `${row.depth * 1rem + 0.5}rem` }}>
                       <Link
                         className="font-medium text-indigo-800 hover:underline"
                         to={`/projects/${projectId}/milestones/${row.milestoneId}`}
                       >
                         {row.name}
                       </Link>
+                      {row.childCount > 0 ? (
+                        <p className="text-xs text-slate-500">{row.childCount} sub-milestone(s)</p>
+                      ) : null}
                     </td>
-                    <td className="py-2 pr-2 text-slate-700">{row.isCompleted ? "completed" : "open"}</td>
+                    <td className="py-2 pr-2">
+                      <MilestoneLifecycleBadge status={row.lifecycleStatus} />
+                    </td>
                     <td className="py-2 pr-2">
                       {row.runCount}
+                      {row.includesSubMilestones && row.directRunCount < row.runCount ? (
+                        <span className="ml-1 text-xs text-slate-500">(incl. sub)</span>
+                      ) : null}
                       {row.openRunCount > 0 ? (
                         <span className="ml-1 text-xs text-slate-500">({row.openRunCount} open)</span>
                       ) : null}
                     </td>
-                    <td className="py-2 pr-2">{row.progress}%</td>
+                    <td className="py-2 pr-2">
+                      <MilestoneProgressChip
+                        progress={row.progress}
+                        runCount={row.runCount}
+                        childCount={row.childCount}
+                        includesSubMilestones={row.includesSubMilestones}
+                        compact
+                      />
+                    </td>
                     <td className="py-2 pr-2">{row.passed}</td>
                     <td className="py-2 pr-2">{row.failed}</td>
                     <td className="py-2">{row.total}</td>

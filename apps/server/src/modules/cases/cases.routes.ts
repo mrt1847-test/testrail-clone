@@ -371,6 +371,10 @@ export async function registerCasesRoutes(
       estimate: raw.estimate,
       preconditions: raw.preconditions,
       expectedResult: raw.expectedResult,
+      mission: raw.mission,
+      goals: raw.goals,
+      aiInput: raw.aiInput,
+      aiExpectedOutput: raw.aiExpectedOutput,
       caseTemplateId: parseOptionalBigint(raw.caseTemplateId),
       refs: raw.refs,
       customValues: raw.customValues

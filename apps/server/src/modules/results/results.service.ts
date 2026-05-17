@@ -1,4 +1,5 @@
 import { AppError } from "../../common/errors/appError.js";
+import { normalizeAiResultFields, resultRowWithAiFields } from "../../domain/aiEvaluationFields.js";
 import type { RunsRepository, Tx } from "../runs/runs.repository.js";
 import type { BulkAddResultsInput, BulkResultResponse, ResultInput } from "./results.types.js";
 
@@ -151,8 +152,29 @@ export class ResultsService {
     return this.repo.listResultScenariosByResultId(resultId);
   }
 
+  private normalizeResultInput(input: ResultInput): ResultInput {
+    try {
+      const ai = normalizeAiResultFields({
+        aiActualOutput: input.aiActualOutput,
+        aiQualityRating: input.aiQualityRating,
+        aiLatencyMs: input.aiLatencyMs,
+        aiTraces: input.aiTraces,
+        customValues: input.customValues
+      });
+      return { ...input, ...ai };
+    } catch (error) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        error instanceof Error ? error.message : "invalid AI evaluation result fields",
+        400
+      );
+    }
+  }
+
   private async writeResultTx(tx: Tx, testInstanceId: bigint, input: ResultInput) {
-    if (input.status === "untested") {
+    const normalizedInput = this.normalizeResultInput(input);
+    // Append-only correction policy: new rows only; see resultCorrectionPolicy.ts
+    if (normalizedInput.status === "untested") {
       const priorResults = await tx.countResultsForTestInstance(testInstanceId);
       if (priorResults > 0) {
         throw new AppError(
@@ -162,15 +184,15 @@ export class ResultsService {
         );
       }
     }
-    const created = await tx.createResult(testInstanceId, input);
-    if (input.stepResults && input.stepResults.length > 0) {
-      await tx.createResultSteps(created.id, input.stepResults);
+    const created = await tx.createResult(testInstanceId, normalizedInput);
+    if (normalizedInput.stepResults && normalizedInput.stepResults.length > 0) {
+      await tx.createResultSteps(created.id, normalizedInput.stepResults);
     }
-    if (input.scenarioResults && input.scenarioResults.length > 0) {
-      await tx.createResultScenarios(created.id, input.scenarioResults);
+    if (normalizedInput.scenarioResults && normalizedInput.scenarioResults.length > 0) {
+      await tx.createResultScenarios(created.id, normalizedInput.scenarioResults);
     }
-    await tx.updateInstanceStatus(testInstanceId, input.status);
-    return created;
+    await tx.updateInstanceStatus(testInstanceId, normalizedInput.status);
+    return resultRowWithAiFields(created);
   }
 
   private async assertRunIsWritableTx(tx: Tx, runId: bigint) {

@@ -19,14 +19,14 @@ export function PlansPage() {
     enabled: Boolean(projectId)
   });
   const createPlanMutation = useMutation({
-    mutationFn: (name: string) => createPlan(projectId, name),
+    mutationFn: (name: string) => createPlan(projectId, { name }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["plans", projectId] });
       setNewPlanName("");
     }
   });
   const updatePlanMutation = useMutation({
-    mutationFn: (input: { planId: string; name: string }) => updatePlan(projectId, input.planId, input.name),
+    mutationFn: (input: { planId: string; name: string }) => updatePlan(projectId, input.planId, { name: input.name }),
     onSuccess: () => {
       setEditingPlanId(null);
       setEditingPlanName("");

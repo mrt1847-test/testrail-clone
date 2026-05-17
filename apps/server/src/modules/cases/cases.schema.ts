@@ -12,8 +12,13 @@ export const createCaseSchema = z.object({
   estimate: z.string().nullable().optional(),
   preconditions: z.string().optional(),
   expectedResult: z.string().nullable().optional(),
+  mission: z.string().nullable().optional(),
+  goals: z.string().nullable().optional(),
+  aiInput: z.string().nullable().optional(),
+  aiExpectedOutput: z.string().nullable().optional(),
   caseTemplateId: z.coerce.bigint().nullable().optional(),
   refs: z.string().nullable().optional(),
+  labels: z.array(z.string()).optional(),
   customValues: customValuesSchema.optional()
 });
 
@@ -66,8 +71,13 @@ export const updateCaseSchema = z.object({
   estimate: z.string().nullable().optional(),
   preconditions: z.string().nullable().optional(),
   expectedResult: z.string().nullable().optional(),
+  mission: z.string().nullable().optional(),
+  goals: z.string().nullable().optional(),
+  aiInput: z.string().nullable().optional(),
+  aiExpectedOutput: z.string().nullable().optional(),
   caseTemplateId: z.coerce.bigint().nullable().optional(),
   refs: z.string().nullable().optional(),
+  labels: z.array(z.string()).optional(),
   customValues: customValuesSchema.optional(),
   expectedUpdatedAt: z.string().datetime().optional(),
   expectedVersion: z.coerce.number().int().positive().optional()
