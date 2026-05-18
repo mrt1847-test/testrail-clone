@@ -117,11 +117,12 @@ export function CaseListPane({
     clearCaseFilters,
     applySavedView,
     togglePanelCase,
-    setPanelCase
+    setPanelCase,
+    setSelectedSection
   } = useExpandedCase();
 
-  const directCaseFilters = useMemo(() => ({ ...caseFilters, sectionScope: "direct" as const }), [caseFilters]);
-  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, directCaseFilters);
+  const repositoryCaseFilters = useMemo(() => ({ ...caseFilters, sectionScope: "subtree" as const }), [caseFilters]);
+  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, repositoryCaseFilters);
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
     queryFn: () => fetchCustomFieldsForUse(projectId, "case"),
@@ -204,6 +205,37 @@ export function CaseListPane({
     () => sections.find((section) => section.id === selectedSectionId) ?? null,
     [sections, selectedSectionId]
   );
+  const sectionById = useMemo(() => new Map(sections.map((section) => [section.id, section])), [sections]);
+  const sectionDepthById = useMemo(() => {
+    const depths = new Map<number, number>();
+    const resolveDepth = (sectionId: number): number => {
+      const existing = depths.get(sectionId);
+      if (existing != null) return existing;
+      const section = sectionById.get(sectionId);
+      if (!section?.parentSectionId) {
+        depths.set(sectionId, 0);
+        return 0;
+      }
+      const depth = resolveDepth(section.parentSectionId) + 1;
+      depths.set(sectionId, depth);
+      return depth;
+    };
+    for (const section of sections) resolveDepth(section.id);
+    return depths;
+  }, [sectionById, sections]);
+  const groupedCases = useMemo(() => {
+    const groups = new Map<number, typeof cases>();
+    for (const item of cases) {
+      const list = groups.get(item.sectionId);
+      if (list) list.push(item);
+      else groups.set(item.sectionId, [item]);
+    }
+    return Array.from(groups.entries()).sort(([leftId], [rightId]) => {
+      const left = sectionById.get(leftId);
+      const right = sectionById.get(rightId);
+      return (left?.displayOrder ?? 0) - (right?.displayOrder ?? 0) || leftId - rightId;
+    });
+  }, [cases, sectionById]);
   const openCasePage = (caseId: number, edit = false) => {
     navigate(
       buildCaseDetailPath(projectId, caseId, {
@@ -508,7 +540,7 @@ export function CaseListPane({
     setSelectAllBusy(true);
     setBulkFeedback(null);
     try {
-      const rows = await fetchAllCasesForSection(projectId, selectedSectionId, directCaseFilters);
+      const rows = await fetchAllCasesForSection(projectId, selectedSectionId, repositoryCaseFilters);
       setSelectedCaseIds(mergeNumericIds(new Set(), rows.map((row) => row.id)));
     } catch (error) {
       setBulkFeedback({
@@ -757,7 +789,8 @@ export function CaseListPane({
                   {selectedSection?.name ?? "Selected section"}
                 </h3>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  {cases.length} visible case{cases.length === 1 ? "" : "s"} in the{" "}
+                  {cases.length} visible case{cases.length === 1 ? "" : "s"} across{" "}
+                  {groupedCases.length} section{groupedCases.length === 1 ? "" : "s"} in the{" "}
                   {caseFilters.state === "archived" ? "archived" : "active"} repository.
                 </p>
               </div>
@@ -974,8 +1007,8 @@ export function CaseListPane({
                   activeFilterCount > 0
                     ? "No cases match the current filters"
                     : caseFilters.state === "archived"
-                      ? "No archived test cases in this section"
-                      : "No test cases in this section"
+                      ? "No archived test cases in this section subtree"
+                      : "No test cases in this section subtree"
                 }
                 description={
                   activeFilterCount > 0
@@ -1011,67 +1044,92 @@ export function CaseListPane({
             </div>
           ) : (
             <div>
-              {cases.map((item) => {
-                const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
-                const dropIndicator =
-                  dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
+              {groupedCases.map(([sectionId, sectionCases]) => {
+                const section = sectionById.get(sectionId);
+                const depth = sectionDepthById.get(sectionId) ?? 0;
                 return (
-                  <CaseRow
-                    key={item.id}
-                    item={item}
-                    isExpanded={false}
-                    isPanelOpen={panelCaseId === item.id}
-                    mode="view"
-                    detail={item}
-                    versions={[]}
-                    customFields={customFields}
-                    caseTemplates={caseTemplates}
-                    visibleColumns={caseColumns}
-                    isSelected={selectedCaseIds.has(item.id)}
-                    onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
-                    onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
-                    draggable={Boolean(dnd) && selectedSectionId != null}
-                    isDraggingThis={isDraggingThis}
-                    dropIndicator={dropIndicator}
-                    onRowDragStart={(event) => {
-                      if (!dnd || selectedSectionId == null) return;
-                      dnd.startCaseDrag(event, {
-                        caseId: item.id,
-                        sectionId: selectedSectionId,
-                        selectedCaseIds
-                      });
-                    }}
-                    onRowDragEnd={() => dnd?.endCaseDrag()}
-                    onRowDragOver={(event) => dnd?.handleRowDragOver({ event, caseId: item.id })}
-                    onRowDragLeave={() => dnd?.handleRowDragLeave(item.id)}
-                    onRowDrop={(event) => {
-                      if (!dnd || selectedSectionId == null) return;
-                      dnd.handleRowDrop({
-                        event,
-                        targetCaseId: item.id,
-                        targetSectionId: selectedSectionId,
-                        visibleCaseIds,
-                        onSamePositionDrop: handleSamePositionDrop,
-                        onCrossSectionDrop: handleCrossSectionDrop
-                      });
-                    }}
-                    onOpenCase={() => {
-                      setShowAdd(false);
-                      openCasePage(item.id);
-                    }}
-                    onTogglePanel={() => {
-                      setShowAdd(false);
-                      togglePanelCase(item.id);
-                    }}
-                    onEdit={() => {
-                      setShowAdd(false);
-                      setPanelCase(item.id, "edit");
-                    }}
-                    onCloseDetail={() => {}}
-                    onSave={async () => {}}
-                    onDelete={async () => {}}
-                    renderDetailInline={false}
-                  />
+                  <div key={sectionId}>
+                    <div className="border-b border-t border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
+                      <div className="flex items-center justify-between gap-3" style={{ paddingLeft: `${Math.min(depth, 5) * 14}px` }}>
+                        <button
+                          type="button"
+                          className="text-left text-blue-700 hover:underline"
+                          onClick={() => {
+                            setSelectedSection(sectionId);
+                            setShowAdd(false);
+                          }}
+                        >
+                          {section?.name ?? `Section ${sectionId}`}
+                        </button>
+                        <span className="font-normal text-slate-500">
+                          {sectionCases.length} case{sectionCases.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                    {sectionCases.map((item) => {
+                      const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
+                      const dropIndicator =
+                        dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
+                      return (
+                        <CaseRow
+                          key={item.id}
+                          item={item}
+                          isExpanded={false}
+                          isPanelOpen={panelCaseId === item.id}
+                          mode="view"
+                          detail={item}
+                          versions={[]}
+                          customFields={customFields}
+                          caseTemplates={caseTemplates}
+                          visibleColumns={caseColumns}
+                          isSelected={selectedCaseIds.has(item.id)}
+                          onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
+                          onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
+                          draggable={Boolean(dnd)}
+                          isDraggingThis={isDraggingThis}
+                          dropIndicator={dropIndicator}
+                          onRowDragStart={(event) => {
+                            if (!dnd) return;
+                            dnd.startCaseDrag(event, {
+                              caseId: item.id,
+                              sectionId: item.sectionId,
+                              selectedCaseIds
+                            });
+                          }}
+                          onRowDragEnd={() => dnd?.endCaseDrag()}
+                          onRowDragOver={(event) => dnd?.handleRowDragOver({ event, caseId: item.id })}
+                          onRowDragLeave={() => dnd?.handleRowDragLeave(item.id)}
+                          onRowDrop={(event) => {
+                            if (!dnd) return;
+                            dnd.handleRowDrop({
+                              event,
+                              targetCaseId: item.id,
+                              targetSectionId: item.sectionId,
+                              visibleCaseIds,
+                              onSamePositionDrop: handleSamePositionDrop,
+                              onCrossSectionDrop: handleCrossSectionDrop
+                            });
+                          }}
+                          onOpenCase={() => {
+                            setShowAdd(false);
+                            openCasePage(item.id);
+                          }}
+                          onTogglePanel={() => {
+                            setShowAdd(false);
+                            togglePanelCase(item.id);
+                          }}
+                          onEdit={() => {
+                            setShowAdd(false);
+                            setPanelCase(item.id, "edit");
+                          }}
+                          onCloseDetail={() => {}}
+                          onSave={async () => {}}
+                          onDelete={async () => {}}
+                          renderDetailInline={false}
+                        />
+                      );
+                    })}
+                  </div>
                 );
               })}
               {dnd?.isDragging && selectedSectionId != null ? (

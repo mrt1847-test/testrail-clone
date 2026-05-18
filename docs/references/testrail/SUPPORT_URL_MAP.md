@@ -36,6 +36,16 @@ Use these URLs as the **only** TestRail UI reference for [UX_GAP_ANALYSIS.md](..
 | Best practices: runs and results | https://support.testrail.com/hc/en-us/articles/32784099933844-Best-Practices-Guide-Test-Runs-and-Results |
 | Adding test results | https://support.testrail.com/hc/en-us/articles/7077882766612-Adding-test-results |
 
+**In-repo run view parity plan (from live HTML):** [RUN_EXECUTION_VIEW_PARITY.md](./RUN_EXECUTION_VIEW_PARITY.md)
+
+**In-repo project Overview parity plan (from live HTML):** [PROJECT_OVERVIEW_VIEW_PARITY.md](./PROJECT_OVERVIEW_VIEW_PARITY.md)
+
+**In-repo test case repository parity plan (from live HTML):** [CASE_REPOSITORY_VIEW_PARITY.md](./CASE_REPOSITORY_VIEW_PARITY.md)
+
+**In-repo milestones overview parity plan (from live HTML):** [MILESTONES_VIEW_PARITY.md](./MILESTONES_VIEW_PARITY.md)
+
+**In-repo test runs overview parity plan (from live HTML):** [RUNS_OVERVIEW_VIEW_PARITY.md](./RUNS_OVERVIEW_VIEW_PARITY.md)
+
 ## Milestones and plans
 
 | Topic | URL |

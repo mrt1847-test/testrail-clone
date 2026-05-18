@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -72,7 +73,8 @@ export function TestCaseWorkspace() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
+      <CaseRepositoryHeader projectId={projectId} selectedSuiteId={activeSuiteId} />
       <SuiteSwitcherBar
         projectId={projectId}
         selectedSuiteId={activeSuiteId}
@@ -127,6 +129,50 @@ export function TestCaseWorkspace() {
             onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
           />
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CaseRepositoryHeader({ projectId, selectedSuiteId }: { projectId: string; selectedSuiteId: string }) {
+  const actionClass = "border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50";
+  const disabledClass = "cursor-not-allowed border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-400";
+
+  return (
+    <div className="border border-slate-300 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Test Cases</h2>
+          <p className="text-xs text-slate-500">Suite repository view, grouped by section.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Link to={`/projects/${projectId}/runs/new?suiteId=${selectedSuiteId}`} className="border border-blue-800 bg-blue-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-800">
+            Run Test
+          </Link>
+          <Link to={`/projects/${projectId}/reports`} className={actionClass}>
+            Reports
+          </Link>
+          <button type="button" className={disabledClass} disabled title="Configure a defect integration to add defects from here.">
+            Defects
+          </button>
+          <button type="button" className={disabledClass} disabled title="Shared steps are not implemented yet.">
+            Shared Steps
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2">
+        <Link to={`/projects/${projectId}/cases/print`} className={actionClass}>
+          Print
+        </Link>
+        <Link to={`/projects/${projectId}/import-export?kind=export&suiteId=${selectedSuiteId}`} className={actionClass}>
+          Export
+        </Link>
+        <Link to={`/projects/${projectId}/import-export?kind=import&suiteId=${selectedSuiteId}`} className={actionClass}>
+          Import
+        </Link>
+        <button type="button" className={disabledClass} disabled title="Use row selection and Move selected for now.">
+          Copy/Move Cases
+        </button>
       </div>
     </div>
   );

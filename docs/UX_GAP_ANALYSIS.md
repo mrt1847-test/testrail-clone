@@ -59,6 +59,8 @@ Target:
 
 Severity: P1
 
+**Concrete breakdown (project Overview HTML, line chart, 2-column summaries, sidebar Actions/Todos):** [references/testrail/PROJECT_OVERVIEW_VIEW_PARITY.md](./references/testrail/PROJECT_OVERVIEW_VIEW_PARITY.md).
+
 ### Test Case Repository
 
 Current risk:
@@ -74,6 +76,8 @@ Target:
 
 Severity: P0 for UX parity
 
+**Concrete breakdown (suites/view HTML, grouped grid, header/toolbar, sidebar tree):** [references/testrail/CASE_REPOSITORY_VIEW_PARITY.md](./references/testrail/CASE_REPOSITORY_VIEW_PARITY.md).
+
 ### Run List
 
 Current risk:
@@ -85,6 +89,8 @@ Target:
 - Dense rows with progress bars, status counts, milestone/plan, assignee, dates, and quick drilldown.
 
 Severity: P1
+
+**Concrete breakdown (runs/overview HTML, Open plan+run rows, Completed grid, sidebar group/order):** [references/testrail/RUNS_OVERVIEW_VIEW_PARITY.md](./references/testrail/RUNS_OVERVIEW_VIEW_PARITY.md). Single-run execution: [references/testrail/RUN_EXECUTION_VIEW_PARITY.md](./references/testrail/RUN_EXECUTION_VIEW_PARITY.md).
 
 ### Run Creation
 
@@ -138,6 +144,8 @@ Target:
 - Detail pages show linked runs/plans, progress, risk, dates, and direct drilldown into failing work.
 
 Severity: P1
+
+**Concrete breakdown (milestones/overview HTML, Open sections, progress bars, display density):** [references/testrail/MILESTONES_VIEW_PARITY.md](./references/testrail/MILESTONES_VIEW_PARITY.md).
 
 ### Reports
 
@@ -200,3 +208,5 @@ For each walkthrough, record:
 ## Next Action
 
 Start with a design/implementation PR for the run execution workbench. It should be judged by the ability to execute, filter, navigate, and review tests without losing the table/detail context.
+
+**Concrete breakdown (HTML snapshot, region mapping, waves A–E):** [references/testrail/RUN_EXECUTION_VIEW_PARITY.md](./references/testrail/RUN_EXECUTION_VIEW_PARITY.md).
