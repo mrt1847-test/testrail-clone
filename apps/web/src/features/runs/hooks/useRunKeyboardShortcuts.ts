@@ -7,6 +7,8 @@ type Input = {
   onPrevTest: () => void;
   onNextFailed: () => void;
   onNextBlocked: () => void;
+  onNextUntested?: () => void;
+  onPassAndNext?: () => void;
 };
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -17,7 +19,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function useRunKeyboardShortcuts(input: Input) {
-  const { enabled, onShowHelp, onNextTest, onPrevTest, onNextFailed, onNextBlocked } = input;
+  const { enabled, onShowHelp, onNextTest, onPrevTest, onNextFailed, onNextBlocked, onNextUntested, onPassAndNext } =
+    input;
 
   useEffect(() => {
     if (!enabled) return;
@@ -51,12 +54,22 @@ export function useRunKeyboardShortcuts(input: Input) {
       if (key === "b") {
         event.preventDefault();
         onNextBlocked();
+        return;
+      }
+      if (key === "u" && onNextUntested) {
+        event.preventDefault();
+        onNextUntested();
+        return;
+      }
+      if (key === "p" && onPassAndNext) {
+        event.preventDefault();
+        onPassAndNext();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, onNextBlocked, onNextFailed, onNextTest, onPrevTest, onShowHelp]);
+  }, [enabled, onNextBlocked, onNextFailed, onNextTest, onNextUntested, onPassAndNext, onPrevTest, onShowHelp]);
 }
 
 export const RUN_DETAIL_SHORTCUTS = [
@@ -64,5 +77,7 @@ export const RUN_DETAIL_SHORTCUTS = [
   { keys: ["J"], description: "Next test" },
   { keys: ["K"], description: "Previous test" },
   { keys: ["F"], description: "Next failed test" },
-  { keys: ["B"], description: "Next blocked test" }
+  { keys: ["B"], description: "Next blocked test" },
+  { keys: ["U"], description: "Next untested test" },
+  { keys: ["P"], description: "Pass and go to next test" }
 ] as const;

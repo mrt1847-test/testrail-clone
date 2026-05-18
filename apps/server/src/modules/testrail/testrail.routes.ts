@@ -28,6 +28,7 @@ import {
   buildCaseTypesCatalog,
   buildPrioritiesCatalog,
   mapLabelsForV2,
+  mapSharedStepsForV2,
   mapProjectForV2,
   mapResultForV2,
   mapRoleForV2,
@@ -894,8 +895,11 @@ export async function registerTestRailRoutes(
   });
 
   app.get("/api/v2/get_shared_steps/:projectId", async (req, reply) => {
-    projectIdParamSchema.parse(req.params);
-    return reply.send(toJsonSafe([]));
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    const { listSharedStepsForV2 } = await import("../sharedSteps/sharedSteps.service.js");
+    const rows = await listSharedStepsForV2(deps.prisma, projectId);
+    return reply.send(toJsonSafe(mapSharedStepsForV2(rows)));
   });
 
   app.get("/api/v2/get_attachments_for_case/:caseId", async (req, reply) => {

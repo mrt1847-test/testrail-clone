@@ -15,6 +15,8 @@ import {
   fetchResultSteps,
   fetchRunDetail,
   fetchRunInstancesPage,
+  fetchRunInstancesGrouped,
+  fetchCaseExecutionHistory,
   fetchRuns,
   fetchAssignedToMe,
   fetchTeamTodo,
@@ -40,6 +42,7 @@ import {
   type UpdateRunCompositionInput
 } from "../api/runApi";
 import type { RunDetailDto } from "../types";
+import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from "../utils/runInstanceListParams";
 
 export const runKeys = {
   all: (projectId: string) => ["runs", projectId] as const,
@@ -54,8 +57,57 @@ export const runKeys = {
     pageSize: number,
     status: string,
     assignee: string,
-    search: string
-  ) => [...runKeys.all(projectId), "instances", runId, page, pageSize, status, assignee, search] as const,
+    search: string,
+    priority: string,
+    caseType: string,
+    caseChanged: boolean,
+    sortBy: string,
+    sortDir: string
+  ) =>
+    [
+      ...runKeys.all(projectId),
+      "instances",
+      runId,
+      page,
+      pageSize,
+      status,
+      assignee,
+      search,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
+    ] as const,
+  instancesGrouped: (
+    projectId: string,
+    runId: string,
+    groupBy: string,
+    sectionId: string | null,
+    status: string,
+    assignee: string,
+    search: string,
+    priority: string,
+    caseType: string,
+    caseChanged: boolean,
+    sortBy: string,
+    sortDir: string
+  ) =>
+    [
+      ...runKeys.all(projectId),
+      "instances-grouped",
+      runId,
+      groupBy,
+      sectionId ?? "",
+      status,
+      assignee,
+      search,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
+    ] as const,
   resultsPrefix: (testId: string) => ["test-results", testId] as const,
   resultsPage: (testId: string, page: number, pageSize: number) =>
     ["test-results", testId, page, pageSize] as const,
@@ -124,10 +176,41 @@ export function useRunInstancesQuery(input: {
   status: string;
   assignee: string;
   search: string;
+  priority?: RunFilterPriority;
+  caseType?: RunFilterCaseType;
+  caseChanged?: boolean;
+  sortBy?: RunSortBy;
+  sortDir?: RunSortDir;
 }) {
-  const { projectId, runId, page, pageSize, status, assignee, search } = input;
+  const {
+    projectId,
+    runId,
+    page,
+    pageSize,
+    status,
+    assignee,
+    search,
+    priority = "",
+    caseType = "",
+    caseChanged = false,
+    sortBy = "case_id",
+    sortDir = "asc"
+  } = input;
   return useQuery({
-    queryKey: runKeys.instances(projectId ?? "", runId ?? "", page, pageSize, status, assignee, search),
+    queryKey: runKeys.instances(
+      projectId ?? "",
+      runId ?? "",
+      page,
+      pageSize,
+      status,
+      assignee,
+      search,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
+    ),
     queryFn: () =>
       fetchRunInstancesPage({
         projectId: projectId!,
@@ -136,9 +219,92 @@ export function useRunInstancesQuery(input: {
         pageSize,
         status,
         assignee,
-        search
+        search,
+        priority: priority || undefined,
+        caseType: caseType || undefined,
+        caseChanged: caseChanged || undefined,
+        sortBy,
+        sortDir
       }),
     enabled: Boolean(projectId && runId),
+    refetchInterval: false,
+    refetchIntervalInBackground: false
+  });
+}
+
+export function useCaseExecutionHistoryQuery(
+  projectId: string | undefined,
+  caseId: string | undefined,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: [...runKeys.all(projectId ?? ""), "case-execution-history", caseId ?? ""] as const,
+    queryFn: () => fetchCaseExecutionHistory(projectId!, caseId!),
+    enabled: Boolean(projectId && caseId && enabled)
+  });
+}
+
+export function useRunInstancesGroupedQuery(input: {
+  projectId: string | undefined;
+  runId: string | undefined;
+  groupBy: string;
+  sectionId: string | null;
+  status: string;
+  assignee: string;
+  search: string;
+  priority?: RunFilterPriority;
+  caseType?: RunFilterCaseType;
+  caseChanged?: boolean;
+  sortBy?: RunSortBy;
+  sortDir?: RunSortDir;
+  enabled?: boolean;
+}) {
+  const {
+    projectId,
+    runId,
+    groupBy,
+    sectionId,
+    status,
+    assignee,
+    search,
+    priority = "",
+    caseType = "",
+    caseChanged = false,
+    sortBy = "case_id",
+    sortDir = "asc",
+    enabled = true
+  } = input;
+  return useQuery({
+    queryKey: runKeys.instancesGrouped(
+      projectId ?? "",
+      runId ?? "",
+      groupBy,
+      sectionId,
+      status,
+      assignee,
+      search,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
+    ),
+    queryFn: () =>
+      fetchRunInstancesGrouped({
+        projectId: projectId!,
+        runId: runId!,
+        groupBy,
+        sectionId,
+        status,
+        assignee,
+        search,
+        priority: priority || undefined,
+        caseType: caseType || undefined,
+        caseChanged: caseChanged || undefined,
+        sortBy,
+        sortDir
+      }),
+    enabled: Boolean(projectId && runId && enabled),
     refetchInterval: false,
     refetchIntervalInBackground: false
   });
@@ -221,6 +387,9 @@ export function useAddRunResultMutation(projectId: string | undefined, runId: st
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
@@ -237,6 +406,9 @@ export function useCloseRunMutation(projectId: string | undefined, runId: string
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
@@ -252,6 +424,9 @@ export function useReopenRunMutation(projectId: string | undefined, runId: strin
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
@@ -267,6 +442,9 @@ export function useSyncRunCompositionMutation(projectId: string | undefined, run
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
@@ -282,6 +460,9 @@ export function useUpdateRunCompositionMutation(projectId: string | undefined, r
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
@@ -297,6 +478,9 @@ export function useAddCasesToRunMutation(projectId: string | undefined, runId: s
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId, "run", runId] });
@@ -314,6 +498,9 @@ export function useRemoveTestFromRunMutation(projectId: string | undefined, runI
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: runKeys.resultsPrefix(vars.testId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
       void qc.invalidateQueries({ queryKey: ["project-activity", projectId] });
@@ -331,6 +518,9 @@ export function useUpdateRunAssigneeMutation(projectId: string | undefined, runI
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "assigned-to-me"] });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }
@@ -359,6 +549,9 @@ export function useRerunMutation(projectId: string | undefined, runId: string | 
       void qc.invalidateQueries({ queryKey: runKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
       void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
     }
@@ -390,6 +583,9 @@ export function useUpdateTestAssigneeMutation(projectId: string | undefined, run
       if (!projectId || !runId) return;
       void qc.invalidateQueries({ queryKey: runKeys.detail(projectId, runId) });
       void qc.invalidateQueries({ queryKey: runKeys.instancesPrefix(projectId, runId) });
+      void qc.invalidateQueries({
+        queryKey: [...runKeys.all(projectId), "instances-grouped", runId]
+      });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "assigned-to-me"] });
       void qc.invalidateQueries({ queryKey: [...runKeys.all(projectId), "team-todo"] });
     }

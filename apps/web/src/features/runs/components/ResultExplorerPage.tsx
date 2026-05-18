@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
@@ -18,16 +18,29 @@ import {
 
 export function ResultExplorerPage() {
   const { projectId = "", runId } = useParams();
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => searchParams.get("status") ?? "all");
   const [source, setSource] = useState("all");
   const [query, setQuery] = useState("");
   const [caseId, setCaseId] = useState("");
   const [testId, setTestId] = useState("");
-  const [createdFrom, setCreatedFrom] = useState("");
-  const [createdTo, setCreatedTo] = useState("");
+  const [createdFrom, setCreatedFrom] = useState(() => searchParams.get("createdFrom") ?? "");
+  const [createdTo, setCreatedTo] = useState(() => searchParams.get("createdTo") ?? "");
   const [customFilters, setCustomFilters] = useState<Record<string, ResultCustomFilterEntry>>({});
   const pageSize = 50;
+
+  useEffect(() => {
+    setStatus(searchParams.get("status") ?? "all");
+    setCreatedFrom(searchParams.get("createdFrom") ?? "");
+    setCreatedTo(searchParams.get("createdTo") ?? "");
+    setPage(1);
+  }, [searchParams]);
+
+  const hasOverviewDrilldown =
+    (status !== "all" && Boolean(searchParams.get("status"))) ||
+    Boolean(searchParams.get("createdFrom")) ||
+    Boolean(searchParams.get("createdTo"));
   const customFilterKey = useMemo(() => JSON.stringify(customFilters), [customFilters]);
   const queryKey = useMemo(
     () => ["result-explorer", projectId, runId ?? "", page, pageSize, status, source, query, caseId, testId, createdFrom, createdTo, customFilterKey],
@@ -73,6 +86,13 @@ export function ResultExplorerPage() {
         <p className="mt-2 text-sm text-slate-700">
           Scope: {runId ? `Run ${runId}` : "Project-wide"} / filters: status, source, case, run.
         </p>
+        {hasOverviewDrilldown ? (
+          <p className="mt-2 text-xs text-indigo-800">
+            Filtered from project overview activity chart
+            {status !== "all" ? ` · status: ${status}` : ""}
+            {createdFrom || createdTo ? ` · date range applied` : ""}
+          </p>
+        ) : null}
       </div>
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap gap-2 text-xs">

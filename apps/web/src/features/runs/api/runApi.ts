@@ -8,14 +8,18 @@ import type {
   ResultDefectLinkItem,
   RunDetailDto,
   RunSummary,
+  CaseExecutionHistoryItem,
   TestResultHistoryItem,
   TestResultStepItem
 } from "../types";
+import { appendRunInstanceListParams, type RunInstanceListFilters } from "../utils/runInstanceListParams";
 
 type ApiRun = {
   id: string;
   name: string;
   status: string;
+  suiteId?: string;
+  planId?: string | null;
   includeAll?: boolean;
   environment?: string | null;
   assignedTo?: string | null;
@@ -45,6 +49,9 @@ type ApiInstance = {
   assignedTo?: string | null;
   caseChanged?: boolean;
   changedFields?: string[];
+  sectionId?: string | null;
+  casePriority?: string | null;
+  caseType?: string | null;
   caseLockVersionAtRun?: number | null;
   currentCaseLockVersion?: number | null;
 };
@@ -113,6 +120,8 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
         id: String(run.id),
         name: run.name,
         status: run.status === "closed" ? "closed" : "open",
+        suiteId: run.suiteId ? String(run.suiteId) : undefined,
+        planId: run.planId != null ? String(run.planId) : null,
         environment: run.environment ?? undefined,
         milestoneId: run.milestoneId ? String(run.milestoneId) : null,
         assignedTo: run.assignedTo ? String(run.assignedTo) : null,
@@ -135,32 +144,36 @@ export async function fetchRunDetail(projectId: string, runId: string): Promise<
   }
 }
 
-function buildRunInstancesQuery(input: {
-  page: number;
-  pageSize: number;
-  status?: string;
-  assignee?: string;
-  search?: string;
-}): string {
+function buildRunInstancesQuery(
+  input: {
+    page: number;
+    pageSize: number;
+  } & Partial<RunInstanceListFilters>
+): string {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
   params.set("pageSize", String(input.pageSize));
-  if (input.status && input.status !== "all") params.set("status", input.status);
-  if (input.assignee && input.assignee !== "all") params.set("assignedTo", input.assignee);
-  if (input.assignee === "") params.set("assignedTo", "null");
-  if (input.search?.trim()) params.set("q", input.search.trim());
+  appendRunInstanceListParams(params, {
+    status: input.status ?? "all",
+    assignee: input.assignee ?? "all",
+    search: input.search ?? "",
+    priority: input.priority ?? "",
+    caseType: input.caseType ?? "",
+    caseChanged: input.caseChanged ?? false,
+    sortBy: input.sortBy ?? "case_id",
+    sortDir: input.sortDir ?? "asc"
+  });
   return params.toString();
 }
 
-export async function fetchRunInstancesPage(input: {
-  projectId: string;
-  runId: string;
-  page: number;
-  pageSize: number;
-  status?: string;
-  assignee?: string;
-  search?: string;
-}): Promise<Paged<ApiInstance>> {
+export async function fetchRunInstancesPage(
+  input: {
+    projectId: string;
+    runId: string;
+    page: number;
+    pageSize: number;
+  } & Partial<RunInstanceListFilters>
+): Promise<Paged<ApiInstance>> {
   return apiFetch<Paged<ApiInstance>>(
     `/api/projects/${input.projectId}/runs/${input.runId}/instances?${buildRunInstancesQuery(input)}`
   );
@@ -179,13 +192,48 @@ async function fetchAllPagedInstances(buildPath: (page: number, pageSize: number
   return out;
 }
 
-export async function fetchAllRunInstances(input: {
-  projectId: string;
-  runId: string;
-  status?: string;
-  assignee?: string;
-  search?: string;
-}): Promise<ApiInstance[]> {
+function buildRunInstancesGroupedQuery(
+  input: {
+    groupBy?: string;
+    sectionId?: string | null;
+  } & Partial<RunInstanceListFilters>
+): string {
+  const params = new URLSearchParams();
+  if (input.groupBy) params.set("groupBy", input.groupBy);
+  if (input.sectionId) params.set("sectionId", input.sectionId);
+  appendRunInstanceListParams(params, {
+    status: input.status ?? "all",
+    assignee: input.assignee ?? "all",
+    search: input.search ?? "",
+    priority: input.priority ?? "",
+    caseType: input.caseType ?? "",
+    caseChanged: input.caseChanged ?? false,
+    sortBy: input.sortBy ?? "case_id",
+    sortDir: input.sortDir ?? "asc"
+  });
+  return params.toString();
+}
+
+export async function fetchRunInstancesGrouped(
+  input: {
+    projectId: string;
+    runId: string;
+    groupBy?: string;
+    sectionId?: string | null;
+  } & Partial<RunInstanceListFilters>
+) {
+  const qs = buildRunInstancesGroupedQuery(input);
+  return apiFetch<import("../types").RunInstancesGroupedDto>(
+    `/api/projects/${input.projectId}/runs/${input.runId}/instances/grouped?${qs}`
+  );
+}
+
+export async function fetchAllRunInstances(
+  input: {
+    projectId: string;
+    runId: string;
+  } & Partial<RunInstanceListFilters>
+): Promise<ApiInstance[]> {
   return fetchAllPagedInstances(
     (page, pageSize) =>
       `/api/projects/${input.projectId}/runs/${input.runId}/instances?${buildRunInstancesQuery({
@@ -569,6 +617,20 @@ function mapApiResultHistory(row: ApiResultHistory): TestResultHistoryItem {
     customValues: row.customValues ?? {},
     createdAt: row.createdAt
   };
+}
+
+export async function fetchCaseExecutionHistory(
+  projectId: string,
+  caseId: string,
+  limit = 40
+): Promise<{ items: CaseExecutionHistoryItem[]; total: number }> {
+  const res = await apiFetch<
+    Ok<{
+      items: CaseExecutionHistoryItem[];
+      total: number;
+    }>
+  >(`/api/projects/${projectId}/cases/${caseId}/execution-history?limit=${limit}`);
+  return { items: res.data.items, total: res.data.total };
 }
 
 export async function fetchTestResultsPage(

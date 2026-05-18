@@ -113,6 +113,11 @@ export function CaseDetailBody({
           await editor.deleteCaseMutation.mutateAsync(data.id);
           onDeleted();
         }}
+        onSetArchived={async (archived) => {
+          await editor.setCaseArchivedMutation.mutateAsync({ caseId: data.id, archived });
+          if (archived) onDeleted();
+          else await refetch();
+        }}
         onRestoreVersion={async (versionId) => {
           await editor.restoreVersionMutation.mutateAsync({
             caseId: data.id,
@@ -121,6 +126,7 @@ export function CaseDetailBody({
           });
         }}
         isDeleting={editor.deleteCaseMutation.isPending}
+        isArchiving={editor.setCaseArchivedMutation.isPending}
         isRestoring={editor.restoreVersionMutation.isPending}
         restoreError={editor.restoreFormError}
         onDuplicated={onDuplicated}
@@ -149,6 +155,17 @@ export function CaseDetailBody({
             await editor.deleteCaseMutation.mutateAsync(data.id);
             onDeleted();
           }}
+          onSetArchived={async (archived) => {
+            await editor.setCaseArchivedMutation.mutateAsync({ caseId: data.id, archived });
+            if (archived) {
+              closeEdit();
+              onDeleted();
+            } else {
+              await refetch();
+            }
+          }}
+          isDeleting={editor.deleteCaseMutation.isPending}
+          isArchiving={editor.setCaseArchivedMutation.isPending}
           isSaving={editor.updateCaseMutation.isPending}
           submitError={editor.editFormError}
           onCreateStep={async (input) => {
@@ -159,6 +176,9 @@ export function CaseDetailBody({
           }}
           onDeleteStep={async (stepId) => {
             await editor.deleteStepMutation.mutateAsync({ caseId: data.id, stepId });
+          }}
+          onLinkSharedStep={async (sharedStepId) => {
+            await editor.linkSharedStepMutation.mutateAsync({ caseId: data.id, sharedStepId });
           }}
           isStepsBusy={editor.stepsBusy}
         />

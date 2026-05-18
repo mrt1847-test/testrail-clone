@@ -1,6 +1,7 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 
 import { normalizeProjectType } from "../../domain/projectTypes.js";
+import { sumDurationSeconds } from "../../domain/timeTracking.js";
 import type {
   CaseRow,
   CasePresenceFilter,
@@ -527,6 +528,53 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
       where: { id: sectionId, deletedAt: null },
       select: { id: true, suiteId: true, parentSectionId: true, displayOrder: true, name: true }
     });
+  }
+
+  async getSuiteSummary(projectId: bigint, suiteId: bigint) {
+    const suite = await this.prisma.testSuite.findFirst({
+      where: { id: suiteId, projectId, deletedAt: null },
+      select: { id: true, projectId: true, name: true, description: true }
+    });
+    if (!suite) return null;
+
+    const sectionCount = await this.prisma.section.count({
+      where: { suiteId, deletedAt: null }
+    });
+    const [activeCaseCount, archivedCaseCount, casesWithEstimateCount, estimateRows] = await Promise.all([
+      this.prisma.testCase.count({
+        where: { suiteId, projectId, deletedAt: null, archivedAt: null }
+      }),
+      this.prisma.testCase.count({
+        where: { suiteId, projectId, deletedAt: null, archivedAt: { not: null } }
+      }),
+      this.prisma.testCase.count({
+        where: {
+          suiteId,
+          projectId,
+          deletedAt: null,
+          archivedAt: null,
+          estimate: { not: null }
+        }
+      }),
+      this.prisma.testCase.findMany({
+        where: { suiteId, projectId, deletedAt: null, archivedAt: null, estimate: { not: null } },
+        select: { estimate: true }
+      })
+    ]);
+
+    const totalEstimateSeconds = sumDurationSeconds(estimateRows.map((row) => row.estimate));
+
+    return {
+      suiteId: suite.id,
+      projectId: suite.projectId,
+      suiteName: suite.name,
+      suiteDescription: suite.description,
+      sectionCount,
+      activeCaseCount,
+      archivedCaseCount,
+      casesWithEstimateCount,
+      totalEstimateSeconds
+    };
   }
 
   async listCasesForSuite(projectId: bigint, suiteId: bigint, state: "active" | "archived" | "all" = "active"): Promise<CaseRow[]> {
@@ -1175,7 +1223,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     if (!found) return null;
     const targetSection = await this.prisma.section.findFirst({
       where: { id: targetSectionId, deletedAt: null },
-      select: { suiteId: true }
+      select: { suiteId: true, suite: { select: { projectId: true } } }
     });
     if (!targetSection) return null;
     const lastCase = await this.prisma.testCase.findFirst({
@@ -1186,6 +1234,7 @@ export class ProjectsPrismaRepository implements ProjectsRepository {
     const row = await this.prisma.testCase.update({
       where: { id: caseId },
       data: {
+        projectId: targetSection.suite.projectId,
         suiteId: targetSection.suiteId,
         sectionId: targetSectionId,
         displayOrder: (lastCase?.displayOrder ?? -1) + 1,

@@ -769,6 +769,7 @@ export type ProjectActivityFilters = {
   entityId?: string;
   eventType?: string;
   runId?: string;
+  feed?: "history" | "all";
 };
 
 export async function fetchProjectActivity(
@@ -785,6 +786,7 @@ export async function fetchProjectActivity(
   if (filters?.entityId) params.set("entityId", filters.entityId);
   if (filters?.eventType) params.set("eventType", filters.eventType);
   if (filters?.runId) params.set("runId", filters.runId);
+  if (filters?.feed) params.set("feed", filters.feed);
   const res = await apiFetch<Paged<ActivityEventRow>>(`/api/projects/${projectId}/activity?${params.toString()}`);
   return {
     ...res,

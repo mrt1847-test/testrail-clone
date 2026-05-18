@@ -3,7 +3,8 @@ import type { PrismaClient } from "@prisma/client";
 import {
   getAuthenticatedUser,
   requireProjectMutationRole,
-  requireProjectPermission
+  requireProjectPermission,
+  requireProjectPermissionForProject
 } from "../../common/middlewares/authorization.js";
 import {
   assertAttachmentStoragePathAllowed,
@@ -592,7 +593,12 @@ export async function registerCasesRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkMoveCasesSchema.parse(req.body ?? {});
-    await deps.casesService.assertProjectScopedSection(projectId, body.targetSectionId);
+    const targetProjectId = await deps.casesService.projectIdForSection(deps.prisma, body.targetSectionId);
+    if (!targetProjectId) {
+      throw new AppError("NOT_FOUND", `section ${body.targetSectionId.toString()} not found`, 404);
+    }
+    await requireProjectPermissionForProject(req, deps, targetProjectId, "cases.write");
+    await deps.casesService.assertProjectScopedSection(targetProjectId, body.targetSectionId);
     const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
     const result = await deps.casesService.bulkMoveCases(scopedIds, body.targetSectionId);
     const items = [
@@ -628,7 +634,12 @@ export async function registerCasesRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
     const body = bulkCopyCasesSchema.parse(req.body ?? {});
-    await deps.casesService.assertProjectScopedSection(projectId, body.targetSectionId);
+    const targetProjectId = await deps.casesService.projectIdForSection(deps.prisma, body.targetSectionId);
+    if (!targetProjectId) {
+      throw new AppError("NOT_FOUND", `section ${body.targetSectionId.toString()} not found`, 404);
+    }
+    await requireProjectPermissionForProject(req, deps, targetProjectId, "cases.write");
+    await deps.casesService.assertProjectScopedSection(targetProjectId, body.targetSectionId);
     const { scopedIds, outOfScope } = await deps.casesService.resolveProjectScopedCaseIds(projectId, body.caseIds);
     const result = await deps.casesService.bulkCopyCases(scopedIds, body.targetSectionId);
     const items = [

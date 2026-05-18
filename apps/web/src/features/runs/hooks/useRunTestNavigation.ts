@@ -31,6 +31,8 @@ type Input = {
   runId: string;
   selectedTestId: string | null;
   pagedInstances: TestInstanceRow[];
+  /** Flat list in display order (grouped table or current page). Used for J/K navigation. */
+  orderedInstances?: TestInstanceRow[];
   statusFilter: string;
   assigneeFilter: string;
   searchText: string;
@@ -45,6 +47,7 @@ export function useRunTestNavigation(input: Input) {
     runId,
     selectedTestId,
     pagedInstances,
+    orderedInstances,
     statusFilter,
     assigneeFilter,
     searchText,
@@ -81,7 +84,7 @@ export function useRunTestNavigation(input: Input) {
   );
 
   const goNextByStatus = useCallback(
-    async (status: "failed" | "blocked") => {
+    async (status: "failed" | "blocked" | "untested") => {
       setIsNavigating(true);
       try {
         const res = await fetchRunInstancesPage({
@@ -109,15 +112,19 @@ export function useRunTestNavigation(input: Input) {
     [onSelectInstance, projectId, runId, scrollToTests, selectedTestId, setInstancePage, setStatusFilter]
   );
 
+  const localList = orderedInstances ?? pagedInstances;
+
   const goAdjacentTest = useCallback(
     async (direction: "prev" | "next") => {
-      const localIdx = selectedTestId ? pagedInstances.findIndex((row) => row.id === selectedTestId) : -1;
-      if (direction === "next" && localIdx >= 0 && localIdx < pagedInstances.length - 1) {
-        onSelectInstance(pagedInstances[localIdx + 1]!);
+      const localIdx = selectedTestId ? localList.findIndex((row) => row.id === selectedTestId) : -1;
+      if (direction === "next" && localIdx >= 0 && localIdx < localList.length - 1) {
+        onSelectInstance(localList[localIdx + 1]!);
+        scrollToTests();
         return;
       }
       if (direction === "prev" && localIdx > 0) {
-        onSelectInstance(pagedInstances[localIdx - 1]!);
+        onSelectInstance(localList[localIdx - 1]!);
+        scrollToTests();
         return;
       }
 
@@ -139,14 +146,17 @@ export function useRunTestNavigation(input: Input) {
         setIsNavigating(false);
       }
     },
-    [fetchFilteredInstances, onSelectInstance, pagedInstances, scrollToTests, selectedTestId]
+    [fetchFilteredInstances, localList, onSelectInstance, scrollToTests, selectedTestId]
   );
+
+  const goNextUntested = useCallback(() => void goNextByStatus("untested"), [goNextByStatus]);
 
   return {
     isNavigating,
     jumpToStatus,
     goNextFailed: () => void goNextByStatus("failed"),
     goNextBlocked: () => void goNextByStatus("blocked"),
+    goNextUntested,
     goPrevTest: () => void goAdjacentTest("prev"),
     goNextTest: () => void goAdjacentTest("next"),
     scrollToTests

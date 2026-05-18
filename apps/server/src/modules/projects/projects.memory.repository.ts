@@ -1,4 +1,5 @@
 import { normalizeProjectType } from "../../domain/projectTypes.js";
+import { sumDurationSeconds } from "../../domain/timeTracking.js";
 import type {
   CaseRow,
   CasePresenceFilter,
@@ -198,6 +199,31 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
   }
   async getSection(sectionId: bigint) {
     return this.sections.find((s) => s.id === sectionId) ?? null;
+  }
+
+  async getSuiteSummary(projectId: bigint, suiteId: bigint) {
+    const suite = await this.getSuite(suiteId);
+    if (!suite || suite.projectId !== projectId) return null;
+    const sectionIds = new Set(this.sections.filter((s) => s.suiteId === suiteId).map((s) => s.id));
+    const suiteCases = this.cases.filter((c) => sectionIds.has(c.sectionId));
+    const activeCases = suiteCases.filter((c) => c.archivedAt == null);
+    const activeCaseCount = activeCases.length;
+    const archivedCaseCount = suiteCases.filter((c) => c.archivedAt != null).length;
+    const casesWithEstimateCount = activeCases.filter(
+      (c) => c.estimate != null && c.estimate.trim().length > 0 && c.estimate !== "-"
+    ).length;
+    const totalEstimateSeconds = sumDurationSeconds(activeCases.map((c) => c.estimate));
+    return {
+      suiteId,
+      projectId,
+      suiteName: suite.name,
+      suiteDescription: suite.description ?? null,
+      sectionCount: sectionIds.size,
+      activeCaseCount,
+      archivedCaseCount,
+      casesWithEstimateCount,
+      totalEstimateSeconds
+    };
   }
 
   /** 스위트에 속한 섹션들의 케이스만 반환 (런 생성 시 카탈로그와 정합) */
@@ -538,10 +564,13 @@ export class ProjectsMemoryRepository implements ProjectsRepository {
     const row = this.cases.find((c) => c.id === caseId);
     const targetSection = this.sections.find((section) => section.id === targetSectionId);
     if (!row || !targetSection) return null;
+    const targetSuite = this.suites.find((suite) => suite.id === targetSection.suiteId);
     const lastOrder = this.cases
       .filter((c) => c.sectionId === targetSectionId && c.id !== caseId)
       .reduce((max, item) => Math.max(max, item.displayOrder ?? 0), -1);
     row.sectionId = targetSectionId;
+    row.suiteId = targetSection.suiteId;
+    if (targetSuite) row.projectId = targetSuite.projectId;
     row.displayOrder = lastOrder + 1;
     row.lockVersion += 1;
     row.updatedAt = new Date();

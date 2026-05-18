@@ -8,6 +8,9 @@ type ApiInstanceLike = {
   assignedTo?: string | null;
   caseChanged?: boolean;
   changedFields?: string[];
+  sectionId?: string | number | null;
+  casePriority?: string | null;
+  caseType?: string | null;
 };
 
 export function mapApiInstancesToRows(instances: readonly ApiInstanceLike[]): TestInstanceRow[] {
@@ -19,8 +22,19 @@ export function mapApiInstancesToRows(instances: readonly ApiInstanceLike[]): Te
     status: instance.status,
     assignedTo: instance.assignedTo ? String(instance.assignedTo) : null,
     caseChanged: instance.caseChanged,
-    changedFields: instance.changedFields
+    changedFields: instance.changedFields,
+    sectionId: instance.sectionId != null ? String(instance.sectionId) : null,
+    casePriority: instance.casePriority ?? null,
+    caseType: instance.caseType ?? null
   }));
+}
+
+export function flattenGroupedInstances(groups: ReadonlyArray<{ instances: readonly ApiInstanceLike[] }>): TestInstanceRow[] {
+  const out: TestInstanceRow[] = [];
+  for (const group of groups) {
+    out.push(...mapApiInstancesToRows(group.instances));
+  }
+  return out;
 }
 
 export function mergeInstanceLookup(

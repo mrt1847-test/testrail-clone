@@ -61,7 +61,26 @@ export const listCasesQuerySchema = z.object({
   labels: presenceFilterSchema.optional(),
   estimate: presenceFilterSchema.optional(),
   sectionScope: sectionScopeSchema.default("subtree"),
-  state: z.enum(["active", "archived"]).optional()
+  state: z.enum(["active", "archived", "all"]).optional()
+});
+
+export const projectSuiteParamsSchema = z.object({
+  projectId: z.coerce.bigint(),
+  suiteId: z.coerce.bigint()
+});
+
+export const listSuiteCasesQuerySchema = z.object({
+  sectionId: z.coerce.bigint().optional(),
+  display: z.enum(["tree", "subtree", "compact"]).default("subtree"),
+  groupBy: z.enum(["section_id", "priority", "type", "none"]).default("section_id"),
+  q: z.string().optional(),
+  priority: z.string().optional(),
+  caseType: z.string().optional(),
+  automation: z.enum(["manual", "automated"]).optional(),
+  refs: presenceFilterSchema.optional(),
+  labels: presenceFilterSchema.optional(),
+  estimate: presenceFilterSchema.optional(),
+  state: z.enum(["active", "archived", "all"]).optional()
 });
 
 export const updateCaseSchema = z.object({

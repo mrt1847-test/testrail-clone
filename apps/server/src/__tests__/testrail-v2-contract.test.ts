@@ -356,7 +356,7 @@ describe("/api/v2 TestRail adapter contract", () => {
       url: `/api/v2/get_shared_steps/${project.data.id}`
     });
     expect(sharedStepsRes.statusCode).toBe(200);
-    expect(sharedStepsRes.json()).toEqual([]);
+    expect(Array.isArray(sharedStepsRes.json())).toBe(true);
   });
 
   it("mutates suites, sections, and runs via v2 write endpoints", async () => {

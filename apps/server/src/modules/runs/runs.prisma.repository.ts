@@ -16,6 +16,12 @@ import {
 import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
 import { resultRowWithAiFields } from "../../domain/aiEvaluationFields.js";
 import { assignmentAgingForRow, buildRunScheduleWhereForAssignmentList } from "./assignmentListFilters.js";
+import { buildRunInstanceGroups } from "../../domain/runInstanceGrouping.js";
+import {
+  applyRunInstanceListPostProcess,
+  buildRunInstanceWhere,
+  type RunInstanceListQuery
+} from "../../domain/runInstanceListQuery.js";
 
 function mapRunRow(r: {
   id: bigint;
@@ -319,6 +325,7 @@ export class PrismaRunsRepository implements RunsRepository {
         id: true,
         lockVersion: true,
         title: true,
+        sectionId: true,
         priority: true,
         caseType: true,
         automationKey: true,
@@ -368,28 +375,94 @@ export class PrismaRunsRepository implements RunsRepository {
     return this.enrichInstanceRows(runId, rows);
   }
 
-  async listInstancesForRunPage(input: {
+  async listInstancesForRunGrouped(input: {
     runId: bigint;
-    page: number;
-    pageSize: number;
-    status?: TestInstance["status"];
-    assignedTo?: bigint | null;
-    q?: string;
-  }): Promise<{ items: TestInstance[]; total: number }> {
-    const where: Prisma.TestInstanceWhereInput = {
-      runId: input.runId,
-      deletedAt: null,
-      ...(input.status ? { status: input.status } : {}),
-      ...(input.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {}),
-      ...(input.q
-        ? {
-            OR: [
-              { titleSnapshot: { contains: input.q, mode: "insensitive" } },
-              { caseId: { equals: /^\d+$/.test(input.q.replace(/^c/i, "")) ? BigInt(input.q.replace(/^c/i, "")) : -1n } }
-            ]
-          }
-        : {})
+    suiteId: bigint;
+    groupBy: import("../../domain/suiteCaseGrouping.js").SuiteCaseGroupBy;
+    sectionId?: bigint;
+  } & RunInstanceListQuery & { maxInstances?: number }): Promise<{
+    total: number;
+    truncated: boolean;
+    groups: import("../../domain/runInstanceGrouping.js").RunInstanceGroupRow[];
+    sectionCounts: Array<{ sectionId: string; count: number }>;
+  }> {
+    const maxInstances = input.maxInstances ?? 5000;
+    const where = buildRunInstanceWhere(input.runId, input);
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.testInstance.findMany({
+        where,
+        orderBy: { id: "asc" },
+        take: maxInstances
+      }),
+      this.prisma.testInstance.count({ where })
+    ]);
+    const truncated = total > maxInstances;
+    let instances = applyRunInstanceListPostProcess(
+      await this.enrichInstanceRows(input.runId, rows as InstanceDbRow[]),
+      input
+    );
+
+    if (input.sectionId != null) {
+      const sectionFilterIds = await expandSectionSubtreeIds(this.prisma, input.suiteId, [input.sectionId]);
+      instances = instances.filter((row) => row.sectionId != null && sectionFilterIds.includes(row.sectionId));
+    }
+
+    const filteredTotal = instances.length;
+    const sectionCountsMap = new Map<string, number>();
+    for (const row of instances) {
+      if (row.sectionId == null) continue;
+      const key = row.sectionId.toString();
+      sectionCountsMap.set(key, (sectionCountsMap.get(key) ?? 0) + 1);
+    }
+
+    const sectionRows = await this.prisma.section.findMany({
+      where: { suiteId: input.suiteId, deletedAt: null },
+      select: { id: true, name: true, displayOrder: true, parentSectionId: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+    });
+
+    const { groups } = buildRunInstanceGroups(
+      instances,
+      sectionRows.map((s) => ({
+        id: s.id,
+        name: s.name,
+        displayOrder: s.displayOrder,
+        parentSectionId: s.parentSectionId
+      })),
+      input.groupBy
+    );
+
+    return {
+      total: input.caseChanged || input.sectionId != null ? filteredTotal : total,
+      truncated,
+      groups,
+      sectionCounts: Array.from(sectionCountsMap.entries()).map(([sectionId, count]) => ({ sectionId, count }))
     };
+  }
+
+  async listInstancesForRunPage(
+    input: {
+      runId: bigint;
+      page: number;
+      pageSize: number;
+    } & RunInstanceListQuery
+  ): Promise<{ items: TestInstance[]; total: number }> {
+    const where = buildRunInstanceWhere(input.runId, input);
+    const needsInMemoryPage = Boolean(input.caseChanged) || Boolean(input.sortBy);
+    if (needsInMemoryPage) {
+      const rows = (await this.prisma.testInstance.findMany({
+        where,
+        orderBy: { id: "asc" },
+        take: 5000
+      })) as InstanceDbRow[];
+      const processed = applyRunInstanceListPostProcess(await this.enrichInstanceRows(input.runId, rows), input);
+      const start = (input.page - 1) * input.pageSize;
+      return {
+        items: processed.slice(start, start + input.pageSize),
+        total: processed.length
+      };
+    }
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.testInstance.findMany({
         where,
@@ -400,7 +473,7 @@ export class PrismaRunsRepository implements RunsRepository {
       this.prisma.testInstance.count({ where })
     ]);
     return {
-      items: await this.enrichInstanceRows(input.runId, rows as InstanceDbRow[]),
+      items: applyRunInstanceListPostProcess(await this.enrichInstanceRows(input.runId, rows as InstanceDbRow[]), input),
       total
     };
   }

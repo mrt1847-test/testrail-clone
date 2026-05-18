@@ -15,10 +15,28 @@ import { normalizeElapsedInput } from "./resultEntryUtils";
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
+import type { RunListColumn } from "../utils/runInstanceColumns";
+import { RUN_LIST_COLUMN_LABELS } from "../utils/runInstanceColumns";
+
+function formatCaseMeta(value: string | null | undefined) {
+  if (!value) return "—";
+  const normalized = value.trim();
+  if (!normalized) return "—";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+}
+
+export type TestInstanceTableGroup = {
+  groupLabel: string;
+  sectionId?: string | null;
+  instances: TestInstanceRow[];
+};
 
 type Props = {
   projectId: string;
   pagedInstances: TestInstanceRow[];
+  groups?: TestInstanceTableGroup[];
+  inlineStatusSelect?: boolean;
+  hidePagination?: boolean;
   selectedInstanceId: string | null;
   onSelectInstance: (instance: TestInstanceRow) => void;
   selectedTestIds: string[];
@@ -45,6 +63,7 @@ type Props = {
   onAssignTest: (testId: string, assignedTo: string | null) => void;
   assigningTestId?: string | null;
   runClosed?: boolean;
+  visibleColumns?: RunListColumn[];
 };
 
 export function TestInstanceTable(props: Props) {
@@ -73,8 +92,15 @@ export function TestInstanceTable(props: Props) {
     currentUserId,
     onAssignTest,
     assigningTestId = null,
-    runClosed = false
+    runClosed = false,
+    groups,
+    inlineStatusSelect = false,
+    hidePagination = false,
+    visibleColumns = []
   } = props;
+  const showPriority = visibleColumns.includes("priority");
+  const showType = visibleColumns.includes("type");
+  const columnCount = 6 + (showPriority ? 1 : 0) + (showType ? 1 : 0) + (onToggleSubscribe ? 1 : 0);
   const [editingRow, setEditingRow] = useState<TestInstanceRow | null>(null);
   const statusQuery = useProjectStatuses(projectId);
   const statusOptions = statusQuery.data ?? [];
@@ -99,7 +125,11 @@ export function TestInstanceTable(props: Props) {
 
   const selectionAnchorIndexRef = useRef<number | null>(null);
   const skipNextCheckboxChangeRef = useRef(false);
-  const orderedTestIds = useMemo(() => pagedInstances.map((row) => row.id), [pagedInstances]);
+  const displayRows = useMemo(() => {
+    if (groups?.length) return groups.flatMap((group) => group.instances);
+    return pagedInstances;
+  }, [groups, pagedInstances]);
+  const orderedTestIds = useMemo(() => displayRows.map((row) => row.id), [displayRows]);
 
   useEffect(() => {
     selectionAnchorIndexRef.current = null;
@@ -155,6 +185,148 @@ export function TestInstanceTable(props: Props) {
     setEditingRow(null);
   }
 
+  function statusOptionForRow(row: TestInstanceRow) {
+    return (
+      statusOptions.find((option) => option.canonicalStatus === row.status) ??
+      pickDefaultStatusOption(statusOptions, row.status as ResultStatus)
+    );
+  }
+
+  function renderInstanceRow(row: TestInstanceRow) {
+    const statusOption = statusOptionForRow(row);
+    return (
+      <tr
+        key={row.id}
+        data-test-id={row.id}
+        className={
+          selectedInstanceId === row.id
+            ? "bg-sky-50/80 hover:bg-sky-50"
+            : "cursor-pointer hover:bg-slate-50/90"
+        }
+        onClick={() => onSelectInstance(row)}
+      >
+        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${row.caseCode}`}
+            checked={selectedTestIds.includes(row.id)}
+            onChange={(e) => {
+              if (skipNextCheckboxChangeRef.current) {
+                skipNextCheckboxChangeRef.current = false;
+                return;
+              }
+              toggleTestSelection(row.id, e.target.checked);
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleTestSelectClick(e, row.id);
+            }}
+          />
+        </td>
+        <td className="px-3 py-2 align-middle font-mono text-xs text-slate-800">{row.caseCode}</td>
+        <td className="max-w-[24rem] truncate px-3 py-2 align-middle text-slate-800" title={row.title}>
+          {row.title}
+        </td>
+        {showPriority ? (
+          <td className="px-3 py-2 align-middle text-xs text-slate-700">{formatCaseMeta(row.casePriority)}</td>
+        ) : null}
+        {showType ? (
+          <td className="px-3 py-2 align-middle text-xs text-slate-700">{formatCaseMeta(row.caseType)}</td>
+        ) : null}
+        <td className="px-3 py-2 align-middle">
+          {row.caseChanged ? (
+            <span
+              className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+              title={
+                row.changedFields?.length
+                  ? `Underlying case changed: ${row.changedFields.join(", ")}`
+                  : "Underlying case changed after this run was created"
+              }
+            >
+              Changed
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400">—</span>
+          )}
+        </td>
+        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+          <div className="space-y-1">
+            <p className="truncate text-xs text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
+              {memberLabelForUserId(row.assignedTo, members)}
+            </p>
+            {!runClosed ? (
+              <TestAssigneeQuickActions
+                assignedTo={row.assignedTo}
+                currentUserId={currentUserId}
+                compact
+                disabled={assigningTestId != null && assigningTestId !== row.id}
+                pending={assigningTestId === row.id}
+                onAssignToMe={() => onAssignTest(row.id, currentUserId ?? null)}
+                onClearAssignee={() => onAssignTest(row.id, null)}
+              />
+            ) : null}
+          </div>
+        </td>
+        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+          {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
+            <select
+              className="w-full max-w-[9rem] rounded border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-800"
+              value={statusOption.id}
+              disabled={isSavingQuickResult}
+              aria-label={`Status for ${row.caseCode}`}
+              onChange={(e) => {
+                const next = statusOptions.find((option) => option.id === e.target.value);
+                if (!next || next.isUntested) return;
+                onQuickResultSave(row.id, { status: next.canonicalStatus });
+              }}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.id} value={option.id} disabled={option.isUntested}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <StatusBadge status={row.status} interactive onClick={() => setEditingRow(row)} />
+          )}
+        </td>
+        {onToggleSubscribe ? (
+          <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              disabled={isSubscribePending}
+              title={subscribedTestIds?.has(row.id) ? "Unsubscribe from email updates" : "Subscribe to email updates"}
+              className={`text-xs font-medium underline disabled:opacity-50 ${
+                subscribedTestIds?.has(row.id) ? "text-indigo-700" : "text-slate-600"
+              }`}
+              onClick={() => onToggleSubscribe(row.id, !subscribedTestIds?.has(row.id))}
+            >
+              {subscribedTestIds?.has(row.id) ? "Watching" : "Watch"}
+            </button>
+          </td>
+        ) : null}
+      </tr>
+    );
+  }
+
+  const tableBody =
+    groups && groups.length > 0 ? (
+      groups.map((group) => (
+        <tbody key={group.groupLabel + (group.sectionId ?? "")} className="divide-y divide-slate-100 bg-white">
+          {group.groupLabel ? (
+            <tr className="bg-slate-100/90">
+              <td colSpan={columnCount} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {group.groupLabel}
+              </td>
+            </tr>
+          ) : null}
+          {group.instances.map((row) => renderInstanceRow(row))}
+        </tbody>
+      ))
+    ) : (
+      <tbody className="divide-y divide-slate-100 bg-white">{displayRows.map((row) => renderInstanceRow(row))}</tbody>
+    );
+
   return (
     <>
       <div className="max-h-[min(70vh,720px)] overflow-auto">
@@ -170,11 +342,11 @@ export function TestInstanceTable(props: Props) {
                   onChange={(e) => {
                     if (e.target.checked) {
                       setSelectedTestIds((prev) =>
-                        Array.from(new Set([...prev, ...pagedInstances.map((instance) => instance.id)]))
+                        Array.from(new Set([...prev, ...displayRows.map((instance) => instance.id)]))
                       );
                       return;
                     }
-                    const filteredSet = new Set(pagedInstances.map((instance) => instance.id));
+                    const filteredSet = new Set(displayRows.map((instance) => instance.id));
                     setSelectedTestIds((prev) => prev.filter((id) => !filteredSet.has(id)));
                   }}
                 />
@@ -185,6 +357,16 @@ export function TestInstanceTable(props: Props) {
               <th className="min-w-[8rem] px-3 py-2.5" scope="col">
                 Title
               </th>
+              {showPriority ? (
+                <th className="w-24 px-3 py-2.5" scope="col">
+                  {RUN_LIST_COLUMN_LABELS.priority}
+                </th>
+              ) : null}
+              {showType ? (
+                <th className="w-24 px-3 py-2.5" scope="col">
+                  {RUN_LIST_COLUMN_LABELS.type}
+                </th>
+              ) : null}
               <th className="w-28 px-3 py-2.5" scope="col">
                 Updated
               </th>
@@ -196,100 +378,14 @@ export function TestInstanceTable(props: Props) {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {pagedInstances.map((row) => (
-              <tr
-                key={row.id}
-                className={
-                  selectedInstanceId === row.id
-                    ? "bg-sky-50/80 hover:bg-sky-50"
-                    : "cursor-pointer hover:bg-slate-50/90"
-                }
-                onClick={() => onSelectInstance(row)}
-              >
-                <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${row.caseCode}`}
-                    checked={selectedTestIds.includes(row.id)}
-                    onChange={(e) => {
-                      if (skipNextCheckboxChangeRef.current) {
-                        skipNextCheckboxChangeRef.current = false;
-                        return;
-                      }
-                      toggleTestSelection(row.id, e.target.checked);
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTestSelectClick(e, row.id);
-                    }}
-                  />
-                </td>
-                <td className="px-3 py-2 align-middle font-mono text-xs text-slate-800">{row.caseCode}</td>
-                <td className="max-w-[24rem] truncate px-3 py-2 align-middle text-slate-800" title={row.title}>
-                  {row.title}
-                </td>
-                <td className="px-3 py-2 align-middle">
-                  {row.caseChanged ? (
-                    <span
-                      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
-                      title={
-                        row.changedFields?.length
-                          ? `Underlying case changed: ${row.changedFields.join(", ")}`
-                          : "Underlying case changed after this run was created"
-                      }
-                    >
-                      Changed
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
-                  <div className="space-y-1">
-                    <p className="truncate text-xs text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
-                      {memberLabelForUserId(row.assignedTo, members)}
-                    </p>
-                    {!runClosed ? (
-                      <TestAssigneeQuickActions
-                        assignedTo={row.assignedTo}
-                        currentUserId={currentUserId}
-                        compact
-                        disabled={assigningTestId != null && assigningTestId !== row.id}
-                        pending={assigningTestId === row.id}
-                        onAssignToMe={() => onAssignTest(row.id, currentUserId ?? null)}
-                        onClearAssignee={() => onAssignTest(row.id, null)}
-                      />
-                    ) : null}
-                  </div>
-                </td>
-                <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
-                  <StatusBadge
-                    status={row.status}
-                    interactive
-                    onClick={() => setEditingRow(row)}
-                  />
-                </td>
-                {onToggleSubscribe ? (
-                  <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      disabled={isSubscribePending}
-                      title={subscribedTestIds?.has(row.id) ? "Unsubscribe from email updates" : "Subscribe to email updates"}
-                      className={`text-xs font-medium underline disabled:opacity-50 ${
-                        subscribedTestIds?.has(row.id) ? "text-indigo-700" : "text-slate-600"
-                      }`}
-                      onClick={() => onToggleSubscribe(row.id, !subscribedTestIds?.has(row.id))}
-                    >
-                      {subscribedTestIds?.has(row.id) ? "Watching" : "Watch"}
-                    </button>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
+          {tableBody}
         </table>
       </div>
+      {hidePagination ? (
+        <div className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-medium text-slate-800">{total}</span> tests
+        </div>
+      ) : (
       <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p>
@@ -336,6 +432,7 @@ export function TestInstanceTable(props: Props) {
           </button>
         </div>
       </div>
+      )}
       {editingRow ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={closeEditor}>
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>

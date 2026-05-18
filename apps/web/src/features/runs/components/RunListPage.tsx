@@ -15,6 +15,8 @@ import type { RunSummary } from "../types";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { buildRunPrintPath } from "../../print/api/printApi";
 import { useRunsQuery } from "../hooks/useRunsApi";
+import { ProjectContentHeader } from "../../projects/content-header/ProjectContentHeader";
+import { contentHeaderActionClass, contentHeaderPrimaryClass } from "../../projects/content-header/contentHeaderStyles";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
 const columnHelper = createColumnHelper<RunSummary>();
@@ -26,7 +28,27 @@ export function RunListPage() {
   const { user } = useAuth();
   const [myRunsOnly, setMyRunsOnly] = useState(searchParams.get("mine") === "1");
   const { data = [], isLoading, isError, refetch } = useRunsQuery(projectId);
-  const filteredData = myRunsOnly && user ? data.filter((run) => run.assignedTo === user.id) : data;
+  const milestoneFilter = searchParams.get("milestoneId");
+  const resultStatusFilter = searchParams.get("resultStatus");
+  const hasMilestoneFilter = Boolean(milestoneFilter && milestoneFilter !== "all");
+  const hasSegmentFilter =
+    resultStatusFilter === "passed" || resultStatusFilter === "failed" || resultStatusFilter === "untested";
+  const hasUrlFilters = hasMilestoneFilter || hasSegmentFilter;
+  const activityDrilldownOnly = hasSegmentFilter && !hasMilestoneFilter;
+  const filteredData = useMemo(() => {
+    let rows = myRunsOnly && user ? data.filter((run) => run.assignedTo === user.id) : data;
+    if (hasMilestoneFilter) {
+      rows = rows.filter((run) => run.milestoneId === milestoneFilter);
+    }
+    if (resultStatusFilter === "failed") {
+      rows = rows.filter((run) => run.failed > 0);
+    } else if (resultStatusFilter === "passed") {
+      rows = rows.filter((run) => run.progress === 100 && run.failed === 0);
+    } else if (resultStatusFilter === "untested") {
+      rows = rows.filter((run) => run.progress < 100);
+    }
+    return rows;
+  }, [data, hasMilestoneFilter, milestoneFilter, myRunsOnly, resultStatusFilter, user]);
 
   const toggleMine = () => {
     const next = !myRunsOnly;
@@ -34,6 +56,13 @@ export function RunListPage() {
     const nextParams = new URLSearchParams(searchParams);
     if (next) nextParams.set("mine", "1");
     else nextParams.delete("mine");
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const clearUrlFilters = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("milestoneId");
+    nextParams.delete("resultStatus");
     setSearchParams(nextParams, { replace: true });
   };
 
@@ -78,16 +107,80 @@ export function RunListPage() {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  if (isLoading) return <LoadingState message="Loading runs…" />;
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
+  const runsHeader = (
+    <ProjectContentHeader
+      projectId={projectId}
+      variant="runs"
+      title="Test Runs & Results"
+      subtitle="Open and completed runs with progress and drilldown into execution."
+      secondaryActions={
+        <>
+          <button
+            type="button"
+            onClick={() => toggleMine()}
+            className={
+              myRunsOnly
+                ? "rounded border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white"
+                : contentHeaderActionClass
+            }
+          >
+            My runs
+          </button>
+          <button type="button" onClick={() => navigate(buildRunComparisonPath(projectId))} className={contentHeaderActionClass}>
+            Compare runs
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/projects/${projectId}/runs/new`)}
+            className={contentHeaderPrimaryClass}
+          >
+            + New run
+          </button>
+        </>
+      }
+    />
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {runsHeader}
+        <LoadingState message="Loading runs…" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        {runsHeader}
+        <ErrorState onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   if (filteredData.length === 0) {
     return (
-      <EmptyState
-        title={myRunsOnly ? "No runs assigned to you" : "No test runs yet"}
-        description={myRunsOnly ? "Try disabling My Runs filter or assign runs to yourself." : "Create a run to start executing cases."}
+      <div className="space-y-4">
+        {runsHeader}
+        <EmptyState
+        title={myRunsOnly ? "No runs assigned to you" : hasUrlFilters ? "No matching runs" : "No test runs yet"}
+        description={
+          myRunsOnly
+            ? "Try disabling My Runs filter or assign runs to yourself."
+            : hasUrlFilters
+              ? "Try clearing the milestone filters."
+              : "Create a run to start executing cases."
+        }
         action={
-          myRunsOnly ? (
+          hasUrlFilters ? (
+            <button
+              type="button"
+              onClick={() => clearUrlFilters()}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              Clear filters
+            </button>
+          ) : myRunsOnly ? (
             <button
               type="button"
               onClick={() => toggleMine()}
@@ -105,42 +198,27 @@ export function RunListPage() {
             </button>
           )
         }
-      />
+        />
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-slate-900">Test runs</h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => toggleMine()}
-            className={
-              myRunsOnly
-                ? "rounded-md border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-                : "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
-            }
-          >
-            My runs
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(buildRunComparisonPath(projectId))}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Compare runs
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/projects/${projectId}/runs/new`)}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            + New run
+      {runsHeader}
+
+      {hasUrlFilters ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+          <span>
+            {activityDrilldownOnly
+              ? `Showing runs with ${resultStatusFilter} coverage (from overview activity)`
+              : `Showing runs for milestone ${milestoneFilter}${hasSegmentFilter ? ` with ${resultStatusFilter} coverage` : ""}`}
+          </span>
+          <button type="button" className="text-sm font-medium text-indigo-800 hover:underline" onClick={clearUrlFilters}>
+            Clear filters
           </button>
         </div>
-      </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">

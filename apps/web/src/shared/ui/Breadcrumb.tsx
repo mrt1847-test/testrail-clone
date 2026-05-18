@@ -41,7 +41,7 @@ export function Breadcrumb({ projectId, projectName }: BreadcrumbProps) {
 
   return (
     <div className="border-b border-slate-100 bg-white px-4 py-2 text-sm text-slate-600">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-1">
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-1">
         {crumbs.map((c, idx) => (
           <span key={c.to} className="flex items-center gap-1">
             {idx > 0 ? <span className="text-slate-400">/</span> : null}

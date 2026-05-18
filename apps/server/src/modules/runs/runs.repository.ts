@@ -10,6 +10,8 @@ import { enrichTestInstancesWithCaseChange } from "./instanceCaseChange.js";
 import type { LiveCaseFields } from "../../domain/testCaseChangeIndicator.js";
 import type { CustomFieldValue } from "../../domain/customFieldTypes.js";
 import { assignmentAgingForRow } from "./assignmentListFilters.js";
+import { buildRunInstanceGroups } from "../../domain/runInstanceGrouping.js";
+import { applyRunInstanceListPostProcess, type RunInstanceListQuery } from "../../domain/runInstanceListQuery.js";
 
 type ResultCustomValues = Record<string, CustomFieldValue>;
 
@@ -132,14 +134,27 @@ export interface RunsRepository {
   listRunsByProject(projectId: bigint): Promise<TestRun[]>;
   getRun(runId: bigint): Promise<TestRun | null>;
   listInstancesForRun(runId: bigint): Promise<TestInstance[]>;
-  listInstancesForRunPage(input: {
-    runId: bigint;
-    page: number;
-    pageSize: number;
-    status?: TestStatus;
-    assignedTo?: bigint | null;
-    q?: string;
-  }): Promise<{ items: TestInstance[]; total: number }>;
+  listInstancesForRunPage(
+    input: {
+      runId: bigint;
+      page: number;
+      pageSize: number;
+    } & import("../../domain/runInstanceListQuery.js").RunInstanceListQuery
+  ): Promise<{ items: TestInstance[]; total: number }>;
+  listInstancesForRunGrouped(
+    input: {
+      runId: bigint;
+      suiteId: bigint;
+      groupBy: import("../../domain/suiteCaseGrouping.js").SuiteCaseGroupBy;
+      sectionId?: bigint;
+      maxInstances?: number;
+    } & import("../../domain/runInstanceListQuery.js").RunInstanceListQuery
+  ): Promise<{
+    total: number;
+    truncated: boolean;
+    groups: import("../../domain/runInstanceGrouping.js").RunInstanceGroupRow[];
+    sectionCounts: Array<{ sectionId: string; count: number }>;
+  }>;
   listResultsForTestInstance(testId: bigint): Promise<
     Array<{
       id: bigint;
@@ -325,6 +340,7 @@ export class InMemoryRunsRepository implements RunsRepository {
       casesById.set(inst.caseId, {
         lockVersion: row.lockVersion ?? 1,
         title: row.title,
+        sectionId: row.sectionId ?? 0n,
         priority: row.priority,
         caseType: row.caseType,
         automationKey: row.automationKey,
@@ -340,30 +356,110 @@ export class InMemoryRunsRepository implements RunsRepository {
     return this.enrichMemoryInstances(runId, rows);
   }
 
-  async listInstancesForRunPage(input: {
-    runId: bigint;
-    page: number;
-    pageSize: number;
-    status?: TestStatus;
-    assignedTo?: bigint | null;
-    q?: string;
-  }): Promise<{ items: TestInstance[]; total: number }> {
-    const q = input.q?.toLowerCase();
-    const rows = this.instances.filter((i) => {
-      if (i.runId !== input.runId) return false;
-      if (input.status && i.status !== input.status) return false;
-      if (input.assignedTo !== undefined && i.assignedTo !== input.assignedTo) return false;
+  private filterMemoryInstancesForList(runId: bigint, query: RunInstanceListQuery) {
+    const q = query.q?.toLowerCase();
+    return this.instances.filter((i) => {
+      if (i.runId !== runId) return false;
+      if (query.status && i.status !== query.status) return false;
+      if (query.assignedTo !== undefined && i.assignedTo !== query.assignedTo) return false;
+      if (query.priority && (i.prioritySnapshot ?? "").toLowerCase() !== query.priority) return false;
+      if (query.caseType && (i.typeSnapshot ?? "").toLowerCase() !== query.caseType) return false;
       if (!q) return true;
       return (
         i.titleSnapshot.toLowerCase().includes(q) ||
         `c${i.caseId.toString()}`.toLowerCase().includes(q)
       );
     });
+  }
+
+  async listInstancesForRunPage(
+    input: {
+      runId: bigint;
+      page: number;
+      pageSize: number;
+    } & RunInstanceListQuery
+  ): Promise<{ items: TestInstance[]; total: number }> {
+    const rows = this.filterMemoryInstancesForList(input.runId, input);
+    const enriched = applyRunInstanceListPostProcess(await this.enrichMemoryInstances(input.runId, rows), input);
     const start = (input.page - 1) * input.pageSize;
-    const pageRows = rows.slice(start, start + input.pageSize);
     return {
-      items: this.enrichMemoryInstances(input.runId, pageRows),
-      total: rows.length
+      items: enriched.slice(start, start + input.pageSize),
+      total: enriched.length
+    };
+  }
+
+  async listInstancesForRunGrouped(
+    input: {
+      runId: bigint;
+      suiteId: bigint;
+      groupBy: import("../../domain/suiteCaseGrouping.js").SuiteCaseGroupBy;
+      sectionId?: bigint;
+      maxInstances?: number;
+    } & RunInstanceListQuery
+  ): Promise<{
+    total: number;
+    truncated: boolean;
+    groups: import("../../domain/runInstanceGrouping.js").RunInstanceGroupRow[];
+    sectionCounts: Array<{ sectionId: string; count: number }>;
+  }> {
+    const maxInstances = input.maxInstances ?? 5000;
+    const baseRows = this.filterMemoryInstancesForList(input.runId, input);
+    let filtered = applyRunInstanceListPostProcess(
+      await this.enrichMemoryInstances(input.runId, baseRows),
+      input
+    );
+    const total = filtered.length;
+    const truncated = total > maxInstances;
+    if (truncated) filtered = filtered.slice(0, maxInstances);
+
+    let sectionFilterIds: bigint[] | undefined;
+    if (input.sectionId != null) {
+      const sectionRows = this.cases
+        .filter((c) => c.suiteId === input.suiteId)
+        .map((c) => ({ id: c.sectionId!, parentSectionId: null as bigint | null }));
+      const unique = new Map<bigint, { id: bigint; parentSectionId: bigint | null }>();
+      for (const row of sectionRows) {
+        if (row.id != null) unique.set(row.id, { id: row.id, parentSectionId: row.parentSectionId });
+      }
+      sectionFilterIds = expandSectionSubtreeIdsPure([...unique.values()], [input.sectionId]);
+      filtered = filtered.filter((row) => row.sectionId != null && sectionFilterIds!.includes(row.sectionId));
+    }
+
+    const filteredTotal = filtered.length;
+    const sectionCountsMap = new Map<string, number>();
+    for (const row of filtered) {
+      if (row.sectionId == null) continue;
+      const key = row.sectionId.toString();
+      sectionCountsMap.set(key, (sectionCountsMap.get(key) ?? 0) + 1);
+    }
+    const sectionCounts = Array.from(sectionCountsMap.entries()).map(([sectionId, count]) => ({
+      sectionId,
+      count
+    }));
+
+    const sections = this.cases
+      .filter((c) => c.suiteId === input.suiteId && c.sectionId != null)
+      .reduce<Map<bigint, { id: bigint; name: string; displayOrder: number; parentSectionId: bigint | null }>>(
+        (acc, c) => {
+          if (!acc.has(c.sectionId!)) {
+            acc.set(c.sectionId!, {
+              id: c.sectionId!,
+              name: `Section ${c.sectionId}`,
+              displayOrder: 0,
+              parentSectionId: null
+            });
+          }
+          return acc;
+        },
+        new Map()
+      );
+
+    const { groups } = buildRunInstanceGroups(filtered, [...sections.values()], input.groupBy);
+    return {
+      total: input.caseChanged || input.sectionId != null ? filteredTotal : total,
+      truncated,
+      groups,
+      sectionCounts
     };
   }
 

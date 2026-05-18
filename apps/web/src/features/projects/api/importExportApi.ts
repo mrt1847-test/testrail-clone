@@ -393,6 +393,10 @@ export async function downloadRunResultsCsv(projectId: string, runId: string) {
   await downloadCsv(`/api/projects/${projectId}/runs/${runId}/results/export/csv`, `run-${runId}-results.csv`);
 }
 
+export async function downloadRunTestsCsv(projectId: string, runId: string) {
+  await downloadCsv(`/api/projects/${projectId}/runs/${runId}/instances/export/csv`, `run-${runId}-tests.csv`);
+}
+
 export type AttachmentImportResult = {
   job: ImportExportJobRow;
   summary: {

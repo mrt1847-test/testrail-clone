@@ -1,11 +1,26 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
-import { copySectionSubtree, createCase, createSection, deleteSection, reorderSections, updateSection } from "../api/catalogApi";
+import {
+  copySectionSubtree,
+  createCase,
+  createSection,
+  deleteSection,
+  fetchSuiteSummary,
+  reorderSections,
+  updateSection
+} from "../api/catalogApi";
+import { useExpandedCase } from "../hooks/useExpandedCase";
+import { updateSuite } from "../../projects/api/suitesApi";
+import type { CaseRepositoryTreeSide } from "../caseRepositoryLayout";
+import { CaseRepositoryDisplayMenu } from "./CaseRepositoryDisplayMenu";
+import { SuiteDescriptionDialog } from "./SuiteDescriptionDialog";
+import { SuiteEstimatesBubble } from "./SuiteEstimatesBubble";
+import { SuiteRepositoryStats } from "./SuiteRepositoryStats";
 import { extractApiErrorMessage } from "../caseErrors";
 import { caseKeys } from "../hooks/useCases";
 import { sectionKeys } from "../hooks/useSections";
@@ -25,10 +40,14 @@ type PendingSectionMoveCopy = {
 type SectionTreePaneProps = {
   suiteId: string;
   sections: SectionNode[];
-  selectedSectionId: number;
+  selectedSectionId: number | null;
   onSelectSection: (id: number) => void;
   onClearExpand: () => void;
   onQuickAddCaseCreated?: (input: { sectionId: number; caseId: number }) => void;
+  onAddTestCase?: () => void;
+  editDescriptionRequest?: number;
+  treeSide?: CaseRepositoryTreeSide;
+  onToggleTreeSide?: () => void;
   dnd?: {
     isDragging: boolean;
     draggingCount: number;
@@ -66,10 +85,20 @@ export function SectionTreePane({
   onSelectSection,
   onClearExpand,
   onQuickAddCaseCreated,
+  onAddTestCase,
+  editDescriptionRequest = 0,
+  treeSide = "right",
+  onToggleTreeSide,
   dnd
 }: SectionTreePaneProps) {
   const { projectId = "" } = useParams();
+  const { caseDisplay, setCaseDisplay } = useExpandedCase();
   const qc = useQueryClient();
+  const suiteSummaryQuery = useQuery({
+    queryKey: ["suite-summary", projectId, suiteId],
+    queryFn: () => fetchSuiteSummary(projectId, suiteId),
+    enabled: Boolean(projectId && suiteId)
+  });
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -88,6 +117,27 @@ export function SectionTreePane({
   const [quickAddSectionId, setQuickAddSectionId] = useState<number | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
+  const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const updateSuiteDescriptionMutation = useMutation({
+    mutationFn: (description: string) =>
+      updateSuite(suiteId, { description: description.trim().length > 0 ? description.trim() : null }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["suite-summary", projectId, suiteId] });
+      setDescriptionDialogOpen(false);
+      setDescriptionError(null);
+    },
+    onError: (error) => {
+      setDescriptionError(extractApiErrorMessage(error, "Could not update the suite description."));
+    }
+  });
+
+  useEffect(() => {
+    if (editDescriptionRequest <= 0) return;
+    setDescriptionError(null);
+    setDescriptionDialogOpen(true);
+  }, [editDescriptionRequest]);
+
   const sectionByParent = sections.reduce<Map<number | null, SectionNode[]>>((acc, section) => {
     const parent = section.parentSectionId ?? null;
     const list = acc.get(parent);
@@ -270,6 +320,7 @@ export function SectionTreePane({
   }, [projectId, suiteId]);
 
   useEffect(() => {
+    if (selectedSectionId == null) return;
     const validSectionIds = new Set(sections.map((section) => section.id));
     const ancestors = collectAncestorIds(selectedSectionId);
     setCollapsedSectionIds((current) => {
@@ -463,14 +514,70 @@ export function SectionTreePane({
       : "root";
 
   return (
-    <aside className="rounded-md border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-6">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-900">Sections</h3>
+    <aside className="rounded-md border border-slate-300 bg-[#f8f8f8] p-3 shadow-sm xl:sticky xl:top-6">
+      <div className="mb-3 space-y-2">
+        {onAddTestCase ? (
+          <button
+            type="button"
+            onClick={onAddTestCase}
+            className="w-full rounded border border-blue-900 bg-blue-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800"
+          >
+            Add Test Case
+          </button>
+        ) : null}
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-slate-900">
+            {suiteSummaryQuery.data?.suiteName ?? "Test suite"}
+          </h3>
+          {suiteSummaryQuery.data?.suiteDescription ? (
+            <p className="line-clamp-3 text-[11px] leading-relaxed text-slate-600">
+              {suiteSummaryQuery.data.suiteDescription}
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-500">No suite description yet.</p>
+          )}
+          <button
+            type="button"
+            className="text-[11px] font-medium text-blue-700 hover:underline"
+            onClick={() => {
+              setDescriptionError(null);
+              setDescriptionDialogOpen(true);
+            }}
+          >
+            Edit description
+          </button>
+        </div>
+        <SuiteRepositoryStats
+          sectionCount={suiteSummaryQuery.data?.sectionCount ?? sections.length}
+          caseCount={suiteSummaryQuery.data?.activeCaseCount ?? null}
+          archivedCaseCount={suiteSummaryQuery.data?.archivedCaseCount ?? null}
+          isLoading={suiteSummaryQuery.isLoading}
+        />
+        <SuiteEstimatesBubble
+          totalEstimateDisplay={suiteSummaryQuery.data?.totalEstimateDisplay ?? null}
+          casesWithEstimateCount={suiteSummaryQuery.data?.casesWithEstimateCount ?? 0}
+          activeCaseCount={suiteSummaryQuery.data?.activeCaseCount ?? 0}
+          isLoading={suiteSummaryQuery.isLoading}
+        />
+        <CaseRepositoryDisplayMenu value={caseDisplay} onChange={setCaseDisplay} />
+        {onToggleTreeSide ? (
+          <button
+            type="button"
+            className="text-[11px] text-blue-700 hover:underline"
+            onClick={onToggleTreeSide}
+          >
+            Move section tree to {treeSide === "right" ? "left" : "right"}
+          </button>
+        ) : null}
+        <p className="text-[11px] text-slate-500">
+          J/K move · Q panel · C add case · S new section · R run · E description · D defect
+        </p>
       </div>
 
       {suiteId ? (
         <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
           <input
+            id="case-repository-new-section"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs"
             placeholder="New section name"
             value={newName}
@@ -523,7 +630,7 @@ export function SectionTreePane({
       <ul className="mt-3 grid gap-1.5">
         {(sectionByParent.get(null) ?? []).map((root) => {
           const walk = (section: SectionNode, depth: number): ReactNode => {
-            const selected = section.id === selectedSectionId;
+            const selected = selectedSectionId != null && section.id === selectedSectionId;
             const isEditing = editingId === section.id;
             const children = sectionByParent.get(section.id) ?? [];
             const collapsed = collapsedSectionIds.has(section.id);
@@ -765,6 +872,18 @@ export function SectionTreePane({
         onMove={confirmSectionMove}
         onCopy={confirmSectionCopy}
         onCancel={cancelSectionMoveCopy}
+      />
+      <SuiteDescriptionDialog
+        open={descriptionDialogOpen}
+        suiteName={suiteSummaryQuery.data?.suiteName ?? "Test suite"}
+        description={suiteSummaryQuery.data?.suiteDescription ?? ""}
+        isSaving={updateSuiteDescriptionMutation.isPending}
+        error={descriptionError}
+        onSave={(next) => void updateSuiteDescriptionMutation.mutateAsync(next)}
+        onClose={() => {
+          setDescriptionDialogOpen(false);
+          setDescriptionError(null);
+        }}
       />
     </aside>
   );

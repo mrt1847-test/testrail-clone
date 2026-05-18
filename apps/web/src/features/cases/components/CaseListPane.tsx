@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { buildCasesPrintPath } from "../../print/api/printApi";
 
@@ -12,7 +20,8 @@ import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
-import { projectKeys } from "../../projects/hooks/useProjectsApi";
+import { fetchSuites } from "../../projects/api/suitesApi";
+import { projectKeys, useProjectsQuery } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   bulkArchiveCases,
@@ -20,24 +29,31 @@ import {
   bulkDeleteCases,
   bulkMoveCases,
   bulkUpdateCases,
+  updateCase,
   createCase,
   createCaseStep,
   fetchAllCasesForSection,
+  fetchSectionsForProject,
   positionCases
 } from "../api/catalogApi";
+import { sectionScopeForDisplay } from "../caseRepositoryView";
 import { buildCaseDetailPath } from "../caseRoute";
 import { extractApiErrorMessage } from "../caseErrors";
 import type { BulkCaseFeedback } from "../utils/bulkCaseFeedback";
 import { buildBulkCaseFeedback } from "../utils/bulkCaseFeedback";
 import { BulkCaseResultBanner } from "./BulkCaseResultBanner";
 import type { CaseListDnD, PendingMoveCopy } from "../hooks/useCaseListDnD";
+import { useCaseListKeyboardNav } from "../hooks/useCaseListKeyboardNav";
+import { useCaseColumnPreferences } from "../hooks/useCaseColumnPreferences";
 import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
-import { useCases, caseKeys } from "../hooks/useCases";
+import { caseKeys } from "../hooks/useCases";
+import { useSuiteCases } from "../hooks/useSuiteCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { sectionKeys } from "../hooks/useSections";
-import type { SectionNode } from "../types";
+import type { SectionNode, TestCase } from "../types";
 import { CaseAuthoringForm } from "./CaseAuthoringForm";
-import { CaseListToolbar } from "./CaseListToolbar";
+import { CaseBulkRelocationDialog } from "./CaseBulkRelocationDialog";
+import { CaseRepositoryToolbar, type BulkEditScope } from "./CaseRepositoryToolbar";
 import { CaseRow } from "./CaseRow";
 import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
 import {
@@ -45,9 +61,15 @@ import {
   hasActiveCaseListFilters,
   mergeNumericIds
 } from "../utils/caseListSelection";
+import { caseDeleteCopy } from "../caseDeleteCopy";
+import { mapFetchedSuiteGroups, regroupRepositoryCases } from "../utils/caseRepositoryGrouping";
+import { sortSectionIdsDepthFirst } from "../utils/sectionTreeOrder";
 
 type CaseListPaneProps = {
   projectId: string;
+  suiteId: string;
+  addCaseRequest?: number;
+  copyMoveRequest?: number;
   sections: SectionNode[];
   dnd?: CaseListDnD;
   pendingMoveCopy?: PendingMoveCopy | null;
@@ -96,6 +118,9 @@ async function persistCreateDraftSteps(
 
 export function CaseListPane({
   projectId,
+  suiteId,
+  addCaseRequest = 0,
+  copyMoveRequest = 0,
   sections,
   dnd,
   pendingMoveCopy = null,
@@ -110,19 +135,37 @@ export function CaseListPane({
   const {
     selectedSectionId,
     panelCaseId,
+    caseDisplay,
+    caseGroupBy,
     caseFilters,
     caseColumns,
     setCaseFilters,
     setCaseColumns,
+    setCaseGroupBy,
     clearCaseFilters,
     applySavedView,
     togglePanelCase,
     setPanelCase,
-    setSelectedSection
+    setSelectedSection,
+    setTreeFocusSection
   } = useExpandedCase();
 
-  const repositoryCaseFilters = useMemo(() => ({ ...caseFilters, sectionScope: "subtree" as const }), [caseFilters]);
-  const { data: cases = [], isLoading, isError, refetch } = useCases(projectId, selectedSectionId, repositoryCaseFilters);
+  const repositoryCaseFilters = useMemo(
+    () => ({ ...caseFilters, sectionScope: sectionScopeForDisplay(caseDisplay) }),
+    [caseFilters, caseDisplay]
+  );
+  const suiteFetchSectionId = caseDisplay === "tree" ? selectedSectionId : null;
+  const { effectiveColumns, persistColumns } = useCaseColumnPreferences(projectId, suiteId, caseColumns);
+  const { data: suiteCaseData, isLoading, isError, refetch } = useSuiteCases(
+    projectId,
+    suiteId,
+    suiteFetchSectionId,
+    repositoryCaseFilters,
+    caseDisplay,
+    caseGroupBy
+  );
+  const createTargetSectionId = selectedSectionId ?? sections[0]?.id ?? null;
+  const cases = suiteCaseData?.cases ?? [];
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
     queryFn: () => fetchCustomFieldsForUse(projectId, "case"),
@@ -142,15 +185,20 @@ export function CaseListPane({
   const selectionAnchorIndexRef = useRef<number | null>(null);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkOperationIds, setBulkOperationIds] = useState<number[] | null>(null);
+  const [bulkOperationLabel, setBulkOperationLabel] = useState("");
   const [bulkUpdatePriority, setBulkUpdatePriority] = useState<BulkPriorityValue>("");
   const [bulkUpdateCaseType, setBulkUpdateCaseType] = useState<BulkCaseTypeValue>("");
-  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
-  const [bulkMoveTargetId, setBulkMoveTargetId] = useState<number | null>(null);
+  const [bulkRelocationOpen, setBulkRelocationOpen] = useState(false);
+  const [relocationProjectId, setRelocationProjectId] = useState(projectId);
+  const [relocationSuiteId, setRelocationSuiteId] = useState(suiteId);
+  const [bulkRelocationTargetId, setBulkRelocationTargetId] = useState<number | null>(null);
   const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<BulkCaseFeedback | null>(null);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [saveViewName, setSaveViewName] = useState("");
+  const [focusedCaseId, setFocusedCaseId] = useState<number | null>(null);
 
   const deferredSearch = useDeferredValue(searchDraft);
   const caseLabelById = useMemo(
@@ -173,13 +221,6 @@ export function CaseListPane({
     validSectionIds
   );
 
-  const visibleCaseIds = useMemo(() => cases.map((item) => item.id), [cases]);
-  const selectedVisibleCaseIds = useMemo(
-    () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
-    [selectedCaseIds, visibleCaseIds]
-  );
-  const selectedCaseIdList = useMemo(() => Array.from(selectedCaseIds), [selectedCaseIds]);
-  const allVisibleSelected = visibleCaseIds.length > 0 && selectedVisibleCaseIds.length === visibleCaseIds.length;
   const listFiltersActive = hasActiveCaseListFilters(caseFilters);
   const activeFilterCount = useMemo(
     () =>
@@ -195,10 +236,52 @@ export function CaseListPane({
       ].filter(Boolean).length,
     [caseFilters]
   );
-  const moveTargets = useMemo(
-    () => sections.filter((section) => section.id !== selectedSectionId),
-    [sections, selectedSectionId]
-  );
+  const { data: allProjects = [] } = useProjectsQuery();
+  const relocationSuitesQuery = useQuery({
+    queryKey: ["relocation-suites", relocationProjectId],
+    queryFn: () => fetchSuites(relocationProjectId),
+    enabled: bulkRelocationOpen && Boolean(relocationProjectId)
+  });
+  const relocationSectionsQuery = useQuery({
+    queryKey: ["relocation-sections", relocationProjectId, relocationSuiteId],
+    queryFn: () => fetchSectionsForProject(relocationProjectId, { suiteId: relocationSuiteId }),
+    enabled: bulkRelocationOpen && Boolean(relocationProjectId && relocationSuiteId)
+  });
+  const relocationTargetSections = useMemo(() => {
+    const rows = [...(relocationSectionsQuery.data?.sections ?? [])].sort(
+      (left, right) => left.displayOrder - right.displayOrder || left.id - right.id
+    );
+    const depthById = new Map<number, number>();
+    const resolveDepth = (sectionId: number): number => {
+      const cached = depthById.get(sectionId);
+      if (cached != null) return cached;
+      const section = rows.find((row) => row.id === sectionId);
+      if (!section?.parentSectionId) {
+        depthById.set(sectionId, 0);
+        return 0;
+      }
+      const depth = resolveDepth(section.parentSectionId) + 1;
+      depthById.set(sectionId, depth);
+      return depth;
+    };
+    return rows.map((section) => ({
+      id: section.id,
+      name: section.name,
+      depth: resolveDepth(section.id)
+    }));
+  }, [relocationSectionsQuery.data?.sections]);
+
+  useEffect(() => {
+    if (!bulkRelocationOpen) return;
+    const suites = relocationSuitesQuery.data ?? [];
+    if (suites.length === 0) return;
+    setRelocationSuiteId((current) => {
+      if (suites.some((row) => row.id === current)) return current;
+      const preferred = suites.find((row) => row.isMaster) ?? suites[0];
+      return preferred?.id ?? current;
+    });
+  }, [bulkRelocationOpen, relocationProjectId, relocationSuitesQuery.data]);
+
   const hasBulkUpdatePatch = bulkUpdatePriority !== "" || bulkUpdateCaseType !== "";
   const bulkArchiveMode = caseFilters.state === "archived" ? "restore" : "archive";
   const selectedSection = useMemo(
@@ -223,19 +306,74 @@ export function CaseListPane({
     for (const section of sections) resolveDepth(section.id);
     return depths;
   }, [sectionById, sections]);
-  const groupedCases = useMemo(() => {
+  const sectionGroupedCases = useMemo(() => {
+    if (suiteCaseData?.groupBy === "section_id" && suiteCaseData.groups.length) {
+      return suiteCaseData.groups
+        .filter((group) => group.sectionId != null)
+        .map((group) => ({
+          sectionId: group.sectionId!,
+          sectionName: group.groupLabel,
+          cases: group.cases
+        }));
+    }
     const groups = new Map<number, typeof cases>();
     for (const item of cases) {
       const list = groups.get(item.sectionId);
       if (list) list.push(item);
       else groups.set(item.sectionId, [item]);
     }
-    return Array.from(groups.entries()).sort(([leftId], [rightId]) => {
-      const left = sectionById.get(leftId);
-      const right = sectionById.get(rightId);
-      return (left?.displayOrder ?? 0) - (right?.displayOrder ?? 0) || leftId - rightId;
+    const sectionOrder = sortSectionIdsDepthFirst(
+      sections.map((section) => ({
+        id: section.id,
+        parentSectionId: section.parentSectionId,
+        displayOrder: section.displayOrder
+      }))
+    );
+    const sectionRank = new Map(sectionOrder.map((sectionId, index) => [sectionId, index]));
+    return Array.from(groups.entries())
+      .sort(([leftId], [rightId]) => (sectionRank.get(leftId) ?? 999) - (sectionRank.get(rightId) ?? 999))
+      .map(([sectionId, sectionCases]) => ({
+        sectionId,
+        sectionName: sectionById.get(sectionId)?.name ?? `Section ${sectionId}`,
+        cases: sectionCases
+      }));
+  }, [cases, sectionById, sections, suiteCaseData?.groupBy, suiteCaseData?.groups]);
+  const repositoryGroups = useMemo(() => {
+    if (suiteCaseData?.groupBy === caseGroupBy && suiteCaseData.groups.length > 0) {
+      return mapFetchedSuiteGroups({
+        groups: suiteCaseData.groups,
+        groupBy: caseGroupBy,
+        sectionDepthById
+      });
+    }
+    return regroupRepositoryCases({
+      sectionGroups: sectionGroupedCases,
+      groupBy: caseGroupBy,
+      sectionDepthById
     });
-  }, [cases, sectionById]);
+  }, [caseGroupBy, sectionDepthById, sectionGroupedCases, suiteCaseData?.groupBy, suiteCaseData?.groups]);
+  const flatCases = useMemo(() => repositoryGroups.flatMap((group) => group.cases), [repositoryGroups]);
+  const visibleCaseIds = useMemo(() => flatCases.map((item) => item.id), [flatCases]);
+  const selectedVisibleCaseIds = useMemo(
+    () => visibleCaseIds.filter((caseId) => selectedCaseIds.has(caseId)),
+    [selectedCaseIds, visibleCaseIds]
+  );
+  const selectedCaseIdList = useMemo(() => Array.from(selectedCaseIds), [selectedCaseIds]);
+  const bulkTargetCaseIds = bulkOperationIds ?? selectedCaseIdList;
+  const allVisibleSelected = visibleCaseIds.length > 0 && selectedVisibleCaseIds.length === visibleCaseIds.length;
+  const showGroupHeaders =
+    caseGroupBy !== "none" && !(caseDisplay === "compact" && caseGroupBy === "section_id");
+  const navigableCaseIds = useMemo(() => flatCases.map((item) => item.id), [flatCases]);
+  const listSummary = useMemo(() => {
+    const stateLabel = caseFilters.state === "archived" ? "archived" : "active";
+    if (caseDisplay === "tree") {
+      return `${cases.length} case${cases.length === 1 ? "" : "s"} in this section (${stateLabel}).`;
+    }
+    if (caseDisplay === "compact") {
+      return `${cases.length} case${cases.length === 1 ? "" : "s"} in the section subtree (${stateLabel}, compact list).`;
+    }
+    return `${cases.length} visible case${cases.length === 1 ? "" : "s"} across ${repositoryGroups.length} group${repositoryGroups.length === 1 ? "" : "s"} in the ${stateLabel} repository.`;
+  }, [caseDisplay, caseFilters.state, cases.length, repositoryGroups.length]);
   const openCasePage = (caseId: number, edit = false) => {
     navigate(
       buildCaseDetailPath(projectId, caseId, {
@@ -256,6 +394,44 @@ export function CaseListPane({
   }, [createFormError, showAdd]);
 
   useEffect(() => {
+    if (addCaseRequest <= 0) return;
+    setBulkFeedback(null);
+    setCreateFormError(null);
+    setShowAdd(true);
+    setCreateFormVersion((value) => value + 1);
+  }, [addCaseRequest]);
+
+  useEffect(() => {
+    if (copyMoveRequest <= 0) return;
+    setBulkFeedback(null);
+    if (selectedCaseIds.size === 0) {
+      setBulkFeedback({
+        tone: "error",
+        message: "Select at least one test case to copy or move."
+      });
+      return;
+    }
+    setRelocationProjectId(projectId);
+    setRelocationSuiteId(suiteId);
+    setBulkRelocationTargetId(null);
+    setBulkRelocationOpen(true);
+  }, [copyMoveRequest, projectId, selectedCaseIds.size, suiteId]);
+
+  const renameCaseMutation = useMutation({
+    mutationFn: (input: { caseId: number; title: string; lockVersion: number }) =>
+      updateCase(input.caseId, { title: input.title.trim(), expectedVersion: input.lockVersion }),
+    onSuccess: () => {
+      invalidateCases();
+    },
+    onError: (error, input) => {
+      setBulkFeedback({
+        tone: "error",
+        message: extractApiErrorMessage(error, `Could not rename case ${input.caseId}.`)
+      });
+    }
+  });
+
+  useEffect(() => {
     if (!showAdd) return;
     setCreateDraftSteps(initialCreateDraftSteps());
   }, [showAdd, createFormVersion]);
@@ -270,20 +446,52 @@ export function CaseListPane({
   useEffect(() => {
     setSelectedCaseIds(new Set());
     selectionAnchorIndexRef.current = null;
-  }, [selectedSectionId]);
+    setFocusedCaseId(null);
+  }, [selectedSectionId, caseDisplay, caseGroupBy]);
 
   useEffect(() => {
-    setBulkMoveTargetId((current) => {
-      if (current != null && moveTargets.some((section) => section.id === current)) return current;
-      return moveTargets[0]?.id ?? null;
-    });
-  }, [moveTargets]);
+    if (panelCaseId != null) setFocusedCaseId(panelCaseId);
+  }, [panelCaseId]);
 
-  const invalidateCases = () => {
-    void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
-    void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
-    void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
-    void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
+  const scrollCaseIntoView = useCallback((caseId: number) => {
+    document.querySelector(`[data-case-row-id="${caseId}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    if (selectedSectionId == null || caseDisplay === "tree") return;
+    document
+      .querySelector(`[data-section-group-id="${selectedSectionId}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [caseDisplay, selectedSectionId]);
+
+  useCaseListKeyboardNav({
+    enabled: flatCases.length > 0 && (caseDisplay !== "tree" || selectedSectionId != null),
+    caseIds: navigableCaseIds,
+    activeCaseId: focusedCaseId ?? panelCaseId,
+    onFocusCase: (caseId) => {
+      setFocusedCaseId(caseId);
+      scrollCaseIntoView(caseId);
+    },
+    onTogglePanel: (caseId) => {
+      setFocusedCaseId(caseId);
+      togglePanelCase(caseId);
+    },
+    onClosePanel: () => setPanelCase(null)
+  });
+
+  useEffect(() => {
+    setBulkRelocationTargetId((current) => {
+      if (current != null && relocationTargetSections.some((section) => section.id === current)) return current;
+      return relocationTargetSections[0]?.id ?? null;
+    });
+  }, [relocationTargetSections]);
+
+  const invalidateCases = (targetProjectId = projectId) => {
+    void qc.invalidateQueries({ queryKey: caseKeys.all(targetProjectId) });
+    void qc.invalidateQueries({ queryKey: ["suite-summary", targetProjectId] });
+    void qc.invalidateQueries({ queryKey: sectionKeys.all(targetProjectId) });
+    void qc.invalidateQueries({ queryKey: projectKeys.overview(targetProjectId) });
+    void qc.invalidateQueries({ queryKey: reportKeys.all(targetProjectId) });
   };
 
   const [createUsesSteps, setCreateUsesSteps] = useState(false);
@@ -303,7 +511,10 @@ export function CaseListPane({
       customValues: Record<string, string | number | boolean | string[] | null>;
       draftSteps: Array<{ description: string; expected: string }>;
     }) => {
-      const created = await createCase(selectedSectionId!, {
+      if (createTargetSectionId == null) {
+        throw new Error("Select a section before adding a test case.");
+      }
+      const created = await createCase(createTargetSectionId, {
         title: input.title,
         preconditions: input.preconditions,
         estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
@@ -367,6 +578,9 @@ export function CaseListPane({
       bulkMoveCases(projectId, input.caseIds, input.targetSectionId),
     onSuccess: (result) => {
       invalidateCases();
+      if (relocationProjectId !== projectId) {
+        invalidateCases(relocationProjectId);
+      }
       const movedIds = new Set(result.items.filter((item) => item.success).map((item) => Number(item.caseId)));
       setSelectedCaseIds((current) => new Set(Array.from(current).filter((caseId) => !movedIds.has(caseId))));
       setBulkFeedback(
@@ -379,7 +593,7 @@ export function CaseListPane({
           caseLabelById
         })
       );
-      setBulkMoveOpen(false);
+      setBulkRelocationOpen(false);
     }
   });
 
@@ -399,10 +613,62 @@ export function CaseListPane({
         })
       );
       setBulkUpdateOpen(false);
+      setBulkOperationIds(null);
+      setBulkOperationLabel("");
       setBulkUpdatePriority("");
       setBulkUpdateCaseType("");
     }
   });
+
+  const closeBulkUpdateDialog = () => {
+    setBulkUpdateOpen(false);
+    setBulkOperationIds(null);
+    setBulkOperationLabel("");
+    setBulkUpdatePriority("");
+    setBulkUpdateCaseType("");
+  };
+
+  const openBulkUpdateWithScope = async (scope: BulkEditScope) => {
+    if (selectedSectionId == null) return;
+    if (scope === "selected") {
+      if (selectedCaseIdList.length === 0) {
+        setBulkFeedback({ tone: "error", message: "Select at least one case to edit." });
+        return;
+      }
+      setBulkOperationIds(selectedCaseIdList);
+      setBulkOperationLabel("selected");
+      setBulkUpdateOpen(true);
+      return;
+    }
+    if (scope === "view") {
+      if (flatCases.length === 0) {
+        setBulkFeedback({ tone: "error", message: "No cases in the current view." });
+        return;
+      }
+      setBulkOperationIds(flatCases.map((item) => item.id));
+      setBulkOperationLabel("current view");
+      setBulkUpdateOpen(true);
+      return;
+    }
+    setSelectAllBusy(true);
+    try {
+      const rows = await fetchAllCasesForSection(projectId, selectedSectionId, repositoryCaseFilters);
+      if (rows.length === 0) {
+        setBulkFeedback({ tone: "error", message: "No cases match the current filter." });
+        return;
+      }
+      setBulkOperationIds(rows.map((row) => row.id));
+      setBulkOperationLabel("filter");
+      setBulkUpdateOpen(true);
+    } catch (error) {
+      setBulkFeedback({
+        tone: "error",
+        message: extractApiErrorMessage(error, "Could not load cases matching the filter.")
+      });
+    } finally {
+      setSelectAllBusy(false);
+    }
+  };
 
   const bulkArchiveMutation = useMutation({
     mutationFn: (input: { caseIds: number[]; archived: boolean }) =>
@@ -430,6 +696,9 @@ export function CaseListPane({
       bulkCopyCases(projectId, input.caseIds, input.targetSectionId),
     onSuccess: (result) => {
       invalidateCases();
+      if (relocationProjectId !== projectId) {
+        invalidateCases(relocationProjectId);
+      }
       setBulkFeedback(
         buildBulkCaseFeedback({
           successCount: result.copied,
@@ -440,6 +709,7 @@ export function CaseListPane({
           caseLabelById
         })
       );
+      setBulkRelocationOpen(false);
     },
     onError: (error) => {
       setBulkFeedback({ tone: "error", message: extractApiErrorMessage(error, "Could not copy the selected cases.") });
@@ -692,8 +962,9 @@ export function CaseListPane({
     onEstimateChange: (value: "with" | "without" | "") => setCaseFilters({ estimate: value }),
     stateValue: caseFilters.state,
     onStateChange: (value: "active" | "archived") => setCaseFilters({ state: value }),
-    columnsValue: caseColumns,
-    onColumnsChange: setCaseColumns,
+    groupByValue: caseGroupBy,
+    onGroupByChange: setCaseGroupBy,
+    columnsValue: effectiveColumns,
     activeFilterCount,
     onClearFilters: () => {
       setSearchDraft("");
@@ -744,17 +1015,105 @@ export function CaseListPane({
       setShowAdd(true);
       setCreateFormVersion((value) => value + 1);
     },
-  } satisfies ComponentProps<typeof CaseListToolbar>;
+    selectedSectionLabel: selectedSection?.name,
+    onColumnsChange: (columns) => {
+      const next = persistColumns(columns);
+      setCaseColumns(next);
+    },
+    onBulkEditScope: (scope) => void openBulkUpdateWithScope(scope),
+    selectedCaseCount: selectedCaseIds.size,
+    visibleCaseCount: flatCases.length,
+    filterScopeBusy: selectAllBusy
+  } satisfies ComponentProps<typeof CaseRepositoryToolbar>;
 
   const clearFiltersAndSearch = () => {
     setSearchDraft("");
     clearCaseFilters();
   };
 
+  const renderCaseRow = (item: TestCase) => {
+    const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
+    const dropIndicator = dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
+    return (
+      <CaseRow
+        key={item.id}
+        item={item}
+        isExpanded={false}
+        isPanelOpen={panelCaseId === item.id}
+        isKeyboardFocused={focusedCaseId === item.id && panelCaseId !== item.id}
+        mode="view"
+        detail={item}
+        versions={[]}
+        customFields={customFields}
+        caseTemplates={caseTemplates}
+        visibleColumns={effectiveColumns}
+        isSelected={selectedCaseIds.has(item.id)}
+        onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
+        onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
+        draggable={Boolean(dnd)}
+        isDraggingThis={isDraggingThis}
+        dropIndicator={dropIndicator}
+        onRowDragStart={(event) => {
+          if (!dnd) return;
+          dnd.startCaseDrag(event, {
+            caseId: item.id,
+            sectionId: item.sectionId,
+            selectedCaseIds
+          });
+        }}
+        onRowDragEnd={() => dnd?.endCaseDrag()}
+        onRowDragOver={(event) => dnd?.handleRowDragOver({ event, caseId: item.id })}
+        onRowDragLeave={() => dnd?.handleRowDragLeave(item.id)}
+        onRowDrop={(event) => {
+          if (!dnd) return;
+          dnd.handleRowDrop({
+            event,
+            targetCaseId: item.id,
+            targetSectionId: item.sectionId,
+            visibleCaseIds,
+            onSamePositionDrop: handleSamePositionDrop,
+            onCrossSectionDrop: handleCrossSectionDrop
+          });
+        }}
+        onOpenCase={() => {
+          setShowAdd(false);
+          setFocusedCaseId(item.id);
+          openCasePage(item.id);
+        }}
+        onRenameTitle={
+          item.archivedAt
+            ? undefined
+            : async (title) => {
+                await renameCaseMutation.mutateAsync({
+                  caseId: item.id,
+                  title,
+                  lockVersion: item.lockVersion
+                });
+              }
+        }
+        isRenamingTitle={renameCaseMutation.isPending}
+        onTogglePanel={() => {
+          setShowAdd(false);
+          setFocusedCaseId(item.id);
+          togglePanelCase(item.id);
+        }}
+        onEdit={() => {
+          setShowAdd(false);
+          setFocusedCaseId(item.id);
+          setPanelCase(item.id, "edit");
+        }}
+        onCloseDetail={() => {}}
+        onSave={async () => {}}
+        onDelete={async () => {}}
+        renderDetailInline={false}
+      />
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <CaseListToolbar {...toolbarProps} />
+        <CaseRepositoryToolbar {...toolbarProps} />
         <div className="p-6">
           <LoadingState message="Loading the case repository..." />
         </div>
@@ -765,7 +1124,7 @@ export function CaseListPane({
   if (isError) {
     return (
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <CaseListToolbar {...toolbarProps} />
+        <CaseRepositoryToolbar {...toolbarProps} />
         <p className="text-sm text-red-700">Could not load the case repository.</p>
         <button
           type="button"
@@ -781,23 +1140,9 @@ export function CaseListPane({
   return (
     <>
       <div>
-        <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  {selectedSection?.name ?? "Selected section"}
-                </h3>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  {cases.length} visible case{cases.length === 1 ? "" : "s"} across{" "}
-                  {groupedCases.length} section{groupedCases.length === 1 ? "" : "s"} in the{" "}
-                  {caseFilters.state === "archived" ? "archived" : "active"} repository.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <CaseListToolbar {...toolbarProps} />
+        <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
+          <div className="border-b border-slate-300 bg-[#f8f8f8] px-3 py-1.5 text-xs text-slate-600">{listSummary}</div>
+          <CaseRepositoryToolbar {...toolbarProps} />
 
           {showAdd ? (
             <div className="border-b border-slate-200 bg-slate-50 p-4">
@@ -962,18 +1307,22 @@ export function CaseListPane({
                   <button
                     type="button"
                     disabled={bulkUpdateMutation.isPending}
-                    onClick={() => setBulkUpdateOpen(true)}
+                    onClick={() => {
+                      setBulkOperationIds(null);
+                      setBulkOperationLabel("selected");
+                      setBulkUpdateOpen(true);
+                    }}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Update selected
                   </button>
                   <button
                     type="button"
-                    disabled={moveTargets.length === 0 || bulkMoveMutation.isPending}
-                    onClick={() => setBulkMoveOpen(true)}
+                    disabled={relocationTargetSections.length === 0 || bulkMoveMutation.isPending}
+                    onClick={() => setBulkRelocationOpen(true)}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Move selected
+                    Copy / Move
                   </button>
                   <button
                     type="button"
@@ -981,16 +1330,18 @@ export function CaseListPane({
                     onClick={() => setBulkArchiveOpen(true)}
                     className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {bulkArchiveMode === "archive" ? "Archive selected" : "Restore selected"}
+                    {bulkArchiveMode === "archive" ? "Mark as deleted" : "Undelete selected"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={bulkDeleteMutation.isPending}
-                    onClick={() => setBulkDeleteOpen(true)}
-                    className="rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete selected
-                  </button>
+                  {bulkArchiveMode === "restore" ? (
+                    <button
+                      type="button"
+                      disabled={bulkDeleteMutation.isPending}
+                      onClick={() => setBulkDeleteOpen(true)}
+                      className="rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Delete permanently
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1042,97 +1393,77 @@ export function CaseListPane({
                 }
               />
             </div>
-          ) : (
-            <div>
-              {groupedCases.map(([sectionId, sectionCases]) => {
-                const section = sectionById.get(sectionId);
-                const depth = sectionDepthById.get(sectionId) ?? 0;
+          ) : showGroupHeaders ? (
+            <div id="groupContainer">
+              {repositoryGroups.map((group) => {
+                const depth = group.depth ?? 0;
+                const isSectionGroup = group.sectionId != null && caseGroupBy === "section_id";
                 return (
-                  <div key={sectionId}>
-                    <div className="border-b border-t border-slate-200 bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
-                      <div className="flex items-center justify-between gap-3" style={{ paddingLeft: `${Math.min(depth, 5) * 14}px` }}>
-                        <button
-                          type="button"
-                          className="text-left text-blue-700 hover:underline"
-                          onClick={() => {
-                            setSelectedSection(sectionId);
-                            setShowAdd(false);
-                          }}
+                  <div key={group.key}>
+                    {group.label ? (
+                      <div
+                        className="border-b border-t border-slate-300 bg-[#e5e5e5] px-3 py-1.5 text-xs font-semibold text-slate-800"
+                        {...(isSectionGroup && group.sectionId != null
+                          ? { "data-section-group-id": group.sectionId }
+                          : {})}
+                      >
+                        <div
+                          className="flex items-center justify-between gap-3"
+                          style={isSectionGroup ? { paddingLeft: `${Math.min(depth, 5) * 14}px` } : undefined}
                         >
-                          {section?.name ?? `Section ${sectionId}`}
-                        </button>
-                        <span className="font-normal text-slate-500">
-                          {sectionCases.length} case{sectionCases.length === 1 ? "" : "s"}
-                        </span>
+                          {isSectionGroup && group.sectionId != null ? (
+                            <button
+                              type="button"
+                              className="text-left text-blue-800 hover:underline"
+                              onClick={() => {
+                                setTreeFocusSection(group.sectionId!);
+                                setShowAdd(false);
+                              }}
+                            >
+                              {group.label}
+                            </button>
+                          ) : (
+                            <span>{group.label}</span>
+                          )}
+                          <span className="font-normal text-slate-600">
+                            {group.cases.length} case{group.cases.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    {sectionCases.map((item) => {
-                      const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
-                      const dropIndicator =
-                        dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
-                      return (
-                        <CaseRow
-                          key={item.id}
-                          item={item}
-                          isExpanded={false}
-                          isPanelOpen={panelCaseId === item.id}
-                          mode="view"
-                          detail={item}
-                          versions={[]}
-                          customFields={customFields}
-                          caseTemplates={caseTemplates}
-                          visibleColumns={caseColumns}
-                          isSelected={selectedCaseIds.has(item.id)}
-                          onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
-                          onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
-                          draggable={Boolean(dnd)}
-                          isDraggingThis={isDraggingThis}
-                          dropIndicator={dropIndicator}
-                          onRowDragStart={(event) => {
-                            if (!dnd) return;
-                            dnd.startCaseDrag(event, {
-                              caseId: item.id,
-                              sectionId: item.sectionId,
-                              selectedCaseIds
-                            });
-                          }}
-                          onRowDragEnd={() => dnd?.endCaseDrag()}
-                          onRowDragOver={(event) => dnd?.handleRowDragOver({ event, caseId: item.id })}
-                          onRowDragLeave={() => dnd?.handleRowDragLeave(item.id)}
-                          onRowDrop={(event) => {
-                            if (!dnd) return;
-                            dnd.handleRowDrop({
-                              event,
-                              targetCaseId: item.id,
-                              targetSectionId: item.sectionId,
-                              visibleCaseIds,
-                              onSamePositionDrop: handleSamePositionDrop,
-                              onCrossSectionDrop: handleCrossSectionDrop
-                            });
-                          }}
-                          onOpenCase={() => {
-                            setShowAdd(false);
-                            openCasePage(item.id);
-                          }}
-                          onTogglePanel={() => {
-                            setShowAdd(false);
-                            togglePanelCase(item.id);
-                          }}
-                          onEdit={() => {
-                            setShowAdd(false);
-                            setPanelCase(item.id, "edit");
-                          }}
-                          onCloseDetail={() => {}}
-                          onSave={async () => {}}
-                          onDelete={async () => {}}
-                          renderDetailInline={false}
-                        />
-                      );
-                    })}
+                    ) : null}
+                    {group.cases.map((item) => renderCaseRow(item))}
+                    {dnd?.isDragging && isSectionGroup && group.sectionId != null ? (
+                      <div
+                        className={[
+                          "border-t border-dashed",
+                          dnd.hoveredAppendZone ? "border-sky-500 bg-sky-50" : "border-slate-200 bg-slate-50",
+                          "px-4 py-3 text-center text-xs text-slate-600"
+                        ].join(" ")}
+                        onDragOver={(event) => dnd.handleAppendDragOver(event)}
+                        onDragLeave={() => dnd.handleAppendDragLeave()}
+                        onDrop={(event) =>
+                          dnd.handleAppendDrop({
+                            event,
+                            currentSectionId: group.sectionId!,
+                            onSameSectionAppend: handleSameSectionAppend,
+                            onCrossSectionDrop: handleCrossSectionDrop
+                          })
+                        }
+                      >
+                        Drop here to append {dnd.draggingCount} case{dnd.draggingCount === 1 ? "" : "s"}
+                        {dnd.sourceSectionId === group.sectionId
+                          ? " to the end of this section"
+                          : " into this section"}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
-              {dnd?.isDragging && selectedSectionId != null ? (
+            </div>
+          ) : (
+            <div>
+              {flatCases.map((item) => renderCaseRow(item))}
+              {dnd?.isDragging && createTargetSectionId != null ? (
                 <div
                   className={[
                     "border-t border-dashed",
@@ -1144,14 +1475,16 @@ export function CaseListPane({
                   onDrop={(event) =>
                     dnd.handleAppendDrop({
                       event,
-                      currentSectionId: selectedSectionId,
+                      currentSectionId: createTargetSectionId,
                       onSameSectionAppend: handleSameSectionAppend,
                       onCrossSectionDrop: handleCrossSectionDrop
                     })
                   }
                 >
                   Drop here to append {dnd.draggingCount} case{dnd.draggingCount === 1 ? "" : "s"}
-                  {dnd.sourceSectionId === selectedSectionId ? " to the end of this section" : " into this section"}
+                  {dnd.sourceSectionId === createTargetSectionId
+                    ? " to the end of this section"
+                    : " into this section"}
                 </div>
               ) : null}
             </div>
@@ -1162,12 +1495,13 @@ export function CaseListPane({
 
       <ConfirmDialog
         open={bulkUpdateOpen}
-        title="Update selected test cases?"
+        title="Update test cases?"
         description={
           <div className="space-y-3">
             <p>
-              Apply shared field changes to {selectedCaseIdList.length} selected test case
-              {selectedCaseIdList.length === 1 ? "" : "s"}.
+              Apply shared field changes to {bulkTargetCaseIds.length} test case
+              {bulkTargetCaseIds.length === 1 ? "" : "s"}
+              {bulkOperationLabel ? ` in the ${bulkOperationLabel}` : ""}.
             </p>
             <label className="block">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1201,88 +1535,84 @@ export function CaseListPane({
             </label>
           </div>
         }
-        confirmLabel={bulkUpdateMutation.isPending ? "Updating..." : "Update selected"}
+        confirmLabel={bulkUpdateMutation.isPending ? "Updating..." : "Update cases"}
         confirmDisabled={
-          bulkUpdateMutation.isPending || selectedCaseIdList.length === 0 || !hasBulkUpdatePatch
+          bulkUpdateMutation.isPending || bulkTargetCaseIds.length === 0 || !hasBulkUpdatePatch
         }
-        onCancel={() => {
-          setBulkUpdateOpen(false);
-          setBulkUpdatePriority("");
-          setBulkUpdateCaseType("");
-        }}
+        onCancel={closeBulkUpdateDialog}
         onConfirm={() => {
           const patch: { priority?: string; caseType?: string } = {};
           if (bulkUpdatePriority) patch.priority = bulkUpdatePriority;
           if (bulkUpdateCaseType) patch.caseType = bulkUpdateCaseType;
           void bulkUpdateMutation.mutateAsync({
-            caseIds: selectedCaseIdList,
+            caseIds: bulkTargetCaseIds,
             patch
           });
         }}
       />
 
-      <ConfirmDialog
-        open={bulkMoveOpen}
-        title="Move selected test cases?"
-        description={
-          <div className="space-y-3">
-            <p>
-              {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will
-              be moved to another section.
-            </p>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                Target section
-              </span>
-              <select
-                value={bulkMoveTargetId ?? ""}
-                onChange={(e) => setBulkMoveTargetId(Number(e.target.value))}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-              >
-                {moveTargets.map((section) => (
-                  <option key={section.id} value={section.id}>
-                    {section.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        }
-        confirmLabel={bulkMoveMutation.isPending ? "Moving..." : "Move selected"}
-        confirmDisabled={
-          bulkMoveMutation.isPending || selectedCaseIdList.length === 0 || bulkMoveTargetId == null
-        }
-        onCancel={() => setBulkMoveOpen(false)}
-        onConfirm={() => {
-          if (bulkMoveTargetId != null) {
-            void bulkMoveMutation.mutateAsync({
-              caseIds: selectedCaseIdList,
-              targetSectionId: bulkMoveTargetId
-            });
-          }
+      <CaseBulkRelocationDialog
+        open={bulkRelocationOpen}
+        caseCount={selectedCaseIdList.length}
+        sourceProjectId={projectId}
+        targetProjectId={relocationProjectId}
+        targetSuiteId={relocationSuiteId}
+        targetSectionId={bulkRelocationTargetId}
+        projects={allProjects.map((row) => ({ id: row.id, name: row.name }))}
+        suites={(relocationSuitesQuery.data ?? []).map((row) => ({ id: row.id, name: row.name }))}
+        sections={relocationTargetSections}
+        onTargetProjectChange={(nextProjectId) => {
+          setRelocationProjectId(nextProjectId);
+          setBulkRelocationTargetId(null);
+        }}
+        onTargetSuiteChange={(nextSuiteId) => {
+          setRelocationSuiteId(nextSuiteId);
+          setBulkRelocationTargetId(null);
+        }}
+        onTargetSectionChange={setBulkRelocationTargetId}
+        busy={bulkMoveMutation.isPending || bulkCopyMutation.isPending}
+        pendingAction={dndPendingAction}
+        onCancel={() => setBulkRelocationOpen(false)}
+        onMove={() => {
+          if (bulkRelocationTargetId == null) return;
+          void bulkMoveMutation.mutateAsync({
+            caseIds: selectedCaseIdList,
+            targetSectionId: bulkRelocationTargetId
+          });
+        }}
+        onCopy={() => {
+          if (bulkRelocationTargetId == null) return;
+          void bulkCopyMutation.mutateAsync({
+            caseIds: selectedCaseIdList,
+            targetSectionId: bulkRelocationTargetId
+          });
         }}
       />
 
       <ConfirmDialog
         open={bulkArchiveOpen}
-        title={bulkArchiveMode === "archive" ? "Archive selected test cases?" : "Restore selected test cases?"}
+        title={
+          bulkArchiveMode === "archive"
+            ? caseDeleteCopy.markDeletedBulkTitle
+            : caseDeleteCopy.undeleteBulkTitle
+        }
         description={
           <span>
             {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will be{" "}
             {bulkArchiveMode === "archive"
-              ? "hidden from the active repository list and run composition"
-              : "returned to the active repository list"}
+              ? "marked as deleted and hidden from the active repository"
+              : "restored to the active repository"}
             .
           </span>
         }
         confirmLabel={
           bulkArchiveMutation.isPending
             ? bulkArchiveMode === "archive"
-              ? "Archiving..."
-              : "Restoring..."
+              ? "Marking…"
+              : "Restoring…"
             : bulkArchiveMode === "archive"
-              ? "Archive selected"
-              : "Restore selected"
+              ? caseDeleteCopy.markDeletedConfirm
+              : caseDeleteCopy.undeleteConfirm
         }
         confirmDisabled={bulkArchiveMutation.isPending || selectedCaseIdList.length === 0}
         onCancel={() => setBulkArchiveOpen(false)}
@@ -1296,14 +1626,15 @@ export function CaseListPane({
 
       <ConfirmDialog
         open={bulkDeleteOpen}
-        title="Delete selected test cases?"
+        title={caseDeleteCopy.permanentBulkTitle}
         description={
           <span>
-            {selectedCaseIdList.length} selected test case{selectedCaseIdList.length === 1 ? "" : "s"} will be deleted from this project.
+            {caseDeleteCopy.permanentBulkDescription} ({selectedCaseIdList.length} selected test case
+            {selectedCaseIdList.length === 1 ? "" : "s"}.)
           </span>
         }
         variant="danger"
-        confirmLabel={bulkDeleteMutation.isPending ? "Deleting..." : "Delete selected"}
+        confirmLabel={bulkDeleteMutation.isPending ? "Deleting…" : caseDeleteCopy.permanentConfirm}
         confirmDisabled={bulkDeleteMutation.isPending || selectedCaseIdList.length === 0}
         onCancel={() => setBulkDeleteOpen(false)}
         onConfirm={() => void bulkDeleteMutation.mutateAsync(selectedCaseIdList)}

@@ -123,6 +123,20 @@ export interface ProjectsRepository {
   deleteSection(sectionId: bigint): Promise<boolean>;
   getSection(sectionId: bigint): Promise<SectionRow | null>;
 
+  getSuiteSummary(
+    projectId: bigint,
+    suiteId: bigint
+  ): Promise<{
+    suiteId: bigint;
+    projectId: bigint;
+    suiteName: string;
+    suiteDescription: string | null;
+    sectionCount: number;
+    activeCaseCount: number;
+    archivedCaseCount: number;
+    casesWithEstimateCount: number;
+    totalEstimateSeconds: number;
+  } | null>;
   listCasesForSuite(projectId: bigint, suiteId: bigint, state?: "active" | "archived" | "all"): Promise<CaseRow[]>;
   listCases(params: {
     projectId?: bigint;

@@ -1,104 +1,118 @@
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import type { ActivityEventRow } from "../api/settingsApi";
+import { fetchProjectActivity } from "../api/advancedApi";
 import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
+import { fetchPlans } from "../api/planningApi";
+import { fetchProjectActivitySeries } from "../api/projectApi";
 import { reportKeys } from "../hooks/reportKeys";
-import { ExecutionSummaryChart } from "./ExecutionSummaryChart";
-import { MilestoneDashboardPanel } from "./MilestoneDashboardPanel";
-import { ProjectSummaryCards } from "./ProjectSummaryCards";
-import { RecentFailureTable } from "./RecentFailureTable";
-import { RecentRunList } from "./RecentRunList";
 import { useProjectOverviewQuery } from "../hooks/useProjectsApi";
+import { ProjectActivityFeedPanel } from "./ProjectActivityFeedPanel";
+import { ProjectActivityLineChart } from "./ProjectActivityLineChart";
+import { ProjectContentHeader } from "../content-header/ProjectContentHeader";
+import { ProjectOverviewColumns } from "./ProjectOverviewColumns";
+import { ProjectOverviewSidebar } from "./ProjectOverviewSidebar";
+import { ProjectSummaryCards } from "./ProjectSummaryCards";
 
 const MAX_RECENT_RUNS = 5;
+const HISTORY_PAGE_SIZE = 12;
 
 export function ProjectOverviewPage() {
   const { projectId = "" } = useParams();
+  const [activityDays, setActivityDays] = useState(60);
+  const [feedTab, setFeedTab] = useState<"history" | "changes">("history");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRows, setHistoryRows] = useState<ActivityEventRow[]>([]);
   const { data, isLoading, isError, refetch } = useProjectOverviewQuery(projectId);
   const milestoneSummaryQuery = useQuery({
     queryKey: reportKeys.milestoneSummary(projectId),
     queryFn: () => fetchMilestoneSummary(projectId),
     enabled: Boolean(projectId)
   });
-  const summaryById = useMemo(
-    () => new Map((milestoneSummaryQuery.data?.items ?? []).map((row) => [row.milestoneId, row])),
-    [milestoneSummaryQuery.data?.items]
-  );
-  const [activityTab, setActivityTab] = useState<"runs" | "failures">("runs");
+  const plansQuery = useQuery({
+    queryKey: ["plans", projectId, "overview"],
+    queryFn: () => fetchPlans(projectId),
+    enabled: Boolean(projectId)
+  });
+  const activitySeriesQuery = useQuery({
+    queryKey: ["project-activity-series", projectId, activityDays],
+    queryFn: () => fetchProjectActivitySeries(projectId, activityDays),
+    enabled: Boolean(projectId)
+  });
+  const historyActivityQuery = useQuery({
+    queryKey: ["project-activity", projectId, "overview", "history", historyPage],
+    queryFn: () => fetchProjectActivity(projectId, historyPage, HISTORY_PAGE_SIZE, { feed: "history" }),
+    enabled: Boolean(projectId)
+  });
 
-  if (isLoading) return <LoadingState message="Loading overview…" />;
-  if (isError || !data)
-    return <ErrorState title="Could not load overview" onRetry={() => refetch()} />;
+  const recentRuns = useMemo(() => data?.recentRuns.slice(0, MAX_RECENT_RUNS) ?? [], [data?.recentRuns]);
 
-  const recentRuns = data.recentRuns.slice(0, MAX_RECENT_RUNS);
+  useEffect(() => {
+    setHistoryPage(1);
+    setHistoryRows([]);
+  }, [projectId]);
+
+  useEffect(() => {
+    const pageRows = historyActivityQuery.data?.data;
+    if (!pageRows) return;
+    setHistoryRows((current) => (historyPage === 1 ? pageRows : [...current, ...pageRows]));
+  }, [historyActivityQuery.data, historyPage]);
+
+  const historyHasMore =
+    historyActivityQuery.data != null && historyPage < (historyActivityQuery.data.totalPages ?? 1);
+
+  if (isLoading) return <LoadingState message="Loading overview..." />;
+  if (isError || !data) return <ErrorState title="Could not load overview" onRetry={() => refetch()} />;
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <ProjectSummaryCards projectId={projectId} stats={data.stats} />
-        <div className="mt-4">
-          <ExecutionSummaryChart projectId={projectId} execution={data.execution} compact />
-        </div>
-      </section>
-
-      {milestoneSummaryQuery.data?.dashboard &&
-      milestoneSummaryQuery.data.dashboard.milestoneCount > 0 ? (
-        <MilestoneDashboardPanel
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <main className="space-y-4">
+        <ProjectContentHeader
           projectId={projectId}
-          dashboard={milestoneSummaryQuery.data.dashboard}
-          itemsById={summaryById}
-          compact
+          variant="overview"
+          title="Overview"
+          subtitle="Project activity, milestones, and recent execution."
         />
-      ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => setActivityTab("runs")}
-              className={
-                activityTab === "runs"
-                  ? "rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white"
-                  : "rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-              }
-            >
-              Recent runs
-            </button>
-            <button
-              type="button"
-              onClick={() => setActivityTab("failures")}
-              className={
-                activityTab === "failures"
-                  ? "rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white"
-                  : "rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-              }
-            >
-              Recent failures
-            </button>
-          </div>
-          <Link
-            to={
-              activityTab === "runs"
-                ? `/projects/${projectId}/runs`
-                : `/projects/${projectId}/reports`
-            }
-            className="text-xs font-medium text-slate-700 hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-        <div className="p-3">
-          {activityTab === "runs" ? (
-            <RecentRunList projectId={projectId} runs={recentRuns} />
-          ) : (
-            <RecentFailureTable projectId={projectId} rows={data.recentFailures} />
-          )}
-        </div>
-      </section>
+        <ProjectActivityLineChart
+          projectId={projectId}
+          days={activityDays}
+          points={activitySeriesQuery.data?.points ?? []}
+          onDaysChange={setActivityDays}
+        />
+
+        <section className="border border-slate-200 bg-white p-4 shadow-sm">
+          <ProjectSummaryCards projectId={projectId} stats={data.stats} />
+        </section>
+
+        <ProjectOverviewColumns
+          projectId={projectId}
+          milestones={milestoneSummaryQuery.data}
+          recentRuns={recentRuns}
+          plans={plansQuery.data ?? []}
+        />
+
+        <ProjectActivityFeedPanel
+          projectId={projectId}
+          tab={feedTab}
+          onTabChange={setFeedTab}
+          historyRows={historyRows}
+          changeRows={data.recentResults}
+          historyHasMore={historyHasMore}
+          historyLoading={historyActivityQuery.isFetching}
+          onLoadMoreHistory={() => setHistoryPage((page) => page + 1)}
+        />
+      </main>
+
+      <ProjectOverviewSidebar
+        projectId={projectId}
+        stats={data.stats}
+        recentFailures={data.recentFailures}
+      />
     </div>
   );
 }

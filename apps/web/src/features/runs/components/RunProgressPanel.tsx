@@ -1,4 +1,6 @@
 import type { RunDetailDto } from "../types";
+import { runCompletionPercent, runStatusTotal } from "../utils/runProgressSegments";
+import { RunProgressChart } from "./RunProgressChart";
 import { RunSummaryBar } from "./RunSummaryBar";
 
 type Props = {
@@ -8,19 +10,15 @@ type Props = {
 };
 
 export function RunProgressPanel({ counts, activeStatus, onStatusClick }: Props) {
-  const total =
-    counts.passed + counts.failed + counts.blocked + counts.retest + counts.untested;
-  const executed = counts.passed + counts.failed + counts.blocked + counts.retest;
-  const percentDone = total > 0 ? Math.round((executed / total) * 100) : 0;
+  const total = runStatusTotal(counts);
+  const percentDone = runCompletionPercent(counts);
 
   return (
     <div className="space-y-3 p-3">
-      <div className="rounded-md bg-slate-50 px-3 py-2">
-        <p className="text-2xl font-semibold tabular-nums text-slate-900">{percentDone}%</p>
-        <p className="text-xs text-slate-500">
-          {executed} of {total} tests have a result
-        </p>
-      </div>
+      <RunProgressChart counts={counts} activeStatus={activeStatus} onStatusClick={onStatusClick} size={112} />
+      <p className="text-center text-xs text-slate-500">
+        {percentDone}% complete · {total} tests
+      </p>
       <RunSummaryBar
         counts={counts}
         activeStatus={activeStatus}

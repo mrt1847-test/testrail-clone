@@ -27,6 +27,11 @@ type Input = {
   statusFilter: string;
   assigneeFilter: string;
   searchText: string;
+  priorityFilter?: import("../utils/runInstanceListParams").RunFilterPriority;
+  caseTypeFilter?: import("../utils/runInstanceListParams").RunFilterCaseType;
+  caseChangedFilter?: boolean;
+  sortBy?: import("../utils/runInstanceListParams").RunSortBy;
+  sortDir?: import("../utils/runInstanceListParams").RunSortDir;
 };
 
 export function useRunDetailQueries(input: Input) {
@@ -42,7 +47,12 @@ export function useRunDetailQueries(input: Input) {
     historyPageSize,
     statusFilter,
     assigneeFilter,
-    searchText
+    searchText,
+    priorityFilter = "",
+    caseTypeFilter = "",
+    caseChangedFilter = false,
+    sortBy = "case_id",
+    sortDir = "asc"
   } = input;
 
   const runDetailQuery = useRunDetailQuery(projectId, runId);
@@ -64,7 +74,12 @@ export function useRunDetailQueries(input: Input) {
     pageSize,
     status: statusFilter,
     assignee: assigneeFilter,
-    search: searchText
+    search: searchText,
+    priority: priorityFilter,
+    caseType: caseTypeFilter,
+    caseChanged: caseChangedFilter,
+    sortBy,
+    sortDir
   });
   const pagedInstances: TestInstanceRow[] = useMemo(
     () =>
@@ -76,7 +91,10 @@ export function useRunDetailQueries(input: Input) {
         status: instance.status,
         assignedTo: instance.assignedTo ? String(instance.assignedTo) : null,
         caseChanged: instance.caseChanged,
-        changedFields: instance.changedFields
+        changedFields: instance.changedFields,
+        sectionId: instance.sectionId != null ? String(instance.sectionId) : null,
+        casePriority: instance.casePriority ?? null,
+        caseType: instance.caseType ?? null
       })),
     [runInstancesQuery.data?.data]
   );

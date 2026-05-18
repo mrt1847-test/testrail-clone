@@ -7,7 +7,8 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import {
   getAuthenticatedUser,
   requireProjectMutationRole,
-  requireProjectPermission
+  requireProjectPermission,
+  requireProjectPermissionForProject
 } from "../../common/middlewares/authorization.js";
 import { AppError } from "../../common/errors/appError.js";
 import { validateRunSuiteBinding } from "../../domain/runSuitePolicy.js";
@@ -17,6 +18,9 @@ import type { ResultsService } from "../results/results.service.js";
 import { byCaseSchema, bulkSchema, runResultSchema } from "../results/results.schema.js";
 import { resultCustomFieldErrorResponse, validateResultCustomValues } from "../results/resultCustomValues.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import { caseIdParamSchema } from "../cases/cases.schema.js";
+import { listCaseExecutionHistory } from "./caseExecutionHistory.service.js";
+import { buildRunInstancesCsv } from "../../domain/runInstancesCsv.js";
 import type { RunsService } from "./runs.service.js";
 import {
   addCasesToRunBodySchema,
@@ -25,6 +29,8 @@ import {
   duplicateRunSchema,
   rerunSchema,
   runInstancesQuerySchema,
+  runInstancesGroupedQuerySchema,
+  caseExecutionHistoryQuerySchema,
   runIdParamSchema,
   testIdParamSchema,
   updateRunCompositionSchema,
@@ -149,18 +155,24 @@ export async function registerRunsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { runId } = runIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    const { status, assignedTo, q } = runInstancesQuerySchema.parse(req.query ?? {});
+    const listQuery = runInstancesQuerySchema.parse(req.query ?? {});
     const run = await deps.repo.getRun(runId);
     if (!run || run.projectId !== projectId) {
       throw new AppError("NOT_FOUND", "run not found", 404);
     }
+    const { status, assignedTo, q, priority, caseType, caseChanged, sortBy, sortDir } = listQuery;
     const { items, total } = await deps.repo.listInstancesForRunPage({
       runId,
       page,
       pageSize,
       status,
       assignedTo,
-      q
+      q,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
     });
     return reply.send(
       toJsonSafe({
@@ -171,6 +183,85 @@ export async function registerRunsRoutes(
         totalPages: Math.max(1, Math.ceil(total / pageSize))
       })
     );
+  });
+
+  app.get("/api/projects/:projectId/runs/:runId/instances/grouped", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    const query = runInstancesGroupedQuerySchema.parse(req.query ?? {});
+    const run = await deps.repo.getRun(runId);
+    if (!run || run.projectId !== projectId) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const { groupBy, sectionId, status, assignedTo, q, priority, caseType, caseChanged, sortBy, sortDir } = query;
+    const grouped = await deps.repo.listInstancesForRunGrouped({
+      runId,
+      suiteId: run.suiteId,
+      groupBy,
+      sectionId,
+      status,
+      assignedTo,
+      q,
+      priority,
+      caseType,
+      caseChanged,
+      sortBy,
+      sortDir
+    });
+    return reply.send(
+      toJsonSafe({
+        groupBy: query.groupBy,
+        suiteId: run.suiteId.toString(),
+        total: grouped.total,
+        truncated: grouped.truncated,
+        sectionCounts: grouped.sectionCounts,
+        groups: grouped.groups.map((group) => ({
+          groupKey: group.groupKey,
+          groupLabel: group.groupLabel,
+          sectionId: group.sectionId?.toString() ?? null,
+          sectionName: group.sectionName,
+          displayOrder: group.displayOrder,
+          parentSectionId: group.parentSectionId?.toString() ?? null,
+          instances: group.cases
+        }))
+      })
+    );
+  });
+
+  app.get("/api/projects/:projectId/cases/:caseId/execution-history", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { caseId } = caseIdParamSchema.parse(req.params);
+    const { limit } = caseExecutionHistoryQuerySchema.parse(req.query ?? {});
+    if (!deps.prisma) {
+      throw new AppError("NOT_IMPLEMENTED", "execution history requires prisma mode", 501);
+    }
+    await requireProjectPermissionForProject(req, deps, projectId, "cases.read");
+    const items = await listCaseExecutionHistory(deps.prisma, projectId, caseId, limit);
+    return reply.send(
+      toJsonSafe({
+        caseId: caseId.toString(),
+        total: items.length,
+        items: items.map((row) => ({
+          ...row,
+          createdAt: row.createdAt.toISOString()
+        }))
+      })
+    );
+  });
+
+  app.get("/api/projects/:projectId/runs/:runId/instances/export/csv", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { runId } = runIdParamSchema.parse(req.params);
+    await requireProjectPermissionForProject(req, deps, projectId, "runs.read");
+    const run = await deps.repo.getRun(runId);
+    if (!run || run.projectId !== projectId) {
+      throw new AppError("NOT_FOUND", "run not found", 404);
+    }
+    const instances = await deps.repo.listInstancesForRun(runId);
+    const csv = buildRunInstancesCsv(instances);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="run-${runId.toString()}-tests.csv"`);
+    return reply.send(csv);
   });
 
   app.post("/api/projects/:projectId/runs", async (req, reply) => {

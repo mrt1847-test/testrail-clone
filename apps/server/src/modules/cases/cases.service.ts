@@ -7,6 +7,8 @@ import {
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { caseRefsValidationError, prepareCaseRefsInput } from "../../domain/caseRefs.js";
+import { buildSuiteCaseGroups, type SuiteCaseGroupBy } from "../../domain/suiteCaseGrouping.js";
+import { formatDurationSeconds } from "../../domain/timeTracking.js";
 import { caseRowWithAiCaseFields, normalizeAiCaseFields } from "../../domain/aiEvaluationFields.js";
 import { normalizeCaseLabels } from "../../domain/caseLabels.js";
 import { caseRowWithExploratoryFields, normalizeExploratoryCaseFields } from "../../domain/exploratoryCaseFields.js";
@@ -61,6 +63,69 @@ export class CasesService {
     state?: "active" | "archived" | "all";
   }) {
     return this.repo.listCases(params);
+  }
+
+  async getSuiteSummary(projectId: bigint, suiteId: bigint) {
+    const summary = await this.repo.getSuiteSummary(projectId, suiteId);
+    if (!summary) {
+      throw new AppError("NOT_FOUND", `suite ${suiteId.toString()} not found`, 404);
+    }
+    const totalEstimateDisplay = formatDurationSeconds(summary.totalEstimateSeconds);
+    return {
+      ...summary,
+      totalEstimateDisplay: totalEstimateDisplay.length > 0 ? totalEstimateDisplay : null
+    };
+  }
+
+  async listSuiteCasesGrouped(input: {
+    projectId: bigint;
+    suiteId: bigint;
+    sectionId?: bigint;
+    display?: "tree" | "subtree" | "compact";
+    groupBy?: SuiteCaseGroupBy;
+    q?: string;
+    priority?: string;
+    caseType?: string;
+    automation?: "manual" | "automated";
+    refs?: "with" | "without";
+    labels?: "with" | "without";
+    estimate?: "with" | "without";
+    state?: "active" | "archived" | "all";
+  }) {
+    const sectionScope = input.display === "tree" ? "direct" : "subtree";
+    const cases = await this.repo.listCases({
+      projectId: input.projectId,
+      suiteId: input.suiteId,
+      sectionId: input.sectionId,
+      sectionScope,
+      q: input.q,
+      priority: input.priority,
+      caseType: input.caseType,
+      automation: input.automation,
+      refs: input.refs,
+      labels: input.labels,
+      estimate: input.estimate,
+      state: input.state
+    });
+    const sections = await this.repo.listSectionsBySuite(input.suiteId);
+    const groupBy = input.groupBy ?? "section_id";
+    const grouped = buildSuiteCaseGroups(
+      cases,
+      sections.map((section) => ({
+        id: section.id,
+        name: section.name,
+        displayOrder: section.displayOrder ?? 0,
+        parentSectionId: section.parentSectionId ?? null
+      })),
+      groupBy
+    );
+
+    return {
+      groupBy: grouped.groupBy,
+      groups: grouped.groups,
+      cases,
+      total: cases.length
+    };
   }
 
   async createCase(input: {
@@ -310,7 +375,6 @@ export class CasesService {
     const targetSectionId = options.targetSectionId ?? source.sectionId;
 
     const copied = await this.repo.createCase({
-      projectId: source.projectId,
       sectionId: targetSectionId,
       title: titleSuffix ? buildDuplicateCaseTitle(source.title) : source.title,
       priority: source.priority,
@@ -647,6 +711,19 @@ export class CasesService {
 
   customFieldErrorResponse(error: unknown) {
     return mapValidationErrorToResponse(error);
+  }
+
+  async linkSharedStep(
+    caseId: bigint,
+    sharedStepId: bigint,
+    prisma: import("@prisma/client").PrismaClient
+  ) {
+    const { attachSharedStepToCase } = await import("../sharedSteps/sharedSteps.service.js");
+    const found = await this.repo.getCase(caseId);
+    if (!found) throw new AppError("NOT_FOUND", `case ${caseId.toString()} not found`, 404);
+    const steps = await attachSharedStepToCase(prisma, { caseId, sharedStepId });
+    await this.repo.createCaseVersionSnapshot(caseId, "shared_step_linked");
+    return steps;
   }
 
   async createCaseStep(caseId: bigint, input: { content: string; expectedResult?: string | null }) {

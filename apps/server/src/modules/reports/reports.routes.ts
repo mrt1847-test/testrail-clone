@@ -114,6 +114,41 @@ type ResultExplorerFilters = {
   customFilters: ParsedResultCustomFieldFilter[];
 };
 
+const activitySeriesQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(60)
+});
+
+type ActivitySeriesPoint = {
+  date: string;
+  passed: number;
+  failed: number;
+};
+
+function startOfActivityWindow(days: number) {
+  const start = new Date();
+  start.setDate(start.getDate() - (days - 1));
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function buildEmptyActivitySeries(days: number, start = startOfActivityWindow(days)) {
+  const points: ActivitySeriesPoint[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    points.push({ date: date.toISOString().slice(0, 10), passed: 0, failed: 0 });
+  }
+  return points;
+}
+
+function addResultToActivitySeries(pointsByDate: Map<string, ActivitySeriesPoint>, status: string, createdAt: Date) {
+  if (status !== "passed" && status !== "failed") return;
+  const point = pointsByDate.get(createdAt.toISOString().slice(0, 10));
+  if (!point) return;
+  if (status === "passed") point.passed += 1;
+  if (status === "failed") point.failed += 1;
+}
+
 class ReportsQueryService {
   constructor(private readonly prisma?: PrismaClient) {}
 
@@ -631,6 +666,49 @@ export async function registerReportsRoutes(
         automationCoveragePct: 0
       })
     );
+  });
+
+  app.get("/api/projects/:projectId/activity-series", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { days } = activitySeriesQuerySchema.parse(req.query ?? {});
+    const start = startOfActivityWindow(days);
+    const points = buildEmptyActivitySeries(days, start);
+    const pointsByDate = new Map(points.map((point) => [point.date, point]));
+
+    if (deps.prisma) {
+      const results = await deps.prisma.testResult.findMany({
+        where: {
+          createdAt: { gte: start },
+          status: { in: ["passed", "failed"] },
+          instance: {
+            run: {
+              projectId,
+              deletedAt: null
+            },
+            deletedAt: null
+          }
+        },
+        select: { status: true, createdAt: true },
+        orderBy: { createdAt: "asc" }
+      });
+      for (const result of results) {
+        addResultToActivitySeries(pointsByDate, result.status, result.createdAt);
+      }
+      return reply.send(toJsonSafe(ok({ points })));
+    }
+
+    const runs = await deps.repo.listRunsByProject(projectId);
+    for (const run of runs) {
+      const instances = await deps.repo.listInstancesForRun(run.id);
+      for (const instance of instances) {
+        const results = await deps.repo.listResultsForTestInstance(instance.id);
+        for (const result of results) {
+          if (result.createdAt < start) continue;
+          addResultToActivitySeries(pointsByDate, result.status, result.createdAt);
+        }
+      }
+    }
+    return reply.send(toJsonSafe(ok({ points })));
   });
 
   app.get("/api/projects/:projectId/reports/status-distribution", async (req, reply) => {

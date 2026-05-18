@@ -22,6 +22,41 @@ export type TestInstanceRow = {
   assignedTo?: string | null;
   caseChanged?: boolean;
   changedFields?: string[];
+  sectionId?: string | null;
+  casePriority?: string | null;
+  caseType?: string | null;
+};
+
+export type RunInstanceGroupBy = "section_id" | "priority" | "type" | "none";
+
+export type RunInstanceGroupDto = {
+  groupKey: string;
+  groupLabel: string;
+  sectionId: string | null;
+  sectionName: string | null;
+  displayOrder: number;
+  parentSectionId: string | null;
+  instances: Array<{
+    id: string;
+    caseId: string;
+    titleSnapshot: string;
+    status: string;
+    assignedTo?: string | null;
+    caseChanged?: boolean;
+    changedFields?: string[];
+    sectionId?: string | null;
+    casePriority?: string | null;
+    caseType?: string | null;
+  }>;
+};
+
+export type RunInstancesGroupedDto = {
+  groupBy: RunInstanceGroupBy;
+  suiteId: string;
+  total: number;
+  truncated: boolean;
+  sectionCounts: Array<{ sectionId: string; count: number }>;
+  groups: RunInstanceGroupDto[];
 };
 
 export type RunCompositionMode = "static" | "include_all_live" | "dynamic_filter";
@@ -39,6 +74,8 @@ export type RunCompositionInfo = {
 };
 
 export type RunDetail = RunSummary & {
+  suiteId?: string;
+  planId?: string | null;
   environment?: string;
   includeAll?: boolean;
   composition?: RunCompositionInfo | null;
@@ -79,6 +116,20 @@ export type DefectPushFieldDefinition = {
   placeholder?: string;
   options?: string[];
   mapsTo?: "defectKey" | "title" | "description";
+};
+
+export type CaseExecutionHistoryItem = {
+  resultId: string;
+  testId: string;
+  runId: string;
+  runName: string;
+  runClosed: boolean;
+  status: string;
+  comment?: string | null;
+  elapsed?: string | null;
+  version?: string | null;
+  defects: string[];
+  createdAt: string;
 };
 
 export type TestResultHistoryItem = {

@@ -183,6 +183,27 @@ describe("phase3 runs/results flow", () => {
     expect(summary.progressPercent).toBe(100);
     expect(summary.executed).toBe(1);
 
+    const activitySeriesRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/activity-series?days=7`
+    });
+    expect(activitySeriesRes.statusCode).toBe(200);
+    const activitySeries = activitySeriesRes.json() as {
+      data: { points: Array<{ date: string; passed: number; failed: number }> };
+    };
+    expect(activitySeries.data.points).toHaveLength(7);
+    expect(activitySeries.data.points.every((point) => typeof point.passed === "number")).toBe(true);
+    expect(activitySeries.data.points.every((point) => typeof point.failed === "number")).toBe(true);
+
+    const historyActivityRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/activity?feed=history&page=1&pageSize=5`,
+      headers
+    });
+    expect(historyActivityRes.statusCode).toBe(200);
+    const historyActivity = historyActivityRes.json() as { data: unknown[]; totalPages: number };
+    expect(historyActivity.totalPages).toBeGreaterThanOrEqual(1);
+
     const overviewBeforeCloseRes = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/overview`

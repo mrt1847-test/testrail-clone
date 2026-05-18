@@ -50,6 +50,9 @@ export type TestInstance = {
   caseChanged?: boolean;
   currentCaseLockVersion?: number | null;
   changedFields?: string[];
+  sectionId?: bigint | null;
+  casePriority?: string | null;
+  caseType?: string | null;
 };
 
 export type CreateRunWithInstancesInput = {

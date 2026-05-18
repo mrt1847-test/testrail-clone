@@ -14,6 +14,7 @@ import {
   uploadCaseStepAttachmentViaPresign,
   duplicateCase
 } from "../api/catalogApi";
+import { caseDeleteCopy } from "../caseDeleteCopy";
 import { extractApiErrorMessage } from "../caseErrors";
 import { sectionKeys } from "../hooks/useSections";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
@@ -30,6 +31,7 @@ import { CaseMetadataQuickEdit } from "./CaseMetadataQuickEdit";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
 import { caseKeys } from "../hooks/useCases";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
+import { SharedStepAttachSelect } from "./SharedStepAttachSelect";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -53,11 +55,13 @@ type ExpandableCaseDetailProps = {
     customValues: Record<string, string | number | boolean | string[] | null>;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
+  onSetArchived?: (archived: boolean) => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
   submitError?: string | null;
   restoreError?: string | null;
   isDeleting?: boolean;
+  isArchiving?: boolean;
   isRestoring?: boolean;
   onCreateStep?: (input: { content: string; expected: string }) => Promise<void>;
   onUpdateStep?: (
@@ -65,6 +69,7 @@ type ExpandableCaseDetailProps = {
     patch: { content?: string; expectedResult?: string | null; stepOrder?: number }
   ) => Promise<void>;
   onDeleteStep?: (stepId: number) => Promise<void>;
+  onLinkSharedStep?: (sharedStepId: string) => Promise<void>;
   isStepsBusy?: boolean;
   layout?: "embedded" | "page";
   showHeading?: boolean;
@@ -639,15 +644,18 @@ export function ExpandableCaseDetail({
   onClose,
   onSave,
   onDelete,
+  onSetArchived,
   onRestoreVersion,
   isSaving = false,
   submitError = null,
   restoreError = null,
   isDeleting = false,
+  isArchiving = false,
   isRestoring = false,
   onCreateStep,
   onUpdateStep,
   onDeleteStep,
+  onLinkSharedStep,
   isStepsBusy = false,
   layout = "embedded",
   showHeading = true,
@@ -661,7 +669,10 @@ export function ExpandableCaseDetail({
     () => data.customValues ?? {}
   );
   const [localSteps, setLocalSteps] = useState<LocalStep[]>(() => toLocalSteps(data.steps));
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmMarkDeletedOpen, setConfirmMarkDeletedOpen] = useState(false);
+  const [confirmPermanentOpen, setConfirmPermanentOpen] = useState(false);
+  const [confirmUndeleteOpen, setConfirmUndeleteOpen] = useState(false);
+  const isArchived = Boolean(data.archivedAt);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [stepDeleteId, setStepDeleteId] = useState<number | null>(null);
@@ -783,14 +794,25 @@ export function ExpandableCaseDetail({
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-slate-800">Steps</span>
-                  <button
-                    type="button"
-                    disabled={isStepsBusy || !onCreateStep}
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    onClick={() => void onCreateStep?.({ content: "New step", expected: "" })}
-                  >
-                    {isStepsBusy ? "Saving..." : "Add step"}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {projectId && onLinkSharedStep ? (
+                      <SharedStepAttachSelect
+                        projectId={projectId}
+                        disabled={isStepsBusy}
+                        onAttach={(sharedStepId) => void onLinkSharedStep(sharedStepId)}
+                      />
+                    ) : null}
+                    {onCreateStep ? (
+                      <button
+                        type="button"
+                        disabled={isStepsBusy}
+                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => void onCreateStep({ content: "New step", expected: "" })}
+                      >
+                        {isStepsBusy ? "Saving..." : "Add step"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 {localSteps.length === 0 ? (
                   <p className="text-xs text-slate-500">No steps yet.</p>
@@ -1196,13 +1218,34 @@ export function ExpandableCaseDetail({
             >
               Duplicate
             </button>
-            <button
-              type="button"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 hover:bg-red-100"
-              onClick={() => setConfirmDeleteOpen(true)}
-            >
-              Delete
-            </button>
+            {isArchived ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+                  disabled={!onSetArchived || isArchiving}
+                  onClick={() => setConfirmUndeleteOpen(true)}
+                >
+                  {isArchiving ? "Restoring…" : "Undelete"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 hover:bg-red-100"
+                  onClick={() => setConfirmPermanentOpen(true)}
+                >
+                  Delete permanently
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 hover:bg-red-100"
+                disabled={!onSetArchived || isArchiving}
+                onClick={() => setConfirmMarkDeletedOpen(true)}
+              >
+                {isArchiving ? "Marking…" : "Mark as deleted"}
+              </button>
+            )}
           </div>
         </>
       )}
@@ -1224,15 +1267,43 @@ export function ExpandableCaseDetail({
       />
 
       <ConfirmDialog
-        open={confirmDeleteOpen}
-        title="Delete this test case?"
-        description="This action cannot be undone."
-        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        open={confirmMarkDeletedOpen}
+        title={caseDeleteCopy.markDeletedTitle}
+        description={caseDeleteCopy.markDeletedDescription}
+        confirmLabel={isArchiving ? "Marking…" : caseDeleteCopy.markDeletedConfirm}
+        confirmDisabled={isArchiving || !onSetArchived}
+        variant="danger"
+        onCancel={() => setConfirmMarkDeletedOpen(false)}
+        onConfirm={() => {
+          setConfirmMarkDeletedOpen(false);
+          void onSetArchived?.(true);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmUndeleteOpen}
+        title={caseDeleteCopy.undeleteTitle}
+        description={caseDeleteCopy.undeleteDescription}
+        confirmLabel={isArchiving ? "Restoring…" : caseDeleteCopy.undeleteConfirm}
+        confirmDisabled={isArchiving || !onSetArchived}
+        variant="danger"
+        onCancel={() => setConfirmUndeleteOpen(false)}
+        onConfirm={() => {
+          setConfirmUndeleteOpen(false);
+          void onSetArchived?.(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmPermanentOpen}
+        title={caseDeleteCopy.permanentTitle}
+        description={caseDeleteCopy.permanentDescription}
+        confirmLabel={isDeleting ? "Deleting…" : caseDeleteCopy.permanentConfirm}
         confirmDisabled={isDeleting}
         variant="danger"
-        onCancel={() => setConfirmDeleteOpen(false)}
+        onCancel={() => setConfirmPermanentOpen(false)}
         onConfirm={() => {
-          setConfirmDeleteOpen(false);
+          setConfirmPermanentOpen(false);
           void onDelete();
         }}
       />

@@ -7,6 +7,8 @@ import { paginationQuerySchema } from "../../common/types/pagination.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import type { CasesService } from "../cases/cases.service.js";
+import { listSuiteCasesQuerySchema, projectSuiteParamsSchema } from "../cases/cases.schema.js";
 import { SuitesService } from "./suites.service.js";
 import {
   createBaselineSuiteSchema,
@@ -18,7 +20,12 @@ import {
 
 export async function registerSuitesRoutes(
   app: FastifyInstance,
-  deps: { suitesService: SuitesService; authService: AuthService; prisma?: PrismaClient }
+  deps: {
+    suitesService: SuitesService;
+    casesService?: CasesService;
+    authService: AuthService;
+    prisma?: PrismaClient;
+  }
 ) {
   app.get("/api/projects/:projectId/suites", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -92,6 +99,39 @@ export async function registerSuitesRoutes(
       }
       throw e;
     }
+  });
+
+  app.get("/api/projects/:projectId/suites/:suiteId/summary", async (req, reply) => {
+    if (!deps.casesService) {
+      return reply.code(501).send({ code: "NOT_IMPLEMENTED", message: "Suite summary is unavailable." });
+    }
+    const { projectId, suiteId } = projectSuiteParamsSchema.parse(req.params);
+    const summary = await deps.casesService.getSuiteSummary(projectId, suiteId);
+    return reply.send(toJsonSafe(ok(summary)));
+  });
+
+  app.get("/api/projects/:projectId/suites/:suiteId/cases", async (req, reply) => {
+    if (!deps.casesService) {
+      return reply.code(501).send({ code: "NOT_IMPLEMENTED", message: "Suite grouped cases are unavailable." });
+    }
+    const { projectId, suiteId } = projectSuiteParamsSchema.parse(req.params);
+    const query = listSuiteCasesQuerySchema.parse(req.query ?? {});
+    const grouped = await deps.casesService.listSuiteCasesGrouped({
+      projectId,
+      suiteId,
+      sectionId: query.sectionId,
+      display: query.display,
+      groupBy: query.groupBy,
+      q: query.q,
+      priority: query.priority,
+      caseType: query.caseType,
+      automation: query.automation,
+      refs: query.refs,
+      labels: query.labels,
+      estimate: query.estimate,
+      state: query.state
+    });
+    return reply.send(toJsonSafe(ok(grouped)));
   });
 
   app.get("/api/suites/:suiteId", async (req, reply) => {

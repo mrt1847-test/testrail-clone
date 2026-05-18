@@ -40,6 +40,7 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
+| 0 | TestRail UI/UX (Case repository) | **Wave C** — [CASE_REPOSITORY_VIEW_PARITY.md](./references/testrail/CASE_REPOSITORY_VIEW_PARITY.md): Columns / groupBy / Display Deleted toolbar |
 | 1 | Keyboard, Selection, And List Ergonomics | P1 Column width and visibility persistence |
 | 2 | Reporting And Collaboration Shortcuts | P1 Export current filtered view; report filter presets |
 | 3 | Reporting And Collaboration Shortcuts | P1 Copy chart/table summary to clipboard |

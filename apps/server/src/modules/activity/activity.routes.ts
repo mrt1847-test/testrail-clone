@@ -14,8 +14,11 @@ const activityQuerySchema = z.object({
   entityType: z.string().trim().min(1).optional(),
   entityId: z.string().trim().min(1).optional(),
   eventType: z.string().trim().min(1).optional(),
-  runId: z.coerce.bigint().optional()
+  runId: z.coerce.bigint().optional(),
+  feed: z.enum(["history", "all"]).default("all")
 });
+
+const HISTORY_ENTITY_TYPES = ["run", "milestone", "plan", "project", "suite", "section", "case"] as const;
 
 const notificationsQuerySchema = z.object({
   unreadOnly: z.coerce.boolean().default(false)
@@ -65,7 +68,11 @@ export async function registerActivityRoutes(
         }
       : {
           projectId,
-          ...(filters.entityType ? { entityType: filters.entityType } : {}),
+          ...(filters.feed === "history"
+            ? { entityType: { in: [...HISTORY_ENTITY_TYPES] } }
+            : filters.entityType
+              ? { entityType: filters.entityType }
+              : {}),
           ...(filters.entityId ? { entityId: filters.entityId } : {}),
           ...(filters.eventType ? { eventType: filters.eventType } : {})
         };

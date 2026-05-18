@@ -47,3 +47,14 @@ export async function createBaselineSuite(projectId: string, name: string): Prom
   });
   return mapSuite(res.data);
 }
+
+export async function updateSuite(
+  suiteId: string,
+  patch: { name?: string; description?: string | null }
+): Promise<SuiteSummary> {
+  const res = await apiFetch<Ok<ApiSuite>>(`/api/suites/${suiteId}`, {
+    method: "PATCH",
+    body: patch
+  });
+  return mapSuite(res.data);
+}

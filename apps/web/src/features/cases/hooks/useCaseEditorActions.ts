@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
+  bulkArchiveCases,
   createCaseStep,
   deleteCase,
   deleteCaseStep,
@@ -11,6 +12,7 @@ import {
   updateCase,
   updateCaseStep
 } from "../api/catalogApi";
+import { linkSharedStepToCase } from "../api/sharedStepsApi";
 import { extractApiErrorMessage, restoreVersionErrorMessage } from "../caseErrors";
 import { caseKeys } from "./useCases";
 import { caseDetailKeys } from "./useCaseDetail";
@@ -24,6 +26,7 @@ export function useCaseEditorActions(projectId: string) {
   const invalidateCases = () => {
     void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
     void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
+    void qc.invalidateQueries({ queryKey: ["suite-summary", projectId] });
     void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
     void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
   };
@@ -82,6 +85,15 @@ export function useCaseEditorActions(projectId: string) {
     }
   });
 
+  const setCaseArchivedMutation = useMutation({
+    mutationFn: (input: { caseId: number; archived: boolean }) =>
+      bulkArchiveCases(projectId, [input.caseId], input.archived),
+    onSuccess: (_, vars) => {
+      invalidateCases();
+      invalidateAfterCaseEdit(vars.caseId);
+    }
+  });
+
   const restoreVersionMutation = useMutation({
     mutationFn: (input: { caseId: number; versionId: number; expectedVersion?: number }) =>
       restoreCaseVersion(input.caseId, input.versionId, input.expectedVersion),
@@ -126,7 +138,20 @@ export function useCaseEditorActions(projectId: string) {
     }
   });
 
-  const stepsBusy = createStepMutation.isPending || updateStepMutation.isPending || deleteStepMutation.isPending;
+  const linkSharedStepMutation = useMutation({
+    mutationFn: (input: { caseId: number; sharedStepId: string }) =>
+      linkSharedStepToCase(input.caseId, input.sharedStepId),
+    onSuccess: (_, vars) => {
+      invalidateCases();
+      invalidateAfterCaseEdit(vars.caseId);
+    }
+  });
+
+  const stepsBusy =
+    createStepMutation.isPending ||
+    updateStepMutation.isPending ||
+    deleteStepMutation.isPending ||
+    linkSharedStepMutation.isPending;
 
   const clearEditErrors = useCallback(() => {
     setEditFormError(null);
@@ -139,10 +164,12 @@ export function useCaseEditorActions(projectId: string) {
     clearEditErrors,
     updateCaseMutation,
     deleteCaseMutation,
+    setCaseArchivedMutation,
     restoreVersionMutation,
     createStepMutation,
     updateStepMutation,
     deleteStepMutation,
+    linkSharedStepMutation,
     stepsBusy
   };
 }

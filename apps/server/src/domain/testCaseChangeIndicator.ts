@@ -10,6 +10,7 @@ export type TestCaseSnapshotFields = {
 export type LiveCaseFields = {
   lockVersion: number;
   title: string;
+  sectionId: bigint;
   priority: string | null;
   caseType: string | null;
   automationKey: string | null;

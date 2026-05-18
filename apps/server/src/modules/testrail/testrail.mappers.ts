@@ -388,6 +388,37 @@ export function mapLabelsForV2(titles: string[]) {
   return titles.map(mapLabelForV2);
 }
 
+export function mapSharedStepsForV2(
+  rows: Array<{
+    row: {
+      id: bigint;
+      projectId: bigint;
+      title: string;
+      createdAt: Date;
+      updatedAt: Date;
+      entries: Array<{ content: string; expectedResult: string | null }>;
+    };
+    caseIds: number[];
+  }>
+) {
+  return rows.map(({ row, caseIds }) => ({
+    id: Number(row.id),
+    title: row.title,
+    project_id: Number(row.projectId),
+    created_by: null,
+    created_on: Math.floor(row.createdAt.getTime() / 1000),
+    updated_by: null,
+    updated_on: Math.floor(row.updatedAt.getTime() / 1000),
+    custom_steps_separated: row.entries.map((entry) => ({
+      content: entry.content,
+      expected: entry.expectedResult ?? "",
+      additional_info: "",
+      refs: ""
+    })),
+    case_ids: caseIds
+  }));
+}
+
 export function mapProjectForV2(row: { id: bigint; name: string }) {
   return {
     id: Number(row.id),

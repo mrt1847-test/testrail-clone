@@ -77,32 +77,32 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph clone["ProjectOverviewPage"]
-    CARDS["ProjectSummaryCards"]
-    CHART["ExecutionSummaryChart (집계 바)"]
-    MS["MilestoneDashboardPanel (조건부)"]
-    TAB["Recent runs | Recent failures 탭"]
+    CHART["ProjectActivityLineChart + activity-series API"]
+    COLS["ProjectOverviewColumns: Milestones | Runs/Plans"]
+    FEED["ProjectActivityFeedPanel: History | Test Changes"]
+    SIDE["ProjectOverviewSidebar: Actions + Todos"]
+    STATS["ProjectSummaryCards (compact row)"]
   end
   subgraph elsewhere["별도 라우트"]
-    ACT["/activity → ActivityPage"]
-    RUNS["/runs → Runs 목록"]
-    MS2["/milestones"]
-    TODO["/team-todo, /my-tests"]
+    ACT["/activity → ActivityPage (전체 보기)"]
+    TODO["/team-todo"]
   end
 ```
 
 | TestRail 영역 | 클론 | 일치도 |
 |---------------|------|--------|
-| P222 + Reports/Defects 헤더 | `ProjectHeader` + Reports 라우트; 헤더 드롭다운 **없음** | 부분 |
-| header-menu 6탭 | `ProjectTabs` 9+ primary + More( Activity 등) | 부분 (항목·밀도 다름) |
-| 라인 차트 (일별) | `ExecutionSummaryChart` — **전체 집계 막대**만 | 없음 |
-| 기간 7~90일 | 없음 | 없음 |
-| 2열 Milestones \| Runs | 마일스톤 패널 + Recent runs 탭 (열 분리 아님) | 부분 |
-| 플랜+런 혼합 목록 | Plans는 `/plans` 탭; Overview에 플랜 미표시 | 없음 |
-| History \| Test Changes | Activity는 `/activity` 단일 피드 | 없음 |
-| 날짜별 grid 히스토리 | `ActivityPage` 리스트 (다른 UX) | 부분 |
-| sidebar Actions | 탭/목록 페이지로 분산 | 없음 |
-| sidebar Todos | `TeamTodoPage`, `MyTests` 별도 | 부분 |
-| chooseSuiteDialog | Run 생성 플로우에 suite 선택 있음 | 있음 (다른 진입점) |
+| P222 + Reports/Defects 헤더 | `ProjectContentHeader` + `ReportsDropdown` / `DefectsDropdown` | 있음 |
+| header-menu 6탭 | `ProjectTabs` primary 6 (Overview, Todo, Milestones, Runs, Cases, Reports) + More | 있음 |
+| 라인 차트 (일별) | `ProjectActivityLineChart` + `GET .../activity-series` | 있음 |
+| 기간 7~90일 | 차트 상단 7/14/30/60/90d 버튼 | 있음 |
+| 2열 Milestones \| Runs | `ProjectOverviewColumns` 2열 | 있음 |
+| 플랜+런 혼합 목록 | `recentPlans` + `recentRuns` in Runs/Plans 열 | 있음 |
+| History \| Test Changes | `ProjectActivityFeedPanel` 탭 | 있음 |
+| 날짜별 grid 히스토리 | 날짜 헤더 + `table` grid, Show more (`feed=history`) | 있음 |
+| sidebar Actions | `ProjectOverviewSidebar` Add \| View All | 있음 |
+| sidebar Todos | 실패·활성 런 요약 + View All → team-todo | 부분 |
+| chooseSuiteDialog | `/runs/new` (Actions 링크) | 있음 (다른 진입점) |
+| 차트·범례 드릴다운 | 범례 → runs `resultStatus`; 일자·시리즈 → results `status`+날짜 | 있음 |
 
 ---
 
@@ -206,7 +206,11 @@ flowchart TB
 | 역할 | 파일 |
 |------|------|
 | Overview 페이지 | `apps/web/src/features/projects/components/ProjectOverviewPage.tsx` |
-| 집계 차트 | `ExecutionSummaryChart.tsx` |
+| 라인 차트 | `ProjectActivityLineChart.tsx` |
+| 활동 피드 | `ProjectActivityFeedPanel.tsx` |
+| 2열 요약 | `ProjectOverviewColumns.tsx` |
+| 사이드바 | `ProjectOverviewSidebar.tsx` |
+| 콘텐츠 헤더 | `content-header/ProjectContentHeader.tsx` |
 | 통계 카드 | `ProjectSummaryCards.tsx` |
 | 마일스톤 위젯 | `MilestoneDashboardPanel.tsx` |
 | 최근 런 | `RecentRunList.tsx` |
@@ -231,12 +235,14 @@ flowchart TB
 
 ## 8. 완료 게이트 (Project Overview “TestRail-like”)
 
-- [ ] 진입 1스크롤 이내에 **기간 선택 가능한 라인 차트**가 있다.
-- [ ] 마일스톤과 런/플랜이 **2열 컴팩트 목록**으로 보인다.
-- [ ] History / Test Changes를 Overview에서 전환할 수 있다.
-- [ ] 우측(또는 동등 위치) Actions에서 Run/Case/Milestone **Add**가 1클릭이다.
-- [ ] Todos 요약이 Overview에 있고 실행 화면으로 이어진다.
-- [ ] 상단 카드만 있는 대시보드 형태가 아니다 (차트+그리드 우선).
+- [x] 진입 1스크롤 이내에 **기간 선택 가능한 라인 차트**가 있다.
+- [x] 마일스톤과 런/플랜이 **2열 컴팩트 목록**으로 보인다.
+- [x] History / Test Changes를 Overview에서 전환할 수 있다.
+- [x] 우측(또는 동등 위치) Actions에서 Run/Case/Milestone **Add**가 1클릭이다.
+- [x] Todos 요약이 Overview에 있고 실행 화면으로 이어진다.
+- [x] 상단 카드만 있는 대시보드 형태가 아니다 (차트+그리드 우선).
+
+- [x] 차트·범례 클릭 시 일자/상태별 드릴다운 (runs 또는 results).
 
 ---
 

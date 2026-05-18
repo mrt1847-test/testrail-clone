@@ -1,44 +1,7 @@
 import type { RunDetailDto } from "../types";
+import { RUN_STATUS_SEGMENTS, runStatusTotal } from "../utils/runProgressSegments";
 
-type StatusKey = "passed" | "failed" | "blocked" | "retest" | "untested";
-
-const SEGMENTS: Array<{ key: StatusKey; label: string; barClass: string; chipClass: string; activeChip: string }> = [
-  {
-    key: "passed",
-    label: "Passed",
-    barClass: "bg-emerald-500",
-    chipClass: "bg-emerald-50 text-emerald-900 hover:bg-emerald-100",
-    activeChip: "ring-2 ring-emerald-600 ring-offset-1"
-  },
-  {
-    key: "failed",
-    label: "Failed",
-    barClass: "bg-red-500",
-    chipClass: "bg-red-50 text-red-900 hover:bg-red-100",
-    activeChip: "ring-2 ring-red-600 ring-offset-1"
-  },
-  {
-    key: "blocked",
-    label: "Blocked",
-    barClass: "bg-amber-500",
-    chipClass: "bg-amber-50 text-amber-900 hover:bg-amber-100",
-    activeChip: "ring-2 ring-amber-600 ring-offset-1"
-  },
-  {
-    key: "retest",
-    label: "Retest",
-    barClass: "bg-violet-500",
-    chipClass: "bg-violet-50 text-violet-900 hover:bg-violet-100",
-    activeChip: "ring-2 ring-violet-600 ring-offset-1"
-  },
-  {
-    key: "untested",
-    label: "Untested",
-    barClass: "bg-slate-400",
-    chipClass: "bg-slate-100 text-slate-800 hover:bg-slate-200",
-    activeChip: "ring-2 ring-slate-600 ring-offset-1"
-  }
-];
+const SEGMENTS = RUN_STATUS_SEGMENTS;
 
 type Props = {
   counts: RunDetailDto["counts"];
@@ -74,8 +37,7 @@ export function RunSummaryBar({
   mode = "full",
   className = ""
 }: Props) {
-  const total =
-    counts.passed + counts.failed + counts.blocked + counts.retest + counts.untested;
+  const total = runStatusTotal(counts);
   const interactive = Boolean(onStatusClick);
 
   if (mode === "compact") {

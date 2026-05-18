@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchCaseScenarios } from "../../cases/api/bddApi";
 import { fetchCaseTemplates } from "../../projects/api/settingsApi";
+import { fetchPlan } from "../../projects/api/planningApi";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
@@ -14,11 +15,23 @@ import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { fetchAllRunInstances, fetchRuns } from "../api/runApi";
 import type { TestInstanceRow } from "../types";
 import { useRunBulkActions } from "../hooks/useRunBulkActions";
-import { mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
+import { flattenGroupedInstances, mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
+import {
+  readJumpToNextAfterResult,
+  readQpaneWidth,
+  writeJumpToNextAfterResult,
+  writeQpaneWidth
+} from "../utils/runExecutionPrefs";
+import { useSections } from "../../cases/hooks/useSections";
+import { RunSectionTree } from "./RunSectionTree";
+import { useCaseExecutionHistoryQuery, useRunInstancesGroupedQuery } from "../hooks/useRunsApi";
+import type { TestInstanceTableGroup } from "./TestInstanceTable";
 import { extractApiErrorMessage } from "../../cases/caseErrors";
 import { useRunDetailQueries } from "../hooks/useRunDetailQueries";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
+import { useRunColumnPreferences } from "../hooks/useRunColumnPreferences";
+import { defaultRunInstanceListFilters } from "../utils/runInstanceListParams";
 import {
   useAddResultAttachmentMutation,
   useAddResultDefectMutation,
@@ -45,8 +58,10 @@ import {
 import type { RunCompositionInfo } from "../types";
 import { CloseRunDialog } from "./CloseRunDialog";
 import { RunActionsPanel } from "./RunActionsPanel";
+import { RunDetailHeaderSecondaryActions } from "./RunDetailHeaderActions";
+import { RunExecutionStatsBar } from "./RunExecutionStatsBar";
+import { RunPlanBreadcrumb } from "./RunPlanBreadcrumb";
 import { RunHeader } from "./RunHeader";
-import { RunSummaryBar } from "./RunSummaryBar";
 import { RunDetailSidebar } from "./RunDetailSidebar";
 import { RunExecutionToolbar } from "./RunExecutionToolbar";
 import { RunInstancesSection } from "./RunInstancesSection";
@@ -54,16 +69,19 @@ import { RUN_DETAIL_SHORTCUTS, useRunKeyboardShortcuts } from "../hooks/useRunKe
 import { useRunTestNavigation } from "../hooks/useRunTestNavigation";
 import { ResultEntryPanel } from "./ResultEntryPanel";
 import { ResultHistoryList } from "./ResultHistoryList";
+import { RunQPanePanel } from "./RunQPanePanel";
+import { CaseCrossRunHistoryList } from "./CaseCrossRunHistoryList";
+import { RunDefectsPanel } from "./RunDefectsPanel";
 import { RunCompositionPanel, type CompositionFeedback } from "./RunCompositionPanel";
 import { RunSchedulePanel } from "./RunSchedulePanel";
 import { ExecutionCommentsPanel } from "./ExecutionCommentsPanel";
-import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { PushDefectDialog } from "./PushDefectDialog";
 import { DuplicateRunDialog } from "./DuplicateRunDialog";
 import { RunCompareWithRunDialog } from "./RunCompareWithRunDialog";
 import { RunCaseContextPanel } from "./RunCaseContextPanel";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
+import { ProjectContentHeader } from "../../projects/content-header/ProjectContentHeader";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
 const AT_RISK_STATUSES = new Set(["failed", "blocked", "retest"]);
@@ -99,8 +117,40 @@ export function RunDetailPage() {
     setSearchParams,
     selectedTestId: selected?.id ?? null
   });
-  const { statusFilter, setStatusFilter, assigneeFilter, setAssigneeFilter, searchText, setSearchText, instancePage, setInstancePage } =
-    urlState;
+  const {
+    statusFilter,
+    setStatusFilter,
+    assigneeFilter,
+    setAssigneeFilter,
+    searchText,
+    setSearchText,
+    instancePage,
+    setInstancePage,
+    sectionId,
+    setSectionId,
+    groupBy,
+    setGroupBy,
+    display,
+    setDisplay,
+    priorityFilter,
+    setPriorityFilter,
+    caseTypeFilter,
+    setCaseTypeFilter,
+    caseChangedFilter,
+    setCaseChangedFilter,
+    sortBy,
+    setSortBy,
+    sortDir,
+    setSortDir
+  } = urlState;
+  const { effectiveColumns, persistColumns } = useRunColumnPreferences(projectId, runId);
+  const [listColumns, setListColumns] = useState(effectiveColumns);
+  useEffect(() => {
+    setListColumns(effectiveColumns);
+  }, [effectiveColumns, runId]);
+  const [jumpToNext, setJumpToNext] = useState(readJumpToNextAfterResult);
+  const [qpaneWidth, setQpaneWidth] = useState(readQpaneWidth);
+  const useGroupedExecution = groupBy !== "none";
 
   const queries =   useRunDetailQueries({
     projectId,
@@ -114,7 +164,12 @@ export function RunDetailPage() {
     historyPageSize,
     statusFilter,
     assigneeFilter,
-    searchText
+    searchText,
+    priorityFilter,
+    caseTypeFilter,
+    caseChangedFilter,
+    sortBy,
+    sortDir
   });
   const {
     runDetailQuery,
@@ -129,11 +184,22 @@ export function RunDetailPage() {
     defectsQuery
   } = queries;
   const statusQuery = useProjectStatuses(projectId);
+  const runPlanId = runDetailQuery.data?.run.planId ?? null;
+  const planQuery = useQuery({
+    queryKey: ["run-detail-plan", projectId, runPlanId ?? ""],
+    queryFn: () => fetchPlan(projectId, runPlanId!),
+    enabled: Boolean(projectId && runPlanId)
+  });
   const selectedCaseScenariosQuery = useQuery({
     queryKey: ["case-scenarios", selected?.caseId],
     queryFn: () => fetchCaseScenarios(selected!.caseId),
     enabled: Boolean(selected?.caseId)
   });
+  const caseExecutionHistoryQuery = useCaseExecutionHistoryQuery(
+    projectId,
+    selected?.caseId,
+    Boolean(selected?.caseId)
+  );
   const caseTemplatesQuery = useQuery({
     queryKey: ["case-templates", projectId],
     queryFn: () => fetchCaseTemplates(projectId),
@@ -189,7 +255,18 @@ export function RunDetailPage() {
   useEffect(() => {
     setSelectedTestIds([]);
     setInstanceLookup(new Map());
-  }, [runId, statusFilter, assigneeFilter, searchText, setSelectedTestIds]);
+  }, [
+    runId,
+    statusFilter,
+    assigneeFilter,
+    searchText,
+    priorityFilter,
+    caseTypeFilter,
+    caseChangedFilter,
+    sortBy,
+    sortDir,
+    setSelectedTestIds
+  ]);
 
   const selectAllMatchingFilter = async () => {
     if (filteredInstanceTotal === 0 || selectAllFilteredBusy) return;
@@ -200,7 +277,12 @@ export function RunDetailPage() {
         runId,
         status: statusFilter,
         assignee: assigneeFilter,
-        search: searchText
+        search: searchText,
+        priority: priorityFilter || undefined,
+        caseType: caseTypeFilter || undefined,
+        caseChanged: caseChangedFilter || undefined,
+        sortBy,
+        sortDir
       });
       const rows = mapApiInstancesToRows(instances);
       setInstanceLookup(mergeInstanceLookup(new Map(), rows));
@@ -243,11 +325,72 @@ export function RunDetailPage() {
     () => new Set(subscriptionsQuery.data ?? []),
     [subscriptionsQuery.data]
   );
+  const run = runDetailQuery.data?.run;
+  const suiteId = run?.suiteId ?? "";
+  const sectionsQuery = useSections(projectId, suiteId || undefined);
+  const listQueryInput = {
+    status: statusFilter,
+    assignee: assigneeFilter,
+    search: searchText,
+    priority: priorityFilter,
+    caseType: caseTypeFilter,
+    caseChanged: caseChangedFilter,
+    sortBy,
+    sortDir
+  };
+  const sectionCountsQuery = useRunInstancesGroupedQuery({
+    projectId,
+    runId,
+    groupBy: "section_id",
+    sectionId: null,
+    ...listQueryInput,
+    enabled: useGroupedExecution && Boolean(suiteId)
+  });
+  const groupedTableQuery = useRunInstancesGroupedQuery({
+    projectId,
+    runId,
+    groupBy,
+    sectionId: sectionId != null ? String(sectionId) : null,
+    ...listQueryInput,
+    enabled: useGroupedExecution && Boolean(suiteId)
+  });
+  const resetListPage = () => setInstancePage(1);
+  const clearRunListFilters = () => {
+    setStatusFilter(defaultRunInstanceListFilters.status);
+    setAssigneeFilter(defaultRunInstanceListFilters.assignee);
+    setPriorityFilter(defaultRunInstanceListFilters.priority);
+    setCaseTypeFilter(defaultRunInstanceListFilters.caseType);
+    setCaseChangedFilter(defaultRunInstanceListFilters.caseChanged);
+    setSortBy(defaultRunInstanceListFilters.sortBy);
+    setSortDir(defaultRunInstanceListFilters.sortDir);
+    resetListPage();
+  };
+  const sectionCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of sectionCountsQuery.data?.sectionCounts ?? []) {
+      map.set(row.sectionId, row.count);
+    }
+    return map;
+  }, [sectionCountsQuery.data?.sectionCounts]);
+  const tableGroups: TestInstanceTableGroup[] = useMemo(() => {
+    if (!groupedTableQuery.data?.groups) return [];
+    return groupedTableQuery.data.groups.map((group) => ({
+      groupLabel: group.groupLabel,
+      sectionId: group.sectionId,
+      instances: mapApiInstancesToRows(group.instances)
+    }));
+  }, [groupedTableQuery.data?.groups]);
+  const executionInstances = useMemo(() => {
+    if (useGroupedExecution) return flattenGroupedInstances(groupedTableQuery.data?.groups ?? []);
+    return pagedInstances;
+  }, [groupedTableQuery.data?.groups, pagedInstances, useGroupedExecution]);
+  const groupedTotal = groupedTableQuery.data?.total ?? filteredInstanceTotal;
   const testNavigation = useRunTestNavigation({
     projectId,
     runId,
     selectedTestId: selected?.id ?? null,
     pagedInstances,
+    orderedInstances: executionInstances,
     statusFilter,
     assigneeFilter,
     searchText,
@@ -255,18 +398,59 @@ export function RunDetailPage() {
     setInstancePage,
     onSelectInstance: setSelected
   });
-  const runLoaded = Boolean(runDetailQuery.data?.run);
+  const runLoaded = Boolean(run);
+  const runClosed = run?.status === "closed";
+
+  const submitRunResult = async (
+    testId: string,
+    payload: {
+      status: "passed" | "failed" | "blocked" | "retest" | "untested";
+      comment?: string;
+      elapsed?: string;
+      version?: string;
+      defects?: string[];
+      customValues?: Record<string, string | number | boolean | string[] | null>;
+      stepResults?: Array<{
+        stepOrder: number;
+        status: "passed" | "failed" | "blocked" | "retest" | "untested";
+        actualResult?: string;
+        comment?: string;
+      }>;
+      scenarioResults?: Array<{
+        caseScenarioId: string;
+        status: "passed" | "failed" | "blocked" | "retest" | "untested";
+        comment?: string;
+      }>;
+      aiActualOutput?: string;
+      aiQualityRating?: number;
+      aiLatencyMs?: number;
+      aiTraces?: string;
+    },
+    options?: { advanceOnPass?: boolean }
+  ) => {
+    await addResultMutation.mutateAsync({ testId, ...payload });
+    if (options?.advanceOnPass && jumpToNext && payload.status === "passed") {
+      testNavigation.goNextTest();
+    }
+  };
+
+  const handlePassAndNext = () => {
+    if (!selected || runClosed) return;
+    void submitRunResult(selected.id, { status: "passed" }, { advanceOnPass: true });
+  };
+
   useRunKeyboardShortcuts({
-    enabled: runLoaded && !shortcutsOpen,
+    enabled: runLoaded && !shortcutsOpen && !runClosed,
     onShowHelp: () => setShortcutsOpen(true),
     onNextTest: testNavigation.goNextTest,
     onPrevTest: testNavigation.goPrevTest,
     onNextFailed: testNavigation.goNextFailed,
-    onNextBlocked: testNavigation.goNextBlocked
+    onNextBlocked: testNavigation.goNextBlocked,
+    onNextUntested: testNavigation.goNextUntested,
+    onPassAndNext: handlePassAndNext
   });
-  const run = runDetailQuery.data?.run;
+
   const duplicateDefaultName = run ? `${run.name} (copy)` : "";
-  const runClosed = run?.status === "closed";
   const counts = runDetailQuery.data?.counts ?? { passed: 0, failed: 0, blocked: 0, retest: 0, untested: 0 };
   const members = membersQuery.data ?? [];
 
@@ -300,9 +484,9 @@ export function RunDetailPage() {
     const selectedTestId = searchParams.get("testId");
     if (!selectedTestId) return;
     if (selected?.id === selectedTestId) return;
-    const matched = pagedInstances.find((row) => row.id === selectedTestId);
+    const matched = executionInstances.find((row) => row.id === selectedTestId);
     if (matched) setSelected(matched);
-  }, [pagedInstances, searchParams, selected?.id]);
+  }, [executionInstances, searchParams, selected?.id]);
 
   useEffect(() => {
     setSelectedResultId(null);
@@ -469,12 +653,55 @@ export function RunDetailPage() {
         }}
       />
 
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <RunHeader run={run} milestoneName={milestoneQuery.data?.name} counts={counts} />
-        </div>
-        <PrintLinkButton to={`/projects/${projectId}/runs/${runId}/print`} />
-      </div>
+      {runPlanId && planQuery.data ? (
+        <RunPlanBreadcrumb
+          projectId={projectId}
+          planId={runPlanId}
+          planName={planQuery.data.name}
+          runName={run.name}
+        />
+      ) : null}
+
+      <ProjectContentHeader
+        projectId={projectId}
+        variant="run-detail"
+        title={run.name}
+        subtitle={[
+          run.environment,
+          run.milestoneId ? milestoneQuery.data?.name ?? `Milestone #${run.milestoneId}` : null,
+          run.assignedTo?.trim() ? `Assigned: ${run.assignedTo}` : "Unassigned"
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        runId={runId}
+        onPushDefect={
+          selected
+            ? () => {
+                setPushDefectResultId(selectedResultId);
+                setPushDefectDialogOpen(true);
+              }
+            : undefined
+        }
+        secondaryActions={
+          <RunDetailHeaderSecondaryActions
+            projectId={projectId}
+            runId={runId}
+            suiteId={suiteId}
+            subscribedCount={subscribedTestIds.size}
+            totalTests={groupedTotal}
+            onScrollToTests={() => testNavigation.scrollToTests()}
+          />
+        }
+      />
+      <RunHeader run={run} milestoneName={milestoneQuery.data?.name} showTitle={false} />
+
+      <RunExecutionStatsBar
+        className="mt-3 hidden lg:block"
+        sticky
+        counts={counts}
+        activeStatus={statusFilter}
+        onStatusClick={(status) => testNavigation.jumpToStatus(status)}
+      />
 
       <RunSchedulePanel
         run={run}
@@ -495,55 +722,115 @@ export function RunDetailPage() {
         />
       </CollapsibleSection>
 
-      <RunSummaryBar
-        className="lg:hidden"
+      <RunExecutionStatsBar
+        className="mt-3 lg:hidden"
         counts={counts}
         activeStatus={statusFilter}
         onStatusClick={(status) => testNavigation.jumpToStatus(status)}
       />
 
-      <div className={`grid gap-4 ${selected ? "lg:grid-cols-[minmax(0,1fr)_min(22rem,34vw)]" : ""}`}>
-        <div className="flex flex-col gap-3 lg:flex-row">
-          <RunDetailSidebar
-            projectId={projectId}
-            runId={runId}
-            counts={counts}
-            activeStatus={statusFilter}
-            onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
-            statusFooter={
-              <RunExecutionToolbar
-                variant="inline"
-                isNavigating={testNavigation.isNavigating}
-                onNextFailed={testNavigation.goNextFailed}
-                onNextBlocked={testNavigation.goNextBlocked}
-                onPrevTest={testNavigation.goPrevTest}
-                onNextTest={testNavigation.goNextTest}
-                onShowShortcuts={() => setShortcutsOpen(true)}
-              />
-            }
+      <RunDetailSidebar
+        projectId={projectId}
+        runId={runId}
+        counts={counts}
+        activeStatus={statusFilter}
+        onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
+        statusFooter={
+          <RunExecutionToolbar
+            variant="inline"
+            isNavigating={testNavigation.isNavigating}
+            onNextFailed={testNavigation.goNextFailed}
+            onNextBlocked={testNavigation.goNextBlocked}
+            onNextUntested={testNavigation.goNextUntested}
+            onPassAndNext={runClosed ? undefined : handlePassAndNext}
+            jumpToNext={jumpToNext}
+            onJumpToNextChange={(enabled) => {
+              setJumpToNext(enabled);
+              writeJumpToNextAfterResult(enabled);
+            }}
+            onPrevTest={testNavigation.goPrevTest}
+            onNextTest={testNavigation.goNextTest}
+            onShowShortcuts={() => setShortcutsOpen(true)}
           />
-            <div id="run-tests-section" className="min-w-0 flex-1">
-              <RunInstancesSection
+        }
+      />
+
+      <div
+        className={`mt-3 grid gap-3 ${selected ? "lg:grid-cols-[auto_minmax(0,1fr)_var(--run-qpane-width)]" : "lg:grid-cols-[auto_minmax(0,1fr)]"}`}
+        style={{ ["--run-qpane-width" as string]: `${qpaneWidth}px` }}
+      >
+        {useGroupedExecution && suiteId && sectionsQuery.data?.sections ? (
+          <RunSectionTree
+            sections={sectionsQuery.data.sections}
+            sectionCounts={sectionCounts}
+            selectedSectionId={sectionId}
+            onSelectSection={setSectionId}
+            display={display}
+            onDisplayChange={setDisplay}
+          />
+        ) : null}
+        <div id="run-tests-section" className="min-w-0">
+          {groupedTableQuery.data?.truncated ? (
+            <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+              Showing first 5,000 tests. Narrow filters to see more.
+            </p>
+          ) : null}
+          <RunInstancesSection
           projectId={projectId}
-          pagedInstances={pagedInstances}
+          pagedInstances={useGroupedExecution ? executionInstances : pagedInstances}
           selectedInstanceId={selected?.id ?? null}
           onSelectInstance={setSelected}
           members={members}
           searchText={searchText}
           onSearchTextChange={(value) => {
             setSearchText(value);
-            setInstancePage(1);
+            resetListPage();
           }}
           statusFilter={statusFilter}
           onStatusFilterChange={(value) => {
             setStatusFilter(value);
-            setInstancePage(1);
+            resetListPage();
           }}
           assigneeFilter={assigneeFilter}
           onAssigneeFilterChange={(value) => {
             setAssigneeFilter(value);
-            setInstancePage(1);
+            resetListPage();
           }}
+          priorityFilter={priorityFilter}
+          onPriorityFilterChange={(value) => {
+            setPriorityFilter(value);
+            resetListPage();
+          }}
+          caseTypeFilter={caseTypeFilter}
+          onCaseTypeFilterChange={(value) => {
+            setCaseTypeFilter(value);
+            resetListPage();
+          }}
+          caseChangedFilter={caseChangedFilter}
+          onCaseChangedFilterChange={(value) => {
+            setCaseChangedFilter(value);
+            resetListPage();
+          }}
+          sortBy={sortBy}
+          onSortByChange={(value) => {
+            setSortBy(value);
+            resetListPage();
+          }}
+          sortDir={sortDir}
+          onSortDirChange={(value) => {
+            setSortDir(value);
+            resetListPage();
+          }}
+          groupBy={groupBy}
+          onGroupByChange={(value) => {
+            setGroupBy(value);
+            resetListPage();
+          }}
+          listColumns={listColumns}
+          onListColumnsChange={(columns) => {
+            setListColumns(persistColumns(columns));
+          }}
+          onClearFilters={clearRunListFilters}
           selectedTestIds={selectedTestIds}
           setSelectedTestIds={setSelectedTestIds}
           allPageSelected={allPageSelected}
@@ -551,8 +838,7 @@ export function RunDetailPage() {
           onSelectAllMatchingFilter={() => void selectAllMatchingFilter()}
           selectAllMatchingBusy={selectAllFilteredBusy}
           onQuickResultSave={(testId, payload) =>
-            void addResultMutation.mutateAsync({
-              testId,
+            void submitRunResult(testId, {
               status: payload.status,
               comment: payload.comment,
               elapsed: payload.elapsed,
@@ -561,9 +847,13 @@ export function RunDetailPage() {
             })
           }
           isSavingQuickResult={addResultMutation.isPending}
+          groups={useGroupedExecution ? tableGroups : undefined}
+          inlineStatusSelect={useGroupedExecution}
+          hidePagination={useGroupedExecution}
+          groupedTotal={groupedTotal}
           page={runInstancesQuery.data?.page ?? instancePage}
           totalPages={runInstancesQuery.data?.totalPages ?? 1}
-          total={runInstancesQuery.data?.total ?? 0}
+          total={useGroupedExecution ? groupedTotal : runInstancesQuery.data?.total ?? 0}
           onPrevPage={() => setInstancePage((p) => Math.max(1, p - 1))}
           onNextPage={() => setInstancePage((p) => Math.min(runInstancesQuery.data?.totalPages ?? 1, p + 1))}
           subscribedTestIds={subscribedTestIds}
@@ -577,11 +867,38 @@ export function RunDetailPage() {
                 assigningTestId={assigningTestId}
                 runClosed={runClosed}
               />
-            </div>
         </div>
 
         {selected ? (
-          <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
+          <aside
+            className="relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto"
+            style={{ width: "100%", maxWidth: "100%" }}
+          >
+            <div
+              className="absolute -left-1 top-0 hidden h-full w-1 cursor-col-resize bg-transparent hover:bg-sky-300 lg:block"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize detail panel"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                const startX = event.clientX;
+                const startWidth = qpaneWidth;
+                const onMove = (moveEvent: MouseEvent) => {
+                  const next = Math.min(720, Math.max(280, startWidth - (moveEvent.clientX - startX)));
+                  setQpaneWidth(next);
+                };
+                const onUp = () => {
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
+                  setQpaneWidth((w) => {
+                    writeQpaneWidth(w);
+                    return w;
+                  });
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+            />
             <RunCaseContextPanel
               projectId={projectId}
               caseId={selected.caseId}
@@ -617,8 +934,9 @@ export function RunDetailPage() {
                 Push defect…
               </button>
             ) : null}
-            <div className="mt-2 space-y-3 text-sm text-slate-700">
-              <ResultEntryPanel
+            <RunQPanePanel
+              results={
+                <ResultEntryPanel
                 key={selected.id}
                 projectId={projectId}
                 instance={{
@@ -640,29 +958,34 @@ export function RunDetailPage() {
                 }
                 showInstanceHeader={false}
                 onSubmit={(payload) => {
-                  void addResultMutation.mutateAsync({
-                    testId: selected.id,
-                    status: payload.status,
-                    comment: payload.comment,
-                    elapsed: payload.elapsed,
-                    version: payload.version,
-                    defects: payload.defects,
-                    customValues: payload.customValues,
-                    stepResults: payload.stepResults,
-                    scenarioResults: payload.scenarioResults,
-                    aiActualOutput: payload.aiActualOutput,
-                    aiQualityRating: payload.aiQualityRating,
-                    aiLatencyMs: payload.aiLatencyMs,
-                    aiTraces: payload.aiTraces
-                  });
+                  void submitRunResult(
+                    selected.id,
+                    {
+                      status: payload.status,
+                      comment: payload.comment,
+                      elapsed: payload.elapsed,
+                      version: payload.version,
+                      defects: payload.defects,
+                      customValues: payload.customValues,
+                      stepResults: payload.stepResults,
+                      scenarioResults: payload.scenarioResults,
+                      aiActualOutput: payload.aiActualOutput,
+                      aiQualityRating: payload.aiQualityRating,
+                      aiLatencyMs: payload.aiLatencyMs,
+                      aiTraces: payload.aiTraces
+                    },
+                    { advanceOnPass: true }
+                  );
                 }}
               />
-              <CollapsibleSection
-                title="Result history"
-                badge={historyQuery.data?.total ?? 0}
-                defaultOpen={false}
-              >
-                <ResultHistoryList
+              }
+              history={
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      This run ({historyQuery.data?.total ?? 0})
+                    </p>
+                    <ResultHistoryList
                 history={historyQuery.data?.items ?? []}
                 historyTotal={historyQuery.data?.total ?? 0}
                 historyPage={historyPage}
@@ -699,7 +1022,33 @@ export function RunDetailPage() {
                   void syncDefectMutation.mutateAsync(defectLinkId).finally(() => setSyncingDefectLinkId(null));
                 }}
               />
-              </CollapsibleSection>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      All runs (case {selected.caseCode})
+                    </p>
+                    <CaseCrossRunHistoryList
+                      projectId={projectId}
+                      currentRunId={runId}
+                      items={caseExecutionHistoryQuery.data?.items ?? []}
+                      isLoading={caseExecutionHistoryQuery.isLoading}
+                    />
+                  </div>
+                </div>
+              }
+              defects={
+                <RunDefectsPanel
+                  projectId={projectId}
+                  runId={runId}
+                  history={historyQuery.data?.items ?? []}
+                  linkedDefects={defectsQuery.data ?? []}
+                  isLoading={defectsQuery.isLoading}
+                  canPushDefect={canPushDefectForSelected}
+                  onOpenPushDefect={openPushDefectDialog}
+                />
+              }
+            />
+            <div className="mt-3 space-y-3 text-sm text-slate-700">
               <CollapsibleSection title="Test discussion" defaultOpen={false}>
                 <ExecutionCommentsPanel
                   scope="test_instance"

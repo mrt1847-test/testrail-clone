@@ -5,9 +5,10 @@ type Props = {
   run: RunDetailDto["run"];
   milestoneName?: string;
   counts?: RunDetailDto["counts"];
+  showTitle?: boolean;
 };
 
-export function RunHeader({ run, milestoneName, counts }: Props) {
+export function RunHeader({ run, milestoneName, counts, showTitle = true }: Props) {
   const isOpen = run.status === "open";
   const meta: string[] = [];
   if (run.environment) meta.push(run.environment);
@@ -27,8 +28,14 @@ export function RunHeader({ run, milestoneName, counts }: Props) {
     <header className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold text-slate-900">{run.name}</h2>
-          {meta.length > 0 ? <p className="mt-0.5 truncate text-xs text-slate-500">{meta.join(" · ")}</p> : null}
+          {showTitle ? (
+            <>
+              <h2 className="truncate text-lg font-semibold text-slate-900">{run.name}</h2>
+              {meta.length > 0 ? <p className="mt-0.5 truncate text-xs text-slate-500">{meta.join(" · ")}</p> : null}
+            </>
+          ) : meta.length > 0 ? (
+            <p className="truncate text-xs text-slate-500">{meta.join(" · ")}</p>
+          ) : null}
         </div>
         <span
           className={

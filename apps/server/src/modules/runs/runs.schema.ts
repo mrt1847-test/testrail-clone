@@ -95,6 +95,20 @@ export const teamTodoQuerySchema = assignmentListQuerySchema.extend({
     .default("all")
 });
 
+const runInstanceListFilterFields = {
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  caseType: z.enum(["functional", "integration", "regression"]).optional(),
+  caseChanged: z
+    .preprocess((value) => {
+      if (value === "true" || value === "1") return true;
+      if (value === "false" || value === "0") return false;
+      return value;
+    }, z.boolean().optional())
+    .optional(),
+  sortBy: z.enum(["case_id", "title", "status", "priority", "type", "assignee"]).optional(),
+  sortDir: z.enum(["asc", "desc"]).optional()
+};
+
 export const runInstancesQuerySchema = z.object({
   status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
   assignedTo: z
@@ -104,6 +118,7 @@ export const runInstancesQuerySchema = z.object({
     }, z.coerce.bigint().nullable())
     .optional(),
   q: z.string().trim().min(1).optional(),
+  ...runInstanceListFilterFields,
   includeInstances: z
     .preprocess((value) => {
       if (value === "false" || value === "0") return false;
@@ -111,6 +126,24 @@ export const runInstancesQuerySchema = z.object({
       return value;
     }, z.boolean().optional())
     .optional()
+});
+
+export const runInstancesGroupedQuerySchema = z.object({
+  groupBy: z.enum(["section_id", "priority", "type", "none"]).default("section_id"),
+  sectionId: z.coerce.bigint().optional(),
+  status: z.enum(["passed", "failed", "blocked", "retest", "untested"]).optional(),
+  assignedTo: z
+    .preprocess((value) => {
+      if (value === "" || value === "null") return null;
+      return value;
+    }, z.coerce.bigint().nullable())
+    .optional(),
+  q: z.string().trim().min(1).optional(),
+  ...runInstanceListFilterFields
+});
+
+export const caseExecutionHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(40)
 });
 
 export const addCasesToRunBodySchema = z.object({

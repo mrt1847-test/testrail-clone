@@ -252,15 +252,39 @@ describe("cases service", () => {
     ]);
   });
 
-  it("rejects target sections outside the project", async () => {
-    const { repo, service, project } = await seedCatalog();
+  it("copies cases into another project's section", async () => {
+    const { repo, service, project, firstCase } = await seedCatalog();
     const otherProject = await repo.createProject({ name: "Other", description: null, projectType: "multi_suite" });
     const otherSuite = (await repo.listSuitesByProject(otherProject.id))[0]!;
     const otherSection = await repo.createSection({ suiteId: otherSuite.id, parentSectionId: null, name: "Other Section" });
 
-    await expect(service.assertProjectScopedSection(project.id, otherSection.id)).rejects.toMatchObject({
-      code: "NOT_FOUND"
-    });
+    await service.assertProjectScopedSection(otherProject.id, otherSection.id);
+    const { scopedIds } = await service.resolveProjectScopedCaseIds(project.id, [firstCase.id]);
+    const result = await service.bulkCopyCases(scopedIds, otherSection.id);
+    expect(result.copied).toBe(1);
+
+    const copied = await repo.listCases({ sectionId: otherSection.id });
+    expect(copied).toHaveLength(1);
+    expect(copied[0]?.title).toBe("Checkout happy path");
+    expect(copied[0]?.projectId).toBe(otherProject.id);
+  });
+
+  it("moves cases into another project's section", async () => {
+    const { repo, service, project, sourceSection, firstCase } = await seedCatalog();
+    const otherProject = await repo.createProject({ name: "Other", description: null, projectType: "multi_suite" });
+    const otherSuite = (await repo.listSuitesByProject(otherProject.id))[0]!;
+    const otherSection = await repo.createSection({ suiteId: otherSuite.id, parentSectionId: null, name: "Other Section" });
+
+    await service.assertProjectScopedSection(otherProject.id, otherSection.id);
+    const { scopedIds } = await service.resolveProjectScopedCaseIds(project.id, [firstCase.id]);
+    const result = await service.bulkMoveCases(scopedIds, otherSection.id);
+    expect(result.moved).toBe(1);
+
+    const sourceCases = await repo.listCases({ sectionId: sourceSection.id });
+    const targetCases = await repo.listCases({ sectionId: otherSection.id });
+    expect(sourceCases).toHaveLength(1);
+    expect(targetCases).toHaveLength(1);
+    expect(targetCases[0]?.projectId).toBe(otherProject.id);
   });
 
   it("filters cases by query, priority, and case type", async () => {

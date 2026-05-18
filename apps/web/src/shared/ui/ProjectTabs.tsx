@@ -29,13 +29,10 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
   const primaryTabs = useMemo<TabSpec[]>(
     () => [
       { label: "Overview", to: base, end: true },
-      { label: "Test Cases", to: `${base}/cases` },
-      { label: "Test Runs", to: `${base}/runs` },
-      { label: "My Tests", to: `${base}/my-tests` },
-      { label: "Team to-do", to: `${base}/team-todo` },
-      { label: "Plans", to: `${base}/plans` },
+      { label: "Todo", to: `${base}/team-todo` },
       { label: "Milestones", to: `${base}/milestones` },
-      { label: "Results", to: `${base}/results` },
+      { label: "Test Runs", to: `${base}/runs` },
+      { label: "Test Cases", to: `${base}/cases` },
       { label: "Reports", to: `${base}/reports` }
     ],
     [base]
@@ -43,6 +40,9 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
 
   const secondaryTabs = useMemo<TabSpec[]>(
     () => [
+      { label: "My Tests", to: `${base}/my-tests` },
+      { label: "Plans", to: `${base}/plans` },
+      { label: "Results", to: `${base}/results` },
       { label: "Activity", to: `${base}/activity` },
       { label: "Automation", to: `${base}/automation` },
       { label: "Import/Export", to: `${base}/import-export` },
@@ -60,7 +60,7 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
 
   return (
     <nav className="border-b border-slate-200 bg-white px-4 py-2">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
           {primaryTabs.map((tab) => (
             <NavLink key={tab.to} to={tab.to} end={tab.end} className={navLinkClass}>

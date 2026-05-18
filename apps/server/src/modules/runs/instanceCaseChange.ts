@@ -62,7 +62,10 @@ export function enrichTestInstancesWithCaseChange(
       caseChanged: info.caseChanged,
       caseLockVersionAtRun: info.caseLockVersionAtRun,
       currentCaseLockVersion: info.currentCaseLockVersion,
-      changedFields: info.changedFields
+      changedFields: info.changedFields,
+      sectionId: testCase.sectionId,
+      casePriority: testCase.priority,
+      caseType: testCase.caseType
     };
   });
 }
@@ -70,6 +73,7 @@ export function enrichTestInstancesWithCaseChange(
 export function testCaseToLiveFields(row: {
   lockVersion: number;
   title: string;
+  sectionId: bigint;
   priority: string | null;
   caseType: string | null;
   automationKey: string | null;
@@ -79,6 +83,7 @@ export function testCaseToLiveFields(row: {
   return {
     lockVersion: row.lockVersion,
     title: row.title,
+    sectionId: row.sectionId,
     priority: row.priority,
     caseType: row.caseType,
     automationKey: row.automationKey,

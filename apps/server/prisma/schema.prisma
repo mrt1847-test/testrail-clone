@@ -100,6 +100,7 @@ model Project {
   milestones   Milestone[]
   configurationGroups ConfigurationGroup[]
   requirements Requirement[]
+  sharedSteps  SharedStep[]
   attachments  Attachment[]
   defectIntegrationSetting DefectIntegrationSetting?
   customFields CustomField[]
@@ -319,22 +320,63 @@ model TestCaseVersion {
   @@index([caseId, createdAt])
 }
 
-model TestCaseStep {
+model SharedStep {
+  id        BigInt    @id @default(autoincrement())
+  projectId BigInt
+  title     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy BigInt?
+  updatedBy BigInt?
+
+  project Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  entries SharedStepEntry[]
+  caseSteps TestCaseStep[]
+
+  @@index([projectId])
+  @@index([projectId, deletedAt])
+}
+
+model SharedStepEntry {
   id             BigInt    @id @default(autoincrement())
-  caseId         BigInt
+  sharedStepId   BigInt
   stepOrder      Int
   content        String
   expectedResult String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
-  createdBy      BigInt?
-  updatedBy      BigInt?
 
-  testCase TestCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  sharedStep SharedStep     @relation(fields: [sharedStepId], references: [id], onDelete: Cascade)
+  caseSteps  TestCaseStep[]
+
+  @@unique([sharedStepId, stepOrder])
+  @@index([sharedStepId])
+}
+
+model TestCaseStep {
+  id                BigInt    @id @default(autoincrement())
+  caseId            BigInt
+  stepOrder         Int
+  content           String
+  expectedResult    String?
+  sharedStepId      BigInt?
+  sharedStepEntryId BigInt?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  createdBy         BigInt?
+  updatedBy         BigInt?
+
+  testCase          TestCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  sharedStep        SharedStep?       @relation(fields: [sharedStepId], references: [id], onDelete: SetNull)
+  sharedStepEntry   SharedStepEntry?  @relation(fields: [sharedStepEntryId], references: [id], onDelete: SetNull)
 
   @@unique([caseId, stepOrder])
   @@index([caseId])
+  @@index([sharedStepId])
+  @@index([sharedStepEntryId])
 }
 
 model TestCaseScenario {

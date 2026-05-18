@@ -10,6 +10,7 @@ import type {
   SectionNode,
   TestCase
 } from "../types";
+import type { CaseGroupBy } from "../utils/caseRepositoryGrouping";
 
 type ApiCase = {
   id: string;
@@ -282,6 +283,103 @@ function buildCasesForSectionQuery(
   return params.toString();
 }
 
+export type SuiteSummary = {
+  suiteId: string;
+  projectId: string;
+  suiteName?: string;
+  suiteDescription?: string | null;
+  sectionCount: number;
+  activeCaseCount: number;
+  archivedCaseCount: number;
+  casesWithEstimateCount: number;
+  totalEstimateSeconds?: number;
+  totalEstimateDisplay?: string | null;
+};
+
+export type SuiteCaseGroup = {
+  groupKey: string;
+  groupLabel: string;
+  sectionId: string | null;
+  sectionName: string | null;
+  displayOrder: number;
+  parentSectionId: string | null;
+  cases: ApiCase[];
+};
+
+export type SuiteGroupedCasesResponse = {
+  groupBy: "section_id" | "priority" | "type" | "none";
+  groups: SuiteCaseGroup[];
+  cases: ApiCase[];
+  total: number;
+};
+
+export async function fetchSuiteSummary(projectId: string, suiteId: string): Promise<SuiteSummary> {
+  const res = await apiFetch<Ok<SuiteSummary>>(`/api/projects/${projectId}/suites/${suiteId}/summary`);
+  return res.data;
+}
+
+export async function fetchSuiteCaseTotal(
+  projectId: string,
+  suiteId: string,
+  state: CaseListFilters["state"] = "active"
+): Promise<number> {
+  const summary = await fetchSuiteSummary(projectId, suiteId);
+  if (state === "archived") return summary.archivedCaseCount;
+  return summary.activeCaseCount;
+}
+
+function buildSuiteCasesQuery(
+  sectionId: number | null,
+  filters: CaseListFilters,
+  display: "tree" | "subtree" | "compact",
+  groupBy: CaseGroupBy
+): string {
+  const params = new URLSearchParams({
+    groupBy,
+    display
+  });
+  if (sectionId != null) params.set("sectionId", String(sectionId));
+  if (filters.q.trim().length > 0) params.set("q", filters.q.trim());
+  if (filters.priority) params.set("priority", filters.priority);
+  if (filters.caseType) params.set("caseType", filters.caseType);
+  if (filters.automation) params.set("automation", filters.automation);
+  if (filters.refs) params.set("refs", filters.refs);
+  if (filters.labels) params.set("labels", filters.labels);
+  if (filters.estimate) params.set("estimate", filters.estimate);
+  if (filters.state) params.set("state", filters.state);
+  return params.toString();
+}
+
+export async function fetchSuiteGroupedCases(
+  projectId: string,
+  suiteId: string,
+  sectionId: number | null,
+  filters: CaseListFilters,
+  display: "tree" | "subtree" | "compact",
+  groupBy: CaseGroupBy
+): Promise<{
+  cases: TestCase[];
+  groupBy: CaseGroupBy;
+  groups: Array<{
+    groupKey: string;
+    groupLabel: string;
+    sectionId: number | null;
+    cases: TestCase[];
+  }>;
+}> {
+  const res = await apiFetch<Ok<SuiteGroupedCasesResponse>>(
+    `/api/projects/${projectId}/suites/${suiteId}/cases?${buildSuiteCasesQuery(sectionId, filters, display, groupBy)}`
+  );
+  const cases = res.data.cases.map(mapApiCaseToTestCase);
+  const groups = res.data.groups.map((group) => ({
+    groupKey: group.groupKey,
+    groupLabel: group.groupLabel,
+    sectionId: group.sectionId != null ? asNum(group.sectionId) : null,
+    cases: group.cases.map(mapApiCaseToTestCase)
+  }));
+  return { cases, groupBy: res.data.groupBy, groups };
+}
+
 export async function fetchCasesForSection(
   projectId: string,
   sectionId: number,
@@ -473,6 +571,10 @@ export type BulkArchiveCasesResult = {
   archived: boolean;
   items: Array<{ caseId: string; success: boolean; error: string | null }>;
 };
+
+export async function setCaseArchived(projectId: string, caseId: number, archived: boolean): Promise<void> {
+  await bulkArchiveCases(projectId, [caseId], archived);
+}
 
 export async function bulkArchiveCases(
   projectId: string,

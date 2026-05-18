@@ -10,7 +10,7 @@ export function AppShell({ top, children }: AppShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       {top}
-      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</div>
+      <div className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-6">{children}</div>
     </div>
   );
 }

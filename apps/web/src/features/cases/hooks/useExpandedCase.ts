@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { parseCaseDisplayMode, type CaseDisplayMode } from "../caseRepositoryView";
+import { parseCaseGroupBy, type CaseGroupBy } from "../utils/caseRepositoryGrouping";
 import type {
   CaseFilterAutomation,
   CasePresenceFilter,
@@ -86,6 +88,9 @@ export function useExpandedCase() {
     return Number.isNaN(n) ? null : n;
   }, [searchParams]);
 
+  const caseDisplay = useMemo(() => parseCaseDisplayMode(searchParams.get("display")), [searchParams]);
+  const caseGroupBy = useMemo(() => parseCaseGroupBy(searchParams.get("groupBy")), [searchParams]);
+
   const caseFilters = useMemo<CaseListFilters>(
     () => ({
       q: searchParams.get("q") ?? "",
@@ -134,6 +139,19 @@ export function useExpandedCase() {
     next.delete("panelCaseId");
     next.delete("panelMode");
     setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  /** Tree focus for suite-wide view: updates section anchor without closing the case panel. */
+  const setTreeFocusSection = useCallback((nextSectionId: number) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("sectionId", String(nextSectionId));
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const clearTreeFocusSection = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("sectionId");
+    setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const setCaseFilters = useCallback((patch: Partial<CaseListFilters>) => {
@@ -201,6 +219,20 @@ export function useExpandedCase() {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
+  const setCaseDisplay = useCallback((mode: CaseDisplayMode) => {
+    const next = new URLSearchParams(searchParams);
+    if (mode === "subtree") next.delete("display");
+    else next.set("display", mode);
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  const setCaseGroupBy = useCallback((groupBy: CaseGroupBy) => {
+    const next = new URLSearchParams(searchParams);
+    if (groupBy === "section_id") next.delete("groupBy");
+    else next.set("groupBy", groupBy);
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
   const applySavedView = useCallback((view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[] }) => {
     const next = new URLSearchParams(searchParams);
     if (view.sectionId != null) next.set("sectionId", String(view.sectionId));
@@ -242,11 +274,17 @@ export function useExpandedCase() {
     panelCaseId,
     panelMode,
     selectedSectionId,
+    caseDisplay,
+    caseGroupBy,
     caseFilters,
     caseColumns,
     setPanelCase,
     togglePanelCase,
     setSelectedSection,
+    setTreeFocusSection,
+    clearTreeFocusSection,
+    setCaseDisplay,
+    setCaseGroupBy,
     setCaseFilters,
     setCaseColumns,
     clearCaseFilters,

@@ -31,6 +31,12 @@ type ReportActivityRow = {
   createdAt?: string;
 };
 
+export type ProjectActivitySeriesPoint = {
+  date: string;
+  passed: number;
+  failed: number;
+};
+
 async function fetchFirstSuiteId(projectId: string): Promise<string | null> {
   const res = await apiFetch<Paged<{ id: string }>>(`/api/projects/${projectId}/suites?page=1&pageSize=1`);
   return res.data[0]?.id ?? null;
@@ -155,4 +161,15 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
       at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
     }))
   };
+}
+
+export async function fetchProjectActivitySeries(
+  projectId: string,
+  days = 60
+): Promise<{ points: ProjectActivitySeriesPoint[] }> {
+  const safeDays = Math.max(1, Math.min(90, days));
+  const res = await apiFetch<{ data: { points: ProjectActivitySeriesPoint[] } }>(
+    `/api/projects/${projectId}/activity-series?days=${safeDays}`
+  );
+  return res.data;
 }

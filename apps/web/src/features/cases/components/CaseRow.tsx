@@ -1,4 +1,4 @@
-import { useRef, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 
 import { hasRangeMultiSelectModifier } from "../../../shared/selection/rangeMultiSelect";
 import type { CaseListColumn, CaseVersion, TestCase } from "../types";
@@ -15,6 +15,7 @@ type CaseRowProps = {
   item: TestCase;
   isExpanded: boolean;
   isPanelOpen?: boolean;
+  isKeyboardFocused?: boolean;
   mode: "view" | "edit";
   detail: TestCase | null;
   versions?: CaseVersion[];
@@ -25,6 +26,8 @@ type CaseRowProps = {
   onSelectChange?: (checked: boolean) => void;
   onSelectClick?: (event: React.MouseEvent<HTMLInputElement>) => void;
   onOpenCase: () => void;
+  onRenameTitle?: (title: string) => Promise<void>;
+  isRenamingTitle?: boolean;
   onTogglePanel: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -65,6 +68,7 @@ export function CaseRow({
   item,
   isExpanded,
   isPanelOpen = false,
+  isKeyboardFocused = false,
   mode,
   detail,
   versions,
@@ -75,6 +79,8 @@ export function CaseRow({
   onSelectChange,
   onSelectClick,
   onOpenCase,
+  onRenameTitle,
+  isRenamingTitle = false,
   onTogglePanel,
   onEdit,
   onCloseDetail,
@@ -101,6 +107,13 @@ export function CaseRow({
   onRowDrop
 }: CaseRowProps) {
   const skipNextSelectChangeRef = useRef(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(item.title);
+
+  useEffect(() => {
+    if (!editingTitle) setTitleDraft(item.title);
+  }, [editingTitle, item.title]);
+
   const visibleColumnSet = new Set(visibleColumns);
   const activeCustomFields = (customFields ?? []).filter((field) => field.isActive);
   const visibleCustomValueChips = activeCustomFields
@@ -130,7 +143,13 @@ export function CaseRow({
 
   const rowClasses = [
     "relative flex items-center gap-2 pl-3 transition-colors",
-    isPanelOpen ? "bg-sky-50 ring-2 ring-inset ring-sky-200" : isExpanded ? "bg-slate-50" : "bg-white hover:bg-slate-50",
+    isPanelOpen
+      ? "bg-sky-50 ring-2 ring-inset ring-sky-200"
+      : isKeyboardFocused
+        ? "bg-amber-50/80 ring-2 ring-inset ring-amber-300"
+        : isExpanded
+          ? "bg-slate-50"
+          : "bg-white hover:bg-slate-50",
     isDraggingThis ? "opacity-50" : ""
   ]
     .filter(Boolean)
@@ -138,6 +157,7 @@ export function CaseRow({
 
   return (
     <article
+      data-case-row-id={item.id}
       className="relative border-b border-slate-100 last:border-0"
       onDragOver={onRowDragOver}
       onDragLeave={onRowDragLeave}
@@ -193,10 +213,58 @@ export function CaseRow({
           <span className="min-w-0 flex-1">
             <span className="block truncate">
               <span className="font-mono text-xs text-slate-500">{item.caseCode}</span>{" "}
-              <span className="text-slate-900">{item.title}</span>
+              {editingTitle && onRenameTitle ? (
+                <input
+                  type="text"
+                  value={titleDraft}
+                  disabled={isRenamingTitle}
+                  autoFocus
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === "Escape") {
+                      setTitleDraft(item.title);
+                      setEditingTitle(false);
+                    }
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void (async () => {
+                        const next = titleDraft.trim();
+                        if (next.length === 0 || next === item.title) {
+                          setEditingTitle(false);
+                          setTitleDraft(item.title);
+                          return;
+                        }
+                        await onRenameTitle(next);
+                        setEditingTitle(false);
+                      })();
+                    }
+                  }}
+                  onBlur={() => {
+                    setTitleDraft(item.title);
+                    setEditingTitle(false);
+                  }}
+                  className="ml-1 w-[min(100%,28rem)] rounded border border-slate-300 px-1.5 py-0.5 text-sm text-slate-900"
+                />
+              ) : (
+                <span
+                  className="text-slate-900"
+                  onDoubleClick={(event) => {
+                    if (!onRenameTitle || item.archivedAt) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setTitleDraft(item.title);
+                    setEditingTitle(true);
+                  }}
+                  title={onRenameTitle ? "Double-click to edit title" : undefined}
+                >
+                  {item.title}
+                </span>
+              )}
               {item.archivedAt ? (
                 <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                  Archived
+                  Deleted
                 </span>
               ) : null}
             </span>

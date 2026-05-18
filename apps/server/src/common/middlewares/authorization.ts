@@ -138,6 +138,22 @@ export async function requireProjectPermission(
     throw new AppError("FORBIDDEN", "unable to resolve project for authorization", 403);
   }
 
+  await requireProjectPermissionForProject(req, deps, projectId, permission, options);
+}
+
+export async function requireProjectPermissionForProject(
+  req: FastifyRequest,
+  deps: { authService: AuthService; prisma?: PrismaClient },
+  projectId: bigint,
+  permission: ProjectPermission,
+  options?: { skipArchivedCheck?: boolean }
+) {
+  const user = await getAuthenticatedUser(req, deps);
+
+  if (!deps.prisma) {
+    return;
+  }
+
   const access = await resolveProjectAccess(deps.prisma, user.id, projectId);
   if (!access || !hasProjectPermission(access.permissions, permission)) {
     throw new AppError("FORBIDDEN", `missing permission: ${permission}`, 403);

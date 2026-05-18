@@ -81,9 +81,9 @@ flowchart LR
 | TestRail 영역 | 클론 | 일치도 |
 |---------------|------|--------|
 | 3-pane workbench | 트리 \| 목록 \| 상세 패널 | **있음** (트리 위치만 좌↔우 반대) |
-| 가운데 **전체 suite 그룹 테이블** | **선택 섹션 `direct` 케이스만** (`sectionScope: "direct"` 고정) | **없음** (구조적 갭) |
-| display subtree/compact | subtree API 있으나 UI 미노출 | 없음 |
-| content-header (Run Test 등) | `ProjectLayout` 탭만; 케이스 전용 헤더 없음 | 없음 |
+| 가운데 **전체 suite 그룹 테이블** | `subtree`/`compact` 시 `sectionId` 없이 suite 전체 로드 + 섹션 헤더 그룹 | **있음** (`tree` 모드만 단일 섹션 direct) |
+| display subtree/compact | `?display=subtree\|tree\|compact` + `CaseRepositoryDisplayMenu` | **부분** |
+| content-header (Run Test 등) | `ProjectContentHeader` + `CaseRepositoryContentHeader` (공통 Reports/Defects) | **부분** (다른 탭에도 variant 적용) |
 | Reports/Defects 드롭다운 | Reports 별도 탭; Defects 외부 연동 일부 | 부분 |
 | Shared Test Steps | 미구현 ([FEATURE_CHECKLIST](../../FEATURE_CHECKLIST.md) P2) | 없음 |
 | Import/Export/Copy in header | `ImportExportPage` 별도 라우트 | 부분 |
@@ -92,10 +92,10 @@ flowchart LR
 | Edit selected / view / filter | bulk edit, archive, delete | 부분 |
 | QPane | `CaseDetailSidePanel` + `CaseDetailPage` 라우트 | 부분 |
 | Section tree + Add Section | `SectionTreePane` (왼쪽) | 있음 |
-| Suite stats / estimates | 없음 (트리 상단 메타 약함) | 없음 |
-| DnD cases/sections | `useCaseListDnD`, section reorder | 부분 |
-| Mark deleted vs permanent | bulk delete / archive 정책 확인 필요 | 부분 |
-| 키보드 C/S/R/Q/J/K | 일부만 | 부분 |
+| Suite stats / estimates | `SuiteRepositoryStats` + `SuiteEstimatesBubble` | **있음** (Wave D) |
+| DnD cases/sections | `useCaseListDnD`, section reorder | **있음** (행·섹션·append zone) |
+| Mark deleted vs permanent | Active: Mark as deleted; Archived: Undelete + Delete permanently (`caseDeleteCopy`) | **있음** |
+| 키보드 C/S/R/Q/J/K | `useCaseRepositoryKeyboard` + J/K/Q | **있음** (Wave E) |
 
 ---
 
@@ -119,51 +119,51 @@ flowchart LR
 | Run Test | `runs/add/3588/2` | 런 생성 라우트만 | `CaseRepositoryHeader`: Run Test → run create w/ suite |
 | Reports | suite-scoped `add_job` 메뉴 | 프로젝트 Reports | 헤더 Reports 드롭다운 → 기존 report 라우트 + suite 쿼리 |
 | Defects | Jira CreateIssue URL | defect integration 설정 | `DefectsDropdown` (외부 URL from settings) |
-| Shared Steps | `shared_steps/overview/222` | 없음 | 별도 epic; 헤더 링크 placeholder |
+| Shared Steps | `shared_steps/overview/222` | `/shared-steps` CRUD + 케이스 Insert shared | Wave G |
 | Print | `suites/plot/3588` | `CasesPrintPage` | 헤더 Print 링크 |
 | Export XML/CSV/Excel | `#exportDropdown` | Import/Export 페이지 + jobs | 헤더 Export + 다이얼로그 |
 | Import XML/CSV | 4-step CSV wizard | wizard on Import/Export | 헤더 Import 동일 플로우 진입 |
-| Copy/Move cases | `#selectCasesDialog` cross-project | `MoveCopyChooserDialog` 섹션 간 | cross-suite/project 복사 UI |
+| Copy/Move cases | `#selectCasesDialog` cross-project | `CaseBulkRelocationDialog` + 헤더 | **있음** (프로젝트·스위트·섹션 대상) |
 
 ### 4.3 툴바·테이블 (P1)
 
 | 항목 | TestRail | 클론 | 좁히기 |
 |------|----------|------|--------|
-| Columns | per-user width `selectColumnsDialog` | `CaseListColumn[]` 토글 | user column prefs API |
-| Sort/Group | 15+ `setCaseGrouping` | 없음 (섹션 트리 선택으로 대체) | groupBy 드롭다운 + API |
+| Columns | per-user width `selectColumnsDialog` | `CaseColumnsDialog` + localStorage | user column prefs API (width 추후) |
+| Sort/Group | 15+ `setCaseGrouping` | Sort 드롭다운 (Section/Priority/Type/None) | 추가 groupBy + API |
 | Filter bubble | `filterCasesBubble` | toolbar 필터 필드 | 고급 필터 패널 |
-| Display Deleted | toolbar toggle | archived filter | 동일 토글 + deleted 상태 |
-| Bulk Edit | edit selected / view / all in filter | bulk update | 동일 3-scope 메뉴 |
-| Inline title edit | `#editCaseDialog` | drawer / detail | 행 인라인 제목 편집 |
+| Display Deleted | toolbar toggle | Display deleted 토글 (`state=archived`) | soft delete 분리 (Wave E) |
+| Bulk Edit | edit selected / view / all in filter | Edit▼ 3-scope → bulk update | Move/Archive도 동일 scope |
+| Inline title edit | `#editCaseDialog` | 행 더블클릭 인라인 제목 | **있음** (Wave F) |
 
 ### 4.4 사이드바·메타 (P2)
 
 | 항목 | TestRail | 클론 | 좁히기 |
 |------|----------|------|--------|
-| Section/case counts | `Contains 16 sections and 140 cases` | 없음 | `GET /suites/:id/stats` |
-| Estimates bubble | `App.Suites.applyEstimates` | 없음 | estimate/forecast 요약 |
-| Edit suite description | `editDescription` | suite settings? | 사이드바 링크 |
-| Add Test Case (sidebar) | 큰 버튼 | 트리/툴바 Add | 사이드바 primary CTA |
+| Section/case counts | `Contains 16 sections and 140 cases` | `SuiteRepositoryStats` | **있음** |
+| Estimates bubble | `App.Suites.applyEstimates` | `SuiteEstimatesBubble` (forecast 합계) | **있음** |
+| Edit suite description | `editDescription` | 사이드바 Edit description | **있음** |
+| Add Test Case (sidebar) | 큰 버튼 | 사이드바 primary CTA | **있음** |
 
 ### 4.5 삭제·버전·편집 (P1)
 
 | 항목 | TestRail | 클론 | 좁히기 |
 |------|----------|------|--------|
-| Mark as Deleted | soft delete, 복구 가능 | archive? | `is_deleted` + restore from history |
-| Delete Permanently | tests/results 제거 | hard delete API 여부 확인 | 2단계 confirm dialog TR 문구 정합 |
+| Mark as Deleted | soft delete, 복구 가능 | Mark as deleted (archive) + Undelete | **있음** (Wave E) |
+| Delete Permanently | tests/results 제거 | hard delete + TR confirm copy | **있음** (deleted view bulk + case panel) |
 | Case history / versions | QPane·history | version API + `ExpandableCaseDetail` | QPane History 탭 |
 
 ### 4.6 키보드 (P2)
 
 | 키 | TestRail | 클론 |
 |----|----------|------|
-| Q | QPane toggle | 패널 열기 (부분) |
-| J/K | next/prev case | 미구현 |
-| C | add case | Add (부분) |
-| S | add section | SectionTree (부분) |
-| R | run test | 미구현 |
-| E | edit suite description | 미구현 |
-| D | push defect | 미구현 |
+| Q | QPane toggle | Q toggle panel | **있음** |
+| J/K | next/prev case | J/K focus rows | **있음** |
+| C | add case | C → Add Case | **있음** |
+| S | add section | S → new section input | **있음** |
+| R | run test | R → Run Test | **있음** |
+| E | edit suite description | E → description dialog | **있음** |
+| D | push defect | D → Add defect URL | **있음** (integration URL template) |
 
 ---
 
@@ -183,35 +183,56 @@ flowchart LR
 1. `CaseRepositoryHeader`: Run Test, Reports, Defects, Shared Steps(disabled), Print, Export▼, Import▼, Copy/Move.
 2. Defects → 프로젝트 defect plugin URL (`Add Defect` 새 탭).
 
-### Wave C — 툴바 정합 (P1, 1 PR)
+### Wave C — 툴바 정합 (P1, 1 PR) ✅
 
-1. Columns dialog + width (optional v1: column set only).
-2. groupBy / Sort dropdown.
-3. Display Deleted toggle.
-4. Edit▼ (selected / current view / all in filter).
+1. `CaseColumnsDialog` (`#selectColumnsDialog` 스타일) + column set.
+2. `groupBy` URL + Sort 드롭다운 (Section / Priority / Type / No grouping).
+3. Display deleted 토글 (`state=archived`).
+4. Edit▼ → selected / current view / all matching filter → bulk update.
 
-### Wave D — 사이드바·레이아웃 (P2)
+### Wave D — 사이드바·레이아웃 (P2) ✅
 
-1. 트리를 **우측**으로 이동 (TR parity) 또는 설정으로 좌/우 선택.
-2. Suite stats + estimates bubble.
-3. Sidebar Add Test Case.
+1. 트리 **우측** 기본 + localStorage로 좌/우 전환.
+2. `SuiteRepositoryStats` + `SuiteEstimatesBubble` (`totalEstimateDisplay` API).
+3. Sidebar Add Test Case + Edit suite description.
 
-### Wave E — 삭제·키보드·Shared Steps (P2+)
+### Wave E — 삭제·키보드·Shared Steps (P2+) ✅
 
-1. Mark deleted / permanent 2단계.
-2. J/K/Q/R 단축키.
-3. Shared Steps 모듈.
+1. Mark as deleted / Undelete / Delete permanently (2단계 confirm, TR copy).
+2. J/K/Q + C/S/R/E/D 단축키 (`useCaseRepositoryKeyboard`).
+3. Shared Steps 헤더 링크 + `/shared-steps` placeholder page.
+
+### Wave F — Copy/Move·인라인 편집 (P1 후속) ✅
+
+1. 헤더 **Copy/Move Cases** → 선택 케이스 일괄 복사·이동 (`CaseBulkRelocationDialog`).
+2. 선택 바 **Copy / Move** 동일 다이얼로그 (Move + Copy).
+3. 행 제목 **더블클릭** 인라인 편집.
+
+### Wave G — Shared Steps CRUD·케이스 링크 (P2) ✅
+
+1. `SharedStep` / `SharedStepEntry` 엔티티 + REST `/api/projects/:id/shared-steps`.
+2. `SharedStepsPage` 목록·생성·편집·삭제.
+3. 케이스 편집 **Insert shared** → `POST /api/cases/:caseId/shared-steps/:sharedStepId` (연동 스텝 동기화).
+4. `GET /api/v2/get_shared_steps/{project_id}` 실데이터 반환.
+
+### Wave H — cross-project Copy/Move (P1) ✅
+
+1. `CaseBulkRelocationDialog`: 대상 **프로젝트 → 스위트 → 섹션** 선택 (`#selectCasesDialog` 수준).
+2. API: 소스 프로젝트 URL + 대상 섹션(타 프로젝트) 권한 검사; 이동 시 `projectId` 동기화.
 
 ---
 
 ## 6. API·데이터 선행
 
-| capability | 제안 |
-|------------|------|
-| Suite grouped cases | `GET /api/suites/:suiteId/cases?display=subtree&sectionId=&groupBy=section_id` |
-| Suite stats | `GET /api/suites/:suiteId/summary` → sectionCount, caseCount, forecast |
-| User columns | `preferences.caseColumns[suiteId]` |
-| Soft delete | `PATCH cases/:id { isDeleted }` + `displayDeleted` query |
+| capability | 제안 | 상태 |
+|------------|------|------|
+| Suite grouped cases | `GET .../cases?groupBy=section_id\|priority\|type\|none` | **있음** (서버 `buildSuiteCaseGroups`) |
+| Suite stats | `GET /api/projects/:projectId/suites/:suiteId/summary` → sectionCount, active/archived caseCount, casesWithEstimateCount | **있음** |
+| User columns | `preferences.caseColumns[suiteId]` | **부분** (localStorage per suite; server prefs 추후) |
+| Shared steps | `GET/POST /api/projects/:id/shared-steps`, case link | **있음** (Wave G) |
+| Soft delete | `PATCH cases/:id { isDeleted }` + `displayDeleted` query | **부분** (archived + Display archived 토글; permanent/soft 분리는 Wave E) |
+
+**UI (TestRail식, 2026-05):** `#contentToolbar` 스타일 `CaseRepositoryToolbar`, `#groupContainer` 섹션 그룹 테이블, **우측** 섹션 트리, 사이드바 **Add Test Case** + suite summary API 연동.
 
 ---
 
@@ -229,13 +250,13 @@ Run 생성·케이스 피커는 **이 저장소 워크벤치와 동일한 그리
 
 ## 8. 완료 게이트 (Case Repository “TestRail-like”)
 
-- [ ] 가운데 그리드가 **선택 섹션의 subtree(또는 전체 tree)** 를 섹션 헤더와 함께 보여준다.
-- [ ] 트리·필터·선택 케이스가 URL에 남는다.
-- [ ] 헤더에서 Run Test, Export, Import, Defects(Add)에 도달할 수 있다.
-- [ ] Columns / groupBy / Display Deleted가 TestRail과 동등하게 동작한다.
-- [ ] QPane(상세 패널)을 닫지 않고 5건 이상 케이스를 열람·편집할 수 있다.
-- [ ] 섹션·케이스 DnD가 가능하다.
-- [ ] 삭제가 soft(표시)와 permanent로 구분된다.
+- [x] 가운데 그리드가 **선택 섹션의 subtree(또는 전체 tree)** 를 섹션 헤더와 함께 보여준다. (Wave A: `display=subtree` 기본, `tree`/`compact` 분기)
+- [x] 트리·필터·선택 케이스가 URL에 남는다. (`sectionId`, `panelCaseId`, `display`, 필터 쿼리)
+- [x] 헤더에서 Run Test, Export, Import, Defects(Add)에 도달할 수 있다. (Wave B: `ProjectContentHeader`, Defects/Reports 드롭다운)
+- [x] Columns / groupBy / Display Deleted가 TestRail과 동등하게 동작한다. (Wave C: v1 column set, 4 group modes, archived toggle, Edit 3-scope)
+- [x] QPane(상세 패널)을 닫지 않고 5건 이상 케이스를 열람·편집할 수 있다. (J/K/Q + `CaseDetailSidePanel`; 편집은 패널/전체 페이지)
+- [x] 섹션·케이스 DnD가 가능하다. (`useCaseListDnD` + 섹션 트리 DnD)
+- [x] 삭제가 soft(표시)와 permanent로 구분된다. (Wave E: Mark as deleted vs Delete permanently)
 
 ---
 
@@ -257,8 +278,7 @@ Run 생성·케이스 피커는 **이 저장소 워크벤치와 동일한 그리
 
 ## 10. 다음 액션
 
-1. [NEXT_ACTIONS.md](../../NEXT_ACTIONS.md)에 **Case Repository Wave A (suite-grouped grid + display modes)** 를 P0로 추가.
-2. [RUN_EXECUTION_VIEW_PARITY.md](./RUN_EXECUTION_VIEW_PARITY.md) Wave A(런 섹션 테이블)와 **공통 `GroupedTestTable` 추출** 검토.
-3. Wave A 착수 전 `CaseListPane`의 `sectionScope: "direct"` 하드코딩 제거가 첫 커밋 단위가 되도록 한다.
+1. [RUN_EXECUTION_VIEW_PARITY.md](./RUN_EXECUTION_VIEW_PARITY.md)와 **공통 `GroupedTestTable` 추출** 검토.
+2. 서버 column prefs, filter bubble 고도화.
 
 이 문서는 제공된 HTML 및 `App.Suites.*` 초기화 스크립트를 기준으로 한다.

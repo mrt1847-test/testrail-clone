@@ -2,6 +2,10 @@ type Props = {
   isNavigating: boolean;
   onNextFailed: () => void;
   onNextBlocked: () => void;
+  onNextUntested?: () => void;
+  onPassAndNext?: () => void;
+  jumpToNext?: boolean;
+  onJumpToNextChange?: (enabled: boolean) => void;
   onPrevTest: () => void;
   onNextTest: () => void;
   onShowShortcuts?: () => void;
@@ -16,6 +20,10 @@ export function RunExecutionToolbar({
   isNavigating,
   onNextFailed,
   onNextBlocked,
+  onNextUntested,
+  onPassAndNext,
+  jumpToNext,
+  onJumpToNextChange,
   onPrevTest,
   onNextTest,
   onShowShortcuts,
@@ -23,12 +31,22 @@ export function RunExecutionToolbar({
 }: Props) {
   const buttons = (
     <>
+      {onPassAndNext ? (
+        <button type="button" className={btnClass} disabled={isNavigating} onClick={onPassAndNext} title="Pass and go to next (P)">
+          Pass &amp; Next
+        </button>
+      ) : null}
       <button type="button" className={btnClass} disabled={isNavigating} onClick={onNextFailed} title="Next failed (F)">
         Failed →
       </button>
       <button type="button" className={btnClass} disabled={isNavigating} onClick={onNextBlocked} title="Next blocked (B)">
         Blocked →
       </button>
+      {onNextUntested ? (
+        <button type="button" className={btnClass} disabled={isNavigating} onClick={onNextUntested} title="Next untested (U)">
+          Untested →
+        </button>
+      ) : null}
       <button type="button" className={btnClass} disabled={isNavigating} onClick={onPrevTest} title="Previous test (K)">
         ← Prev
       </button>
@@ -39,6 +57,17 @@ export function RunExecutionToolbar({
         <button type="button" className={btnClass} onClick={onShowShortcuts} title="Keyboard shortcuts">
           ?
         </button>
+      ) : null}
+      {onJumpToNextChange != null && jumpToNext != null ? (
+        <label className="ml-1 inline-flex items-center gap-1 text-[10px] text-slate-600">
+          <input
+            type="checkbox"
+            className="rounded border-slate-300"
+            checked={jumpToNext}
+            onChange={(e) => onJumpToNextChange(e.target.checked)}
+          />
+          Jump to next
+        </label>
       ) : null}
     </>
   );

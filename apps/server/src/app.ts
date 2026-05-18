@@ -23,6 +23,7 @@ import { registerReportsRoutes } from "./modules/reports/reports.routes.js";
 import { registerSavedReportsRoutes } from "./modules/reports/savedReports.routes.js";
 import { registerScheduledReportsRoutes } from "./modules/reports/scheduledReports.routes.js";
 import { registerRequirementsRoutes } from "./modules/requirements/requirements.routes.js";
+import { registerSharedStepsRoutes } from "./modules/sharedSteps/sharedSteps.routes.js";
 import { registerSectionsRoutes } from "./modules/sections/sections.routes.js";
 import { SectionsService } from "./modules/sections/sections.service.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
@@ -69,7 +70,7 @@ export function buildApp() {
   void registerAuthRoutes(app, { authService });
   void registerActivityRoutes(app, { authService, prisma });
   void registerProjectsRoutes(app, { projectsService, authService, prisma });
-  void registerSuitesRoutes(app, { suitesService, authService, prisma });
+  void registerSuitesRoutes(app, { suitesService, casesService, authService, prisma });
   void registerSectionsRoutes(app, { sectionsService, authService, prisma });
   void registerCasesRoutes(app, { casesService, authService, prisma, compositionSync });
   void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
@@ -81,6 +82,7 @@ export function buildApp() {
   void registerSavedReportsRoutes(app, { prisma, authService });
   void registerScheduledReportsRoutes(app, { prisma, authService });
   void registerRequirementsRoutes(app, { prisma, authService });
+  void registerSharedStepsRoutes(app, { prisma, authService, casesService });
   void registerIntegrationsRoutes(app, { prisma, authService });
   void registerImportExportRoutes(app, { prisma, authService });
   void registerTestRailRoutes(app, {
