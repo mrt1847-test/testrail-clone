@@ -13,6 +13,7 @@ const baseSnapshot = {
 const baseCase = {
   lockVersion: 2,
   title: "Login",
+  sectionId: 1n,
   priority: "high",
   caseType: "functional",
   automationKey: "AUTH-1",
