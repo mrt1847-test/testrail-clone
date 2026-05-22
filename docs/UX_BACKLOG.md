@@ -97,6 +97,7 @@ Done when:
 - [ ] Selecting a section updates the table without losing the tree.
 - [ ] Selecting a case opens detail without leaving the repository context.
 - [ ] Editing a case gives enough width for steps, custom fields, attachments, and history.
+- [ ] The center table shows all cases in the suite grouped by section (not just one section at a time).
 - [ ] Bulk operation feedback stays near the table.
 
 ## Phase 3 - Run List And Run Creation
@@ -129,7 +130,7 @@ Problem: this is the most important TestRail workflow. It must prioritize speed 
 Target shape:
 
 - Left or side: status filter counts and run navigation.
-- Center: test table with status dropdown, assignee, elapsed, defects, and latest result cues.
+- Center: section-grouped test table with status dropdown, assignee, elapsed, defects, and latest result cues.
 - Right: selected test detail/result pane with case context, history, attachments, defects, comments.
 - Top toolbar: add result, pass & next, next failed/blocked/untested, bulk actions, close/reopen.
 
@@ -147,6 +148,7 @@ Done when:
 - [ ] A user can filter to failed tests in one click from visible counts.
 - [ ] A user can submit pass/fail and move to the next relevant test without returning to the table manually.
 - [ ] The selected test detail does not hide the test list.
+- [ ] Navigating between tests using 'Pass & Next' keeps the QPane open and updates URL state.
 - [ ] Closed runs clearly become read-only.
 
 ## Phase 5 - My Tests And Team Workload

@@ -210,3 +210,4 @@ For each walkthrough, record:
 Start with a design/implementation PR for the run execution workbench. It should be judged by the ability to execute, filter, navigate, and review tests without losing the table/detail context.
 
 **Concrete breakdown (HTML snapshot, region mapping, waves A–E):** [references/testrail/RUN_EXECUTION_VIEW_PARITY.md](./references/testrail/RUN_EXECUTION_VIEW_PARITY.md).
+- Target action is currently queued as **Current batch** in [NEXT_ACTIONS.md](../../NEXT_ACTIONS.md).

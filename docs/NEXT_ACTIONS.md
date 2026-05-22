@@ -17,20 +17,22 @@ Goal: keep the next development batch to roughly one PR. Direction lives in [ROA
 
 ## Current batch
 
-**Section:** Keyboard, Selection, And List Ergonomics
+**Section:** TestRail UI/UX Realignment
 
 **Checklist line (exact line done when this is `[x]`):**
 
-- [ ] P1 Remember last filter, sort, and column set per page per user.
+- [ ] **TR-Core** P0 Run execution workbench shell: persistent status count sidebar/rail, compact test table, and selected-test detail/result pane visible together without losing context.
 
 ### Scope (only what closes the line above)
 
-- Persist list filter, sort, and visible column preferences per user per page (localStorage baseline).
+- Implement the `[ RunSectionTree | TestInstanceTable | QPane ]` 3-pane layout in `RunDetailPage.tsx` (Wave A from RUN_EXECUTION_VIEW_PARITY.md).
+- Add `RunSectionTree` component to filter by `groupId` / section.
+- Sync `testId`, `sectionId`, and `groupBy` state in the URL.
 
 ### Out of scope for this batch
 
-- Compare two runs side-by-side — shipped.
-- Column width persistence (separate checklist line).
+- Pass & Next, inline status dropdowns, and keyboard shortcuts (these belong to the execution speed checklist line / Wave B).
+- Cross-run history and defects tabs in QPane (Wave E).
 
 ---
 
@@ -40,8 +42,7 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 0 | TestRail UI/UX (Case repository) | **Wave C** — [CASE_REPOSITORY_VIEW_PARITY.md](./references/testrail/CASE_REPOSITORY_VIEW_PARITY.md): Columns / groupBy / Display Deleted toolbar |
-| 1 | Keyboard, Selection, And List Ergonomics | P1 Column width and visibility persistence |
-| 2 | Reporting And Collaboration Shortcuts | P1 Export current filtered view; report filter presets |
-| 3 | Reporting And Collaboration Shortcuts | P1 Copy chart/table summary to clipboard |
-| 4 | Reporting And Collaboration Shortcuts | P1 @mention autocomplete; comment templates; rich text comments |
+| 1 | TestRail UI/UX Realignment | **TR-Core** P0 Run execution speed actions: row status dropdown, Add Result, Pass & Next, next failed/blocked/untested... |
+| 2 | TestRail UI/UX Realignment | **TR-Core** P0 Case repository workbench shell: left suite/section tree, center compact case table, right selected-case detail pane... |
+| 3 | TestRail UI/UX Realignment | **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports... |
+| 4 | Keyboard, Selection, And List Ergonomics | P1 Remember last filter, sort, and column set per page per user. |

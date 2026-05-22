@@ -52,11 +52,11 @@ Priorities:
 
 Product-wide UX direction for core QA workflows (gap detail: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation waves: [UX_BACKLOG.md](./UX_BACKLOG.md)):
 
-- Project dashboards: operational summary and execution graphs; drilldowns from widgets where useful.
+- Project dashboards: operational summary, 60-day execution line graphs, and 2-column compact summaries; drilldowns from widgets where useful.
 - Milestones visible in primary navigation; milestone detail shows rollup and linked runs.
-- Execution lists compact and scannable; results from status/row actions, not extra table columns.
-- Reports: shared header, filter bar, summary strip, export, drilldown links.
-- Low-frequency admin/settings out of crowded primary tabs.
+- Case repository: 3-pane workbench (tree, section-grouped grid, detail pane) preserving context.
+- Execution lists: 3-pane workbench (status/tree rail, compact test table, QPane) prioritizing extreme speed and 1-click results.
+- Reports & Admin: TestRail-like template catalog for reports; low-frequency admin/settings out of crowded primary tabs.
 
 Exit criteria:
 - Users can create and organize cases, compose runs, execute results, and review outcomes without hidden API-only paths.
