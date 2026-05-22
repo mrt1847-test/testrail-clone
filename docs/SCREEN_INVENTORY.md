@@ -165,6 +165,9 @@
 - Error state: 패널 단위 에러 fallback
 - MVP 여부: 필수
 - Later 확장 여부: 배치 결과 입력, 단축키 워크플로우
+- Screenshot walkthrough notes:
+  - Desktop: header 바로 아래 실행 workbench에서 status rail, section tree, compact test table, QPane이 같은 row에 유지되어 선택 테스트의 결과 입력/이력 확인 중에도 런 상태와 섹션 맥락을 잃지 않는다.
+  - Narrow: mobile status summary가 먼저 보이고 workbench는 status rail, section tree, table, QPane 순서로 세로 적층된다. `testId`, `sectionId`, `groupBy` URL 상태로 새로고침 후 같은 실행 맥락을 복원한다.
 
 ### Screen: Run Result History (Optional Dedicated)
 - Route: `/projects/:projectId/runs/:runId/results`

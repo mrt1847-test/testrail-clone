@@ -40,6 +40,7 @@ type Props = {
   canReopenRun: boolean;
   isReopenRunPending: boolean;
   onReopenRun: () => void;
+  readOnly?: boolean;
 };
 
 function bulkFeedbackClass(feedback: BulkResultFeedback) {
@@ -87,7 +88,8 @@ export function RunActionsPanel(props: Props) {
     onOpenCloseRunDialog,
     canReopenRun,
     isReopenRunPending,
-    onReopenRun
+    onReopenRun,
+    readOnly = false
   } = props;
 
   const failureRows =
@@ -103,6 +105,11 @@ export function RunActionsPanel(props: Props) {
     <div className="space-y-2">
       <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
         <p className="mb-2 font-medium text-slate-700">Bulk manual result entry</p>
+        {readOnly ? (
+          <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-slate-600">
+            This run is closed. Bulk result entry is read-only until the run is reopened.
+          </p>
+        ) : null}
         {bulkFeedback ? (
           <div className={bulkFeedbackClass(bulkFeedback)} role="status">
             <div className="flex items-start justify-between gap-2">
@@ -135,6 +142,7 @@ export function RunActionsPanel(props: Props) {
             options={statusOptions}
             selectedId={bulkActiveStatus.id}
             disableUntested={bulkDisableUntested}
+            disabled={readOnly}
             columns={3}
             onSelect={(option) => onBulkStatusChange(option.canonicalStatus)}
           />
@@ -143,12 +151,13 @@ export function RunActionsPanel(props: Props) {
             className="w-full rounded border border-slate-300 px-2 py-1"
             placeholder="comment (optional)"
             value={bulkComment}
+            disabled={readOnly}
             onChange={(e) => onBulkCommentChange(e.target.value)}
           />
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-            disabled={!canBulkSubmit}
+            disabled={readOnly || !canBulkSubmit}
             onClick={onBulkSubmit}
           >
             {isBulkPending ? "Applying…" : `Apply to selected (${selectedCount})`}
@@ -181,6 +190,7 @@ export function RunActionsPanel(props: Props) {
           <select
             className="flex-1 rounded border border-slate-300 px-2 py-1"
             value={assigneeInput}
+            disabled={readOnly}
             onChange={(e) => onAssigneeInputChange(e.target.value)}
           >
             <option value="">Unassigned</option>
@@ -190,7 +200,12 @@ export function RunActionsPanel(props: Props) {
               </option>
             ))}
           </select>
-          <button type="button" className="rounded border border-slate-300 px-2 py-1" disabled={isAssignPending} onClick={onAssignRun}>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1"
+            disabled={readOnly || isAssignPending}
+            onClick={onAssignRun}
+          >
             Assign
           </button>
         </div>

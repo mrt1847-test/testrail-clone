@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -20,10 +20,11 @@ const suiteStorageKey = (projectId: string) => `cases:active-suite:${projectId}`
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const defectAddUrl = useDefectAddUrl(projectId);
   const [selectedSuiteId, setSelectedSuiteId] = useState(() => {
     if (typeof window === "undefined") return "";
-    return window.localStorage.getItem(suiteStorageKey(projectId)) ?? "";
+    return searchParams.get("suiteId") ?? window.localStorage.getItem(suiteStorageKey(projectId)) ?? "";
   });
   const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(
     projectId,
@@ -37,6 +38,7 @@ export function TestCaseWorkspace() {
     caseDisplay,
     setSelectedSection,
     setTreeFocusSection,
+    clearTreeFocusSection,
     setPanelCase
   } = useExpandedCase();
   const { treeSide, toggleTreeSide } = useCaseRepositoryTreeSide(projectId);
@@ -70,21 +72,42 @@ export function TestCaseWorkspace() {
   });
 
   useEffect(() => {
+    const suiteIdFromUrl = searchParams.get("suiteId");
+    if (!suiteIdFromUrl || suiteIdFromUrl === selectedSuiteId) return;
+    setSelectedSuiteId(suiteIdFromUrl);
+    window.localStorage.setItem(suiteStorageKey(projectId), suiteIdFromUrl);
+  }, [projectId, searchParams, selectedSuiteId]);
+
+  useEffect(() => {
     if (!bundle?.suiteId) return;
     setSelectedSuiteId(bundle.suiteId);
     window.localStorage.setItem(suiteStorageKey(projectId), bundle.suiteId);
-  }, [bundle?.suiteId, projectId]);
+    if (searchParams.get("suiteId") === bundle.suiteId) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("suiteId", bundle.suiteId);
+    setSearchParams(next, { replace: true });
+  }, [bundle?.suiteId, projectId, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (sectionsLoading || sections.length === 0 || caseDisplay !== "tree") return;
+    if (sectionsLoading || sections.length === 0) return;
     const valid =
       selectedSectionId != null &&
       !Number.isNaN(selectedSectionId) &&
       sections.some((s) => s.id === selectedSectionId);
-    if (!valid) {
+    if (valid) return;
+    if (caseDisplay === "tree") {
       setSelectedSection(sections[0]!.id);
+    } else if (selectedSectionId != null) {
+      clearTreeFocusSection();
     }
-  }, [caseDisplay, sectionsLoading, sections, selectedSectionId, setSelectedSection]);
+  }, [
+    caseDisplay,
+    clearTreeFocusSection,
+    sectionsLoading,
+    sections,
+    selectedSectionId,
+    setSelectedSection
+  ]);
 
   if (sectionsError) {
     return <ErrorState title="Could not load sections" onRetry={() => void refetch()} />;
@@ -182,8 +205,14 @@ export function TestCaseWorkspace() {
         onSelectSuite={(suiteId) => {
           setSelectedSuiteId(suiteId);
           window.localStorage.setItem(suiteStorageKey(projectId), suiteId);
-          const firstInSuite = sections.find((section) => String(section.suiteId) === suiteId);
-          if (firstInSuite) setSelectedSection(firstInSuite.id);
+          const next = new URLSearchParams(searchParams);
+          next.set("suiteId", suiteId);
+          next.delete("sectionId");
+          next.delete("caseId");
+          next.delete("mode");
+          next.delete("panelCaseId");
+          next.delete("panelMode");
+          setSearchParams(next);
         }}
       />
       <div className={["grid items-start gap-3", gridCols].join(" ")}>

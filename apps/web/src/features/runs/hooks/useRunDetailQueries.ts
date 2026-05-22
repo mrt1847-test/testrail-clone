@@ -14,6 +14,19 @@ import {
   useTestResultsQuery
 } from "./useRunsApi";
 
+type RunInstanceApiRow = {
+  id: string | number;
+  caseId: string | number;
+  titleSnapshot: string;
+  status: string;
+  assignedTo?: string | number | null;
+  caseChanged?: boolean;
+  changedFields?: string[];
+  sectionId?: string | number | null;
+  casePriority?: string | null;
+  caseType?: string | null;
+};
+
 type Input = {
   projectId: string;
   runId: string;
@@ -83,7 +96,7 @@ export function useRunDetailQueries(input: Input) {
   });
   const pagedInstances: TestInstanceRow[] = useMemo(
     () =>
-      (runInstancesQuery.data?.data ?? []).map((instance) => ({
+      ((runInstancesQuery.data?.data ?? []) as RunInstanceApiRow[]).map((instance) => ({
         id: String(instance.id),
         caseId: String(instance.caseId),
         caseCode: `C${instance.caseId}`,

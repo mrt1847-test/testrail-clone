@@ -286,6 +286,8 @@ export function TestInstanceTable(props: Props) {
                 </option>
               ))}
             </select>
+          ) : runClosed ? (
+            <StatusBadge status={row.status} />
           ) : (
             <StatusBadge status={row.status} interactive onClick={() => setEditingRow(row)} />
           )}

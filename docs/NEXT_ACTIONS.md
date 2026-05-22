@@ -1,6 +1,6 @@
 # Next Actions
 
-Last aligned: 2026-05-17
+Last aligned: 2026-05-22
 
 Goal: keep the next development batch to roughly one PR. Direction lives in [ROADMAP.md](./ROADMAP.md). Progress should be tracked by flipping exactly one line in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) from `[ ]` to `[x]`.
 
@@ -21,18 +21,18 @@ Goal: keep the next development batch to roughly one PR. Direction lives in [ROA
 
 **Checklist line (exact line done when this is `[x]`):**
 
-- [ ] **TR-Core** P0 Run execution workbench shell: persistent status count sidebar/rail, compact test table, and selected-test detail/result pane visible together without losing context.
+- [ ] **TR-Core** P0 Case repository workbench shell: left suite/section tree, center compact case table, right selected-case detail pane, with section/case/filter/page state preserved in the URL.
 
 ### Scope (only what closes the line above)
 
-- Implement the `[ RunSectionTree | TestInstanceTable | QPane ]` 3-pane layout in `RunDetailPage.tsx` (Wave A from RUN_EXECUTION_VIEW_PARITY.md).
-- Add `RunSectionTree` component to filter by `groupId` / section.
-- Sync `testId`, `sectionId`, and `groupBy` state in the URL.
+- Validate CASE_REPOSITORY_VIEW_PARITY.md Wave A against the existing case repository workbench.
+- Ensure suite/section tree, compact case table, selected-case detail pane, and preserved URL state are all reachable in the primary Test Cases route.
+- Close any small UI/state gaps needed for the checklist line without expanding into authoring/editor polish.
 
 ### Out of scope for this batch
 
-- Pass & Next, inline status dropdowns, and keyboard shortcuts (these belong to the execution speed checklist line / Wave B).
-- Cross-run history and defects tabs in QPane (Wave E).
+- Full authoring flow redesign or dedicated editor work.
+- Import/export, Shared Steps polish, or deleted-case lifecycle beyond what is already visible in the shell.
 
 ---
 
@@ -42,7 +42,5 @@ Pick only unchecked lines from below when replacing **Current batch**.
 
 | Suggested order | Section | Checklist line |
 |-----------------|---------|----------------|
-| 1 | TestRail UI/UX Realignment | **TR-Core** P0 Run execution speed actions: row status dropdown, Add Result, Pass & Next, next failed/blocked/untested... |
-| 2 | TestRail UI/UX Realignment | **TR-Core** P0 Case repository workbench shell: left suite/section tree, center compact case table, right selected-case detail pane... |
-| 3 | TestRail UI/UX Realignment | **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports... |
-| 4 | Keyboard, Selection, And List Ergonomics | P1 Remember last filter, sort, and column set per page per user. |
+| 1 | TestRail UI/UX Realignment | **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports... |
+| 2 | Keyboard, Selection, And List Ergonomics | P1 Remember last filter, sort, and column set per page per user. |

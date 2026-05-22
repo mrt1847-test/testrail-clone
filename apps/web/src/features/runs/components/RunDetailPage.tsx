@@ -385,6 +385,14 @@ export function RunDetailPage() {
     return pagedInstances;
   }, [groupedTableQuery.data?.groups, pagedInstances, useGroupedExecution]);
   const groupedTotal = groupedTableQuery.data?.total ?? filteredInstanceTotal;
+  const hasSectionTree = useGroupedExecution && Boolean(suiteId && sectionsQuery.data?.sections);
+  const workbenchGridClass = selected
+    ? hasSectionTree
+      ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_var(--run-qpane-width)]"
+      : "lg:grid-cols-[auto_minmax(0,1fr)_var(--run-qpane-width)]"
+    : hasSectionTree
+      ? "lg:grid-cols-[auto_auto_minmax(0,1fr)]"
+      : "lg:grid-cols-[auto_minmax(0,1fr)]";
   const testNavigation = useRunTestNavigation({
     projectId,
     runId,
@@ -428,6 +436,7 @@ export function RunDetailPage() {
     },
     options?: { advanceOnPass?: boolean }
   ) => {
+    if (runClosed) return;
     await addResultMutation.mutateAsync({ testId, ...payload });
     if (options?.advanceOnPass && jumpToNext && payload.status === "passed") {
       testNavigation.goNextTest();
@@ -487,6 +496,26 @@ export function RunDetailPage() {
     const matched = executionInstances.find((row) => row.id === selectedTestId);
     if (matched) setSelected(matched);
   }, [executionInstances, searchParams, selected?.id]);
+
+  useEffect(() => {
+    const dataReady = useGroupedExecution ? !groupedTableQuery.isLoading : !runInstancesQuery.isLoading;
+    if (!dataReady) return;
+    const firstVisible = executionInstances[0] ?? null;
+    if (!firstVisible) {
+      if (selected) setSelected(null);
+      return;
+    }
+    if (!selected || !executionInstances.some((row: TestInstanceRow) => row.id === selected.id)) {
+      setSelected(firstVisible);
+    }
+  }, [
+    executionInstances,
+    groupedTableQuery.isLoading,
+    runInstancesQuery.isLoading,
+    selected,
+    selected?.id,
+    useGroupedExecution
+  ]);
 
   useEffect(() => {
     setSelectedResultId(null);
@@ -696,75 +725,50 @@ export function RunDetailPage() {
       <RunHeader run={run} milestoneName={milestoneQuery.data?.name} showTitle={false} />
 
       <RunExecutionStatsBar
-        className="mt-3 hidden lg:block"
-        sticky
-        counts={counts}
-        activeStatus={statusFilter}
-        onStatusClick={(status) => testNavigation.jumpToStatus(status)}
-      />
-
-      <RunSchedulePanel
-        run={run}
-        dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
-        canEdit={run.status === "open"}
-        isSaving={scheduleMutation.isPending}
-        onSave={async (patch) => {
-          await scheduleMutation.mutateAsync(patch);
-        }}
-      />
-
-      <CollapsibleSection title="Run discussion" defaultOpen={false}>
-        <ExecutionCommentsPanel
-          scope="test_run"
-          runId={runId}
-          canPost={run.status === "open"}
-          emptyHint="Discuss this run with your team."
-        />
-      </CollapsibleSection>
-
-      <RunExecutionStatsBar
         className="mt-3 lg:hidden"
         counts={counts}
         activeStatus={statusFilter}
         onStatusClick={(status) => testNavigation.jumpToStatus(status)}
       />
 
-      <RunDetailSidebar
-        projectId={projectId}
-        runId={runId}
-        counts={counts}
-        activeStatus={statusFilter}
-        onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
-        statusFooter={
-          <RunExecutionToolbar
-            variant="inline"
-            isNavigating={testNavigation.isNavigating}
-            onNextFailed={testNavigation.goNextFailed}
-            onNextBlocked={testNavigation.goNextBlocked}
-            onNextUntested={testNavigation.goNextUntested}
-            onPassAndNext={runClosed ? undefined : handlePassAndNext}
-            jumpToNext={jumpToNext}
-            onJumpToNextChange={(enabled) => {
-              setJumpToNext(enabled);
-              writeJumpToNextAfterResult(enabled);
-            }}
-            onPrevTest={testNavigation.goPrevTest}
-            onNextTest={testNavigation.goNextTest}
-            onShowShortcuts={() => setShortcutsOpen(true)}
-          />
-        }
-      />
-
       <div
-        className={`mt-3 grid gap-3 ${selected ? "lg:grid-cols-[auto_minmax(0,1fr)_var(--run-qpane-width)]" : "lg:grid-cols-[auto_minmax(0,1fr)]"}`}
+        className={`mt-3 grid grid-cols-1 gap-3 ${workbenchGridClass}`}
         style={{ ["--run-qpane-width" as string]: `${qpaneWidth}px` }}
       >
-        {useGroupedExecution && suiteId && sectionsQuery.data?.sections ? (
+        <RunDetailSidebar
+          projectId={projectId}
+          runId={runId}
+          counts={counts}
+          activeStatus={statusFilter}
+          onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
+          statusFooter={
+            <RunExecutionToolbar
+              variant="inline"
+              isNavigating={testNavigation.isNavigating}
+              onNextFailed={testNavigation.goNextFailed}
+              onNextBlocked={testNavigation.goNextBlocked}
+              onNextUntested={testNavigation.goNextUntested}
+              onPassAndNext={runClosed ? undefined : handlePassAndNext}
+              jumpToNext={jumpToNext}
+              onJumpToNextChange={(enabled) => {
+                setJumpToNext(enabled);
+                writeJumpToNextAfterResult(enabled);
+              }}
+              onPrevTest={testNavigation.goPrevTest}
+              onNextTest={testNavigation.goNextTest}
+              onShowShortcuts={() => setShortcutsOpen(true)}
+            />
+          }
+        />
+        {hasSectionTree && sectionsQuery.data?.sections ? (
           <RunSectionTree
             sections={sectionsQuery.data.sections}
             sectionCounts={sectionCounts}
             selectedSectionId={sectionId}
-            onSelectSection={setSectionId}
+            onSelectSection={(value) => {
+              setSectionId(value);
+              resetListPage();
+            }}
             display={display}
             onDisplayChange={setDisplay}
           />
@@ -824,6 +828,7 @@ export function RunDetailPage() {
           groupBy={groupBy}
           onGroupByChange={(value) => {
             setGroupBy(value);
+            if (value === "none") setSectionId(null);
             resetListPage();
           }}
           listColumns={listColumns}
@@ -936,48 +941,54 @@ export function RunDetailPage() {
             ) : null}
             <RunQPanePanel
               results={
-                <ResultEntryPanel
-                key={selected.id}
-                projectId={projectId}
-                instance={{
-                  id: selected.id,
-                  caseId: selected.caseId,
-                  caseCode: selected.caseCode,
-                  title: selected.title
-                }}
-                caseSteps={selectedCaseDetail.data?.steps ?? []}
-                caseScenarios={selectedCaseScenariosQuery.data ?? []}
-                isCaseStepsLoading={selectedCaseDetail.isLoading}
-                isSubmitting={addResultMutation.isPending}
-                disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
-                hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
-                aiEvaluation={
-                  isAiEvaluationCase
-                    ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
-                    : undefined
-                }
-                showInstanceHeader={false}
-                onSubmit={(payload) => {
-                  void submitRunResult(
-                    selected.id,
-                    {
-                      status: payload.status,
-                      comment: payload.comment,
-                      elapsed: payload.elapsed,
-                      version: payload.version,
-                      defects: payload.defects,
-                      customValues: payload.customValues,
-                      stepResults: payload.stepResults,
-                      scenarioResults: payload.scenarioResults,
-                      aiActualOutput: payload.aiActualOutput,
-                      aiQualityRating: payload.aiQualityRating,
-                      aiLatencyMs: payload.aiLatencyMs,
-                      aiTraces: payload.aiTraces
-                    },
-                    { advanceOnPass: true }
-                  );
-                }}
-              />
+                runClosed ? (
+                  <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    This run is closed. Result entry is read-only; reopen the run to add results.
+                  </div>
+                ) : (
+                  <ResultEntryPanel
+                    key={selected.id}
+                    projectId={projectId}
+                    instance={{
+                      id: selected.id,
+                      caseId: selected.caseId,
+                      caseCode: selected.caseCode,
+                      title: selected.title
+                    }}
+                    caseSteps={selectedCaseDetail.data?.steps ?? []}
+                    caseScenarios={selectedCaseScenariosQuery.data ?? []}
+                    isCaseStepsLoading={selectedCaseDetail.isLoading}
+                    isSubmitting={addResultMutation.isPending}
+                    disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
+                    hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
+                    aiEvaluation={
+                      isAiEvaluationCase
+                        ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
+                        : undefined
+                    }
+                    showInstanceHeader={false}
+                    onSubmit={(payload) => {
+                      void submitRunResult(
+                        selected.id,
+                        {
+                          status: payload.status,
+                          comment: payload.comment,
+                          elapsed: payload.elapsed,
+                          version: payload.version,
+                          defects: payload.defects,
+                          customValues: payload.customValues,
+                          stepResults: payload.stepResults,
+                          scenarioResults: payload.scenarioResults,
+                          aiActualOutput: payload.aiActualOutput,
+                          aiQualityRating: payload.aiQualityRating,
+                          aiLatencyMs: payload.aiLatencyMs,
+                          aiTraces: payload.aiTraces
+                        },
+                        { advanceOnPass: true }
+                      );
+                    }}
+                  />
+                )
               }
               history={
                 <div className="space-y-4">
@@ -1150,7 +1161,7 @@ export function RunDetailPage() {
                           kind: "added",
                           addedCount: added.length,
                           skipped: res.data.skipped ?? 0,
-                          caseIds: added.map((row) => String(row.caseId))
+                          caseIds: added.map((row: { caseId: string | number }) => String(row.caseId))
                         });
                       })
                       .catch((err) => {
@@ -1211,6 +1222,25 @@ export function RunDetailPage() {
         ) : null}
       </div>
 
+      <RunSchedulePanel
+        run={run}
+        dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
+        canEdit={run.status === "open"}
+        isSaving={scheduleMutation.isPending}
+        onSave={async (patch) => {
+          await scheduleMutation.mutateAsync(patch);
+        }}
+      />
+
+      <CollapsibleSection title="Run discussion" defaultOpen={false}>
+        <ExecutionCommentsPanel
+          scope="test_run"
+          runId={runId}
+          canPost={run.status === "open"}
+          emptyHint="Discuss this run with your team."
+        />
+      </CollapsibleSection>
+
       <CollapsibleSection title="Run actions" defaultOpen={false}>
         <RunActionsPanel
           members={members}
@@ -1220,12 +1250,14 @@ export function RunDetailPage() {
           onBulkStatusChange={setBulkStatus}
           bulkComment={bulkComment}
           onBulkCommentChange={setBulkComment}
-          canBulkSubmit={canBulkSubmit}
+          canBulkSubmit={!runClosed && canBulkSubmit}
           isBulkPending={bulkResultMutation.isPending}
           selectedCount={selectedCount}
           bulkFeedback={bulkFeedback}
           onDismissBulkFeedback={() => setBulkFeedback(null)}
-          onBulkSubmit={() => void bulkResultMutation.mutateAsync()}
+          onBulkSubmit={() => {
+            if (!runClosed) void bulkResultMutation.mutateAsync();
+          }}
           assigneeInput={assigneeInput}
           onAssigneeInputChange={setAssigneeInput}
           isAssignPending={assigneeMutation.isPending}
@@ -1257,6 +1289,7 @@ export function RunDetailPage() {
           canReopenRun={run.status === "closed"}
           isReopenRunPending={reopenRunMutation.isPending}
           onReopenRun={() => void reopenRunMutation.mutateAsync()}
+          readOnly={runClosed}
         />
       </CollapsibleSection>
     </div>

@@ -5,6 +5,7 @@ type Props = {
   selectedId: string;
   onSelect: (option: ProjectStatusOption) => void;
   disableUntested?: boolean;
+  disabled?: boolean;
   columns?: 2 | 3;
 };
 
@@ -18,14 +19,14 @@ function textColorForBackground(hex: string) {
   return luminance > 0.62 ? "#0f172a" : "#ffffff";
 }
 
-export function StatusPicker({ options, selectedId, onSelect, disableUntested = false, columns = 2 }: Props) {
+export function StatusPicker({ options, selectedId, onSelect, disableUntested = false, disabled = false, columns = 2 }: Props) {
   const gridClass = columns === 3 ? "grid grid-cols-3 gap-1.5" : "grid grid-cols-2 gap-1.5";
 
   return (
     <div className={gridClass}>
       {options.map((option) => {
         const selected = selectedId === option.id;
-        const disabled = disableUntested && option.isUntested;
+        const optionDisabled = disabled || (disableUntested && option.isUntested);
         const color = textColorForBackground(option.color);
         return (
           <button
@@ -33,12 +34,14 @@ export function StatusPicker({ options, selectedId, onSelect, disableUntested = 
             type="button"
             title={
               disabled
-                ? "Untested cannot be set after a result exists"
-                : option.isFinal
-                  ? "Final status"
-                  : undefined
+                ? "Status changes are read-only"
+                : optionDisabled
+                  ? "Untested cannot be set after a result exists"
+                  : option.isFinal
+                    ? "Final status"
+                    : undefined
             }
-            disabled={disabled}
+            disabled={optionDisabled}
             className={`rounded border px-2 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
               selected ? "ring-2 ring-slate-900 ring-offset-1" : "border-transparent"
             }`}
