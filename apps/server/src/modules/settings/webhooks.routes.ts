@@ -103,7 +103,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
         select: { webhookDisableFailureThreshold: true }
       });
       if (!project) return reply.code(404).send({ code: "NOT_FOUND", message: "project not found" });
-      return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(project.webhookDisableFailureThreshold)));
+      return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(project.webhookDisableFailureThreshold))));
     }
     return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(null))));
   });
@@ -144,7 +144,7 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
         changes: { webhookDisableFailureThreshold: normalized }
       }
     });
-    return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(updated.webhookDisableFailureThreshold)));
+    return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(updated.webhookDisableFailureThreshold))));
   });
 
   app.get("/api/projects/:projectId/settings/webhook-attempts", async (req, reply) => {
@@ -226,11 +226,11 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
         }
       });
       if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
-      return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse(row)));
+      return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse(row))));
     }
     const row = webhookAttempts.find((item) => item.projectId === projectId && item.id === attemptId);
     if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
-    return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse({ ...row, updatedAt: row.createdAt })));
+    return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse({ ...row, updatedAt: row.createdAt }))));
   });
 
   app.post("/api/projects/:projectId/settings/webhooks", async (req, reply) => {
