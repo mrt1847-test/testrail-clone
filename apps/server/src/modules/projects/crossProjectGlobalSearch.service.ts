@@ -204,7 +204,7 @@ async function searchDefectsCross(
         }
       }
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { createdAt: "desc" },
     take: take * 3,
     select: {
       id: true,

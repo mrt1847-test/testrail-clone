@@ -1287,7 +1287,7 @@ export async function registerTestRailRoutes(
       }))
     });
     if (deps.prisma) {
-      const run = await deps.repo.getRunById(runId);
+      const run = await deps.repo.getRun(runId);
       if (run) {
         for (const item of result.items) {
           if (item.status === "saved") {

@@ -1,3 +1,5 @@
+import { TESTRAIL_V2_SUPPORTED } from "../modules/testrail/testrail.supported.js";
+
 export type ExportedRoute = {
   key: string;
   method: "get" | "post";
@@ -91,7 +93,7 @@ export function listExportedV2Routes(supported: readonly string[]): ExportedRout
 }
 
 export function buildTestRailOpenApiDocument(baseUrl: string, supported?: readonly string[]) {
-  const routes = listExportedV2Routes(supported);
+  const routes = listExportedV2Routes(supported ?? TESTRAIL_V2_SUPPORTED);
   const paths: Record<string, Record<string, unknown>> = {};
 
   for (const route of routes) {
@@ -178,7 +180,7 @@ function postmanRawUrl(route: ExportedRoute) {
 }
 
 export function buildTestRailPostmanCollection(baseUrl: string, supported?: readonly string[]) {
-  const routes = listExportedV2Routes(supported);
+  const routes = listExportedV2Routes(supported ?? TESTRAIL_V2_SUPPORTED);
   const folders = new Map<string, typeof routes>();
 
   for (const route of routes) {
