@@ -7,13 +7,12 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchUsersWorkloadSummary } from "../../api/projectSummaryReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportUsersWorkloadSummaryPage() {
   const { projectId = "" } = useParams();
@@ -75,20 +74,20 @@ export function ReportUsersWorkloadSummaryPage() {
       <ReportTablePanel
         title="Team workload"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton projectId={projectId} reportType="users_workload_summary" />
-            <Link
-              className="rounded border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-              to={`/projects/${projectId}/team-todo`}
-            >
-              Open team to-do
-            </Link>
-            <ReportExportActions
-              projectId={projectId}
-              reportType="users_workload_summary"
-              disabled={rows.length === 0}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="users_workload_summary"
+            filters={{ ui: {}, export: {} }}
+            disabled={rows.length === 0}
+            extra={
+              <Link
+                className="rounded border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                to={`/projects/${projectId}/team-todo`}
+              >
+                Open team to-do
+              </Link>
+            }
+          />
         }
       >
         {rows.length === 0 ? (

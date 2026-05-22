@@ -7,6 +7,12 @@ export type CaseListPathOptions = {
   mode?: "view" | "edit";
 };
 
+export function buildCaseRepositoryPath(projectId: string, listParams: URLSearchParams): string {
+  const path = `/projects/${projectId}/cases`;
+  const query = listParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 export function buildCaseListPath(projectId: string, options?: CaseListPathOptions | number | null) {
   const normalized: CaseListPathOptions =
     typeof options === "number" || options === null || options === undefined

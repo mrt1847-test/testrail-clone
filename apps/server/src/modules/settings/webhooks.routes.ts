@@ -2,10 +2,16 @@ import { createHmac } from "node:crypto";
 
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
+import {
+  buildWebhookDeliveryPolicyView,
+  normalizeProjectWebhookDisableThreshold
+} from "../../domain/webhookDeliveryPolicy.js";
+import { buildWebhookEventCatalog } from "../../domain/webhookEventCatalog.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import {
   webhooks,
@@ -19,8 +25,25 @@ import {
   newWebhookSecret,
   webhookToResponse,
   webhookAttemptToResponse,
+  webhookAttemptDetailToResponse,
   type SettingsRouteDeps
 } from "./settings.shared.js";
+
+const webhookAttemptsQuerySchema = z.object({
+  webhookId: z.coerce.bigint().optional(),
+  status: z.enum(["pending", "delivered", "failed"]).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(50)
+});
+
+const webhookAttemptIdParamSchema = z.object({
+  projectId: z.coerce.bigint(),
+  attemptId: z.coerce.bigint()
+});
+
+const webhookDeliveryPolicyPatchSchema = z.object({
+  disableAfterConsecutiveFailures: z.number().int().min(1).max(50).nullable().optional()
+});
 
 export async function registerWebhooksRoutes(app: FastifyInstance, deps: SettingsRouteDeps) {
   app.get("/api/projects/:projectId/settings/webhooks", async (req, reply) => {
@@ -67,13 +90,122 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
     return reply.send(ok({ events: [...webhookEvents] }));
   });
 
-  app.get("/api/projects/:projectId/settings/webhook-attempts", async (req, reply) => {
+  app.get("/api/projects/:projectId/settings/webhook-event-catalog", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    return reply.send(ok({ catalog: buildWebhookEventCatalog(projectId.toString()) }));
+  });
+
+  app.get("/api/projects/:projectId/settings/webhook-delivery-policy", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     if (deps.prisma) {
-      const rows = await deps.prisma.webhookDeliveryAttempt.findMany({
-        where: { projectId },
-        orderBy: { id: "desc" },
-        take: 50,
+      const project = await deps.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { webhookDisableFailureThreshold: true }
+      });
+      if (!project) return reply.code(404).send({ code: "NOT_FOUND", message: "project not found" });
+      return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(project.webhookDisableFailureThreshold)));
+    }
+    return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(null))));
+  });
+
+  app.patch("/api/projects/:projectId/settings/webhook-delivery-policy", async (req, reply) => {
+    await requireProjectMutationRole(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const body = webhookDeliveryPolicyPatchSchema.parse(req.body ?? {});
+    if (!deps.prisma) {
+      return reply.code(501).send({ code: "NOT_AVAILABLE", message: "webhook policy requires database mode" });
+    }
+    if (body.disableAfterConsecutiveFailures === undefined) {
+      return reply.code(400).send({ code: "BAD_REQUEST", message: "disableAfterConsecutiveFailures is required" });
+    }
+    let normalized: number | null;
+    try {
+      normalized = normalizeProjectWebhookDisableThreshold(body.disableAfterConsecutiveFailures);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "invalid threshold";
+      return reply.code(400).send({ code: "BAD_REQUEST", message });
+    }
+    const actor = await getAuthenticatedUser(req, deps);
+    const updated = await deps.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        webhookDisableFailureThreshold: normalized,
+        updatedBy: actor.id
+      },
+      select: { webhookDisableFailureThreshold: true }
+    });
+    await deps.prisma.auditLog.create({
+      data: {
+        projectId,
+        actorUserId: actor.id,
+        action: "settings.webhook_policy.updated",
+        entityType: "project",
+        entityId: projectId.toString(),
+        changes: { webhookDisableFailureThreshold: normalized }
+      }
+    });
+    return reply.send(toJsonSafe(ok(buildWebhookDeliveryPolicyView(updated.webhookDisableFailureThreshold)));
+  });
+
+  app.get("/api/projects/:projectId/settings/webhook-attempts", async (req, reply) => {
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const filters = webhookAttemptsQuerySchema.parse(req.query ?? {});
+    if (deps.prisma) {
+      const where = {
+        projectId,
+        ...(filters.webhookId ? { webhookId: filters.webhookId } : {}),
+        ...(filters.status ? { status: filters.status } : {})
+      };
+      const [rows, total] = await Promise.all([
+        deps.prisma.webhookDeliveryAttempt.findMany({
+          where,
+          orderBy: { id: "desc" },
+          skip: (filters.page - 1) * filters.pageSize,
+          take: filters.pageSize,
+          select: {
+            id: true,
+            webhookId: true,
+            activityEventId: true,
+            event: true,
+            targetUrl: true,
+            status: true,
+            attemptNo: true,
+            responseStatus: true,
+            responseBody: true,
+            error: true,
+            nextRetryAt: true,
+            deliveredAt: true,
+            signature: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }),
+        deps.prisma.webhookDeliveryAttempt.count({ where })
+      ]);
+      return reply.send(
+        toJsonSafe({
+          data: rows.map(webhookAttemptToResponse),
+          page: filters.page,
+          pageSize: filters.pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / filters.pageSize))
+        })
+      );
+    }
+    const filtered = webhookAttempts.filter(
+      (item) =>
+        item.projectId === projectId &&
+        (filters.webhookId == null || item.webhookId === filters.webhookId) &&
+        (filters.status == null || item.status === filters.status)
+    );
+    return reply.send(toJsonSafe(paged(filtered.map(webhookAttemptToResponse), filters.page, filters.pageSize)));
+  });
+
+  app.get("/api/projects/:projectId/settings/webhook-attempts/:attemptId", async (req, reply) => {
+    const { projectId, attemptId } = webhookAttemptIdParamSchema.parse(req.params);
+    if (deps.prisma) {
+      const row = await deps.prisma.webhookDeliveryAttempt.findFirst({
+        where: { id: attemptId, projectId },
         select: {
           id: true,
           webhookId: true,
@@ -83,18 +215,22 @@ export async function registerWebhooksRoutes(app: FastifyInstance, deps: Setting
           status: true,
           attemptNo: true,
           responseStatus: true,
+          responseBody: true,
           error: true,
           nextRetryAt: true,
           deliveredAt: true,
           signature: true,
-          createdAt: true
+          payload: true,
+          createdAt: true,
+          updatedAt: true
         }
       });
-      return reply.send(toJsonSafe(paged(rows.map(webhookAttemptToResponse), 1, 50)));
+      if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
+      return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse(row)));
     }
-    return reply.send(
-      toJsonSafe(paged(webhookAttempts.filter((item) => item.projectId === projectId).map(webhookAttemptToResponse), 1, 50))
-    );
+    const row = webhookAttempts.find((item) => item.projectId === projectId && item.id === attemptId);
+    if (!row) return reply.code(404).send({ code: "NOT_FOUND", message: "webhook attempt not found" });
+    return reply.send(toJsonSafe(ok(webhookAttemptDetailToResponse({ ...row, updatedAt: row.createdAt })));
   });
 
   app.post("/api/projects/:projectId/settings/webhooks", async (req, reply) => {

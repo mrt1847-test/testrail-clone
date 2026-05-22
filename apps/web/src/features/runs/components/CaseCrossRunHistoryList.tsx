@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { CommentMarkdown } from "../../comments/CommentMarkdown";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import type { CaseExecutionHistoryItem } from "../types";
 import { CaseExecutionTrendChart } from "./CaseExecutionTrendChart";
@@ -45,7 +46,7 @@ export function CaseCrossRunHistoryList({ projectId, currentRunId, items, isLoad
                 <StatusBadge status={item.status} />
               </div>
               <p className="mt-0.5 text-slate-500">{new Date(item.createdAt).toLocaleString()}</p>
-              {item.comment ? <p className="mt-1 text-slate-700">{item.comment}</p> : null}
+              {item.comment ? <CommentMarkdown content={item.comment} className="mt-1 text-slate-700" /> : null}
               {item.defects.length > 0 ? (
                 <p className="mt-1 text-slate-600">Defects: {item.defects.join(", ")}</p>
               ) : null}

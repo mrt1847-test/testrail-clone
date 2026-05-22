@@ -124,6 +124,15 @@ export type DigestPreview = {
   digestEnabled?: boolean;
 };
 
+export type WebhookDeliveryPolicy = {
+  disableAfterConsecutiveFailures: number;
+  projectDisableThreshold: number | null;
+  defaultDisableThreshold: number;
+  maxDeliveryAttempts: number;
+  retryBackoffSummary: string;
+  deliveryWorkerIntervalMs: number;
+};
+
 export type WebhookAttemptRow = {
   id: string;
   webhookId: string;
@@ -133,11 +142,33 @@ export type WebhookAttemptRow = {
   status: string;
   attemptNo: number;
   responseStatus: number | null;
+  responseBodyPreview: string | null;
   error: string | null;
   nextRetryAt: string | null;
   deliveredAt: string | null;
   signaturePrefix: string;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type WebhookAttemptDetail = WebhookAttemptRow & {
+  responseBody: string | null;
+  payload: Record<string, unknown> | null;
+};
+
+export type WebhookAttemptsQuery = {
+  webhookId?: string;
+  status?: "pending" | "delivered" | "failed";
+  page?: number;
+  pageSize?: number;
+};
+
+export type WebhookAttemptsResult = {
+  items: WebhookAttemptRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 export type ProjectMemberRow = {
@@ -251,6 +282,8 @@ export type ActivityEventRow = {
   createdAt: string;
 };
 
+export type NotificationTypeFilter = "assignment" | "failed_result" | "mention" | "activity";
+
 export type NotificationRow = {
   id: string;
   projectId: string;
@@ -259,6 +292,7 @@ export type NotificationRow = {
   title: string;
   body: string | null;
   readAt: string | null;
+  snoozedUntil: string | null;
   createdAt: string;
   activity: {
     id: string;
@@ -441,6 +475,20 @@ export async function fetchWebhookEvents(projectId: string): Promise<string[]> {
   return res.data.events;
 }
 
+export type WebhookCatalogEntry = {
+  event: string;
+  description: string;
+  samplePayload: Record<string, unknown>;
+  sampleHeaders: Record<string, string>;
+};
+
+export async function fetchWebhookEventCatalog(projectId: string): Promise<WebhookCatalogEntry[]> {
+  const res = await apiFetch<Ok<{ catalog: WebhookCatalogEntry[] }>>(
+    `/api/projects/${projectId}/settings/webhook-event-catalog`
+  );
+  return res.data.catalog;
+}
+
 export async function createWebhook(projectId: string, input: {
   scope?: "project" | "global";
   event: string;
@@ -471,14 +519,56 @@ export async function deleteWebhook(projectId: string, webhookId: string) {
   await apiFetch<void>(`/api/projects/${projectId}/settings/webhooks/${webhookId}`, { method: "DELETE" });
 }
 
-export async function fetchWebhookAttempts(projectId: string): Promise<WebhookAttemptRow[]> {
-  const res = await apiFetch<Paged<WebhookAttemptRow>>(`/api/projects/${projectId}/settings/webhook-attempts`);
-  return res.data.map((row) => ({
+export async function fetchWebhookDeliveryPolicy(projectId: string): Promise<WebhookDeliveryPolicy> {
+  const res = await apiFetch<Ok<WebhookDeliveryPolicy>>(`/api/projects/${projectId}/settings/webhook-delivery-policy`);
+  return res.data;
+}
+
+export async function updateWebhookDeliveryPolicy(
+  projectId: string,
+  input: { disableAfterConsecutiveFailures: number | null }
+): Promise<WebhookDeliveryPolicy> {
+  const res = await apiFetch<Ok<WebhookDeliveryPolicy>>(`/api/projects/${projectId}/settings/webhook-delivery-policy`, {
+    method: "PATCH",
+    body: input
+  });
+  return res.data;
+}
+
+export async function fetchWebhookAttempts(
+  projectId: string,
+  query: WebhookAttemptsQuery = {}
+): Promise<WebhookAttemptsResult> {
+  const params = new URLSearchParams();
+  if (query.webhookId) params.set("webhookId", query.webhookId);
+  if (query.status) params.set("status", query.status);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  const res = await apiFetch<Paged<WebhookAttemptRow>>(`/api/projects/${projectId}/settings/webhook-attempts${suffix}`);
+  const items = res.data.map((row) => ({
     ...row,
     id: String(row.id),
     webhookId: String(row.webhookId),
     activityEventId: row.activityEventId ? String(row.activityEventId) : null
   }));
+  return {
+    items,
+    page: res.page,
+    pageSize: res.pageSize,
+    total: res.total,
+    totalPages: res.totalPages
+  };
+}
+
+export async function fetchWebhookAttemptDetail(projectId: string, attemptId: string): Promise<WebhookAttemptDetail> {
+  const res = await apiFetch<Ok<WebhookAttemptDetail>>(`/api/projects/${projectId}/settings/webhook-attempts/${attemptId}`);
+  return {
+    ...res.data,
+    id: String(res.data.id),
+    webhookId: String(res.data.webhookId),
+    activityEventId: res.data.activityEventId ? String(res.data.activityEventId) : null
+  };
 }
 
 export async function retryWebhookAttempt(projectId: string, attemptId: string): Promise<WebhookAttemptRow> {
@@ -801,9 +891,27 @@ export async function fetchProjectActivity(
   };
 }
 
-export async function fetchNotifications(projectId: string, page = 1, pageSize = 25): Promise<NotificationResult> {
+export type NotificationListFilters = {
+  unreadOnly?: boolean;
+  type?: NotificationTypeFilter;
+  includeSnoozed?: boolean;
+};
+
+export async function fetchNotifications(
+  projectId: string,
+  page = 1,
+  pageSize = 25,
+  filters: NotificationListFilters = {}
+): Promise<NotificationResult> {
+  const qs = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize)
+  });
+  if (filters.unreadOnly) qs.set("unreadOnly", "true");
+  if (filters.type) qs.set("type", filters.type);
+  if (filters.includeSnoozed) qs.set("includeSnoozed", "true");
   const res = await apiFetch<Paged<NotificationRow> & { unreadCount: number }>(
-    `/api/projects/${projectId}/notifications?page=${page}&pageSize=${pageSize}`
+    `/api/projects/${projectId}/notifications?${qs.toString()}`
   );
   return {
     ...res,
@@ -827,6 +935,13 @@ export async function markAllNotificationsRead(projectId: string) {
   await apiFetch<Ok<{ updated: number }>>(`/api/projects/${projectId}/notifications/read-all`, { method: "POST" });
 }
 
+export async function snoozeNotification(projectId: string, notificationId: string, snoozeHours: number) {
+  await apiFetch<Ok<{ id: string; snoozedUntil: string | null }>>(
+    `/api/projects/${projectId}/notifications/${notificationId}/snooze`,
+    { method: "PATCH", body: { snoozeHours } }
+  );
+}
+
 export async function fetchNotificationPreferences(projectId: string): Promise<NotificationPreferences> {
   const res = await apiFetch<Ok<NotificationPreferences>>(`/api/projects/${projectId}/notification-preferences`);
   return res.data;
@@ -840,5 +955,25 @@ export async function updateNotificationPreferences(
     method: "PATCH",
     body: input
   });
+  return res.data;
+}
+
+export type WorkspacePreferencesDto = import("../workspacePreferences").WorkspacePreferences;
+
+export async function fetchWorkspacePreferences(projectId: string): Promise<WorkspacePreferencesDto> {
+  const res = await apiFetch<Ok<WorkspacePreferencesDto>>(
+    `/api/projects/${projectId}/workspace-preferences`
+  );
+  return res.data;
+}
+
+export async function updateWorkspacePreferences(
+  projectId: string,
+  input: Partial<WorkspacePreferencesDto>
+): Promise<WorkspacePreferencesDto> {
+  const res = await apiFetch<Ok<WorkspacePreferencesDto>>(
+    `/api/projects/${projectId}/workspace-preferences`,
+    { method: "PATCH", body: input }
+  );
   return res.data;
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { CommentMarkdown } from "../../comments/CommentMarkdown";
 import { AttachmentPreviewDrawer } from "../../../shared/ui/AttachmentPreviewDrawer";
 import { fetchAttachmentDownloadUrl } from "../api/runApi";
 import { ResultCorrectionPolicyHint } from "./ResultCorrectionPolicyHint";
@@ -168,7 +169,7 @@ export function ResultHistoryList({
                   <p className="text-xs font-medium text-slate-800">
                     {item.status} - {new Date(item.createdAt).toLocaleString()}
                   </p>
-                  {item.comment ? <p className="text-xs text-slate-700">{item.comment}</p> : null}
+                  {item.comment ? <CommentMarkdown content={item.comment} className="text-xs text-slate-700" /> : null}
                   <p className="text-[11px] text-slate-500">
                     source={item.source}
                     {item.elapsed ? ` - elapsed=${item.elapsed}` : ""}
@@ -205,7 +206,9 @@ export function ResultHistoryList({
                   Step {step.stepOrder} - {step.status}
                 </p>
                 {step.actualResult ? <p className="text-[11px] text-slate-600">{step.actualResult}</p> : null}
-                {step.comment ? <p className="text-[11px] text-slate-500">{step.comment}</p> : null}
+                {step.comment ? (
+                  <CommentMarkdown content={step.comment} className="text-[11px] text-slate-500" />
+                ) : null}
               </div>
             ))}
           </div>

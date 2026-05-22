@@ -15,6 +15,8 @@ import {
 } from "../tokens/apiToken.service.js";
 import { resolveInMemoryApiToken } from "../tokens/tokens.routes.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import { recordResultActivity } from "../activity/activity.service.js";
+import { recordBulkResultsActivity } from "../activity/activityRecording.js";
 import type { ResultsService } from "../results/results.service.js";
 import type { RunsService } from "../runs/runs.service.js";
 import { byCaseSchema, resultSchema } from "../results/results.schema.js";
@@ -651,6 +653,9 @@ export async function registerAutomationRoutes(
       source: "automation",
       metadata
     });
+    if (deps.prisma) {
+      await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: ctx.userId });
+    }
     return reply.send(toJsonSafe(created));
   });
 
@@ -672,6 +677,19 @@ export async function registerAutomationRoutes(
         caseId: item.caseId as bigint
       }))
     });
+    if (deps.prisma) {
+      for (const item of res.items) {
+        if (item.status === "saved") {
+          await recordResultActivity(deps.prisma, { resultId: item.resultId, actorUserId: ctx.userId });
+        }
+      }
+      await recordBulkResultsActivity(deps.prisma, {
+        projectId: ctx.projectId,
+        runId: body.runId,
+        actorUserId: ctx.userId,
+        res
+      });
+    }
     return reply.send(toJsonSafe(res));
   });
 

@@ -148,6 +148,9 @@ export const reportExportSchema = z.object({
   createdFrom: z.string().datetime().optional(),
   createdTo: z.string().datetime().optional(),
   q: z.string().trim().min(1).optional(),
+  runLifecycleStatus: z.enum(["open", "closed"]).optional(),
+  planLifecycleStatus: z.enum(["open", "closed"]).optional(),
+  milestoneLifecycle: z.enum(["open", "upcoming", "completed"]).optional(),
   days: z.coerce.number().int().min(1).max(365).optional(),
   actorUserId: z.coerce.bigint().optional(),
   category: z.enum(["created", "updated", "deleted", "other", "all"]).optional(),
@@ -387,6 +390,9 @@ function normalizeReportFilters(input: z.infer<typeof reportExportSchema>) {
     ...(input.createdFrom ? { createdFrom: input.createdFrom } : {}),
     ...(input.createdTo ? { createdTo: input.createdTo } : {}),
     ...(input.q ? { q: input.q } : {}),
+    ...(input.runLifecycleStatus ? { runLifecycleStatus: input.runLifecycleStatus } : {}),
+    ...(input.planLifecycleStatus ? { planLifecycleStatus: input.planLifecycleStatus } : {}),
+    ...(input.milestoneLifecycle ? { milestoneLifecycle: input.milestoneLifecycle } : {}),
     ...(input.days != null ? { days: input.days } : {}),
     ...(input.actorUserId ? { actorUserId: input.actorUserId.toString() } : {}),
     ...(input.category ? { category: input.category } : {}),
@@ -683,7 +689,12 @@ async function resolveDefaultSection(prisma: PrismaClient, projectId: bigint) {
 async function buildReportExport(prisma: PrismaClient, projectId: bigint, input: z.infer<typeof reportExportSchema>) {
   if (input.reportType === "run_summary") {
     const runs = await prisma.testRun.findMany({
-      where: { projectId, deletedAt: null },
+      where: {
+        projectId,
+        deletedAt: null,
+        ...(input.runLifecycleStatus ? { status: input.runLifecycleStatus } : {}),
+        ...(input.q ? { name: { contains: input.q, mode: "insensitive" } } : {})
+      },
       orderBy: { id: "asc" },
       take: input.maxRows,
       include: {
@@ -738,7 +749,12 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
 
   if (input.reportType === "milestone_summary") {
     const { items } = await buildMilestoneSummary(projectId, { prisma });
-    const rows = items.slice(0, input.maxRows).map((row) => ({
+    const filteredItems = items.filter((row) => {
+      if (input.milestoneLifecycle && row.lifecycleStatus !== input.milestoneLifecycle) return false;
+      if (input.q && !row.name.toLowerCase().includes(input.q.toLowerCase())) return false;
+      return true;
+    });
+    const rows = filteredItems.slice(0, input.maxRows).map((row) => ({
       milestone_id: row.milestoneId,
       parent_milestone_id: row.parentMilestoneId ?? "",
       name: row.name,
@@ -785,7 +801,12 @@ async function buildReportExport(prisma: PrismaClient, projectId: bigint, input:
 
   if (input.reportType === "plan_summary") {
     const plans = await prisma.testPlan.findMany({
-      where: { projectId, deletedAt: null },
+      where: {
+        projectId,
+        deletedAt: null,
+        ...(input.planLifecycleStatus ? { status: input.planLifecycleStatus } : {}),
+        ...(input.q ? { name: { contains: input.q, mode: "insensitive" } } : {})
+      },
       orderBy: [{ status: "asc" }, { id: "desc" }],
       take: input.maxRows,
       include: {

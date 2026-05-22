@@ -8,7 +8,7 @@ import {
   useState,
   type ComponentProps
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { buildCasesPrintPath } from "../../print/api/printApi";
 
 import {
@@ -19,6 +19,7 @@ import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { useAuth } from "../../auth/context/AuthContext";
+import { useUiDensity } from "../../../shared/hooks/useUiDensity";
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchSuites } from "../../projects/api/suitesApi";
 import { projectKeys, useProjectsQuery } from "../../projects/hooks/useProjectsApi";
@@ -29,6 +30,7 @@ import {
   bulkDeleteCases,
   bulkMoveCases,
   bulkUpdateCases,
+  fetchCaseById,
   updateCase,
   createCase,
   createCaseStep,
@@ -36,8 +38,8 @@ import {
   fetchSectionsForProject,
   positionCases
 } from "../api/catalogApi";
+import { fetchCaseExecutionHistory } from "../../runs/api/runApi";
 import { sectionScopeForDisplay } from "../caseRepositoryView";
-import { buildCaseDetailPath } from "../caseRoute";
 import { extractApiErrorMessage } from "../caseErrors";
 import type { BulkCaseFeedback } from "../utils/bulkCaseFeedback";
 import { buildBulkCaseFeedback } from "../utils/bulkCaseFeedback";
@@ -45,7 +47,10 @@ import { BulkCaseResultBanner } from "./BulkCaseResultBanner";
 import type { CaseListDnD, PendingMoveCopy } from "../hooks/useCaseListDnD";
 import { useCaseListKeyboardNav } from "../hooks/useCaseListKeyboardNav";
 import { useCaseColumnPreferences } from "../hooks/useCaseColumnPreferences";
+import { useCaseLastViewState } from "../hooks/useCaseLastViewState";
 import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
+import { useWorkspacePreferences } from "../../projects/hooks/useWorkspacePreferences";
+import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { caseKeys } from "../hooks/useCases";
 import { useSuiteCases } from "../hooks/useSuiteCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
@@ -130,20 +135,26 @@ export function CaseListPane({
   type BulkCaseTypeValue = "" | "functional" | "integration" | "regression";
 
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const { user } = useAuth();
+  const [uiDensity, setUiDensity] = useUiDensity(projectId, "case-repository", user?.id);
   const {
     selectedSectionId,
     panelCaseId,
+    panelMode,
+    focusCaseId,
+    setFocusCaseId,
     caseDisplay,
     caseGroupBy,
     caseFilters,
     caseColumns,
+    hasCaseColumnsParam,
+    hasRepositoryViewParams,
     setCaseFilters,
     setCaseColumns,
     setCaseGroupBy,
     clearCaseFilters,
     applySavedView,
+    applyRepositoryView,
     togglePanelCase,
     setPanelCase,
     setSelectedSection,
@@ -155,7 +166,13 @@ export function CaseListPane({
     [caseFilters, caseDisplay]
   );
   const suiteFetchSectionId = caseDisplay === "tree" ? selectedSectionId : null;
-  const { effectiveColumns, persistColumns } = useCaseColumnPreferences(projectId, suiteId, caseColumns);
+  const { effectiveColumns, columnWidths, persistColumns, persistColumnWidths } = useCaseColumnPreferences(
+    projectId,
+    suiteId,
+    user?.id,
+    caseColumns,
+    hasCaseColumnsParam
+  );
   const { data: suiteCaseData, isLoading, isError, refetch } = useSuiteCases(
     projectId,
     suiteId,
@@ -198,7 +215,22 @@ export function CaseListPane({
   const [bulkFeedback, setBulkFeedback] = useState<BulkCaseFeedback | null>(null);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [saveViewName, setSaveViewName] = useState("");
-  const [focusedCaseId, setFocusedCaseId] = useState<number | null>(null);
+  const [previewCaseId, setPreviewCaseId] = useState<number | null>(null);
+  const previewOpenTimerRef = useRef<number | null>(null);
+  const previewCaseQuery = useQuery({
+    queryKey:
+      previewCaseId != null ? caseDetailKeys.detail(previewCaseId) : (["case", "detail", "preview-off"] as const),
+    queryFn: () => fetchCaseById(previewCaseId!),
+    enabled: previewCaseId != null,
+    staleTime: 60_000
+  });
+  const previewResultQuery = useQuery({
+    queryKey: ["case-hover-preview", projectId, previewCaseId, "execution-history"] as const,
+    queryFn: () => fetchCaseExecutionHistory(projectId, String(previewCaseId), 1),
+    enabled: Boolean(projectId && previewCaseId != null),
+    retry: false,
+    staleTime: 30_000
+  });
 
   const deferredSearch = useDeferredValue(searchDraft);
   const caseLabelById = useMemo(
@@ -210,9 +242,11 @@ export function CaseListPane({
     () => ({
       sectionId: selectedSectionId,
       filters: caseFilters,
-      columns: caseColumns
+      columns: effectiveColumns,
+      display: caseDisplay,
+      groupBy: caseGroupBy
     }),
-    [caseColumns, caseFilters, selectedSectionId]
+    [caseDisplay, caseFilters, caseGroupBy, effectiveColumns, selectedSectionId]
   );
   const { savedViews, matchedSavedView, saveView, deleteView } = useCaseSavedViews(
     projectId,
@@ -220,6 +254,39 @@ export function CaseListPane({
     currentView,
     validSectionIds
   );
+  const workspacePrefsQuery = useWorkspacePreferences(projectId);
+  const [defaultSavedViewRestored, setDefaultSavedViewRestored] = useState(false);
+
+  useEffect(() => {
+    if (hasRepositoryViewParams || defaultSavedViewRestored || validSectionIds.size === 0) return;
+    const viewId = workspacePrefsQuery.data?.defaultSavedViewId;
+    if (!viewId) return;
+    const view = savedViews.find((item) => item.id === viewId);
+    if (!view) return;
+    applySavedView({
+      sectionId: view.sectionId,
+      filters: view.filters,
+      columns: view.columns
+    });
+    setDefaultSavedViewRestored(true);
+  }, [
+    applySavedView,
+    defaultSavedViewRestored,
+    hasRepositoryViewParams,
+    savedViews,
+    validSectionIds,
+    workspacePrefsQuery.data?.defaultSavedViewId
+  ]);
+
+  useCaseLastViewState({
+    projectId,
+    suiteId,
+    userId: user?.id,
+    currentView,
+    validSectionIds,
+    hasExplicitUrlState: hasRepositoryViewParams || defaultSavedViewRestored,
+    onRestore: (view) => applyRepositoryView(view, { replace: true })
+  });
 
   const listFiltersActive = hasActiveCaseListFilters(caseFilters);
   const activeFilterCount = useMemo(
@@ -374,14 +441,19 @@ export function CaseListPane({
     }
     return `${cases.length} visible case${cases.length === 1 ? "" : "s"} across ${repositoryGroups.length} group${repositoryGroups.length === 1 ? "" : "s"} in the ${stateLabel} repository.`;
   }, [caseDisplay, caseFilters.state, cases.length, repositoryGroups.length]);
-  const openCasePage = (caseId: number, edit = false) => {
-    navigate(
-      buildCaseDetailPath(projectId, caseId, {
-        sectionId: selectedSectionId,
-        mode: edit ? "edit" : "view"
-      })
-    );
-  };
+  const openHoverPreview = useCallback((caseId: number) => {
+    if (previewOpenTimerRef.current != null) window.clearTimeout(previewOpenTimerRef.current);
+    previewOpenTimerRef.current = window.setTimeout(() => {
+      setPreviewCaseId(caseId);
+    }, 250);
+  }, []);
+  const closeHoverPreview = useCallback(() => {
+    if (previewOpenTimerRef.current != null) {
+      window.clearTimeout(previewOpenTimerRef.current);
+      previewOpenTimerRef.current = null;
+    }
+    setPreviewCaseId(null);
+  }, []);
 
   useEffect(() => {
     setSearchDraft(caseFilters.q);
@@ -400,6 +472,12 @@ export function CaseListPane({
     setShowAdd(true);
     setCreateFormVersion((value) => value + 1);
   }, [addCaseRequest]);
+
+  useEffect(() => {
+    return () => {
+      if (previewOpenTimerRef.current != null) window.clearTimeout(previewOpenTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (copyMoveRequest <= 0) return;
@@ -431,6 +509,23 @@ export function CaseListPane({
     }
   });
 
+  const quickUpdateCaseMutation = useMutation({
+    mutationFn: (input: {
+      caseId: number;
+      lockVersion: number;
+      patch: { priority?: "low" | "medium" | "high"; caseType?: "functional" | "integration" | "regression" };
+    }) => updateCase(input.caseId, { ...input.patch, expectedVersion: input.lockVersion }),
+    onSuccess: () => {
+      invalidateCases();
+    },
+    onError: (error, input) => {
+      setBulkFeedback({
+        tone: "error",
+        message: extractApiErrorMessage(error, `Could not update case ${input.caseId}.`)
+      });
+    }
+  });
+
   useEffect(() => {
     if (!showAdd) return;
     setCreateDraftSteps(initialCreateDraftSteps());
@@ -446,12 +541,19 @@ export function CaseListPane({
   useEffect(() => {
     setSelectedCaseIds(new Set());
     selectionAnchorIndexRef.current = null;
-    setFocusedCaseId(null);
-  }, [selectedSectionId, caseDisplay, caseGroupBy]);
+    setFocusCaseId(null);
+  }, [caseDisplay, caseGroupBy, selectedSectionId, setFocusCaseId]);
 
   useEffect(() => {
-    if (panelCaseId != null) setFocusedCaseId(panelCaseId);
-  }, [panelCaseId]);
+    if (panelCaseId != null) setFocusCaseId(panelCaseId);
+  }, [panelCaseId, setFocusCaseId]);
+
+  useEffect(() => {
+    if (focusCaseId == null) return;
+    document
+      .querySelector(`[data-case-row-id="${focusCaseId}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [focusCaseId, flatCases.length]);
 
   const scrollCaseIntoView = useCallback((caseId: number) => {
     document.querySelector(`[data-case-row-id="${caseId}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -467,16 +569,22 @@ export function CaseListPane({
   useCaseListKeyboardNav({
     enabled: flatCases.length > 0 && (caseDisplay !== "tree" || selectedSectionId != null),
     caseIds: navigableCaseIds,
-    activeCaseId: focusedCaseId ?? panelCaseId,
+    activeCaseId: focusCaseId ?? panelCaseId,
     onFocusCase: (caseId) => {
-      setFocusedCaseId(caseId);
+      setFocusCaseId(caseId);
       scrollCaseIntoView(caseId);
     },
     onTogglePanel: (caseId) => {
-      setFocusedCaseId(caseId);
+      setFocusCaseId(caseId);
       togglePanelCase(caseId);
     },
-    onClosePanel: () => setPanelCase(null)
+    onClosePanel: () => {
+      if (panelCaseId != null && panelMode === "edit") {
+        setPanelCase(panelCaseId, "view");
+        return;
+      }
+      setPanelCase(null);
+    }
   });
 
   useEffect(() => {
@@ -540,7 +648,7 @@ export function CaseListPane({
       setShowAdd(false);
       setCreateFormError(null);
       setCreateFormVersion((current) => current + 1);
-      openCasePage(created.id);
+      setPanelCase(created.id, "view");
       if (stepsWarning) {
         setBulkFeedback({
           tone: "partial",
@@ -633,6 +741,12 @@ export function CaseListPane({
     if (scope === "selected") {
       if (selectedCaseIdList.length === 0) {
         setBulkFeedback({ tone: "error", message: "Select at least one case to edit." });
+        return;
+      }
+      if (selectedCaseIdList.length === 1) {
+        setShowAdd(false);
+        setFocusCaseId(selectedCaseIdList[0]!);
+        setPanelCase(selectedCaseIdList[0]!, "edit");
         return;
       }
       setBulkOperationIds(selectedCaseIdList);
@@ -965,6 +1079,7 @@ export function CaseListPane({
     groupByValue: caseGroupBy,
     onGroupByChange: setCaseGroupBy,
     columnsValue: effectiveColumns,
+    columnWidths,
     activeFilterCount,
     onClearFilters: () => {
       setSearchDraft("");
@@ -1020,10 +1135,13 @@ export function CaseListPane({
       const next = persistColumns(columns);
       setCaseColumns(next);
     },
+    onColumnWidthsChange: persistColumnWidths,
     onBulkEditScope: (scope) => void openBulkUpdateWithScope(scope),
     selectedCaseCount: selectedCaseIds.size,
     visibleCaseCount: flatCases.length,
-    filterScopeBusy: selectAllBusy
+    filterScopeBusy: selectAllBusy,
+    density: uiDensity,
+    onDensityChange: setUiDensity
   } satisfies ComponentProps<typeof CaseRepositoryToolbar>;
 
   const clearFiltersAndSearch = () => {
@@ -1034,19 +1152,31 @@ export function CaseListPane({
   const renderCaseRow = (item: TestCase) => {
     const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
     const dropIndicator = dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
+    const isPreviewOpen = previewCaseId === item.id;
     return (
       <CaseRow
         key={item.id}
+        projectId={projectId}
         item={item}
         isExpanded={false}
         isPanelOpen={panelCaseId === item.id}
-        isKeyboardFocused={focusedCaseId === item.id && panelCaseId !== item.id}
+        isKeyboardFocused={focusCaseId === item.id && panelCaseId !== item.id}
         mode="view"
         detail={item}
         versions={[]}
         customFields={customFields}
         caseTemplates={caseTemplates}
         visibleColumns={effectiveColumns}
+        columnWidths={columnWidths}
+        density={uiDensity}
+        isPreviewOpen={isPreviewOpen}
+        previewDetail={isPreviewOpen ? (previewCaseQuery.data ?? null) : null}
+        previewLatestResult={isPreviewOpen ? (previewResultQuery.data?.items[0] ?? null) : null}
+        isPreviewDetailLoading={isPreviewOpen && previewCaseQuery.isLoading}
+        isPreviewResultLoading={isPreviewOpen && previewResultQuery.isLoading}
+        isPreviewResultError={isPreviewOpen && previewResultQuery.isError}
+        onPreviewEnter={() => openHoverPreview(item.id)}
+        onPreviewLeave={closeHoverPreview}
         isSelected={selectedCaseIds.has(item.id)}
         onSelectChange={(checked) => toggleCaseSelection(item.id, checked)}
         onSelectClick={(event) => handleCaseSelectClick(event, item.id)}
@@ -1077,8 +1207,8 @@ export function CaseListPane({
         }}
         onOpenCase={() => {
           setShowAdd(false);
-          setFocusedCaseId(item.id);
-          openCasePage(item.id);
+          setFocusCaseId(item.id);
+          setPanelCase(item.id, "view");
         }}
         onRenameTitle={
           item.archivedAt
@@ -1091,15 +1221,29 @@ export function CaseListPane({
                 });
               }
         }
-        isRenamingTitle={renameCaseMutation.isPending}
+        isRenamingTitle={renameCaseMutation.isPending && renameCaseMutation.variables?.caseId === item.id}
+        onQuickUpdateMetadata={
+          item.archivedAt
+            ? undefined
+            : async (patch) => {
+                await quickUpdateCaseMutation.mutateAsync({
+                  caseId: item.id,
+                  patch,
+                  lockVersion: item.lockVersion
+                });
+              }
+        }
+        isQuickUpdatingMetadata={
+          quickUpdateCaseMutation.isPending && quickUpdateCaseMutation.variables?.caseId === item.id
+        }
         onTogglePanel={() => {
           setShowAdd(false);
-          setFocusedCaseId(item.id);
+          setFocusCaseId(item.id);
           togglePanelCase(item.id);
         }}
         onEdit={() => {
           setShowAdd(false);
-          setFocusedCaseId(item.id);
+          setFocusCaseId(item.id);
           setPanelCase(item.id, "edit");
         }}
         onCloseDetail={() => {}}

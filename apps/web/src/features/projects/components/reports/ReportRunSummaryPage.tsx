@@ -7,14 +7,14 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
+import { buildRunSummaryExportQuery, uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type RunSummary = Array<{
   runId: string;
@@ -75,6 +75,12 @@ export function ReportRunSummaryPage() {
   });
 
   const rows = q.data ?? [];
+
+  const exportQuery = useMemo(() => buildRunSummaryExportQuery({ search, status: statusFilter }), [search, statusFilter]);
+  const savedFilters = useMemo(
+    () => ({ ui: uiFiltersForReport({ search, status: statusFilter }), export: exportQuery }),
+    [exportQuery, search, statusFilter]
+  );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -160,14 +166,13 @@ export function ReportRunSummaryPage() {
       <ReportTablePanel
         title="Runs"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="run_summary"
-              filters={{ ui: { search, status: statusFilter } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="run_summary" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="run_summary"
+            filters={savedFilters}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+          />
         }
       >
         {filteredRows.length === 0 ? (

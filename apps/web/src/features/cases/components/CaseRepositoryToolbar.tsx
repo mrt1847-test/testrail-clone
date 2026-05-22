@@ -6,11 +6,14 @@ import type {
   CaseFilterPriority,
   CaseFilterState,
   CaseFilterType,
+  CaseColumnWidths,
   CaseListColumn,
   CasePresenceFilter,
   SavedCaseView
 } from "../types";
 import { CASE_GROUP_BY_OPTIONS, type CaseGroupBy } from "../utils/caseRepositoryGrouping";
+import { DensityToggle } from "../../../shared/ui/DensityToggle";
+import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import { CaseColumnsDialog } from "./CaseColumnsDialog";
 import { CaseToolbarMenu } from "./CaseToolbarMenu";
 
@@ -43,7 +46,9 @@ type CaseRepositoryToolbarProps = {
   groupByValue: CaseGroupBy;
   onGroupByChange: (value: CaseGroupBy) => void;
   columnsValue: CaseListColumn[];
+  columnWidths: Record<CaseListColumn, number>;
   onColumnsChange: (value: CaseListColumn[]) => void;
+  onColumnWidthsChange: (value: CaseColumnWidths) => void;
   activeFilterCount: number;
   onClearFilters: () => void;
   savedViews: SavedCaseView[];
@@ -61,6 +66,8 @@ type CaseRepositoryToolbarProps = {
   selectedCaseCount?: number;
   visibleCaseCount?: number;
   filterScopeBusy?: boolean;
+  density: UiDensity;
+  onDensityChange: (value: UiDensity) => void;
 };
 
 export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
@@ -85,7 +92,9 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     groupByValue,
     onGroupByChange,
     columnsValue,
+    columnWidths,
     onColumnsChange,
+    onColumnWidthsChange,
     activeFilterCount,
     onClearFilters,
     savedViews,
@@ -102,7 +111,9 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     onBulkEditScope,
     selectedCaseCount = 0,
     visibleCaseCount = 0,
-    filterScopeBusy = false
+    filterScopeBusy = false,
+    density,
+    onDensityChange
   } = props;
 
   const isProjectArchived = useProjectArchived();
@@ -188,6 +199,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
               }
             ]}
           />
+          <DensityToggle value={density} onChange={onDensityChange} />
           <div className="flex-1" />
           <input
             aria-label="Search cases"
@@ -297,7 +309,9 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
       <CaseColumnsDialog
         open={columnsDialogOpen}
         columns={columnsValue}
+        columnWidths={columnWidths}
         onColumnsChange={onColumnsChange}
+        onColumnWidthsChange={onColumnWidthsChange}
         onClose={() => setColumnsDialogOpen(false)}
         saveViewOpen={saveViewOpen}
         saveViewName={saveViewName}

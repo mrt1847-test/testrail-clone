@@ -10,6 +10,7 @@ import {
 import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import { recordPlanAssignmentActivity } from "../activity/activityRecording.js";
 import type { AuthService } from "../auth/auth.service.js";
 import type { ProjectsRepository } from "../projects/projects.repository.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
@@ -186,19 +187,29 @@ export async function registerPlansRoutes(
         where: { id: planId },
         data: buildPlanWriteData(body)
       });
-      await recordActivityEvent(deps.prisma, {
-        projectId,
-        actorUserId: user.id,
-        entityType: "plan",
-        entityId: updated.id,
-        eventType: "plan.updated",
-        title: "Test plan updated",
-        body: updated.name,
-        payload: {
-          planId: updated.id.toString(),
-          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {})
-        }
-      });
+      if (body.assignedTo !== undefined) {
+        await recordPlanAssignmentActivity(deps.prisma, {
+          projectId,
+          planId: updated.id,
+          actorUserId: user.id,
+          planName: updated.name,
+          assignedTo: updated.assignedTo
+        });
+      } else {
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: user.id,
+          entityType: "plan",
+          entityId: updated.id,
+          eventType: "plan.updated",
+          title: "Test plan updated",
+          body: updated.name,
+          payload: {
+            planId: updated.id.toString(),
+            ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {})
+          }
+        });
+      }
       return reply.send(toJsonSafe({ data: toPlanDto(updated) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);
@@ -326,6 +337,17 @@ export async function registerPlansRoutes(
       if (body.configurationIds?.length) {
         await persistEntryConfigurations(deps.prisma, projectId, created.id, body.configurationIds, validateOnePerGroup);
       }
+      if (created.assignedTo != null) {
+        await recordPlanAssignmentActivity(deps.prisma, {
+          projectId,
+          planId,
+          actorUserId: user.id,
+          planName: created.name,
+          assignedTo: created.assignedTo,
+          entryId: created.id,
+          entryName: created.name
+        });
+      }
       await recordActivityEvent(deps.prisma, {
         projectId,
         actorUserId: user.id,
@@ -402,23 +424,39 @@ export async function registerPlansRoutes(
           validateOnePerGroup
         );
       }
-      await recordActivityEvent(deps.prisma, {
-        projectId,
-        actorUserId: user.id,
-        entityType: "plan_entry",
-        entityId: updated.id,
-        eventType: "plan.entry_updated",
-        title: "Plan entry updated",
-        body: updated.name,
-        payload: {
-          planId: planId.toString(),
-          entryId: updated.id.toString(),
-          ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
-          ...(body.environment !== undefined
-            ? { previousEnvironment: found.environment ?? null, environment: updated.environment ?? null }
-            : {})
-        }
-      });
+      if (body.assignedTo !== undefined) {
+        const plan = await deps.prisma.testPlan.findFirst({
+          where: { id: planId },
+          select: { name: true }
+        });
+        await recordPlanAssignmentActivity(deps.prisma, {
+          projectId,
+          planId,
+          actorUserId: user.id,
+          planName: plan?.name ?? "Plan",
+          assignedTo: updated.assignedTo,
+          entryId: updated.id,
+          entryName: updated.name
+        });
+      } else {
+        await recordActivityEvent(deps.prisma, {
+          projectId,
+          actorUserId: user.id,
+          entityType: "plan_entry",
+          entityId: updated.id,
+          eventType: "plan.entry_updated",
+          title: "Plan entry updated",
+          body: updated.name,
+          payload: {
+            planId: planId.toString(),
+            entryId: updated.id.toString(),
+            ...(body.name !== undefined ? { previousName: found.name, name: updated.name } : {}),
+            ...(body.environment !== undefined
+              ? { previousEnvironment: found.environment ?? null, environment: updated.environment ?? null }
+              : {})
+          }
+        });
+      }
       return reply.send(toJsonSafe({ data: toPlanEntryDto(updated) }));
     }
     const row = plans.find((item) => item.projectId === projectId && item.id === planId);

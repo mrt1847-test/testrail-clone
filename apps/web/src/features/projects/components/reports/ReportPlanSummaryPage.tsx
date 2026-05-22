@@ -1,20 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
+import { buildPlanSummaryExportQuery, uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type PlanSummaryRow = {
   planId: string;
@@ -31,8 +31,16 @@ type PlanSummaryRow = {
 
 export function ReportPlanSummaryPage() {
   const { projectId = "" } = useParams();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "all");
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (search.trim().length > 0) next.set("search", search.trim());
+    if (statusFilter !== "all") next.set("status", statusFilter);
+    setSearchParams(next, { replace: true });
+  }, [search, setSearchParams, statusFilter]);
 
   const q = useQuery({
     queryKey: reportKeys.planSummary(projectId),
@@ -46,6 +54,14 @@ export function ReportPlanSummaryPage() {
   });
 
   const rows = q.data ?? [];
+  const exportQuery = useMemo(
+    () => buildPlanSummaryExportQuery({ search, status: statusFilter }),
+    [search, statusFilter]
+  );
+  const savedFilters = useMemo(
+    () => ({ ui: uiFiltersForReport({ search, status: statusFilter }), export: exportQuery }),
+    [exportQuery, search, statusFilter]
+  );
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return rows.filter((row) => {
@@ -112,14 +128,13 @@ export function ReportPlanSummaryPage() {
       <ReportTablePanel
         title="Plans"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="plan_summary"
-              filters={{ ui: { search, status: statusFilter } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="plan_summary" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="plan_summary"
+            filters={savedFilters}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+          />
         }
       >
         {filteredRows.length === 0 ? (

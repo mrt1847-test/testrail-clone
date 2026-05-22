@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 
+import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import type { RunInstanceGroupBy } from "../types";
 import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from "../utils/runInstanceListParams";
@@ -64,6 +65,8 @@ type Props = {
   inlineStatusSelect?: boolean;
   hidePagination?: boolean;
   groupedTotal?: number;
+  density: UiDensity;
+  onDensityChange: (value: UiDensity) => void;
 };
 
 export function RunInstancesSection(props: Props) {
@@ -118,7 +121,9 @@ export function RunInstancesSection(props: Props) {
     groups,
     inlineStatusSelect,
     hidePagination,
-    groupedTotal
+    groupedTotal,
+    density,
+    onDensityChange
   } = props;
   const listTotal = groupedTotal ?? total;
 
@@ -148,6 +153,8 @@ export function RunInstancesSection(props: Props) {
         members={members}
         hideStatusFilter={hideStatusFilter}
         onClearFilters={onClearFilters}
+        density={density}
+        onDensityChange={onDensityChange}
       />
       <TestInstanceTable
         projectId={projectId}
@@ -179,6 +186,7 @@ export function RunInstancesSection(props: Props) {
         hidePagination={hidePagination}
         total={listTotal}
         visibleColumns={listColumns}
+        density={density}
       />
     </div>
   );

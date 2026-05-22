@@ -46,12 +46,19 @@ import { loadRunProgressMetrics } from "./runProgressMetrics.js";
 import type { RunsRepository } from "./runs.repository.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
 import {
+  recordBulkResultsActivity,
+  recordRunAssignmentActivity,
+  recordTestAssignmentActivity
+} from "../activity/activityRecording.js";
+import {
   listSubscribedTestIdsForRun,
   setTestSubscription
 } from "../subscriptions/testSubscriptions.service.js";
 import { recordAuditLog } from "../settings/auditLog.service.js";
 import { inheritRunDatesFromMilestone } from "../../domain/runDates.js";
 import { runDateWarningsForRun } from "./runSchedule.js";
+import { buildRunsOverview } from "./runsOverview.service.js";
+import { runsOverviewQuerySchema } from "./runsOverview.schema.js";
 
 const testSubscriptionBodySchema = z.object({
   subscribed: z.boolean()
@@ -98,6 +105,21 @@ export async function registerRunsRoutes(
     prisma?: PrismaClient;
   }
 ) {
+  app.get("/api/projects/:projectId/runs-overview", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = runsOverviewQuerySchema.parse(req.query ?? {});
+    const overview = await buildRunsOverview(projectId, deps, {
+      mine: query.mine,
+      userId: user.id,
+      milestoneId: query.milestoneId,
+      orderBy: query.orderBy,
+      openLimit: query.openLimit,
+      completedLimit: query.completedLimit
+    });
+    return reply.send(toJsonSafe(ok(overview)));
+  });
+
   app.get("/api/projects/:projectId/runs", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
@@ -343,26 +365,30 @@ export async function registerRunsRoutes(
           ...(body.closedAt !== undefined ? { closedAt: body.closedAt?.toISOString() ?? null } : {})
         }
       });
-      await recordActivityEvent(deps.prisma, {
-        projectId: updated.projectId,
-        actorUserId: user.id,
-        entityType: "run",
-        entityId: updated.id,
-        eventType: "run.updated",
-        title: "Test run updated",
-        body: updated.name,
-        payload: {
-          runId: updated.id.toString(),
-          ...(body.name !== undefined ? { name: body.name } : {}),
-          ...(body.assignedTo !== undefined
-            ? {
-                assignedTo: body.assignedTo?.toString() ?? null,
-                assignedToUserId: body.assignedTo?.toString() ?? null
-              }
-            : {})
-        },
-        ...(body.assignedTo !== undefined ? { notificationType: "assignment" as const } : {})
-      });
+      if (body.assignedTo !== undefined) {
+        await recordRunAssignmentActivity(deps.prisma, {
+          projectId: updated.projectId,
+          runId: updated.id,
+          actorUserId: user.id,
+          runName: updated.name,
+          assignedTo: updated.assignedTo,
+          extraPayload: body.name !== undefined ? { name: body.name } : {}
+        });
+      } else {
+        await recordActivityEvent(deps.prisma, {
+          projectId: updated.projectId,
+          actorUserId: user.id,
+          entityType: "run",
+          entityId: updated.id,
+          eventType: "run.updated",
+          title: "Test run updated",
+          body: updated.name,
+          payload: {
+            runId: updated.id.toString(),
+            ...(body.name !== undefined ? { name: body.name } : {})
+          }
+        });
+      }
     }
     return reply.send(toJsonSafe(ok(updated)));
   });
@@ -381,20 +407,12 @@ export async function registerRunsRoutes(
       entityId: updated.id,
       changes: { assignedTo: updated.assignedTo?.toString() ?? null }
     });
-    await recordActivityEvent(deps.prisma, {
+    await recordRunAssignmentActivity(deps.prisma, {
       projectId: updated.projectId,
+      runId: updated.id,
       actorUserId: user.id,
-      entityType: "run",
-      entityId: updated.id,
-      eventType: "run.assigned",
-      title: updated.assignedTo ? "You were assigned a run" : "Run assignment cleared",
-      body: updated.name,
-      payload: {
-        runId: updated.id.toString(),
-        assignedTo: updated.assignedTo?.toString() ?? null,
-        assignedToUserId: updated.assignedTo?.toString() ?? null
-      },
-      ...(updated.assignedTo ? { notificationType: "assignment" as const } : {})
+      runName: updated.name,
+      assignedTo: updated.assignedTo
     });
     return reply.send(toJsonSafe(ok(updated)));
   });
@@ -440,30 +458,17 @@ export async function registerRunsRoutes(
         caseId: item.caseId as bigint
       }))
     });
-    let failedCount = 0;
     for (const item of res.items) {
       if (item.status === "saved") {
         await recordResultActivity(deps.prisma, { resultId: item.resultId, actorUserId: user.id });
-      } else {
-        failedCount += 1;
       }
     }
-    if (projectId && res.saved > 0) {
-      await recordActivityEvent(deps.prisma, {
+    if (projectId) {
+      await recordBulkResultsActivity(deps.prisma, {
         projectId,
+        runId: params.runId,
         actorUserId: user.id,
-        entityType: "run",
-        entityId: params.runId,
-        eventType: "result.bulk_created",
-        title: "Bulk results added",
-        body: `${res.saved} saved, ${failedCount} failed of ${res.total}`,
-        payload: {
-          runId: params.runId.toString(),
-          saved: res.saved,
-          failed: failedCount,
-          total: res.total,
-          atomic: res.atomic
-        }
+        res
       });
     }
     return reply.send(toJsonSafe(res));
@@ -734,22 +739,15 @@ export async function registerRunsRoutes(
             assignedTo: assignedTo?.toString() ?? null
           }
         });
-        await recordActivityEvent(deps.prisma, {
+        await recordTestAssignmentActivity(deps.prisma, {
           projectId: instance.run.projectId,
+          testId,
           actorUserId: user.id,
-          entityType: "test",
-          entityId: testId,
-          eventType: "test.assigned",
-          title: assignedTo ? "You were assigned a test" : "Test assignment cleared",
-          body: assignedTo ? `${instance.titleSnapshot} · ${instance.run.name}` : instance.titleSnapshot,
-          payload: {
-            runId: instance.run.id.toString(),
-            testId: testId.toString(),
-            caseId: instance.caseId.toString(),
-            assignedTo: assignedTo?.toString() ?? null,
-            assignedToUserId: assignedTo?.toString() ?? null
-          },
-          ...(assignedTo ? { notificationType: "assignment" as const } : {})
+          assignedTo,
+          titleSnapshot: instance.titleSnapshot,
+          runId: instance.run.id,
+          runName: instance.run.name,
+          caseId: instance.caseId
         });
       }
     }

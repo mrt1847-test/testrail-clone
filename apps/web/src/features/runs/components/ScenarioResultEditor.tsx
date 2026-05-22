@@ -1,3 +1,4 @@
+import { CommentComposer } from "../../comments/CommentComposer";
 import type { ResultStatus } from "./resultEntryTypes";
 import type { CaseScenarioRow } from "../../cases/api/bddApi";
 
@@ -8,6 +9,7 @@ export type ScenarioResultDraft = {
 };
 
 type Props = {
+  projectId?: string;
   scenarios: CaseScenarioRow[];
   value: ScenarioResultDraft[];
   onChange: (next: ScenarioResultDraft[]) => void;
@@ -22,7 +24,7 @@ export function createScenarioResultDrafts(scenarios: CaseScenarioRow[]): Scenar
   }));
 }
 
-export function ScenarioResultEditor({ scenarios, value, onChange, disabled = false }: Props) {
+export function ScenarioResultEditor({ projectId, scenarios, value, onChange, disabled = false }: Props) {
   if (scenarios.length === 0) return null;
 
   return (
@@ -58,19 +60,41 @@ export function ScenarioResultEditor({ scenarios, value, onChange, disabled = fa
                   <option value="blocked">Blocked</option>
                   <option value="retest">Retest</option>
                 </select>
-                <input
-                  className="min-w-[10rem] flex-1 rounded border border-slate-300 px-2 py-0.5"
-                  placeholder="Comment"
-                  value={draft.comment}
-                  disabled={disabled}
-                  onChange={(e) =>
-                    onChange(
-                      value.map((row) =>
-                        row.caseScenarioId === scenario.id ? { ...row, comment: e.target.value } : row
+                {projectId ? (
+                  <div className="min-w-[10rem] flex-1">
+                    <CommentComposer
+                      projectId={projectId}
+                      value={draft.comment}
+                      onChange={(comment) =>
+                        onChange(
+                          value.map((row) =>
+                            row.caseScenarioId === scenario.id ? { ...row, comment } : row
+                          )
+                        )
+                      }
+                      rows={1}
+                      disabled={disabled}
+                      showTemplates={false}
+                      showPreview={false}
+                      placeholder="Comment"
+                      textareaClassName="w-full rounded border border-slate-300 px-2 py-0.5 text-xs"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    className="min-w-[10rem] flex-1 rounded border border-slate-300 px-2 py-0.5"
+                    placeholder="Comment"
+                    value={draft.comment}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      onChange(
+                        value.map((row) =>
+                          row.caseScenarioId === scenario.id ? { ...row, comment: e.target.value } : row
+                        )
                       )
-                    )
-                  }
-                />
+                    }
+                  />
+                )}
               </div>
             </li>
           );

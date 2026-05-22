@@ -69,7 +69,7 @@ Tasks:
 
 Done when:
 
-- [ ] My Tests and Test Plans are not buried in a generic overflow menu on desktop.
+- [x] My Tests and Test Plans are not buried in a generic overflow menu on desktop.
 - [ ] Every project page has the same shell rhythm: header, tabs/toolbar, work surface.
 - [ ] No core page starts with decorative summary cards unless each item is a filter/drilldown.
 

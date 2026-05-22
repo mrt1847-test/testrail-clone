@@ -92,7 +92,7 @@ flowchart TB
 | TestRail 영역 | 클론 | 일치도 |
 |---------------|------|--------|
 | P222 + Reports/Defects 헤더 | `ProjectContentHeader` + `ReportsDropdown` / `DefectsDropdown` | 있음 |
-| header-menu 6탭 | `ProjectTabs` primary 6 (Overview, Todo, Milestones, Runs, Cases, Reports) + More | 있음 |
+| header-menu / daily nav | `ProjectTabs` primary 8 (Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, Settings) + More | 있음 |
 | 라인 차트 (일별) | `ProjectActivityLineChart` + `GET .../activity-series` | 있음 |
 | 기간 7~90일 | 차트 상단 7/14/30/60/90d 버튼 | 있음 |
 | 2열 Milestones \| Runs | `ProjectOverviewColumns` 2열 | 있음 |
@@ -112,8 +112,8 @@ flowchart TB
 
 | 항목 | TestRail | 클론 | 좁히기 |
 |------|----------|------|--------|
-| 탭 순서·이름 | Overview, **Todo**, Milestones, Runs, Cases, Reports | Overview, Cases, Runs, My Tests, Team to-do, Plans, … | TestRail 순서에 맞춘 **primary 6탭**; 나머지는 More |
-| Todo vs My Tests | `todos/overview/222` | `my-tests`, `team-todo` | Todo = 할당 테스트 큐로 통합 URL 또는 Overview 사이드바 위젯 |
+| Daily nav visibility | Overview, **Todo**, Milestones, Runs, Cases, Reports | Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, Settings | 현재 구현 유지: 8개 daily workspace 영역은 primary nav에 노출 |
+| Todo vs My Tests | `todos/overview/222` | `my-tests`, `team-todo` | My Tests는 primary nav, Team Todo는 More + Overview sidebar 요약 |
 | Return to Dashboard | `navigation-dashboard-top` | `/projects` 목록 | 동일 링크 라벨·위치 |
 | Reports/Defects 헤더 | 프로젝트 스코프 `add_job` 링크 | Reports 하위 페이지 | Overview 헤더에 **Reports · Defects** split button |
 

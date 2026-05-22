@@ -1,3 +1,4 @@
+import { CommentComposer } from "../../comments/CommentComposer";
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import type { BulkResultFeedback } from "../hooks/useRunBulkActions";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
@@ -6,6 +7,7 @@ import { pickDefaultStatusOption, StatusPicker } from "./StatusPicker";
 import { UntestedPolicyHint } from "./UntestedPolicyHint";
 
 type Props = {
+  projectId: string;
   members: ProjectMemberRow[];
   statusOptions: ProjectStatusOption[];
   bulkDisableUntested: boolean;
@@ -55,6 +57,7 @@ function bulkFeedbackClass(feedback: BulkResultFeedback) {
 
 export function RunActionsPanel(props: Props) {
   const {
+    projectId,
     members,
     statusOptions,
     bulkDisableUntested,
@@ -147,12 +150,15 @@ export function RunActionsPanel(props: Props) {
             onSelect={(option) => onBulkStatusChange(option.canonicalStatus)}
           />
           <UntestedPolicyHint visible={bulkDisableUntested} />
-          <input
-            className="w-full rounded border border-slate-300 px-2 py-1"
-            placeholder="comment (optional)"
+          <CommentComposer
+            projectId={projectId}
             value={bulkComment}
+            onChange={onBulkCommentChange}
+            rows={2}
             disabled={readOnly}
-            onChange={(e) => onBulkCommentChange(e.target.value)}
+            placeholder="Bulk comment (optional)"
+            textareaClassName="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+            showPreview={false}
           />
           <button
             type="button"

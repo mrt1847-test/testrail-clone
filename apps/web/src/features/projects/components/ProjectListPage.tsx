@@ -9,6 +9,8 @@ import { useCreateProjectMutation, useProjectsQuery } from "../hooks/useProjects
 import { ProjectCard } from "./ProjectCard";
 import { ProjectCreateDialog } from "./ProjectCreateDialog";
 import { ProjectEmptyState } from "./ProjectEmptyState";
+import { CrossProjectGlobalSearch } from "./CrossProjectGlobalSearch";
+import { ThemePreferenceSelect } from "../../../shared/theme/ThemePreferenceSelect";
 
 export function ProjectListPage() {
   const navigate = useNavigate();
@@ -19,28 +21,42 @@ export function ProjectListPage() {
   const isInstanceAdmin = memberships.some((m) => m.role === "owner") || memberships.length === 0;
 
   const top = (
-    <div className="border-b border-slate-300 bg-white">
-      <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-4">
-        <div className="flex items-center gap-4">
-          <Link to="/projects" className="text-lg font-semibold tracking-tight text-slate-900">
+    <div className="shell-bar border-b border-slate-300 dark:border-slate-700">
+      <div className="flex min-h-12 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-700">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <Link
+            to="/projects"
+            className="shrink-0 text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100"
+          >
             QA Rail
           </Link>
-          <span className="border-l border-slate-300 pl-4 text-sm font-medium text-slate-600">Gmarket QA</span>
+          <span className="hidden shrink-0 border-l border-slate-300 pl-4 text-sm font-medium text-slate-600 sm:inline dark:border-slate-600 dark:text-slate-400">
+            Gmarket QA
+          </span>
+          <CrossProjectGlobalSearch />
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <Link to="/projects" className="font-medium text-slate-700 hover:text-blue-700">
+        <div className="flex shrink-0 items-center gap-3 text-xs">
+          <Link to="/projects" className="font-medium text-slate-700 hover:text-blue-700 dark:text-slate-300">
             Working On
           </Link>
-          <span className="text-slate-300">|</span>
-          <span className="max-w-56 truncate text-slate-600">{user?.email ?? "unknown"}</span>
-          <button type="button" onClick={() => void logout()} className="text-slate-600 hover:text-blue-700">
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+          <ThemePreferenceSelect compact />
+          <span className="max-w-56 truncate text-slate-600 dark:text-slate-400">{user?.email ?? "unknown"}</span>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="text-slate-600 hover:text-blue-700 dark:text-slate-400"
+          >
             Logout
           </button>
         </div>
       </div>
-      <div className="flex h-10 items-center justify-between bg-slate-50 px-4">
+      <div className="flex h-10 items-center justify-between bg-slate-50 px-4 dark:bg-slate-900">
         <nav className="flex h-full items-center">
-          <Link to="/projects" className="flex h-full items-center border-x border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900">
+          <Link
+            to="/projects"
+            className="flex h-full items-center border-x border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          >
             Dashboard
           </Link>
         </nav>

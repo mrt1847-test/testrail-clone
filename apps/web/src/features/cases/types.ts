@@ -7,6 +7,7 @@ export type CaseFilterState = "active" | "archived";
 export type CasePresenceFilter = "" | "with" | "without";
 export type CaseSectionScope = "direct" | "subtree";
 export type CaseListColumn = "type" | "priority" | "automation" | "estimate" | "refs" | "labels" | "customValues";
+export type CaseColumnWidths = Partial<Record<CaseListColumn, number>>;
 
 export type CaseListFilters = {
   q: string;

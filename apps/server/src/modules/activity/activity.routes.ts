@@ -20,8 +20,16 @@ const activityQuerySchema = z.object({
 
 const HISTORY_ENTITY_TYPES = ["run", "milestone", "plan", "project", "suite", "section", "case"] as const;
 
+const notificationTypeFilterSchema = z.enum(["assignment", "failed_result", "mention", "activity"]);
+
 const notificationsQuerySchema = z.object({
-  unreadOnly: z.coerce.boolean().default(false)
+  unreadOnly: z.coerce.boolean().default(false),
+  type: notificationTypeFilterSchema.optional(),
+  includeSnoozed: z.coerce.boolean().default(false)
+});
+
+const snoozeNotificationSchema = z.object({
+  snoozeHours: z.coerce.number().min(0).max(24 * 30).default(24)
 });
 
 const notificationIdParamSchema = z.object({
@@ -116,15 +124,27 @@ export async function registerActivityRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
-    const { unreadOnly } = notificationsQuerySchema.parse(req.query ?? {});
+    const { unreadOnly, type, includeSnoozed } = notificationsQuerySchema.parse(req.query ?? {});
     if (!deps.prisma) {
       return reply.send(toJsonSafe({ data: [], unreadCount: 0, page, pageSize, total: 0, totalPages: 1 }));
     }
 
+    const now = new Date();
+    const snoozeVisible = includeSnoozed
+      ? {}
+      : { OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }] };
     const where = {
       projectId,
       userId: user.id,
-      ...(unreadOnly ? { readAt: null } : {})
+      ...snoozeVisible,
+      ...(unreadOnly ? { readAt: null } : {}),
+      ...(type ? { type } : {})
+    };
+    const unreadWhere = {
+      projectId,
+      userId: user.id,
+      readAt: null,
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }]
     };
     const [items, total, unreadCount] = await Promise.all([
       deps.prisma.notification.findMany({
@@ -135,7 +155,7 @@ export async function registerActivityRoutes(
         take: pageSize
       }),
       deps.prisma.notification.count({ where }),
-      deps.prisma.notification.count({ where: { projectId, userId: user.id, readAt: null } })
+      deps.prisma.notification.count({ where: unreadWhere })
     ]);
 
     return reply.send(
@@ -148,6 +168,7 @@ export async function registerActivityRoutes(
           title: item.title,
           body: item.body,
           readAt: item.readAt,
+          snoozedUntil: item.snoozedUntil,
           createdAt: item.createdAt,
           activity: item.activityEvent
             ? {
@@ -181,6 +202,23 @@ export async function registerActivityRoutes(
     });
     if (updated.count === 0) throw new AppError("NOT_FOUND", "notification not found", 404);
     return reply.send(toJsonSafe(ok({ id: notificationId, readAt: new Date() })));
+  });
+
+  app.patch("/api/projects/:projectId/notifications/:notificationId/snooze", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId, notificationId } = notificationIdParamSchema.parse(req.params);
+    const body = snoozeNotificationSchema.parse(req.body ?? {});
+    if (!deps.prisma) {
+      return reply.send(toJsonSafe(ok({ id: notificationId, snoozedUntil: null })));
+    }
+    const snoozedUntil =
+      body.snoozeHours <= 0 ? null : new Date(Date.now() + body.snoozeHours * 60 * 60 * 1000);
+    const updated = await deps.prisma.notification.updateMany({
+      where: { id: notificationId, projectId, userId: user.id },
+      data: { snoozedUntil }
+    });
+    if (updated.count === 0) throw new AppError("NOT_FOUND", "notification not found", 404);
+    return reply.send(toJsonSafe(ok({ id: notificationId, snoozedUntil })));
   });
 
   app.post("/api/projects/:projectId/notifications/read-all", async (req, reply) => {

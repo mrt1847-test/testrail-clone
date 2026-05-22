@@ -1,9 +1,12 @@
-import type { CaseListColumn } from "../types";
+import type { CaseColumnWidths, CaseListColumn } from "../types";
+import { defaultCaseColumnWidths } from "../hooks/useCaseColumnPreferences";
 
 type CaseColumnsDialogProps = {
   open: boolean;
   columns: CaseListColumn[];
+  columnWidths: Record<CaseListColumn, number>;
   onColumnsChange: (columns: CaseListColumn[]) => void;
+  onColumnWidthsChange: (widths: CaseColumnWidths) => void;
   onClose: () => void;
   saveViewOpen: boolean;
   saveViewName: string;
@@ -29,7 +32,9 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
   const {
     open,
     columns,
+    columnWidths,
     onColumnsChange,
+    onColumnWidthsChange,
     onClose,
     saveViewOpen,
     saveViewName,
@@ -50,6 +55,13 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
     onColumnsChange(next.length > 0 ? next : ["type", "priority", "automation", "estimate"]);
   };
 
+  const updateWidth = (column: CaseListColumn, rawValue: string) => {
+    const parsed = Number(rawValue);
+    const fallback = defaultCaseColumnWidths[column];
+    const width = Number.isFinite(parsed) ? Math.max(72, Math.min(360, Math.round(parsed))) : fallback;
+    onColumnWidthsChange({ ...columnWidths, [column]: width });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={onClose}>
       <div
@@ -63,22 +75,38 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
           <h2 id="selectColumnsDialogTitle" className="text-sm font-semibold text-slate-900">
             Select columns
           </h2>
-          <p className="mt-1 text-xs text-slate-600">Choose which columns appear in the case repository table.</p>
+          <p className="mt-1 text-xs text-slate-600">Choose which columns appear in the case repository table and tune their width.</p>
         </div>
         <div className="px-4 py-3">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             {columnOptions.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                className="grid gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 sm:grid-cols-[minmax(0,1fr)_7rem]"
               >
-                <input
-                  type="checkbox"
-                  checked={columns.includes(option.value)}
-                  onChange={(event) => toggleColumn(option.value, event.target.checked)}
-                  className="h-4 w-4"
-                />
-                {option.label}
+                <span className="flex min-w-0 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={columns.includes(option.value)}
+                    onChange={(event) => toggleColumn(option.value, event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  {option.label}
+                </span>
+                <span className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={72}
+                    max={360}
+                    step={8}
+                    value={columnWidths[option.value] ?? defaultCaseColumnWidths[option.value]}
+                    disabled={!columns.includes(option.value)}
+                    aria-label={`${option.label} column width`}
+                    onChange={(event) => updateWidth(option.value, event.target.value)}
+                    className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                  <span className="text-xs text-slate-500">px</span>
+                </span>
               </label>
             ))}
           </div>

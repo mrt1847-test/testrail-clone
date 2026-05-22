@@ -1,8 +1,22 @@
 import type { PrismaClient } from "@prisma/client";
 
-export const WEBHOOK_DISABLE_FAILURE_THRESHOLD = Number(
-  process.env.WEBHOOK_DISABLE_FAILURE_THRESHOLD ?? 5
-);
+import {
+  getDefaultWebhookDisableThreshold,
+  resolveWebhookDisableThreshold
+} from "../../domain/webhookDeliveryPolicy.js";
+
+export const WEBHOOK_DISABLE_FAILURE_THRESHOLD = getDefaultWebhookDisableThreshold();
+
+export async function resolveProjectWebhookDisableThreshold(
+  prisma: PrismaClient,
+  projectId: bigint
+) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { webhookDisableFailureThreshold: true }
+  });
+  return resolveWebhookDisableThreshold(project?.webhookDisableFailureThreshold);
+}
 
 export async function recordWebhookDeliverySuccess(prisma: PrismaClient, webhookId: bigint) {
   await prisma.webhookSubscription.updateMany({
@@ -18,12 +32,13 @@ export async function recordWebhookDeliverySuccess(prisma: PrismaClient, webhook
 export async function recordWebhookDeliveryFailure(prisma: PrismaClient, webhookId: bigint) {
   const webhook = await prisma.webhookSubscription.findFirst({
     where: { id: webhookId, deletedAt: null },
-    select: { id: true, consecutiveFailures: true, isActive: true }
+    select: { id: true, consecutiveFailures: true, isActive: true, projectId: true }
   });
   if (!webhook || !webhook.isActive) return;
 
+  const threshold = await resolveProjectWebhookDisableThreshold(prisma, webhook.projectId);
   const nextFailures = webhook.consecutiveFailures + 1;
-  const shouldDisable = nextFailures >= WEBHOOK_DISABLE_FAILURE_THRESHOLD;
+  const shouldDisable = nextFailures >= threshold;
   await prisma.webhookSubscription.update({
     where: { id: webhook.id },
     data: {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -8,14 +8,14 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type RequirementRow = {
   requirementId: string;
@@ -54,8 +54,16 @@ export function ReportTraceabilityPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialView = searchParams.get("view") === "references" ? "references" : "requirements";
   const [view, setView] = useState<ViewMode>(initialView);
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
-  const [scopeFilter, setScopeFilter] = useState("all");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? searchParams.get("search") ?? "");
+  const [scopeFilter, setScopeFilter] = useState(() => searchParams.get("scope") ?? "all");
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (view !== "requirements") next.set("view", view);
+    if (search.trim().length > 0) next.set("q", search.trim());
+    if (scopeFilter !== "all") next.set("scope", scopeFilter);
+    setSearchParams(next, { replace: true });
+  }, [search, scopeFilter, setSearchParams, view]);
 
   const requirementQuery = useQuery({
     queryKey: reportKeys.traceability(projectId),
@@ -216,14 +224,12 @@ export function ReportTraceabilityPage() {
       <ReportTablePanel
         title="Matrix"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="traceability"
-              filters={{ ui: { search, scope: scopeFilter, view } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="traceability" disabled={exportDisabled} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="traceability"
+            filters={{ ui: uiFiltersForReport({ q: search, scope: scopeFilter, view }), export: {} }}
+            disabled={exportDisabled}
+          />
         }
       >
         {view === "requirements" ? (

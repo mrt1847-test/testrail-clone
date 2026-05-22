@@ -80,7 +80,7 @@ flowchart LR
 
 | TestRail 영역 | 클론 | 일치도 |
 |---------------|------|--------|
-| 3-pane workbench | 트리 \| 목록 \| 상세 패널 | **있음** (트리 위치만 좌↔우 반대) |
+| 3-pane workbench | 트리 \| 목록 \| 상세 패널 | **있음** (트리 위치는 현재 구현처럼 좌/우 선택 가능) |
 | 가운데 **전체 suite 그룹 테이블** | `subtree`/`compact` 시 `sectionId` 없이 suite 전체 로드 + 섹션 헤더 그룹 | **있음** (`tree` 모드만 단일 섹션 direct) |
 | display subtree/compact | `?display=subtree\|tree\|compact` + `CaseRepositoryDisplayMenu` | **부분** |
 | content-header (Run Test 등) | `ProjectContentHeader` + `CaseRepositoryContentHeader` (공통 Reports/Defects) | **부분** (다른 탭에도 variant 적용) |
@@ -91,7 +91,7 @@ flowchart LR
 | Display Deleted toggle | `state: active \| archived` 필터 | 부분 |
 | Edit selected / view / filter | bulk edit, archive, delete | 부분 |
 | QPane | `CaseDetailSidePanel` + `CaseDetailPage` 라우트 | 부분 |
-| Section tree + Add Section | `SectionTreePane` (왼쪽) | 있음 |
+| Section tree + Add Section | `SectionTreePane` (기본 왼쪽, 좌/우 전환 및 프로젝트별 저장) | 있음 |
 | Suite stats / estimates | `SuiteRepositoryStats` + `SuiteEstimatesBubble` | **있음** (Wave D) |
 | DnD cases/sections | `useCaseListDnD`, section reorder | **있음** (행·섹션·append zone) |
 | Mark deleted vs permanent | Active: Mark as deleted; Archived: Undelete + Delete permanently (`caseDeleteCopy`) | **있음** |
@@ -105,12 +105,12 @@ flowchart LR
 
 | 항목 | TestRail | 클론 | 좁히기 |
 |------|----------|------|--------|
-| 메인 그리드 범위 | 선택 섹션 **+ 하위 섹션** 케이스를 **한 테이블**에 섹션 헤더로 표시 (`subtree`) | 트리에서 고른 **한 섹션**의 direct 케이스만 | `CaseListPane`에 **SuiteGroupedCaseTable**: `groupBy=section`, `display=subtree\|tree\|compact` |
-| 트리 위치 | **우측** sidebar | **좌측** `SectionTreePane` | 선택: TR과 동일하게 **우측 트리**로 옮기거나, 좌측 유지 시 문서화·사용자 설정 |
-| URL 상태 | `group_id`, filter, display | section + case panel (부분) | `?sectionId=&caseId=&display=&groupBy=` |
+| 메인 그리드 범위 | 선택 섹션 **+ 하위 섹션** 케이스를 **한 테이블**에 섹션 헤더로 표시 (`subtree`) | `subtree`/`compact`는 suite-wide 섹션 그룹 테이블, `tree`는 단일 섹션 direct 목록 | 현재 구현 유지 |
+| 트리 위치 | **우측** sidebar | `SectionTreePane` 좌/우 선택 가능, 기본 왼쪽, `localStorage` 프로젝트별 저장 | 현재 구현 유지: TestRail처럼 강제 우측 이동하지 않고 사용자 위치 설정을 보존 |
+| URL 상태 | `group_id`, filter, display | `suiteId`, `sectionId`, `panelCaseId`, `display`, `groupBy`, filters, columns | 현재 구현 유지 |
 | QPane | 목록 유지 + 우측 분할 | `xl:grid-cols` 패널 | Q 토글, 스플리터 너비 저장 |
 
-**핵심:** 클론은 3-pane 골격은 갖췄지만, TestRail의 “**가운데가 전체 저장소 테이블**”인 점이 아직 다르다. 이 차이가 P0다.
+**핵심:** 클론은 3-pane 골격과 suite-wide 섹션 그룹 테이블을 갖췄다. 남은 차이는 트리 위치를 TestRail처럼 강제 우측으로 고정하지 않고, 현재 구현처럼 좌/우 전환 가능한 사용자 설정으로 보존한다는 점이다.
 
 ### 4.2 헤더·저장소 운영 (P1)
 
@@ -192,7 +192,7 @@ flowchart LR
 
 ### Wave D — 사이드바·레이아웃 (P2) ✅
 
-1. 트리 **우측** 기본 + localStorage로 좌/우 전환.
+1. 트리 위치는 현재 구현처럼 기본 왼쪽 + localStorage 좌/우 전환을 유지한다.
 2. `SuiteRepositoryStats` + `SuiteEstimatesBubble` (`totalEstimateDisplay` API).
 3. Sidebar Add Test Case + Edit suite description.
 

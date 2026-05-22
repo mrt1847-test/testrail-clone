@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   getAuthenticatedUser,
   requireProjectMutationRole
@@ -14,11 +15,29 @@ import { recordActivityEvent } from "../activity/activity.service.js";
 import { ensureDefaultCaseTemplates, ensureDefaultCaseTemplatesInMemory } from "../settings/caseTemplates.service.js";
 import { caseTemplates } from "../settings/settings.shared.js";
 import { getAccessDefaults, grantActiveUsersToProject } from "../admin/accessDefaults.service.js";
+import { searchCrossProjectGlobal } from "./crossProjectGlobalSearch.service.js";
+import { searchProjectGlobal } from "./projectGlobalSearch.service.js";
+
+const projectSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200),
+  limit: z.coerce.number().int().positive().max(20).optional()
+});
 
 export async function registerProjectsRoutes(
   app: FastifyInstance,
   deps: { projectsService: ProjectsService; authService: AuthService; prisma?: PrismaClient }
 ) {
+  app.get("/api/search", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const query = projectSearchQuerySchema.parse(req.query ?? {});
+    const result = await searchCrossProjectGlobal(deps.prisma, {
+      userId: user.id,
+      query: query.q,
+      limitPerType: query.limit
+    });
+    return reply.send(toJsonSafe(ok(result)));
+  });
+
   app.get("/api/projects", async (req, reply) => {
     const user = await getAuthenticatedUser(req, deps);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
@@ -80,6 +99,27 @@ export async function registerProjectsRoutes(
       body: created.name
     });
     return reply.send(toJsonSafe(ok(created)));
+  });
+
+  app.get("/api/projects/:projectId/search", async (req, reply) => {
+    const user = await getAuthenticatedUser(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const query = projectSearchQuerySchema.parse(req.query ?? {});
+    if (deps.prisma) {
+      const hasMembership = await deps.prisma.projectMember.findFirst({
+        where: { projectId, userId: user.id, deletedAt: null },
+        select: { id: true }
+      });
+      if (!hasMembership) {
+        return reply.status(403).send({ code: "FORBIDDEN", message: "project access denied" });
+      }
+    }
+    const result = await searchProjectGlobal(deps.prisma, {
+      projectId,
+      query: query.q,
+      limitPerType: query.limit
+    });
+    return reply.send(toJsonSafe(ok(result)));
   });
 
   app.get("/api/projects/:projectId", async (req, reply) => {

@@ -68,6 +68,7 @@ import { resolveProjectAccess } from "../permissions/projectAccess.service.js";
 import { loadActiveCustomFields, visibilityContextFromAccess } from "../settings/customFieldAccess.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent, recordResultActivity } from "../activity/activity.service.js";
+import { recordDefectMutationActivity } from "../activity/activityRecording.js";
 import { recordAuditLog } from "../settings/auditLog.service.js";
 import {
   filterResultCustomValuesForRead,
@@ -625,11 +626,10 @@ export async function registerResultsRoutes(
           caseId: context.instance.caseId.toString()
         }
       });
-      await recordActivityEvent(deps.prisma, {
+      await recordDefectMutationActivity(deps.prisma, {
         projectId: context.instance.run.projectId,
         actorUserId: user.id,
-        entityType: "result",
-        entityId: params.resultId,
+        resultId: params.resultId,
         eventType: "defect.linked",
         title: "Defect linked",
         body: `${body.defectKey} linked to ${context.instance.titleSnapshot}.`,
@@ -639,10 +639,9 @@ export async function registerResultsRoutes(
           defectLinkId: upserted.id.toString(),
           runId: context.instance.run.id.toString(),
           testId: context.instance.id.toString(),
-          caseId: context.instance.caseId.toString(),
-          assignedToUserId: context.instance.assignedTo?.toString() ?? null
+          caseId: context.instance.caseId.toString()
         },
-        notificationType: "activity"
+        assigneeId: context.instance.assignedTo
       });
     }
     return reply.send(
@@ -669,14 +668,15 @@ export async function registerResultsRoutes(
         defectKey: true,
         result: {
           select: {
-            instance: {
-              select: {
-                id: true,
-                caseId: true,
-                titleSnapshot: true,
-                run: { select: { id: true, projectId: true } }
-              }
-            }
+        instance: {
+          select: {
+            id: true,
+            caseId: true,
+            assignedTo: true,
+            titleSnapshot: true,
+            run: { select: { id: true, projectId: true } }
+          }
+        }
           }
         }
       }
@@ -704,11 +704,10 @@ export async function registerResultsRoutes(
         caseId: inst.caseId.toString()
       }
     });
-    await recordActivityEvent(deps.prisma, {
+    await recordDefectMutationActivity(deps.prisma, {
       projectId,
       actorUserId: user.id,
-      entityType: "result",
-      entityId: params.resultId,
+      resultId: params.resultId,
       eventType: "defect.unlinked",
       title: "Defect unlinked",
       body: `${found.defectKey} removed from ${inst.titleSnapshot}.`,
@@ -719,7 +718,8 @@ export async function registerResultsRoutes(
         runId: inst.run.id.toString(),
         testId: inst.id.toString(),
         caseId: inst.caseId.toString()
-      }
+      },
+      assigneeId: inst.assignedTo
     });
     return reply.status(204).send();
   });
@@ -869,11 +869,10 @@ export async function registerResultsRoutes(
         caseId: result.instance.caseId.toString()
       }
     });
-    await recordActivityEvent(deps.prisma, {
+    await recordDefectMutationActivity(deps.prisma, {
       projectId: result.instance.run.projectId,
       actorUserId: user.id,
-      entityType: "result",
-      entityId: params.resultId,
+      resultId: params.resultId,
       eventType: "defect.pushed",
       title: "Defect pushed",
       body: `${outcome.defectKey} was created or linked for ${result.instance.titleSnapshot}.`,
@@ -886,10 +885,9 @@ export async function registerResultsRoutes(
         customFields,
         runId: result.instance.run.id.toString(),
         testId: result.instance.id.toString(),
-        caseId: result.instance.caseId.toString(),
-        assignedToUserId: result.instance.assignedTo?.toString() ?? null
+        caseId: result.instance.caseId.toString()
       },
-      notificationType: "activity"
+      assigneeId: result.instance.assignedTo
     });
     return reply.send(
       toJsonSafe({

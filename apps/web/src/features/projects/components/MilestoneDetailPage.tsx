@@ -25,6 +25,9 @@ import { MilestoneLifecycleBadge } from "./MilestoneLifecycleBadge";
 import { MilestoneProgressBar } from "./MilestoneProgressBar";
 import { MilestoneProgressChip } from "./MilestoneProgressChip";
 import { MilestoneSummaryRow } from "./MilestoneSummaryRow";
+import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
+import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
+import { useRecordRecentlyViewed } from "../hooks/useRecordRecentlyViewed";
 import { ReportSummaryStrip } from "./reports/ReportChrome";
 
 function lifecycleOf(row: { lifecycleStatus?: MilestoneLifecycleStatus; isCompleted: boolean }) {
@@ -43,6 +46,13 @@ export function MilestoneDetailPage() {
     queryFn: () => fetchMilestone(projectId, milestoneId),
     enabled: Boolean(projectId && milestoneId)
   });
+
+  useRecordRecentlyViewed(
+    projectId,
+    milestoneQuery.data
+      ? { kind: "milestone", id: milestoneId, title: milestoneQuery.data.name }
+      : null
+  );
   const runsQuery = useQuery({
     queryKey: ["milestone-runs", projectId, milestoneId],
     queryFn: () => fetchMilestoneRuns(projectId, milestoneId),
@@ -146,6 +156,7 @@ export function MilestoneDetailPage() {
 
   const milestone = milestoneQuery.data;
   const lifecycleStatus = milestone?.lifecycleStatus ?? (milestone?.isCompleted ? "completed" : "open");
+  const { openEntityContextMenu } = useEntityContextMenu();
 
   const summaryItems = useMemo(() => {
     if (!rollup) return [];
@@ -175,7 +186,12 @@ export function MilestoneDetailPage() {
 
   return (
     <div className="space-y-4">
-      <header className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <header
+        className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+        onContextMenu={(event) =>
+          openEntityContextMenu(event, { projectId, kind: "milestone", entityId: milestoneId })
+        }
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Milestone</p>
@@ -191,7 +207,8 @@ export function MilestoneDetailPage() {
                 </Link>
               ) : null}
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <EntityCopyActions projectId={projectId} kind="milestone" entityId={milestoneId} compact />
               {lifecycleStatus === "upcoming" ? (
                 <button
                   type="button"

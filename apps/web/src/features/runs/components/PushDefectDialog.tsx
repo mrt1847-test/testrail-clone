@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchDefectPushFields } from "../api/runApi";
+import { RecentDefectSuggestions } from "./RecentDefectSuggestions";
 import type { DefectPushContext, DefectPushFieldDefinition } from "../types";
 
 type PushDefectDialogProps = {
@@ -92,6 +93,10 @@ export function PushDefectDialog({
   });
 
   const mappedFields = fieldsQuery.data?.fields ?? [];
+  const defectKeyField = useMemo(
+    () => mappedFields.find((field) => field.mapsTo === "defectKey") ?? null,
+    [mappedFields]
+  );
   const standardFieldKeys = useMemo(
     () => new Set(mappedFields.map((field) => field.key)),
     [mappedFields]
@@ -187,6 +192,19 @@ export function PushDefectDialog({
               <option value="custom">Custom</option>
             </select>
           </label>
+
+          {defectKeyField ? (
+            <RecentDefectSuggestions
+              projectId={projectId}
+              excludeKeys={values[defectKeyField.key]?.trim() ? [values[defectKeyField.key].trim()] : []}
+              onSelect={(key) =>
+                setValues((prev) => ({
+                  ...prev,
+                  [defectKeyField.key]: key
+                }))
+              }
+            />
+          ) : null}
 
           {fieldsQuery.isLoading ? (
             <p className="text-sm text-slate-500">Loading provider fields...</p>

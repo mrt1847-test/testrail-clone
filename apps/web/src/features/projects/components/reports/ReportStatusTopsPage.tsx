@@ -6,14 +6,14 @@ import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { StatusBadge } from "../../../../shared/ui/StatusBadge";
 import { fetchStatusTops } from "../../api/casePropertyReportsApi";
+import { formatDistributionTableLines } from "../../reports/reportSummaryText";
 import { reportKeys } from "../../hooks/reportKeys";
 import {
-  ReportExportActions,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportStatusTopsPage() {
   const { projectId = "" } = useParams();
@@ -46,11 +46,16 @@ export function ReportStatusTopsPage() {
       <ReportSummaryStrip items={summaryItems} />
       <ReportTablePanel
         title="Top statuses"
+        tableSummaryLines={formatDistributionTableLines(
+          rows.map((row) => ({ label: row.status, count: row.count, percent: row.percent }))
+        )}
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton projectId={projectId} reportType="status_tops" filters={{}} />
-            <ReportExportActions projectId={projectId} reportType="status_tops" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="status_tops"
+            filters={{ ui: {}, export: {} }}
+            disabled={rows.length === 0}
+          />
         }
       >
         {rows.length === 0 ? (

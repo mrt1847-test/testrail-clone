@@ -13,6 +13,14 @@ import type {
   CaseListFilters
 } from "../types";
 
+export type CaseRepositoryViewState = {
+  sectionId: number | null;
+  filters: CaseListFilters;
+  columns?: CaseListColumn[];
+  display?: CaseDisplayMode;
+  groupBy?: CaseGroupBy;
+};
+
 export const defaultCaseListColumns: CaseListColumn[] = ["type", "priority", "automation", "estimate"];
 const allowedCaseListColumns = new Set<CaseListColumn>([
   "type",
@@ -68,6 +76,48 @@ function writeColumns(next: URLSearchParams, columns: CaseListColumn[]) {
   next.set("columns", effective.join(","));
 }
 
+function writeRepositoryView(next: URLSearchParams, view: CaseRepositoryViewState) {
+  if (view.sectionId != null) next.set("sectionId", String(view.sectionId));
+  else next.delete("sectionId");
+
+  if (view.filters.q.trim().length > 0) next.set("q", view.filters.q.trim());
+  else next.delete("q");
+
+  if (view.filters.priority) next.set("priority", view.filters.priority);
+  else next.delete("priority");
+
+  if (view.filters.caseType) next.set("caseType", view.filters.caseType);
+  else next.delete("caseType");
+
+  if (view.filters.automation) next.set("automation", view.filters.automation);
+  else next.delete("automation");
+
+  if (view.filters.refs) next.set("refs", view.filters.refs);
+  else next.delete("refs");
+
+  if (view.filters.labels) next.set("labels", view.filters.labels);
+  else next.delete("labels");
+
+  if (view.filters.estimate) next.set("estimate", view.filters.estimate);
+  else next.delete("estimate");
+
+  if (view.filters.state === "archived") next.set("state", view.filters.state);
+  else next.delete("state");
+
+  if (view.columns) writeColumns(next, view.columns);
+
+  if (view.display && view.display !== "subtree") next.set("display", view.display);
+  else if (view.display) next.delete("display");
+
+  if (view.groupBy && view.groupBy !== "section_id") next.set("groupBy", view.groupBy);
+  else if (view.groupBy) next.delete("groupBy");
+
+  next.delete("caseId");
+  next.delete("mode");
+  next.delete("panelCaseId");
+  next.delete("panelMode");
+}
+
 export function useExpandedCase() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -81,6 +131,13 @@ export function useExpandedCase() {
   const panelMode: "view" | "edit" =
     searchParams.get("panelMode") === "edit" || searchParams.get("mode") === "edit" ? "edit" : "view";
 
+  const focusCaseId = useMemo(() => {
+    const raw = searchParams.get("focusCaseId");
+    if (raw == null || raw === "") return null;
+    const n = Number(raw);
+    return Number.isNaN(n) ? null : n;
+  }, [searchParams]);
+
   const selectedSectionId = useMemo(() => {
     const raw = searchParams.get("sectionId");
     if (raw == null || raw === "") return null;
@@ -90,6 +147,30 @@ export function useExpandedCase() {
 
   const caseDisplay = useMemo(() => parseCaseDisplayMode(searchParams.get("display")), [searchParams]);
   const caseGroupBy = useMemo(() => parseCaseGroupBy(searchParams.get("groupBy")), [searchParams]);
+  const hasCaseColumnsParam = searchParams.has("columns");
+  const hasRepositoryViewParams = useMemo(
+    () =>
+      [
+        "sectionId",
+        "caseId",
+        "mode",
+        "panelCaseId",
+        "panelMode",
+        "focusCaseId",
+        "display",
+        "groupBy",
+        "q",
+        "priority",
+        "caseType",
+        "automation",
+        "refs",
+        "labels",
+        "estimate",
+        "state",
+        "columns"
+      ].some((param) => searchParams.has(param)),
+    [searchParams]
+  );
 
   const caseFilters = useMemo<CaseListFilters>(
     () => ({
@@ -105,6 +186,13 @@ export function useExpandedCase() {
     [searchParams]
   );
   const caseColumns = useMemo(() => parseColumns(searchParams.get("columns")), [searchParams]);
+
+  const setFocusCaseId = useCallback((nextCaseId: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextCaseId === null) next.delete("focusCaseId");
+    else next.set("focusCaseId", String(nextCaseId));
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const setPanelCase = useCallback((nextCaseId: number | null, nextMode: "view" | "edit" = "view") => {
     const next = new URLSearchParams(searchParams);
@@ -233,52 +321,33 @@ export function useExpandedCase() {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
-  const applySavedView = useCallback((view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[] }) => {
+  const applyRepositoryView = useCallback((view: CaseRepositoryViewState, options?: { replace?: boolean }) => {
     const next = new URLSearchParams(searchParams);
-    if (view.sectionId != null) next.set("sectionId", String(view.sectionId));
-    else next.delete("sectionId");
-
-    if (view.filters.q.trim().length > 0) next.set("q", view.filters.q.trim());
-    else next.delete("q");
-
-    if (view.filters.priority) next.set("priority", view.filters.priority);
-    else next.delete("priority");
-
-    if (view.filters.caseType) next.set("caseType", view.filters.caseType);
-    else next.delete("caseType");
-
-    if (view.filters.automation) next.set("automation", view.filters.automation);
-    else next.delete("automation");
-
-    if (view.filters.refs) next.set("refs", view.filters.refs);
-    else next.delete("refs");
-
-    if (view.filters.labels) next.set("labels", view.filters.labels);
-    else next.delete("labels");
-
-    if (view.filters.estimate) next.set("estimate", view.filters.estimate);
-    else next.delete("estimate");
-
-    if (view.filters.state === "archived") next.set("state", view.filters.state);
-    else next.delete("state");
-
-    writeColumns(next, view.columns ?? defaultCaseListColumns);
-    next.delete("caseId");
-    next.delete("mode");
-    next.delete("panelCaseId");
-    next.delete("panelMode");
-    setSearchParams(next);
+    writeRepositoryView(next, view);
+    if (options?.replace) setSearchParams(next, { replace: true });
+    else setSearchParams(next);
   }, [searchParams, setSearchParams]);
+
+  const applySavedView = useCallback(
+    (view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[] }) => {
+      applyRepositoryView(view);
+    },
+    [applyRepositoryView]
+  );
 
   return {
     panelCaseId,
     panelMode,
+    focusCaseId,
     selectedSectionId,
     caseDisplay,
     caseGroupBy,
     caseFilters,
     caseColumns,
+    hasCaseColumnsParam,
+    hasRepositoryViewParams,
     setPanelCase,
+    setFocusCaseId,
     togglePanelCase,
     setSelectedSection,
     setTreeFocusSection,
@@ -288,6 +357,7 @@ export function useExpandedCase() {
     setCaseFilters,
     setCaseColumns,
     clearCaseFilters,
-    applySavedView
+    applySavedView,
+    applyRepositoryView
   };
 }

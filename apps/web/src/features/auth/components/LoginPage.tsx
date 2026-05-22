@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
+import { Button } from "../../../shared/ui/Button";
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -31,10 +32,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-900">QA Rail Login</h1>
-        <p className="mt-1 text-sm text-slate-600">Use your email to continue.</p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+      <form
+        onSubmit={onSubmit}
+        className="shell-panel w-full max-w-sm p-5 shadow-sm dark:shadow-none"
+      >
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">QA Rail Login</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Use your email to continue.</p>
         <label className="mt-4 block text-sm text-slate-700">
           Email
           <input
@@ -56,13 +60,9 @@ export function LoginPage() {
           />
         </label>
         {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="mt-4 w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
+        <Button type="submit" className="mt-4 w-full" loading={submitting}>
+          Sign in
+        </Button>
       </form>
     </div>
   );

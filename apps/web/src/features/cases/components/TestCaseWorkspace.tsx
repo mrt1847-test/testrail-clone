@@ -13,18 +13,28 @@ import { CaseDetailSidePanel } from "./CaseDetailSidePanel";
 import { CaseListPane } from "./CaseListPane";
 import { SectionTreePane } from "./SectionTreePane";
 import { CaseRepositoryContentHeader } from "../../projects/content-header/ProjectContentHeader";
+import { useWorkspacePreferences } from "../../projects/hooks/useWorkspacePreferences";
+import { suiteStorageKey } from "../../projects/workspacePreferences";
+import { useAuth } from "../../auth/context/AuthContext";
 import { SuiteSwitcherBar } from "./SuiteSwitcherBar";
-
-const suiteStorageKey = (projectId: string) => `cases:active-suite:${projectId}`;
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const workspacePrefsQuery = useWorkspacePreferences(projectId);
   const [searchParams, setSearchParams] = useSearchParams();
   const defectAddUrl = useDefectAddUrl(projectId);
+  const storageKey = suiteStorageKey(projectId, user?.id);
   const [selectedSuiteId, setSelectedSuiteId] = useState(() => {
     if (typeof window === "undefined") return "";
-    return searchParams.get("suiteId") ?? window.localStorage.getItem(suiteStorageKey(projectId)) ?? "";
+    const fromUrl = searchParams.get("suiteId");
+    if (fromUrl) return fromUrl;
+    return (
+      window.localStorage.getItem(storageKey) ??
+      window.localStorage.getItem(suiteStorageKey(projectId)) ??
+      ""
+    );
   });
   const { data: bundle, isLoading: sectionsLoading, isError: sectionsError, refetch } = useSections(
     projectId,
@@ -72,16 +82,24 @@ export function TestCaseWorkspace() {
   });
 
   useEffect(() => {
+    if (searchParams.get("suiteId") || selectedSuiteId) return;
+    const preferredSuiteId = workspacePrefsQuery.data?.defaultSuiteId;
+    if (!preferredSuiteId) return;
+    setSelectedSuiteId(preferredSuiteId);
+    window.localStorage.setItem(storageKey, preferredSuiteId);
+  }, [searchParams, selectedSuiteId, storageKey, workspacePrefsQuery.data?.defaultSuiteId]);
+
+  useEffect(() => {
     const suiteIdFromUrl = searchParams.get("suiteId");
     if (!suiteIdFromUrl || suiteIdFromUrl === selectedSuiteId) return;
     setSelectedSuiteId(suiteIdFromUrl);
-    window.localStorage.setItem(suiteStorageKey(projectId), suiteIdFromUrl);
-  }, [projectId, searchParams, selectedSuiteId]);
+    window.localStorage.setItem(storageKey, suiteIdFromUrl);
+  }, [projectId, searchParams, selectedSuiteId, storageKey]);
 
   useEffect(() => {
     if (!bundle?.suiteId) return;
     setSelectedSuiteId(bundle.suiteId);
-    window.localStorage.setItem(suiteStorageKey(projectId), bundle.suiteId);
+    window.localStorage.setItem(storageKey, bundle.suiteId);
     if (searchParams.get("suiteId") === bundle.suiteId) return;
     const next = new URLSearchParams(searchParams);
     next.set("suiteId", bundle.suiteId);
@@ -160,6 +178,7 @@ export function TestCaseWorkspace() {
       sectionId={selectedSectionId ?? sections[0]?.id ?? 0}
       mode={panelMode}
       onClose={() => setPanelCase(null)}
+      onEdit={() => setPanelCase(panelCaseId, "edit")}
       onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
     />
   ) : null;

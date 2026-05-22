@@ -144,6 +144,7 @@ Planned implementation (not in baseline) would likely include: configurable requ
 ## API Groups
 
 ## Projects
+- `GET /api/projects/{projectId}/search` (query: `q`, optional `limit`; cases, runs, milestones, plans, defects)
 - `GET /api/projects`
 - `POST /api/projects` — body: `name`, optional `description`, optional `projectType` (`single_repo` | `single_repo_baselines` | `multi_suite`, default `single_repo`); creates master suite + `General` section.
 - `GET /api/projects/{projectId}` — includes `projectType`; list responses use the same shape.
@@ -640,7 +641,11 @@ Defect integration reference helpers (case References field):
 - `PATCH /api/projects/{projectId}/settings/webhooks/{webhookId}`
 - `DELETE /api/projects/{projectId}/settings/webhooks/{webhookId}`
 - `GET /api/projects/{projectId}/settings/webhook-events`
-- `GET /api/projects/{projectId}/settings/webhook-attempts`
+- `GET /api/projects/{projectId}/settings/webhook-event-catalog`
+- `GET /api/projects/{projectId}/settings/webhook-delivery-policy`
+- `PATCH /api/projects/{projectId}/settings/webhook-delivery-policy` body `{ disableAfterConsecutiveFailures: number | null }` (DB mode; `null` clears project override)
+- `GET /api/projects/{projectId}/settings/webhook-attempts` (query: `webhookId`, `status`, pagination)
+- `GET /api/projects/{projectId}/settings/webhook-attempts/{attemptId}` (full response body and payload)
 - `POST /api/projects/{projectId}/settings/webhook-attempts/{attemptId}/retry`
 - `POST /api/projects/{projectId}/settings/webhooks/{webhookId}/test-send` (DB mode only; synchronous probe, records `webhook_delivery_attempt`)
 - `GET /api/projects/{projectId}/settings/email-outbox` (query: `status`, `kind`, `recipientEmail`, pagination)
@@ -652,7 +657,7 @@ Defect integration reference helpers (case References field):
 Webhook delivery (DB-backed server process):
 - Webhook create/update accepts optional `scope: "project" | "global"`; `project` is default. Global webhooks are listed in project settings and receive matching activity from every project, while delivery attempts remain tied to the project where the event occurred.
 - When `USE_IN_MEMORY_REPOSITORY` is not enabled, a background interval processes `webhook_delivery_attempt` rows in `pending` state (respecting `nextRetryAt`), POSTs JSON to `targetUrl` with `X-Webhook-Signature` and `X-Webhook-Event`, and stores HTTP status/body or error with exponential backoff up to a capped attempt count.
-- After a delivery attempt exhausts retries, the parent `WebhookSubscription` increments `consecutiveFailures`; when the threshold is reached (default 5, `WEBHOOK_DISABLE_FAILURE_THRESHOLD`), the webhook is set `isActive=false` with `disabledAt`. Re-enabling via PATCH clears failure counters.
+- After a delivery attempt exhausts retries, the parent `WebhookSubscription` increments `consecutiveFailures`; when the threshold is reached (server default from `WEBHOOK_DISABLE_FAILURE_THRESHOLD`, overridable per project via `Project.webhookDisableFailureThreshold`), the webhook is set `isActive=false` with `disabledAt`. Re-enabling via PATCH clears failure counters.
 
 Custom field shape:
 ```json

@@ -90,6 +90,86 @@ function synthesizedKeys(setting: DefectIntegrationForRefs, q: string, limit: nu
   return [...new Set(out)].slice(0, limit);
 }
 
+export type RecentDefectItem = { key: string; label: string; url: string | null; lastUsedAt: string };
+
+function mergeRecentDefectKeys(
+  rows: Array<{ key: string; createdAt: Date; url?: string | null }>,
+  limit: number
+) {
+  const byKey = new Map<string, { createdAt: Date; url: string | null }>();
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (!existing || row.createdAt > existing.createdAt) {
+      byKey.set(key, { createdAt: row.createdAt, url: row.url ?? null });
+    }
+  }
+  return [...byKey.entries()]
+    .sort((a, b) => b[1].createdAt.getTime() - a[1].createdAt.getTime())
+    .slice(0, limit)
+    .map(([key, meta]) => ({ key, createdAt: meta.createdAt, url: meta.url }));
+}
+
+export async function listRecentDefectKeys(
+  projectId: bigint,
+  limit: number,
+  prisma: PrismaClient | undefined,
+  setting: DefectIntegrationForRefs
+): Promise<RecentDefectItem[]> {
+  const capped = Math.min(Math.max(limit, 1), 25);
+  const collected: Array<{ key: string; createdAt: Date; url?: string | null }> = [];
+
+  if (prisma) {
+    const links = await prisma.resultDefectLink.findMany({
+      where: {
+        deletedAt: null,
+        result: {
+          instance: {
+            run: { projectId, deletedAt: null }
+          }
+        }
+      },
+      select: { defectKey: true, url: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+    for (const link of links) {
+      collected.push({ key: link.defectKey, createdAt: link.createdAt, url: link.url });
+    }
+
+    const results = await prisma.testResult.findMany({
+      where: {
+        instance: {
+          run: { projectId, deletedAt: null }
+        },
+        defects: { isEmpty: false }
+      },
+      select: { defects: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 150
+    });
+    for (const result of results) {
+      for (const key of result.defects) {
+        const trimmed = key.trim();
+        if (trimmed) collected.push({ key: trimmed, createdAt: result.createdAt });
+      }
+    }
+  } else {
+    const { listAllInMemoryResultDefectLinks } = await import("../results/resultDefectLinks.memory.js");
+    for (const link of listAllInMemoryResultDefectLinks()) {
+      collected.push({ key: link.defectKey, createdAt: link.createdAt, url: link.url });
+    }
+  }
+
+  return mergeRecentDefectKeys(collected, capped).map((row) => ({
+    key: row.key,
+    label: row.key,
+    url: resolveReferenceUrl(row.key, setting) ?? row.url,
+    lastUsedAt: row.createdAt.toISOString()
+  }));
+}
+
 export async function searchIssueKeys(
   projectId: bigint,
   q: string,

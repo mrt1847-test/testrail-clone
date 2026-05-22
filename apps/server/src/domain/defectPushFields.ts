@@ -23,6 +23,11 @@ export type DefectPushContext = {
   resultId: string;
   resultStatus: string;
   resultComment?: string | null;
+  caseCode?: string | null;
+  caseTitle?: string | null;
+  casePreconditions?: string | null;
+  caseExpected?: string | null;
+  caseRefs?: string | null;
 };
 
 const JIRA_FIELDS: DefectPushFieldDefinition[] = [
@@ -182,7 +187,10 @@ export function buildDefaultDefectPushValues(
     if (field.mapsTo === "defectKey") {
       values[field.key] = suggestedKey;
     } else if (field.mapsTo === "title") {
-      values[field.key] = `[${context.resultStatus}] ${context.testTitle}`;
+      const caseLabel = context.caseCode?.trim()
+        ? `${context.caseCode.trim()}${context.caseTitle?.trim() ? `: ${context.caseTitle.trim()}` : ""}`
+        : context.caseTitle?.trim() || context.testTitle;
+      values[field.key] = `[${context.resultStatus}] ${caseLabel}`;
     } else if (field.mapsTo === "description") {
       values[field.key] = traceback;
     } else if (field.key === "issueType" || field.key === "workItemType") {
@@ -200,7 +208,23 @@ export function buildDefaultDefectPushValues(
 }
 
 export function buildResultTraceback(context: DefectPushContext) {
+  const caseLines: Array<string | null> = [];
+  if (context.caseCode?.trim() || context.caseTitle?.trim()) {
+    caseLines.push(
+      `Case: ${[context.caseCode?.trim(), context.caseTitle?.trim()].filter(Boolean).join(" — ")}`
+    );
+  }
+  if (context.caseRefs?.trim()) caseLines.push(`References: ${context.caseRefs.trim()}`);
+  if (context.casePreconditions?.trim()) {
+    caseLines.push(`Preconditions:\n${context.casePreconditions.trim()}`);
+  }
+  if (context.caseExpected?.trim()) {
+    caseLines.push(`Expected:\n${context.caseExpected.trim()}`);
+  }
+
   const lines = [
+    ...caseLines,
+    caseLines.length > 0 ? "" : null,
     `Test: ${context.testTitle}`,
     `Run: ${context.runName}`,
     `Result: #${context.resultId} (${context.resultStatus})`,

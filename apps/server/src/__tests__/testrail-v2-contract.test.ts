@@ -21,8 +21,10 @@ describe("/api/v2 TestRail adapter contract", () => {
   it("exposes supported endpoint index", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v2" });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { supported: string[] };
+    const body = res.json() as { supported: string[]; exports?: { openapi: string; postman: string } };
     expect(body.supported).toContain("GET get_project/{project_id}");
+    expect(body.exports?.openapi).toContain("/api/v2/openapi.json");
+    expect(body.exports?.postman).toContain("/api/v2/postman-collection.json");
     expect(body.supported).toContain("GET get_runs/{project_id}");
     expect(body.supported).toContain("GET get_suite/{suite_id}");
     expect(body.supported).toContain("GET get_section/{section_id}");

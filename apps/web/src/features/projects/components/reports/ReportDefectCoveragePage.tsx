@@ -1,20 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type Row = {
   requirementId: string;
@@ -29,8 +29,16 @@ type Row = {
 
 export function ReportDefectCoveragePage() {
   const { projectId = "" } = useParams();
-  const [search, setSearch] = useState("");
-  const [riskFilter, setRiskFilter] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? searchParams.get("search") ?? "");
+  const [riskFilter, setRiskFilter] = useState(() => searchParams.get("risk") ?? "all");
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (search.trim().length > 0) next.set("q", search.trim());
+    if (riskFilter !== "all") next.set("risk", riskFilter);
+    setSearchParams(next, { replace: true });
+  }, [riskFilter, search, setSearchParams]);
 
   const q = useQuery({
     queryKey: reportKeys.defectCoverage(projectId),
@@ -104,14 +112,12 @@ export function ReportDefectCoveragePage() {
       <ReportTablePanel
         title="Requirements"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="defect_coverage"
-              filters={{ ui: { search, risk: riskFilter } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="defect_coverage" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="defect_coverage"
+            filters={{ ui: uiFiltersForReport({ q: search, risk: riskFilter }), export: {} }}
+            disabled={rows.length === 0}
+          />
         }
       >
         {filteredRows.length === 0 ? (

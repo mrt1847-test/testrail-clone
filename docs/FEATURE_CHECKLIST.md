@@ -85,11 +85,11 @@ If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** her
 These lines track the TestRail workbench realignment from [UX_BACKLOG.md](./UX_BACKLOG.md) and [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md). Closing one of these lines requires more than a feature existing: the screen must preserve context, use dense table/list/pane layouts, avoid generic SaaS card/dashboard drift, and include desktop + narrow screenshot walkthrough notes.
 
 - [ ] **TR-Core** P0 UX gate: add a per-PR TestRail parity checklist and current-screen screenshot capture workflow for project overview, cases, run list, run detail, My Tests, milestones, plans, and reports. (Phase 0; do not mark feature work as UX-complete without this gate.)
-- [ ] **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings visible as daily workspace navigation, with consistent project context and compact page chrome. (Ref: PROJECT_OVERVIEW_VIEW_PARITY.md)
-- [ ] **TR-Core** P0 Case repository workbench shell: left suite/section tree, center compact case table, right selected-case detail pane, with section/case/filter/page state preserved in the URL. (Ref: CASE_REPOSITORY_VIEW_PARITY.md Wave A)
-- [ ] **TR-Core** P0 Case repository authoring flow: edit in full-height drawer or dedicated editor while preserving tree/table/detail context; keep Add Case and bulk actions table/section-native.
-- [ ] **TR-Core** P1 Run list realignment: dense run table with progress bars, status counts, milestone/plan/assignee/dates, and direct drilldown into filtered execution work. (Ref: RUNS_OVERVIEW_VIEW_PARITY.md Wave A-B)
-- [ ] **TR-Core** P1 Run creation composition workbench: include-all, selected-cases, dynamic-filter, and set/add/remove semantics shown through a section-tree + case-table picker rather than a generic form-only layout.
+- [x] **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings visible as daily workspace navigation, with consistent project context and compact page chrome. (baseline: `ProjectTabs` now exposes the eight daily project work areas as primary tabs, with Team Todo, Result Explorer, Activity, Automation, Import/Export, and Shared Steps retained under More.)
+- [x] **TR-Core** P0 Case repository workbench shell: configurable suite/section tree, center compact case table, right selected-case detail pane, with section/case/filter/page state preserved in the URL. (baseline: TestCaseWorkspace keeps the current persisted left/right section tree position, suite-wide section-grouped case table, QPane detail panel, and `suiteId`/`sectionId`/`panelCaseId`/`display`/`groupBy`/filter/column URL state.)
+- [x] **TR-Core** P0 Case repository authoring flow: edit in full-height drawer or dedicated editor while preserving tree/table/detail context; keep Add Case and bulk actions table/section-native. (`CaseEditDrawer` portal + `panelMode=edit`; QPane stays view; row/title opens panel; single-case Edit → drawer; Add Case inline in table.)
+- [x] **TR-Core** P1 Run list realignment: dense run table with progress bars, status counts, milestone/plan/assignee/dates, and direct drilldown into filtered execution work. (`GET /runs-overview`; Open plan+run rows with `RunPlanProgressBar`; Completed date grid; sidebar Add Run/Plan + `ChooseSuiteForRunDialog`.)
+- [x] **TR-Core** P1 Run creation composition workbench: include-all, selected-cases, dynamic-filter, and set/add/remove semantics shown through a section-tree + case-table picker rather than a generic form-only layout. (`RunCompositionWorkbench`: section tree with include/exclude roots, case table with Set/Add/Remove filter, scheduling strip + scope sidebar.)
 - [x] **TR-Core** P0 Run execution workbench shell: persistent status count sidebar/rail, compact test table, and selected-test detail/result pane visible together without losing context. (baseline: RunDetail workbench now keeps status rail, section tree, compact test table, and QPane together; `testId`/`sectionId`/`groupBy` URL state preserved.)
 - [x] **TR-Core** P0 Run execution speed actions: row status dropdown, Add Result, Pass & Next, next failed/blocked/untested, bulk results, and closed-run read-only behavior all usable from the execution workbench. (baseline: row quick status/Add Result, QPane Add Result with Pass & Next, failed/blocked/untested navigation, bulk result entry, and closed-run read-only guards are available in the RunDetail workbench.)
 - [ ] **TR-Core** P1 My Tests queue realignment: assigned work becomes a primary queue with due/status grouping, direct run/test links, and quick execution entry.
@@ -313,13 +313,13 @@ Current clone mapping:
 - [x] **TR-Pro** P1 Global (admin) webhooks in addition to per-project webhooks.
 - [x] **Clone+** Broad activity coverage for case, run, suite, section, milestone, plan, configuration, requirement, settings, import/export, and report export mutations.
 - [x] **Clone+** Drilldown links for milestone, plan, suite, section, requirement, and payload-driven sources.
-- [ ] **TR-Core** P0 Broader activity event coverage for remaining assignment, defect, and reporting mutations (baseline expanded: bulk results, assignment payload fixes).
+- [x] **TR-Core** P0 Broader activity event coverage for remaining assignment, defect, and reporting mutations (assignment helpers with `notifyUserId`; bulk `resultIds`; TestRail/automation paths; plan assignment; defect assignee activity; `report.schedule_run_requested`.)
 - [x] **TR-Core** P0 Email and digest delivery jobs (`EmailOutbox`, console/SMTP transport, workers, `digestEnabled` on preferences).
 - [x] **TR-Core** P1 Email outbox admin UI (project settings: list, retry, digest preview).
 - [x] **TR-Core** P1 Mention routing for result comments (`@email`, `@email-local-part`, `@name`) with notification preferences and email outbox.
 - [x] **TR-Pro** P1 Webhook auto-disable after consecutive delivery failures (`disabledAt`, re-enable in UI).
 - [x] **TR-Pro** P1 Richer webhook and audit filters (webhook `disabledAt`/failure counter; audit actor email, exact match, changes contains).
-- [ ] **TR-Pro** P1 Disable-on-failure policy and delivery diagnostics UI.
+- [x] **TR-Pro** P1 Disable-on-failure policy and delivery diagnostics UI. (Project threshold via `webhook-delivery-policy`; delivery diagnostics with filters, expandable HTTP/error/body/payload.)
 - [x] **TR-Ent** P1 Audit CSV export and retention prune baseline.
 - [x] **TR-Ent** P1 Full audit event coverage and admin-level cross-project audit. (v1: `scope=all` query/export/UI toggle plus assignment, defect, saved report, and scheduled report mutation audit rows; future work can add stricter global admin role boundaries.)
 
@@ -333,7 +333,7 @@ Internal quality and UI architecture; prioritize after TR-Core P0/P1 gaps unless
 - [x] Initial query invalidation and polling policy.
 - [x] TestRail-like compact result entry dialog from run status badge.
 - [x] P1 Shared `StatusBadge`, `FilterBar`, `PageHeader` in `apps/web/src/shared/ui/` (migrated: run filters, reports, My Tests).
-- [ ] P1 Shared `Button`, `IconButton`, `DataTable`, `Panel`, `Drawer`, and `Toast`.
+- [x] P1 Shared `Button`, `IconButton`, `DataTable`, `Panel`, `Drawer`, and `Toast`. (`shared/ui` primitives; migrated Webhooks, Members, Login, ConfirmDialog, ErrorState, AttachmentPreviewDrawer.)
 - [ ] P1 Dense, scannable table-oriented screens for large lists.
 - [ ] P1 Centralized query keys per feature.
 - [x] P1 UI/UX review pass (analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation waves: [UX_BACKLOG.md](./UX_BACKLOG.md); execution queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) for TR-Core/API items only).
@@ -346,24 +346,24 @@ Secondary UX depth; many items mirror TestRail but are tracked here to keep doma
 
 ### Navigation, Search, And Deep Links
 
-- [ ] P1 Global search across cases, runs, milestones, plans, and defects.
-- [ ] P1 Jump-to by entity ID (`C123`, `R45`, `M12`) from command palette.
-- [ ] P1 Recently viewed cases, runs, and milestones.
-- [ ] P1 Pinned/favorite projects (and optional suites) in project switcher.
-- [ ] P1 Copy entity link / ID to clipboard.
-- [ ] P1 Open in new tab from context menu.
-- [ ] P1 Deep links preserve list filters, sort, pagination, and selected row.
-- [ ] P2 Cross-project search.
+- [x] P1 Global search across cases, runs, milestones, plans, and defects. (`GET /api/projects/:id/search`; shell search with `C`/`R`/`M`/`P` ID shortcuts.)
+- [x] P1 Jump-to by entity ID (`C123`, `R45`, `M12`) from command palette. (`ProjectCommandPalette` ⌘K/Ctrl+K; `C`/`R`/`M`/`P`/`#` tokens; case opens workbench QPane.)
+- [x] P1 Recently viewed cases, runs, and milestones. (per-user/project `localStorage`; recorded on case/run/milestone views; shown in `ProjectCommandPalette`.)
+- [x] P1 Pinned/favorite projects (and optional suites) in project switcher. (`user-pins` localStorage; `ProjectSwitcher` pinned section + default suite select; `ProjectCard` star toggle.)
+- [x] P1 Copy entity link / ID to clipboard. (`EntityCopyActions`: copy display ID + absolute URL on case/run/milestone detail, repository rows, run list.)
+- [x] P1 Open in new tab from context menu. (`EntityContextMenuProvider`; right-click on case/run/milestone detail, repository rows, run list.)
+- [x] P1 Deep links preserve list filters, sort, pagination, and selected row. (`listViewDeepLink`; `focusCaseId`/`highlightRunId` in URL; copy/share keeps list context; run `testId` deep link wins over auto-select.)
+- [x] P2 Cross-project search. (`GET /api/search`; `CrossProjectGlobalSearch` on project dashboard shell; results grouped by project then entity type.)
 
 ### Keyboard, Selection, And List Ergonomics
 
 - [x] P1 Keyboard shortcuts and `?` help overlay on run detail (global palette deferred).
 - [x] P1 Shift/Ctrl range multi-select on case and run tables. (shared `rangeMultiSelect`; Shift range + Ctrl/Cmd toggle on `CaseRow` and `TestInstanceTable` checkboxes)
-- [ ] P1 Remember last filter, sort, and column set per page per user.
-- [ ] P1 Column width and visibility persistence.
-- [ ] P1 Inline quick-edit for safe fields.
-- [ ] P1 Hover preview for case title, steps, last result.
-- [ ] P2 Density toggle (compact vs comfortable).
+- [x] P1 Remember last filter, sort, and column set per page per user. (baseline: case repository persists last section/filter/display/grouping/column state per user/project/suite and restores it when no explicit URL view state is present; URL deep links still win.)
+- [x] P1 Column width and visibility persistence. (baseline: case repository column preferences now store visibility and px widths together per user/project/suite; legacy visibility-only preferences still load.)
+- [x] P1 Inline quick-edit for safe fields. (baseline: case repository rows support inline title rename plus safe Type/Priority select edits using existing case update validation and version checks.)
+- [x] P1 Hover preview for case title, steps, last result. (baseline: case repository rows show a hover preview with title, preconditions, first steps, expected result, and latest execution result loaded through narrow detail/history queries.)
+- [x] P2 Density toggle (compact vs comfortable). (case repository + run execution toolbars; per-user/project localStorage)
 
 ### Case And Run Shortcuts
 
@@ -382,16 +382,16 @@ Secondary UX depth; many items mirror TestRail but are tracked here to keep doma
 
 ### Reporting And Collaboration Shortcuts
 
-- [ ] P1 Export current filtered view; report filter presets.
-- [ ] P1 Copy chart/table summary to clipboard.
-- [ ] P1 @mention autocomplete; comment templates; rich text comments.
-- [ ] P1 Mark all read; inbox filters; snooze/mute categories.
-- [ ] P1 Push defect prefilled from case + comment; recent defects picker.
-- [ ] P1 User default landing page, suite, and saved view.
-- [ ] P2 Theme preference (light/dark).
+- [x] P1 Export current filtered view; report filter presets. (ReportToolbar: preset picker, Save view, Export CSV/queue with `exportQuery`; URL sync on filtered report pages; results explorer report route; server export filters for run/plan/milestone summaries)
+- [x] P1 Copy chart/table summary to clipboard. (ReportSummaryStrip Copy summary; ReportLinesSummaryPanel; ReportTablePanel tableSummaryLines on distribution tables)
+- [x] P1 @mention autocomplete; comment templates; rich text comments. (CommentComposer: @mention picker, per-project templates in localStorage, markdown preview; wired to result/run/test comments and execution threads; CommentMarkdown on display)
+- [x] P1 Mark all read; inbox filters; snooze/mute categories. (Inbox type/unread tabs, show snoozed, snooze 1h/1d/1w API+UI; mute categories in preferences; mark all read)
+- [x] P1 Push defect prefilled from case + comment; recent defects picker. (`buildResultTraceback` + case fields in push-fields; server enrich from test case; `GET .../defects/recent`; `RecentDefectSuggestions` on PushDefectDialog + DefectKeyInput)
+- [x] P1 User default landing page, suite, and saved view. (`UserProjectPreference`; `GET/PATCH .../workspace-preferences`; `ProjectLandingPage` redirect; default suite + saved view on cases; settings panel)
+- [x] P2 Theme preference (light/dark). (`ThemeProvider` + localStorage; light/dark/system; shell + global dark utilities; header + settings Appearance)
 
 ### API Convenience
 
-- [ ] P1 API docs panel with copyable curl examples.
-- [ ] P1 Postman/OpenAPI export for implemented `/api/v2` endpoints.
-- [ ] P2 Webhook event catalog with sample payloads.
+- [x] P1 API docs panel with copyable curl examples. (`/projects/:id/settings/api-docs`; `GET /api/v2` index; grouped curl snippets with Copy; automation bulk/run examples)
+- [x] P1 Postman/OpenAPI export for implemented `/api/v2` endpoints. (`GET /api/v2/openapi.json`, `postman-collection.json`; index `exports` links; ApiDocs download buttons)
+- [x] P2 Webhook event catalog with sample payloads. (Settings → Webhooks: searchable catalog, copyable sample JSON and headers via `GET .../webhook-event-catalog`.)

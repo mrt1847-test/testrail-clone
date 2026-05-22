@@ -9,7 +9,7 @@ import { AutomationPage } from "./features/projects/components/AutomationPage";
 import { ActivityPage } from "./features/projects/components/ActivityPage";
 import { ProjectLayout } from "./features/projects/components/ProjectLayout";
 import { ProjectListPage } from "./features/projects/components/ProjectListPage";
-import { ProjectOverviewPage } from "./features/projects/components/ProjectOverviewPage";
+import { ProjectLandingPage } from "./features/projects/components/ProjectLandingPage";
 import { ProjectSettingsPage } from "./features/projects/components/ProjectSettingsPage";
 import { ReportCaseActivitySummaryPage } from "./features/projects/components/reports/ReportCaseActivitySummaryPage";
 import { ReportCasePropertyDistributionPage } from "./features/projects/components/reports/ReportCasePropertyDistributionPage";
@@ -42,6 +42,7 @@ import { MilestoneDetailPage } from "./features/projects/components/MilestoneDet
 import { PlansPage } from "./features/projects/components/PlansPage";
 import { PlanDetailPage } from "./features/projects/components/PlanDetailPage";
 import { TokensPage } from "./features/projects/components/TokensPage";
+import { ApiDocsPage } from "./features/projects/components/ApiDocsPage";
 import { WebhooksPage } from "./features/projects/components/WebhooksPage";
 import { EmailOutboxPage } from "./features/projects/components/EmailOutboxPage";
 import { ProjectMembersPage } from "./features/projects/components/ProjectMembersPage";
@@ -80,7 +81,7 @@ export function App() {
         <Route path="/admin/access-defaults" element={<AdminAccessDefaultsPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
-          <Route index element={<ProjectOverviewPage />} />
+          <Route index element={<ProjectLandingPage />} />
           <Route path="cases" element={<TestCaseWorkspacePage />} />
           <Route path="cases/:caseId" element={<CaseDetailPage />} />
           <Route path="shared-steps" element={<SharedStepsPage />} />
@@ -126,6 +127,7 @@ export function App() {
           <Route path="plans/:planId" element={<PlanDetailPage />} />
           <Route path="settings" element={<ProjectSettingsPage />} />
           <Route path="settings/tokens" element={<TokensPage />} />
+          <Route path="settings/api-docs" element={<ApiDocsPage />} />
           <Route path="settings/members" element={<ProjectMembersPage />} />
           <Route path="settings/custom-roles" element={<ProjectCustomRolesPage />} />
           <Route path="settings/custom-fields" element={<CustomFieldsPage />} />

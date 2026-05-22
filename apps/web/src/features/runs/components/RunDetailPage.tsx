@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/context/AuthContext";
+import { useUiDensity } from "../../../shared/hooks/useUiDensity";
 import { fetchCaseScenarios } from "../../cases/api/bddApi";
 import { fetchCaseTemplates } from "../../projects/api/settingsApi";
 import { fetchPlan } from "../../projects/api/planningApi";
@@ -81,6 +82,8 @@ import { RunCompareWithRunDialog } from "./RunCompareWithRunDialog";
 import { RunCaseContextPanel } from "./RunCaseContextPanel";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
+import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
+import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { ProjectContentHeader } from "../../projects/content-header/ProjectContentHeader";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
@@ -90,6 +93,7 @@ export function RunDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { projectId = "", runId = "" } = useParams();
+  const [runUiDensity, setRunUiDensity] = useUiDensity(projectId, "run-execution", user?.id);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
@@ -326,6 +330,10 @@ export function RunDetailPage() {
     [subscriptionsQuery.data]
   );
   const run = runDetailQuery.data?.run;
+  useRecordRecentlyViewed(
+    projectId,
+    run ? { kind: "run", id: runId, title: run.name, subtitle: `Status: ${run.status}` } : null
+  );
   const suiteId = run?.suiteId ?? "";
   const sectionsQuery = useSections(projectId, suiteId || undefined);
   const listQueryInput = {
@@ -500,6 +508,17 @@ export function RunDetailPage() {
   useEffect(() => {
     const dataReady = useGroupedExecution ? !groupedTableQuery.isLoading : !runInstancesQuery.isLoading;
     if (!dataReady) return;
+
+    const urlTestId = searchParams.get("testId");
+    if (urlTestId) {
+      const matched = executionInstances.find((row) => row.id === urlTestId);
+      if (matched) {
+        if (selected?.id !== matched.id) setSelected(matched);
+        return;
+      }
+      return;
+    }
+
     const firstVisible = executionInstances[0] ?? null;
     if (!firstVisible) {
       if (selected) setSelected(null);
@@ -512,6 +531,7 @@ export function RunDetailPage() {
     executionInstances,
     groupedTableQuery.isLoading,
     runInstancesQuery.isLoading,
+    searchParams,
     selected,
     selected?.id,
     useGroupedExecution
@@ -550,6 +570,7 @@ export function RunDetailPage() {
   const pushDefectContext = useMemo(() => {
     const runRow = runDetailQuery.data?.run;
     if (!selected || !runRow || !pushDefectTargetResult) return null;
+    const caseDetail = selectedCaseDetail.data;
     return {
       projectId,
       runId,
@@ -558,9 +579,21 @@ export function RunDetailPage() {
       testTitle: selected.title,
       resultId: pushDefectTargetResult.id,
       resultStatus: pushDefectTargetResult.status,
-      resultComment: pushDefectTargetResult.comment ?? null
+      resultComment: pushDefectTargetResult.comment ?? null,
+      caseCode: selected.caseCode,
+      caseTitle: caseDetail?.title ?? selected.title,
+      casePreconditions: caseDetail?.preconditions ?? null,
+      caseExpected: caseDetail?.expectedResult ?? null,
+      caseRefs: caseDetail?.references ?? null
     };
-  }, [projectId, runId, runDetailQuery.data?.run, selected, pushDefectTargetResult]);
+  }, [
+    projectId,
+    runId,
+    runDetailQuery.data?.run,
+    selected,
+    pushDefectTargetResult,
+    selectedCaseDetail.data
+  ]);
 
   if (runDetailQuery.isLoading) return <LoadingState message="Loading run..." />;
   if (runDetailQuery.isError || !runDetailQuery.data || !run) {
@@ -582,8 +615,15 @@ export function RunDetailPage() {
     setPushDefectDialogOpen(true);
   };
 
+  const { openEntityContextMenu } = useEntityContextMenu();
+
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      onContextMenu={(event) =>
+        openEntityContextMenu(event, { projectId, kind: "run", entityId: runId })
+      }
+    >
       <CloseRunDialog
         open={closeRunDialogOpen}
         runName={run.name}
@@ -871,6 +911,8 @@ export function RunDetailPage() {
                 onAssignTest={(testId, assignedTo) => void assignTest(testId, assignedTo)}
                 assigningTestId={assigningTestId}
                 runClosed={runClosed}
+                density={runUiDensity}
+                onDensityChange={setRunUiDensity}
               />
         </div>
 
@@ -1062,6 +1104,7 @@ export function RunDetailPage() {
             <div className="mt-3 space-y-3 text-sm text-slate-700">
               <CollapsibleSection title="Test discussion" defaultOpen={false}>
                 <ExecutionCommentsPanel
+                  projectId={projectId}
                   scope="test_instance"
                   testId={selected.id}
                   canPost={run.status === "open"}
@@ -1234,6 +1277,7 @@ export function RunDetailPage() {
 
       <CollapsibleSection title="Run discussion" defaultOpen={false}>
         <ExecutionCommentsPanel
+          projectId={projectId}
           scope="test_run"
           runId={runId}
           canPost={run.status === "open"}
@@ -1243,6 +1287,7 @@ export function RunDetailPage() {
 
       <CollapsibleSection title="Run actions" defaultOpen={false}>
         <RunActionsPanel
+          projectId={projectId}
           members={members}
           statusOptions={statusQuery.data ?? []}
           bulkDisableUntested={bulkDisableUntested}

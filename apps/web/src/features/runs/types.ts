@@ -106,6 +106,11 @@ export type DefectPushContext = {
   resultId: string;
   resultStatus: string;
   resultComment?: string | null;
+  caseCode?: string | null;
+  caseTitle?: string | null;
+  casePreconditions?: string | null;
+  caseExpected?: string | null;
+  caseRefs?: string | null;
 };
 
 export type DefectPushFieldDefinition = {

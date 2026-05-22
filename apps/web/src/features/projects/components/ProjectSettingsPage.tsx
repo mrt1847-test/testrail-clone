@@ -2,6 +2,8 @@ import { Link, useParams } from "react-router-dom";
 
 import { PROJECT_TYPE_LABELS } from "../types/projectTypes";
 import { useArchiveProjectMutation, useProjectQuery, useRestoreProjectMutation } from "../hooks/useProjectsApi";
+import { ThemePreferencesSection } from "./ThemePreferencesSection";
+import { WorkspacePreferencesPanel } from "./WorkspacePreferencesPanel";
 
 export function ProjectSettingsPage() {
   const { projectId = "" } = useParams();
@@ -18,6 +20,10 @@ export function ProjectSettingsPage() {
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">Project settings</h1>
         <p className="mt-1 text-sm text-slate-600">General options, archive state, and admin shortcuts.</p>
       </div>
+
+      <ThemePreferencesSection />
+
+      <WorkspacePreferencesPanel projectId={projectId} />
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-900">Project type</h2>
@@ -67,6 +73,11 @@ export function ProjectSettingsPage() {
           <li>
             <Link to={`/projects/${projectId}/settings/tokens`} className="text-slate-700 underline">
               API tokens
+            </Link>
+          </li>
+          <li>
+            <Link to={`/projects/${projectId}/settings/api-docs`} className="text-slate-700 underline">
+              API reference (curl)
             </Link>
           </li>
           <li>

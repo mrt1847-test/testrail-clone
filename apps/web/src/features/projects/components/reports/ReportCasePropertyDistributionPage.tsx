@@ -6,14 +6,15 @@ import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchCasePropertyDistribution } from "../../api/casePropertyReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { formatDistributionTableLines } from "../../reports/reportSummaryText";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportCasePropertyDistributionPage() {
   const { projectId = "" } = useParams();
@@ -62,20 +63,15 @@ export function ReportCasePropertyDistributionPage() {
       <ReportSummaryStrip items={summaryItems} />
       <ReportTablePanel
         title="Distribution"
+        tableSummaryLines={formatDistributionTableLines(rows)}
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="cases_property_distribution"
-              filters={{ ui: { field }, export: exportQuery }}
-            />
-            <ReportExportActions
-              projectId={projectId}
-              reportType="cases_property_distribution"
-              disabled={rows.length === 0}
-              exportQuery={exportQuery}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="cases_property_distribution"
+            filters={{ ui: uiFiltersForReport({ field }), export: exportQuery }}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+          />
         }
       >
         {rows.length === 0 ? (

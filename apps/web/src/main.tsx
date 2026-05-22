@@ -5,8 +5,13 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { AuthProvider } from "./features/auth/context/AuthContext";
+import { ThemeProvider } from "./shared/theme/ThemeProvider";
+import { ToastProvider } from "./shared/ui/toast/ToastProvider";
+import { bootstrapThemeFromStorage } from "./shared/theme/themePreference";
 
 import "./index.css";
+
+bootstrapThemeFromStorage();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,11 +22,15 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

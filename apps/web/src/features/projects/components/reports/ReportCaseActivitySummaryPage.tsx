@@ -6,14 +6,15 @@ import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchCaseActivitySummary } from "../../api/caseActivitySummaryApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportActions,
-  ReportSaveViewButton,
   ReportFilterBar,
+  ReportLinesSummaryPanel,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 const DAY_OPTIONS = [
   { value: "7", label: "Last 7 days" },
@@ -104,36 +105,24 @@ export function ReportCaseActivitySummaryPage() {
       />
       <ReportSummaryStrip items={summaryItems} />
       {summary && summary.byDay.length > 0 ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Activity by day</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {summary.byDay.map((row) => (
-              <li key={row.date} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2">
-                <span className="font-medium text-slate-800">{row.date}</span>
-                <span className="text-xs text-slate-500">
-                  total {row.total} · created {row.created} · updated {row.updated} · deleted {row.deleted}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <ReportLinesSummaryPanel
+          title="Activity by day"
+          lines={summary.byDay.map(
+            (row) =>
+              `${row.date}: total ${row.total}, created ${row.created}, updated ${row.updated}, deleted ${row.deleted}`
+          )}
+        />
       ) : null}
       <ReportTablePanel
         title="Recent activity"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="case_activity_summary"
-              filters={{ ui: { days, category }, export: exportQuery }}
-            />
-            <ReportExportActions
-              projectId={projectId}
-              reportType="case_activity_summary"
-              disabled={recent.length === 0}
-              exportQuery={exportQuery}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="case_activity_summary"
+            filters={{ ui: uiFiltersForReport({ days, category }), export: exportQuery }}
+            exportQuery={exportQuery}
+            disabled={recent.length === 0}
+          />
         }
       >
         {recent.length === 0 ? (

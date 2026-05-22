@@ -43,6 +43,10 @@ import { SectionsService } from "../sections/sections.service.js";
 import { SuitesService } from "../suites/suites.service.js";
 import { sectionIdParamSchema } from "../sections/sections.schema.js";
 import { suiteIdParamSchema } from "../suites/suites.schema.js";
+import {
+  buildTestRailOpenApiDocument,
+  buildTestRailPostmanCollection
+} from "../../domain/testrailApiExport.js";
 import { TESTRAIL_V2_DEFERRED, TESTRAIL_V2_SUPPORTED } from "./testrail.supported.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { caseIdParamSchema } from "../cases/cases.schema.js";
@@ -56,6 +60,12 @@ import type { RunsService } from "../runs/runs.service.js";
 import type { TestStatus } from "../../domain/status.js";
 import { ImportExportService, reportExportSchema } from "../importExport/importExport.routes.js";
 import { validateMilestoneParent } from "../milestones/milestones.shared.js";
+import { recordResultActivity } from "../activity/activity.service.js";
+import {
+  recordBulkResultsActivity,
+  recordRunAssignmentActivity
+} from "../activity/activityRecording.js";
+import { recordAuditLog } from "../settings/auditLog.service.js";
 import { buildPlanCreateData, buildPlanWriteData } from "../plans/plans.shared.js";
 import {
   buildTestRailListResponse,
@@ -365,6 +375,17 @@ function mapTest(row: {
   };
 }
 
+function exportBaseUrlFromRequest(req: { headers: Record<string, string | string[] | undefined> }) {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto =
+    typeof forwardedProto === "string"
+      ? forwardedProto.split(",")[0]?.trim() ?? "http"
+      : "http";
+  const hostHeader = req.headers.host;
+  const host = typeof hostHeader === "string" ? hostHeader : "localhost:4000";
+  return `${proto}://${host}`;
+}
+
 export async function registerTestRailRoutes(
   app: FastifyInstance,
   deps: {
@@ -380,14 +401,35 @@ export async function registerTestRailRoutes(
   const suitesService = new SuitesService(deps.catalog);
   const sectionsService = new SectionsService(deps.catalog);
 
-  app.get("/api/v2", async (_req, reply) => {
+  app.get("/api/v2", async (req, reply) => {
+    const baseUrl = exportBaseUrlFromRequest(req);
     return reply.send(
       toJsonSafe({
         supported: [...TESTRAIL_V2_SUPPORTED],
         deferred: [...TESTRAIL_V2_DEFERRED],
-        note: "High-traffic list endpoints (cases, runs, tests, results) return TestRail-style limit/offset envelopes; other list routes may still return bare arrays."
+        note: "High-traffic list endpoints (cases, runs, tests, results) return TestRail-style limit/offset envelopes; other list routes may still return bare arrays.",
+        exports: {
+          openapi: `${baseUrl}/api/v2/openapi.json`,
+          postman: `${baseUrl}/api/v2/postman-collection.json`
+        }
       })
     );
+  });
+
+  app.get("/api/v2/openapi.json", async (req, reply) => {
+    const baseUrl = exportBaseUrlFromRequest(req);
+    return reply
+      .header("content-disposition", 'attachment; filename="qa-rail-api-v2.openapi.json"')
+      .type("application/json")
+      .send(buildTestRailOpenApiDocument(baseUrl, TESTRAIL_V2_SUPPORTED));
+  });
+
+  app.get("/api/v2/postman-collection.json", async (req, reply) => {
+    const baseUrl = exportBaseUrlFromRequest(req);
+    return reply
+      .header("content-disposition", 'attachment; filename="qa-rail-api-v2.postman_collection.json"')
+      .type("application/json")
+      .send(buildTestRailPostmanCollection(baseUrl, TESTRAIL_V2_SUPPORTED));
   });
 
   app.get("/api/v2/get_projects", async (_req, reply) => {
@@ -1178,6 +1220,7 @@ export async function registerTestRailRoutes(
 
   app.post("/api/v2/update_run/:runId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = updateRunBodySchema.parse(req.body ?? {});
     const assignedTo = body.assignedto_id ?? body.assigned_to_id ?? body.assignedTo;
@@ -1185,6 +1228,23 @@ export async function registerTestRailRoutes(
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(assignedTo !== undefined ? { assignedTo } : {})
     });
+    if (deps.prisma && assignedTo !== undefined) {
+      await recordAuditLog(deps.prisma, {
+        projectId: updated.projectId,
+        actorUserId: user.id,
+        action: "run.assignment.updated",
+        entityType: "run",
+        entityId: updated.id,
+        changes: { assignedTo: updated.assignedTo?.toString() ?? null }
+      });
+      await recordRunAssignmentActivity(deps.prisma, {
+        projectId: updated.projectId,
+        runId: updated.id,
+        actorUserId: user.id,
+        runName: updated.name,
+        assignedTo: updated.assignedTo
+      });
+    }
     return reply.send(toJsonSafe(mapRun(updated)));
   });
 
@@ -1201,11 +1261,16 @@ export async function registerTestRailRoutes(
       defects: splitDefects(body.defects),
       source: "api"
     });
+    if (deps.prisma) {
+      const user = await getAuthenticatedUser(req, deps);
+      await recordResultActivity(deps.prisma, { resultId: created.id, actorUserId: user.id });
+    }
     return reply.send(toJsonSafe({ id: Number(created.id), test_id: Number(created.testInstanceId) }));
   });
 
   app.post("/api/v2/add_results_for_cases/:runId", async (req, reply) => {
     await requireProjectMutationRole(req, deps);
+    const user = await getAuthenticatedUser(req, deps);
     const { runId } = runIdParamSchema.parse(req.params);
     const body = bulkResultsBodySchema.parse(req.body ?? {});
     const result = await deps.resultsService.bulkAddResults({
@@ -1221,6 +1286,22 @@ export async function registerTestRailRoutes(
         source: "api"
       }))
     });
+    if (deps.prisma) {
+      const run = await deps.repo.getRunById(runId);
+      if (run) {
+        for (const item of result.items) {
+          if (item.status === "saved") {
+            await recordResultActivity(deps.prisma, { resultId: item.resultId, actorUserId: user.id });
+          }
+        }
+        await recordBulkResultsActivity(deps.prisma, {
+          projectId: run.projectId,
+          runId,
+          actorUserId: user.id,
+          res: result
+        });
+      }
+    }
     return reply.send(
       toJsonSafe({
         run_id: Number(result.runId),

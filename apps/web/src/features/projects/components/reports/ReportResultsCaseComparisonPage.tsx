@@ -9,14 +9,14 @@ import { fetchRuns } from "../../../runs/api/runApi";
 import { buildRunComparisonPath } from "../../../runs/utils/runComparisonUrl";
 import { fetchResultsCaseComparison } from "../../api/resultReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type Props = {
   context?: "report" | "runs";
@@ -193,27 +193,29 @@ export function ReportResultsCaseComparisonPage({ context = "report" }: Props) {
       <ReportTablePanel
         title="Cases"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {isRunsContext ? null : (
-              <Link
-                className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                to={buildRunComparisonPath(projectId, { runIdA, runIdB, change: changeFilter })}
-              >
-                Open run shortcut
-              </Link>
-            )}
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="results_case_comparison"
-              filters={{ ui: { runIdA, runIdB, change: changeFilter }, export: exportQuery }}
-            />
-            <ReportExportActions
-              projectId={projectId}
-              reportType="results_case_comparison"
-              disabled={rows.length === 0}
-              exportQuery={exportQuery}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="results_case_comparison"
+            filters={{
+              ui: uiFiltersForReport({
+                ...(isRunsContext ? { runA: runIdA, runB: runIdB } : { runIdA, runIdB }),
+                change: changeFilter
+              }),
+              export: exportQuery
+            }}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+            extra={
+              isRunsContext ? null : (
+                <Link
+                  className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  to={buildRunComparisonPath(projectId, { runIdA, runIdB, change: changeFilter })}
+                >
+                  Open run shortcut
+                </Link>
+              )
+            }
+          />
         }
       >
         {rows.length === 0 ? (

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
@@ -11,21 +11,29 @@ import { MilestoneDashboardPanel } from "../MilestoneDashboardPanel";
 import { MilestoneLifecycleBadge } from "../MilestoneLifecycleBadge";
 import { MilestoneProgressChip } from "../MilestoneProgressChip";
 import { MilestoneScheduleBadge } from "../MilestoneScheduleBadge";
+import { buildMilestoneSummaryExportQuery, uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export type { MilestoneSummaryRow };
 
 export function ReportMilestoneSummaryPage() {
   const { projectId = "" } = useParams();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "all");
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (search.trim().length > 0) next.set("search", search.trim());
+    if (statusFilter !== "all") next.set("status", statusFilter);
+    setSearchParams(next, { replace: true });
+  }, [search, setSearchParams, statusFilter]);
 
   const q = useQuery({
     queryKey: reportKeys.milestoneSummary(projectId),
@@ -35,6 +43,15 @@ export function ReportMilestoneSummaryPage() {
 
   const rows = q.data?.items ?? [];
   const itemsById = useMemo(() => new Map(rows.map((row) => [row.milestoneId, row])), [rows]);
+
+  const exportQuery = useMemo(
+    () => buildMilestoneSummaryExportQuery({ search, status: statusFilter }),
+    [search, statusFilter]
+  );
+  const savedFilters = useMemo(
+    () => ({ ui: uiFiltersForReport({ search, status: statusFilter }), export: exportQuery }),
+    [exportQuery, search, statusFilter]
+  );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -120,14 +137,13 @@ export function ReportMilestoneSummaryPage() {
       <ReportTablePanel
         title="Milestones"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="milestone_summary"
-              filters={{ ui: { search, status: statusFilter } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="milestone_summary" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="milestone_summary"
+            filters={savedFilters}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+          />
         }
       >
         {orderedRows.length === 0 ? (

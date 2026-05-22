@@ -42,11 +42,14 @@ import {
   type UpdateRunCompositionInput
 } from "../api/runApi";
 import type { RunDetailDto } from "../types";
+import { fetchRunsOverview, type RunsOverviewQuery } from "../api/runsOverviewApi";
 import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from "../utils/runInstanceListParams";
 
 export const runKeys = {
   all: (projectId: string) => ["runs", projectId] as const,
   list: (projectId: string) => [...runKeys.all(projectId), "list"] as const,
+  overview: (projectId: string, filters: Record<string, string | boolean | undefined>) =>
+    [...runKeys.all(projectId), "overview", filters] as const,
   detail: (projectId: string, runId: string) => [...runKeys.all(projectId), "detail", runId] as const,
   subscriptions: (runId: string) => ["run-test-subscriptions", runId] as const,
   instancesPrefix: (projectId: string, runId: string) => [...runKeys.all(projectId), "instances", runId] as const,
@@ -152,6 +155,19 @@ export function useRunsQuery(projectId: string | undefined) {
     queryKey: runKeys.list(projectId ?? ""),
     queryFn: () => fetchRuns(projectId!),
     enabled: Boolean(projectId),
+  });
+}
+
+export function useRunsOverviewQuery(projectId: string | undefined, query: RunsOverviewQuery = {}) {
+  const filterKey = {
+    mine: query.mine,
+    milestoneId: query.milestoneId ?? undefined,
+    orderBy: query.orderBy ?? "date"
+  };
+  return useQuery({
+    queryKey: runKeys.overview(projectId ?? "", filterKey),
+    queryFn: () => fetchRunsOverview(projectId!, query),
+    enabled: Boolean(projectId)
   });
 }
 

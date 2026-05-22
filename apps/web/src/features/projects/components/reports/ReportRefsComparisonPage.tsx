@@ -7,14 +7,14 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchRuns } from "../../../runs/api/runApi";
 import { fetchRefsComparison } from "../../api/refsReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportRefsComparisonPage() {
   const { projectId = "" } = useParams();
@@ -133,19 +133,13 @@ export function ReportRefsComparisonPage() {
       <ReportTablePanel
         title="References"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="refs_comparison"
-              filters={{ ui: { runIdA, runIdB, change: changeFilter }, export: exportQuery }}
-            />
-            <ReportExportActions
-              projectId={projectId}
-              reportType="refs_comparison"
-              disabled={rows.length === 0}
-              exportQuery={exportQuery}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="refs_comparison"
+            filters={{ ui: uiFiltersForReport({ runIdA, runIdB, change: changeFilter }), export: exportQuery }}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0}
+          />
         }
       >
         {rows.length === 0 ? (

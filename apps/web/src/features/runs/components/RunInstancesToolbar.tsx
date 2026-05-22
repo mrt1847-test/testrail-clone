@@ -7,6 +7,8 @@ import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from
 import { countActiveRunListFilters } from "../utils/runInstanceListParams";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import { RUN_GROUP_BY_OPTIONS, RUN_SORT_OPTIONS } from "../utils/runExecutionTable";
+import { DensityToggle } from "../../../shared/ui/DensityToggle";
+import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import { RunColumnsDialog } from "./RunColumnsDialog";
 
 const toolbarButtonClass =
@@ -39,6 +41,8 @@ type Props = {
   members: ProjectMemberRow[];
   hideStatusFilter?: boolean;
   onClearFilters: () => void;
+  density: UiDensity;
+  onDensityChange: (value: UiDensity) => void;
 };
 
 export function RunInstancesToolbar(props: Props) {
@@ -65,7 +69,9 @@ export function RunInstancesToolbar(props: Props) {
     onColumnsChange,
     members,
     hideStatusFilter,
-    onClearFilters
+    onClearFilters,
+    density,
+    onDensityChange
   } = props;
 
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
@@ -127,6 +133,7 @@ export function RunInstancesToolbar(props: Props) {
             </button>
           ) : null}
           <div className="flex-1" />
+          <DensityToggle value={density} onChange={onDensityChange} />
           <input
             aria-label="Search tests"
             placeholder="Search…"

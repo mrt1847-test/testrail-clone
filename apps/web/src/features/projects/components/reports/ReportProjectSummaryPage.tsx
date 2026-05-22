@@ -7,13 +7,12 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchProjectExecutionSummary } from "../../api/projectSummaryReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportProjectSummaryPage() {
   const { projectId = "" } = useParams();
@@ -96,10 +95,12 @@ export function ReportProjectSummaryPage() {
       <ReportTablePanel
         title="Runs"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton projectId={projectId} reportType="project_summary" />
-            <ReportExportActions projectId={projectId} reportType="project_summary" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="project_summary"
+            filters={{ ui: {}, export: {} }}
+            disabled={rows.length === 0}
+          />
         }
       >
         {rows.length === 0 ? (

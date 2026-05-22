@@ -1,14 +1,22 @@
+import { CommentComposer } from "../../comments/CommentComposer";
 import type { CaseStepContext, ResultStatus, StepResultDraft } from "./resultEntryTypes";
 import { createStepDraft, createStepDraftsFromCaseSteps } from "./resultEntryUtils";
 
 type StepResultEditorProps = {
+  projectId?: string;
   caseSteps: CaseStepContext[];
   isCaseStepsLoading: boolean;
   stepResults: StepResultDraft[];
   onChange: (stepResults: StepResultDraft[]) => void;
 };
 
-export function StepResultEditor({ caseSteps, isCaseStepsLoading, stepResults, onChange }: StepResultEditorProps) {
+export function StepResultEditor({
+  projectId,
+  caseSteps,
+  isCaseStepsLoading,
+  stepResults,
+  onChange
+}: StepResultEditorProps) {
   function updateStepResult(id: string, patch: Partial<Omit<StepResultDraft, "id">>) {
     onChange(stepResults.map((step) => (step.id === id ? { ...step, ...patch } : step)));
   }
@@ -86,12 +94,27 @@ export function StepResultEditor({ caseSteps, isCaseStepsLoading, stepResults, o
                   Remove
                 </button>
               </div>
-              <textarea
-                className="mt-2 min-h-16 w-full resize-y rounded border border-slate-300 px-2 py-1 text-xs"
-                placeholder="step comment"
-                value={step.comment}
-                onChange={(e) => updateStepResult(step.id, { comment: e.target.value })}
-              />
+              {projectId ? (
+                <div className="mt-2">
+                  <CommentComposer
+                    projectId={projectId}
+                    value={step.comment}
+                    onChange={(comment) => updateStepResult(step.id, { comment })}
+                    rows={2}
+                    showTemplates={false}
+                    showPreview={false}
+                    placeholder="step comment"
+                    textareaClassName="min-h-16 w-full resize-y rounded border border-slate-300 px-2 py-1 text-xs"
+                  />
+                </div>
+              ) : (
+                <textarea
+                  className="mt-2 min-h-16 w-full resize-y rounded border border-slate-300 px-2 py-1 text-xs"
+                  placeholder="step comment"
+                  value={step.comment}
+                  onChange={(e) => updateStepResult(step.id, { comment: e.target.value })}
+                />
+              )}
             </div>
           );
         })}

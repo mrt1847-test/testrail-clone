@@ -14,6 +14,7 @@ import {
   type CustomFieldVisibilityRules
 } from "../../domain/customFieldVisibility.js";
 import { testStatuses, type TestStatus } from "../../domain/status.js";
+import { WEBHOOK_EVENTS } from "../../domain/webhookEvents.js";
 import type { AuthService } from "../auth/auth.service.js";
 
 export type CustomFieldRow = {
@@ -160,81 +161,7 @@ const webhookRetryParamSchema = z.object({
   projectId: z.coerce.bigint(),
   attemptId: z.coerce.bigint()
 });
-const webhookEvents = [
-  "*",
-  "case.*",
-  "case.created",
-  "case.updated",
-  "case.deleted",
-  "case.bulk_deleted",
-  "case.bulk_moved",
-  "case.bulk_copied",
-  "case.bulk_updated",
-  "case.bulk_archived",
-  "case.bulk_restored",
-  "case.reordered",
-  "case.version_restored",
-  "case.step_created",
-  "case.step_updated",
-  "case.step_deleted",
-  "suite.*",
-  "suite.created",
-  "suite.updated",
-  "suite.deleted",
-  "section.*",
-  "section.created",
-  "section.updated",
-  "section.moved",
-  "section.deleted",
-  "section.reordered",
-  "section.copied",
-  "run.*",
-  "run.created",
-  "run.updated",
-  "run.assigned",
-  "run.closed",
-  "run.reopened",
-  "run.tests_added",
-  "run.test_removed",
-  "run.rerun_created",
-  "test.assigned",
-  "result.*",
-  "result.created",
-  "result.failed",
-  "result.bulk_created",
-  "attachment.*",
-  "attachment.created",
-  "attachment.deleted",
-  "defect.linked",
-  "defect.unlinked",
-  "defect.pushed",
-  "milestone.*",
-  "milestone.created",
-  "milestone.updated",
-  "milestone.completed",
-  "milestone.deleted",
-  "plan.*",
-  "plan.created",
-  "plan.updated",
-  "plan.deleted",
-  "plan.entry_created",
-  "plan.entry_updated",
-  "plan.entry_deleted",
-  "configuration_group.*",
-  "configuration_group.created",
-  "configuration_group.updated",
-  "configuration_group.deleted",
-  "configuration.*",
-  "configuration.created",
-  "configuration.updated",
-  "configuration.deleted",
-  "requirement.*",
-  "requirement.created",
-  "requirement.updated",
-  "requirement.deleted",
-  "requirement.linked",
-  "requirement.unlinked"
-] as const;
+const webhookEvents = WEBHOOK_EVENTS;
 const auditLogsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25),
@@ -440,6 +367,12 @@ function webhookToResponse(row: {
   };
 }
 
+function previewResponseBody(value: string | null | undefined, max = 500) {
+  if (!value) return null;
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}…`;
+}
+
 function webhookAttemptToResponse(row: {
   id: bigint;
   webhookId: bigint;
@@ -449,11 +382,13 @@ function webhookAttemptToResponse(row: {
   status: string;
   attemptNo: number;
   responseStatus?: number | null;
+  responseBody?: string | null;
   error?: string | null;
   nextRetryAt?: Date | null;
   deliveredAt?: Date | null;
   signature: string;
   createdAt: Date;
+  updatedAt?: Date;
 }) {
   return {
     id: row.id,
@@ -464,11 +399,38 @@ function webhookAttemptToResponse(row: {
     status: row.status,
     attemptNo: row.attemptNo,
     responseStatus: row.responseStatus ?? null,
+    responseBodyPreview: previewResponseBody(row.responseBody),
     error: row.error ?? null,
     nextRetryAt: row.nextRetryAt ?? null,
     deliveredAt: row.deliveredAt ?? null,
     signaturePrefix: `${row.signature.slice(0, 18)}...`,
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt ?? row.createdAt
+  };
+}
+
+function webhookAttemptDetailToResponse(row: {
+  id: bigint;
+  webhookId: bigint;
+  activityEventId?: bigint | null;
+  event: string;
+  targetUrl: string;
+  status: string;
+  attemptNo: number;
+  responseStatus?: number | null;
+  responseBody?: string | null;
+  error?: string | null;
+  nextRetryAt?: Date | null;
+  deliveredAt?: Date | null;
+  signature: string;
+  payload?: Prisma.JsonValue;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    ...webhookAttemptToResponse(row),
+    responseBody: row.responseBody ?? null,
+    payload: row.payload ?? null
   };
 }
 
@@ -494,5 +456,5 @@ export {
   enforceNotLastOwner, normalizeSystemName,
   fieldToResponse, fieldAuditChanges, statusToResponse, statusAuditChanges,
   templateToResponse, templateAuditChanges,
-  newWebhookSecret, webhookToResponse, webhookAttemptToResponse, defaultStatusRows
+  newWebhookSecret, webhookToResponse, webhookAttemptToResponse, webhookAttemptDetailToResponse, defaultStatusRows
 };

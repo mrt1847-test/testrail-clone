@@ -8,6 +8,7 @@ import { ok } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
+import { recordReportScheduleRunRequestedActivity } from "../activity/activityRecording.js";
 import { recordAuditLog } from "../settings/auditLog.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
 import {
@@ -247,6 +248,14 @@ export async function registerScheduledReportsRoutes(
         reportType: existing.reportType,
         manual: true
       }
+    });
+    await recordReportScheduleRunRequestedActivity(deps.prisma, {
+      projectId,
+      actorUserId: user.id,
+      scheduledReportId,
+      reportType: existing.reportType,
+      name: existing.name,
+      manual: true
     });
     const result = await executeScheduledReport(deps.prisma, scheduledReportId, {
       actorUserId: user.id,

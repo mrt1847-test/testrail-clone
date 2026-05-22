@@ -4,6 +4,7 @@ import {
   resolveRangeMultiSelectClick
 } from "../../../shared/selection/rangeMultiSelect";
 import type { TestInstanceRow } from "../types";
+import { CommentComposer } from "../../comments/CommentComposer";
 import { DefectKeyInput } from "./DefectKeyInput";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
@@ -17,6 +18,7 @@ import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import { RUN_LIST_COLUMN_LABELS } from "../utils/runInstanceColumns";
+import { tableDensityClasses, type UiDensity } from "../../../shared/ui/density/uiDensity";
 
 function formatCaseMeta(value: string | null | undefined) {
   if (!value) return "—";
@@ -64,6 +66,7 @@ type Props = {
   assigningTestId?: string | null;
   runClosed?: boolean;
   visibleColumns?: RunListColumn[];
+  density?: UiDensity;
 };
 
 export function TestInstanceTable(props: Props) {
@@ -96,8 +99,10 @@ export function TestInstanceTable(props: Props) {
     groups,
     inlineStatusSelect = false,
     hidePagination = false,
-    visibleColumns = []
+    visibleColumns = [],
+    density = "comfortable"
   } = props;
+  const densityClasses = tableDensityClasses(density);
   const showPriority = visibleColumns.includes("priority");
   const showType = visibleColumns.includes("type");
   const columnCount = 6 + (showPriority ? 1 : 0) + (showType ? 1 : 0) + (onToggleSubscribe ? 1 : 0);
@@ -205,7 +210,7 @@ export function TestInstanceTable(props: Props) {
         }
         onClick={() => onSelectInstance(row)}
       >
-        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             aria-label={`Select ${row.caseCode}`}
@@ -223,17 +228,17 @@ export function TestInstanceTable(props: Props) {
             }}
           />
         </td>
-        <td className="px-3 py-2 align-middle font-mono text-xs text-slate-800">{row.caseCode}</td>
-        <td className="max-w-[24rem] truncate px-3 py-2 align-middle text-slate-800" title={row.title}>
+        <td className={`${densityClasses.cell} font-mono text-slate-800`}>{row.caseCode}</td>
+        <td className={`max-w-[24rem] truncate ${densityClasses.cell} text-slate-800`} title={row.title}>
           {row.title}
         </td>
         {showPriority ? (
-          <td className="px-3 py-2 align-middle text-xs text-slate-700">{formatCaseMeta(row.casePriority)}</td>
+          <td className={`${densityClasses.cell} text-slate-700`}>{formatCaseMeta(row.casePriority)}</td>
         ) : null}
         {showType ? (
-          <td className="px-3 py-2 align-middle text-xs text-slate-700">{formatCaseMeta(row.caseType)}</td>
+          <td className={`${densityClasses.cell} text-slate-700`}>{formatCaseMeta(row.caseType)}</td>
         ) : null}
-        <td className="px-3 py-2 align-middle">
+        <td className={densityClasses.cell}>
           {row.caseChanged ? (
             <span
               className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
@@ -249,9 +254,9 @@ export function TestInstanceTable(props: Props) {
             <span className="text-xs text-slate-400">—</span>
           )}
         </td>
-        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
           <div className="space-y-1">
-            <p className="truncate text-xs text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
+            <p className="truncate text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
               {memberLabelForUserId(row.assignedTo, members)}
             </p>
             {!runClosed ? (
@@ -267,7 +272,7 @@ export function TestInstanceTable(props: Props) {
             ) : null}
           </div>
         </td>
-        <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
           {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
             <select
               className="w-full max-w-[9rem] rounded border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-800"
@@ -293,7 +298,7 @@ export function TestInstanceTable(props: Props) {
           )}
         </td>
         {onToggleSubscribe ? (
-          <td className="px-3 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+          <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               disabled={isSubscribePending}
@@ -317,7 +322,10 @@ export function TestInstanceTable(props: Props) {
         <tbody key={group.groupLabel + (group.sectionId ?? "")} className="divide-y divide-slate-100 bg-white">
           {group.groupLabel ? (
             <tr className="bg-slate-100/90">
-              <td colSpan={columnCount} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <td
+                colSpan={columnCount}
+                className={`${densityClasses.groupHeader} font-semibold uppercase tracking-wide text-slate-600`}
+              >
                 {group.groupLabel}
               </td>
             </tr>
@@ -332,10 +340,10 @@ export function TestInstanceTable(props: Props) {
   return (
     <>
       <div className="max-h-[min(70vh,720px)] overflow-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-600 shadow-[0_1px_0_0_rgb(226_232_240)]">
+        <table className={`w-full min-w-[640px] text-left ${densityClasses.table}`}>
+          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 font-medium uppercase tracking-wide text-slate-600 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
-              <th className="w-10 px-3 py-2.5" scope="col">
+              <th className={`w-10 ${densityClasses.header}`} scope="col">
                 <span className="sr-only">Select row for bulk actions</span>
                 <input
                   type="checkbox"
@@ -353,29 +361,29 @@ export function TestInstanceTable(props: Props) {
                   }}
                 />
               </th>
-              <th className="px-3 py-2.5" scope="col">
+              <th className={densityClasses.header} scope="col">
                 Case
               </th>
-              <th className="min-w-[8rem] px-3 py-2.5" scope="col">
+              <th className={`min-w-[8rem] ${densityClasses.header}`} scope="col">
                 Title
               </th>
               {showPriority ? (
-                <th className="w-24 px-3 py-2.5" scope="col">
+                <th className={`w-24 ${densityClasses.header}`} scope="col">
                   {RUN_LIST_COLUMN_LABELS.priority}
                 </th>
               ) : null}
               {showType ? (
-                <th className="w-24 px-3 py-2.5" scope="col">
+                <th className={`w-24 ${densityClasses.header}`} scope="col">
                   {RUN_LIST_COLUMN_LABELS.type}
                 </th>
               ) : null}
-              <th className="w-28 px-3 py-2.5" scope="col">
+              <th className={`w-28 ${densityClasses.header}`} scope="col">
                 Updated
               </th>
-              <th className="min-w-[9rem] px-3 py-2.5" scope="col">
+              <th className={`min-w-[9rem] ${densityClasses.header}`} scope="col">
                 Assignee
               </th>
-              <th className="w-36 px-3 py-2.5" scope="col">
+              <th className={`w-36 ${densityClasses.header}`} scope="col">
                 Status
               </th>
             </tr>
@@ -457,14 +465,16 @@ export function TestInstanceTable(props: Props) {
               />
               <UntestedPolicyHint visible={disableUntested} />
 
-              <label className="block text-xs font-medium text-slate-600">
-                Comment
-                <textarea
-                  className="mt-1 min-h-24 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-                  value={draftComment}
-                  onChange={(e) => setDraftComment(e.target.value)}
-                />
-              </label>
+              <CommentComposer
+                projectId={projectId}
+                label="Comment"
+                value={draftComment}
+                onChange={setDraftComment}
+                rows={3}
+                disabled={isSavingQuickResult}
+                showPreview={false}
+                textareaClassName="mt-1 min-h-24 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+              />
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs font-medium text-slate-600">
@@ -497,7 +507,7 @@ export function TestInstanceTable(props: Props) {
 
               <div>
                 <p className="mb-1 text-xs font-medium text-slate-600">Defects</p>
-                <DefectKeyInput defects={draftDefects} onChange={setDraftDefects} />
+                <DefectKeyInput projectId={projectId} defects={draftDefects} onChange={setDraftDefects} />
               </div>
 
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">

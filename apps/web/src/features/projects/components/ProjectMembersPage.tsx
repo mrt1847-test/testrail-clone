@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { fetchAccessDefaults } from "../../admin/api/adminApi";
@@ -9,6 +9,7 @@ import {
   type ProjectMemberRow,
   updateProjectMemberRole
 } from "../api/advancedApi";
+import { Button, DataTable, Panel, useToast, type DataTableColumn } from "../../../shared/ui";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 
@@ -20,12 +21,14 @@ function projectRoleOrViewer(value: string): ProjectMemberRow["role"] {
 
 export function ProjectMembersPage() {
   const { projectId = "" } = useParams();
+  const { showToast } = useToast();
   const [items, setItems] = useState<ProjectMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<ProjectMemberRow["role"]>("viewer");
+  const [adding, setAdding] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -52,54 +55,105 @@ export function ProjectMembersPage() {
 
   async function onAdd() {
     if (!email.trim()) return;
-    await addProjectMember({ projectId, email, name: name || undefined, role });
-    setEmail("");
-    setName("");
-    void fetchAccessDefaults()
-      .then((row) => setRole(projectRoleOrViewer(row.defaultProjectMemberRole)))
-      .catch(() => setRole("viewer"));
-    await load();
+    setAdding(true);
+    try {
+      await addProjectMember({ projectId, email, name: name || undefined, role });
+      setEmail("");
+      setName("");
+      void fetchAccessDefaults()
+        .then((row) => setRole(projectRoleOrViewer(row.defaultProjectMemberRole)))
+        .catch(() => setRole("viewer"));
+      showToast("Member added", "success");
+      await load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not add member", "error");
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function onChangeRole(memberId: string, nextRole: ProjectMemberRow["role"]) {
-    await updateProjectMemberRole({ projectId, memberId, role: nextRole });
-    await load();
+    try {
+      await updateProjectMemberRole({ projectId, memberId, role: nextRole });
+      showToast("Role updated", "success");
+      await load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not update role", "error");
+    }
   }
 
   async function onRemove(memberId: string) {
-    await removeProjectMember(projectId, memberId);
-    await load();
+    try {
+      await removeProjectMember(projectId, memberId);
+      showToast("Member removed", "success");
+      await load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not remove member", "error");
+    }
   }
+
+  const columns = useMemo<DataTableColumn<ProjectMemberRow>[]>(
+    () => [
+      { key: "email", header: "Email", cell: (row) => row.email },
+      { key: "name", header: "Name", cell: (row) => row.name ?? "—" },
+      {
+        key: "role",
+        header: "Role",
+        cell: (row) => (
+          <select
+            className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800"
+            value={row.role}
+            onChange={(e) => void onChangeRole(row.id, e.target.value as ProjectMemberRow["role"])}
+          >
+            {roles.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        )
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        cell: (row) => (
+          <Button variant="danger" size="sm" onClick={() => void onRemove(row.id)}>
+            Remove
+          </Button>
+        )
+      }
+    ],
+    []
+  );
 
   if (loading) return <LoadingState message="Loading members…" />;
   if (error) return <ErrorState title="Failed to load project members" message={error} onRetry={() => void load()} />;
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
         Built-in roles use the{" "}
         <Link to={`/projects/${projectId}/settings/custom-roles`} className="underline">
           permission matrix
         </Link>
         .
       </p>
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Add member</h2>
-        <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <Panel title="Add member">
+        <div className="grid gap-2 md:grid-cols-4">
           <input
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
             placeholder="email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <input
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
             placeholder="Name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <select
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
             value={role}
             onChange={(e) => setRole(e.target.value as ProjectMemberRow["role"])}
           >
@@ -109,61 +163,13 @@ export function ProjectMembersPage() {
               </option>
             ))}
           </select>
-          <button type="button" onClick={() => void onAdd()} className="rounded bg-slate-900 px-3 py-1 text-sm text-white">
+          <Button loading={adding} onClick={() => void onAdd()}>
             Add
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-600">
-            <tr>
-              <th className="px-3 py-2">Email</th>
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Role</th>
-              <th className="px-3 py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td className="px-3 py-2">{item.email}</td>
-                <td className="px-3 py-2">{item.name ?? "—"}</td>
-                <td className="px-3 py-2">
-                  <select
-                    className="rounded border border-slate-300 px-2 py-1 text-xs"
-                    value={item.role}
-                    onChange={(e) => void onChangeRole(item.id, e.target.value as ProjectMemberRow["role"])}
-                  >
-                    {roles.map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => void onRemove(item.id)}
-                    className="rounded border border-red-200 px-2 py-1 text-xs text-red-700"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 ? (
-              <tr>
-                <td className="px-3 py-3 text-slate-500" colSpan={4}>
-                  No members.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      <DataTable columns={columns} rows={items} rowKey={(row) => row.id} emptyMessage="No members." />
     </div>
   );
 }

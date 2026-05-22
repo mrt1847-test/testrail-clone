@@ -70,7 +70,7 @@ Current risk:
 
 Target:
 
-- Left section tree, center case table, right selected case detail.
+- Configurable left/right section tree, center case table, right selected case detail.
 - Edit in a full-height drawer or dedicated editor while preserving section/list context.
 - Bulk actions and add-case actions remain table/section-native.
 

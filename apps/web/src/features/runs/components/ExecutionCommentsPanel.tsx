@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { CommentComposer } from "../../comments/CommentComposer";
+import { CommentMarkdown } from "../../comments/CommentMarkdown";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import {
   createRunExecutionComment,
@@ -11,6 +13,7 @@ import {
 } from "../api/runApi";
 
 type Props = {
+  projectId: string;
   scope: "test_instance" | "test_run";
   testId?: string;
   runId?: string;
@@ -30,6 +33,7 @@ function authorLabel(comment: ExecutionComment) {
 }
 
 export function ExecutionCommentsPanel({
+  projectId,
   scope,
   testId,
   runId,
@@ -96,7 +100,7 @@ export function ExecutionCommentsPanel({
             <span className="font-medium text-slate-700">{authorLabel(comment)}</span>
             <time dateTime={comment.createdAt}>{formatTimestamp(comment.createdAt)}</time>
           </div>
-          <p className="mt-1 whitespace-pre-wrap text-slate-800">{comment.content}</p>
+          <CommentMarkdown content={comment.content} />
           {canPost && depth === 0 ? (
             <button
               type="button"
@@ -143,13 +147,7 @@ export function ExecutionCommentsPanel({
               </button>
             </p>
           ) : null}
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            rows={3}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="Add a comment. Use @email or @name to mention teammates."
-          />
+          <CommentComposer projectId={projectId} value={draft} onChange={setDraft} rows={3} disabled={saveMutation.isPending} />
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <button
             type="submit"

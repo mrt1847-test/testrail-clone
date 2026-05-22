@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { ProjectSummary } from "../types";
+import { usePinnedProjects } from "../hooks/usePinnedProjects";
 import { useProjectOverviewQuery } from "../hooks/useProjectsApi";
 
 type ProjectCardProps = {
@@ -8,6 +9,8 @@ type ProjectCardProps = {
 };
 
 export function ProjectCard({ project }: ProjectCardProps) {
+  const { isProjectPinned, toggleProjectPin } = usePinnedProjects();
+  const pinned = isProjectPinned(project.id);
   const { data: overview, isLoading } = useProjectOverviewQuery(project.id);
   const stats = overview?.stats;
   const leadRun = overview?.recentRuns[0];
@@ -21,10 +24,18 @@ export function ProjectCard({ project }: ProjectCardProps) {
       <div className="pt-0.5">
         <button
           type="button"
-          className="h-5 w-5 border border-slate-300 bg-white text-[10px] font-semibold leading-none text-slate-500 hover:border-slate-400 hover:text-slate-800"
-          title="Mark as project favorite"
+          className={[
+            "h-5 w-5 border text-[11px] font-semibold leading-none",
+            pinned
+              ? "border-amber-300 bg-amber-50 text-amber-800"
+              : "border-slate-300 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-800"
+          ].join(" ")}
+          title={pinned ? "Unpin project" : "Pin project"}
+          aria-label={pinned ? "Unpin project" : "Pin project"}
+          aria-pressed={pinned}
+          onClick={() => toggleProjectPin(project.id)}
         >
-          F
+          {pinned ? "★" : "☆"}
         </button>
       </div>
 

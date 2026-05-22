@@ -873,6 +873,11 @@ export async function fetchDefectPushFields(
   params.set("runName", query.runName);
   params.set("testTitle", query.testTitle);
   if (query.resultComment) params.set("resultComment", query.resultComment);
+  if (query.caseCode) params.set("caseCode", query.caseCode);
+  if (query.caseTitle) params.set("caseTitle", query.caseTitle);
+  if (query.casePreconditions) params.set("casePreconditions", query.casePreconditions);
+  if (query.caseExpected) params.set("caseExpected", query.caseExpected);
+  if (query.caseRefs) params.set("caseRefs", query.caseRefs);
   const res = await apiFetch<
     Ok<{
       provider: string;

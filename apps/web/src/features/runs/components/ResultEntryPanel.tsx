@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { CommentComposer } from "../../comments/CommentComposer";
 import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { DefectKeyInput } from "./DefectKeyInput";
 import { ElapsedTimerField } from "./ElapsedTimerField";
@@ -225,15 +226,16 @@ export function ResultEntryPanel({
         <UntestedPolicyHint visible={disableUntested} />
         <ResultCorrectionPolicyHint hasHistory={hasResultHistory} />
 
-        <label className="block text-xs font-medium text-slate-600">
-          Comment
-          <textarea
-            className="mt-1 min-h-20 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-            placeholder="Add a short note for this result"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
-        </label>
+        <CommentComposer
+          projectId={projectId}
+          label="Comment"
+          value={comment}
+          onChange={setComment}
+          rows={3}
+          placeholder="Add a short note for this result"
+          disabled={isSubmitting}
+          textareaClassName="mt-1 min-h-20 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+        />
 
         {showAiEvaluation ? (
           <AiEvaluationResultFields
@@ -287,7 +289,7 @@ export function ResultEntryPanel({
             </label>
             <div>
               <p className="mb-1 text-xs font-medium text-slate-600">Defects</p>
-              <DefectKeyInput defects={defects} onChange={setDefects} />
+              <DefectKeyInput projectId={projectId} defects={defects} onChange={setDefects} />
             </div>
             <ResultCustomFields
               fields={activeResultFields}
@@ -300,6 +302,7 @@ export function ResultEntryPanel({
         </details>
 
         <StepResultEditor
+          projectId={projectId}
           caseSteps={caseSteps}
           isCaseStepsLoading={isCaseStepsLoading}
           stepResults={stepResults}
@@ -307,6 +310,7 @@ export function ResultEntryPanel({
         />
 
         <ScenarioResultEditor
+          projectId={projectId}
           scenarios={caseScenarios}
           value={scenarioResults}
           onChange={setScenarioResults}

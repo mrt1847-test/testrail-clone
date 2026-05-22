@@ -2,6 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import { buildResultsExplorerExportQuery, uiFiltersForReport } from "../../projects/reports/reportExportQuery";
+import { ReportToolbar } from "../../projects/components/reports/ReportToolbar";
+
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -16,9 +19,14 @@ import {
   type ResultCustomFilterEntry
 } from "../resultCustomFieldFilterOps";
 
-export function ResultExplorerPage() {
+type Props = {
+  /** When true (project report route), show save/export/preset actions for the current filters. */
+  enableReportToolbar?: boolean;
+};
+
+export function ResultExplorerPage({ enableReportToolbar = false }: Props) {
   const { projectId = "", runId } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState(() => searchParams.get("status") ?? "all");
   const [source, setSource] = useState("all");
@@ -32,10 +40,27 @@ export function ResultExplorerPage() {
 
   useEffect(() => {
     setStatus(searchParams.get("status") ?? "all");
+    setSource(searchParams.get("source") ?? "all");
+    setQuery(searchParams.get("q") ?? "");
+    setCaseId(searchParams.get("caseId") ?? "");
+    setTestId(searchParams.get("testId") ?? "");
     setCreatedFrom(searchParams.get("createdFrom") ?? "");
     setCreatedTo(searchParams.get("createdTo") ?? "");
     setPage(1);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!enableReportToolbar || runId) return;
+    const next = new URLSearchParams();
+    if (status !== "all") next.set("status", status);
+    if (source !== "all") next.set("source", source);
+    if (query.trim()) next.set("q", query.trim());
+    if (caseId.trim()) next.set("caseId", caseId.trim());
+    if (testId.trim()) next.set("testId", testId.trim());
+    if (createdFrom) next.set("createdFrom", createdFrom);
+    if (createdTo) next.set("createdTo", createdTo);
+    setSearchParams(next, { replace: true });
+  }, [caseId, createdFrom, createdTo, enableReportToolbar, query, runId, setSearchParams, source, status, testId]);
 
   const hasOverviewDrilldown =
     (status !== "all" && Boolean(searchParams.get("status"))) ||
@@ -78,9 +103,49 @@ export function ResultExplorerPage() {
     refetchIntervalInBackground: false
   });
   const rows = explorerQuery.data?.items ?? [];
+  const exportQuery = useMemo(
+    () =>
+      buildResultsExplorerExportQuery({
+        runId,
+        status,
+        source,
+        q: query,
+        caseId,
+        testId,
+        createdFrom,
+        createdTo
+      }),
+    [caseId, createdFrom, createdTo, query, runId, source, status, testId]
+  );
+  const savedFilters = useMemo(
+    () => ({
+      ui: uiFiltersForReport({
+        status,
+        source,
+        q: query,
+        caseId,
+        testId,
+        createdFrom,
+        createdTo
+      }),
+      export: exportQuery
+    }),
+    [caseId, createdFrom, createdTo, exportQuery, query, source, status, testId]
+  );
 
   return (
     <div className="space-y-4">
+      {enableReportToolbar && projectId && !runId ? (
+        <div className="flex flex-wrap justify-end">
+          <ReportToolbar
+            projectId={projectId}
+            reportType="results_explorer"
+            filters={savedFilters}
+            exportQuery={exportQuery}
+            disabled={rows.length === 0 && !explorerQuery.isFetching}
+          />
+        </div>
+      ) : null}
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Result Explorer</h2>
         <p className="mt-2 text-sm text-slate-700">

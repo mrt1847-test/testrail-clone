@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 
 import { hasRangeMultiSelectModifier } from "../../../shared/selection/rangeMultiSelect";
+import { CommentMarkdown } from "../../comments/CommentMarkdown";
+import type { CaseExecutionHistoryItem } from "../../runs/types";
 import type { CaseListColumn, CaseVersion, TestCase } from "../types";
 
 import type {
@@ -8,10 +10,21 @@ import type {
   CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
+import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
+import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { CaseRefTokens } from "./CaseRefTokens";
+import { caseRowDensityClasses } from "../../../shared/ui/density/uiDensity";
+import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
+type SummaryColumnPart = { column: CaseListColumn; value: string };
+type QuickMetadataPatch = {
+  priority?: "low" | "medium" | "high";
+  caseType?: "functional" | "integration" | "regression";
+};
+
 type CaseRowProps = {
+  projectId?: string;
   item: TestCase;
   isExpanded: boolean;
   isPanelOpen?: boolean;
@@ -22,12 +35,23 @@ type CaseRowProps = {
   customFields?: CaseAuthoringCustomFieldDefinition[];
   caseTemplates?: CaseAuthoringTemplateDefinition[];
   visibleColumns: CaseListColumn[];
+  columnWidths: Record<CaseListColumn, number>;
+  isPreviewOpen?: boolean;
+  previewDetail?: TestCase | null;
+  previewLatestResult?: CaseExecutionHistoryItem | null;
+  isPreviewDetailLoading?: boolean;
+  isPreviewResultLoading?: boolean;
+  isPreviewResultError?: boolean;
+  onPreviewEnter?: () => void;
+  onPreviewLeave?: () => void;
   isSelected?: boolean;
   onSelectChange?: (checked: boolean) => void;
   onSelectClick?: (event: React.MouseEvent<HTMLInputElement>) => void;
   onOpenCase: () => void;
   onRenameTitle?: (title: string) => Promise<void>;
   isRenamingTitle?: boolean;
+  onQuickUpdateMetadata?: (patch: QuickMetadataPatch) => Promise<void>;
+  isQuickUpdatingMetadata?: boolean;
   onTogglePanel: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -54,6 +78,7 @@ type CaseRowProps = {
   onDeleteStep?: (stepId: number) => Promise<void>;
   isStepsBusy?: boolean;
   renderDetailInline?: boolean;
+  density?: UiDensity;
   draggable?: boolean;
   isDraggingThis?: boolean;
   dropIndicator?: "before" | "after" | null;
@@ -64,7 +89,131 @@ type CaseRowProps = {
   onRowDrop?: (event: DragEvent<HTMLElement>) => void;
 };
 
+function previewText(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : "-";
+}
+
+function previewDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function resultStatusClass(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized === "passed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (normalized === "failed") return "border-red-200 bg-red-50 text-red-700";
+  if (normalized === "blocked") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "retest") return "border-sky-200 bg-sky-50 text-sky-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+type CaseHoverPreviewProps = {
+  item: TestCase;
+  detail?: TestCase | null;
+  latestResult?: CaseExecutionHistoryItem | null;
+  isDetailLoading?: boolean;
+  isResultLoading?: boolean;
+  isResultError?: boolean;
+};
+
+function CaseHoverPreview({
+  item,
+  detail,
+  latestResult,
+  isDetailLoading = false,
+  isResultLoading = false,
+  isResultError = false
+}: CaseHoverPreviewProps) {
+  const source = detail ?? item;
+  const steps = source.steps.slice(0, 2);
+
+  return (
+    <div className="pointer-events-none absolute left-9 top-[calc(100%-0.25rem)] z-30 hidden w-[min(32rem,calc(100vw-4rem))] rounded-md border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-lg sm:block">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[11px] text-slate-500">{item.caseCode}</p>
+          <p className="mt-0.5 max-h-10 overflow-hidden text-sm font-semibold text-slate-900">{source.title}</p>
+        </div>
+        <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+          {source.priority}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_0.9fr]">
+        <div className="space-y-2">
+          <div>
+            <p className="font-medium text-slate-500">Preconditions</p>
+            <p className="mt-0.5 max-h-12 overflow-hidden whitespace-pre-wrap text-slate-800">
+              {isDetailLoading && !detail ? "Loading..." : previewText(source.preconditions)}
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-slate-500">Steps</p>
+            {isDetailLoading && !detail ? (
+              <p className="mt-0.5 text-slate-500">Loading...</p>
+            ) : steps.length > 0 ? (
+              <ol className="mt-1 space-y-1">
+                {steps.map((step, index) => (
+                  <li key={`${step.id ?? step.stepOrder ?? index}:${index}`} className="grid grid-cols-[1rem_1fr] gap-1">
+                    <span className="text-slate-400">{index + 1}.</span>
+                    <span className="max-h-10 overflow-hidden whitespace-pre-wrap text-slate-800">
+                      {previewText(step.description)}
+                      {previewText(step.expected) !== "-" ? (
+                        <span className="block text-slate-500">Expected: {previewText(step.expected)}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+                {source.steps.length > steps.length ? (
+                  <li className="pl-5 text-slate-500">+{source.steps.length - steps.length} more steps</li>
+                ) : null}
+              </ol>
+            ) : (
+              <p className="mt-0.5 text-slate-500">No steps registered.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <p className="font-medium text-slate-500">Expected result</p>
+            <p className="mt-0.5 max-h-12 overflow-hidden whitespace-pre-wrap text-slate-800">
+              {isDetailLoading && !detail ? "Loading..." : previewText(source.expectedResult)}
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-slate-500">Latest result</p>
+            {isResultLoading ? (
+              <p className="mt-0.5 text-slate-500">Loading...</p>
+            ) : isResultError ? (
+              <p className="mt-0.5 text-slate-500">Unavailable.</p>
+            ) : latestResult ? (
+              <div className="mt-1 space-y-1">
+                <span className={`inline-flex rounded border px-2 py-0.5 font-medium ${resultStatusClass(latestResult.status)}`}>
+                  {latestResult.status}
+                </span>
+                <p className="text-slate-700">{latestResult.runName}</p>
+                <p className="text-slate-500">{previewDate(latestResult.createdAt)}</p>
+                {latestResult.comment ? (
+                  <div className="max-h-10 overflow-hidden text-slate-700">
+                    <CommentMarkdown content={latestResult.comment} className="text-sm" />
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-0.5 text-slate-500">No recorded result yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CaseRow({
+  projectId,
   item,
   isExpanded,
   isPanelOpen = false,
@@ -75,12 +224,23 @@ export function CaseRow({
   customFields,
   caseTemplates,
   visibleColumns,
+  columnWidths,
+  isPreviewOpen = false,
+  previewDetail = null,
+  previewLatestResult = null,
+  isPreviewDetailLoading = false,
+  isPreviewResultLoading = false,
+  isPreviewResultError = false,
+  onPreviewEnter,
+  onPreviewLeave,
   isSelected = false,
   onSelectChange,
   onSelectClick,
   onOpenCase,
   onRenameTitle,
   isRenamingTitle = false,
+  onQuickUpdateMetadata,
+  isQuickUpdatingMetadata = false,
   onTogglePanel,
   onEdit,
   onCloseDetail,
@@ -97,6 +257,7 @@ export function CaseRow({
   onDeleteStep,
   isStepsBusy,
   renderDetailInline = true,
+  density = "comfortable",
   draggable = false,
   isDraggingThis = false,
   dropIndicator = null,
@@ -106,6 +267,7 @@ export function CaseRow({
   onRowDragLeave,
   onRowDrop
 }: CaseRowProps) {
+  const { openEntityContextMenu } = useEntityContextMenu();
   const skipNextSelectChangeRef = useRef(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title);
@@ -134,12 +296,25 @@ export function CaseRow({
     (visibleColumnSet.has("automation") && item.automationKey.trim().length > 0) ||
     (visibleColumnSet.has("labels") && visibleLabels.length > 0) ||
     (visibleColumnSet.has("customValues") && visibleCustomValueChips.length > 0);
-  const summaryParts = [
-    visibleColumnSet.has("type") ? item.type : null,
-    visibleColumnSet.has("priority") ? item.priority : null,
-    visibleColumnSet.has("automation") ? item.automationStatus : null,
-    visibleColumnSet.has("estimate") && item.estimate !== "-" ? item.estimate : null
-  ].filter((part): part is string => part != null);
+  const summaryParts: SummaryColumnPart[] = [];
+  if (visibleColumnSet.has("type")) summaryParts.push({ column: "type", value: item.type });
+  if (visibleColumnSet.has("priority")) summaryParts.push({ column: "priority", value: item.priority });
+  if (visibleColumnSet.has("automation")) summaryParts.push({ column: "automation", value: item.automationStatus });
+  if (visibleColumnSet.has("estimate") && item.estimate !== "-") {
+    summaryParts.push({ column: "estimate", value: item.estimate });
+  }
+
+  const columnStyle = (column: CaseListColumn) => ({
+    width: `${columnWidths[column]}px`,
+    maxWidth: `${columnWidths[column]}px`
+  });
+  const canQuickEditMetadata = Boolean(onQuickUpdateMetadata) && !item.archivedAt;
+  const priorityValue = item.priority.toLowerCase() as "low" | "medium" | "high";
+  const caseTypeValue = item.type.toLowerCase() as "functional" | "integration" | "regression";
+  const inlineSelectClass =
+    "rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-slate-700 disabled:bg-slate-100 disabled:text-slate-400";
+
+  const densityStyles = caseRowDensityClasses(density ?? "comfortable");
 
   const rowClasses = [
     "relative flex items-center gap-2 pl-3 transition-colors",
@@ -159,6 +334,17 @@ export function CaseRow({
     <article
       data-case-row-id={item.id}
       className="relative border-b border-slate-100 last:border-0"
+      onContextMenu={
+        projectId
+          ? (event) =>
+              openEntityContextMenu(event, {
+                projectId,
+                kind: "case",
+                entityId: item.id,
+                caseCode: item.caseCode
+              })
+          : undefined
+      }
       onDragOver={onRowDragOver}
       onDragLeave={onRowDragLeave}
       onDrop={onRowDrop}
@@ -175,7 +361,14 @@ export function CaseRow({
           className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 translate-y-px bg-sky-500"
         />
       ) : null}
-      <div className={rowClasses} draggable={draggable} onDragStart={onRowDragStart} onDragEnd={onRowDragEnd}>
+      <div
+        className={rowClasses}
+        draggable={draggable}
+        onMouseEnter={onPreviewEnter}
+        onMouseLeave={onPreviewLeave}
+        onDragStart={onRowDragStart}
+        onDragEnd={onRowDragEnd}
+      >
         <input
           type="checkbox"
           aria-label={`Select ${item.caseCode}`}
@@ -208,11 +401,22 @@ export function CaseRow({
         <button
           type="button"
           onClick={onOpenCase}
-          className="flex min-w-0 flex-1 items-center px-1 py-3 text-left text-sm"
+          className={`flex min-w-0 flex-1 items-center text-left ${densityStyles.rowButton}`}
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate">
-              <span className="font-mono text-xs text-slate-500">{item.caseCode}</span>{" "}
+              <span className="inline-flex items-center gap-1 font-mono text-xs text-slate-500">
+                {item.caseCode}
+                {projectId ? (
+                  <EntityCopyActions
+                    projectId={projectId}
+                    kind="case"
+                    entityId={item.id}
+                    caseCode={item.caseCode}
+                    compact
+                  />
+                ) : null}
+              </span>{" "}
               {editingTitle && onRenameTitle ? (
                 <input
                   type="text"
@@ -271,7 +475,10 @@ export function CaseRow({
             {hasMetaLine ? (
               <span className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
                 {visibleColumnSet.has("refs") && item.references.trim().length > 0 ? (
-                  <span className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+                  <span
+                    className="inline-flex max-w-full shrink-0 flex-wrap items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5"
+                    style={columnStyle("refs")}
+                  >
                     <span className="font-medium text-slate-600">Refs:</span>
                     <CaseRefTokens refsValue={item.references} />
                   </span>
@@ -281,19 +488,27 @@ export function CaseRow({
                     Auto: {item.automationKey}
                   </span>
                 ) : null}
-                {visibleColumnSet.has("labels") ? visibleLabels.map((label) => (
-                  <span key={label} className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">
-                    {label}
+                {visibleColumnSet.has("labels") && visibleLabels.length > 0 ? (
+                  <span className="inline-flex shrink-0 flex-wrap gap-1" style={columnStyle("labels")}>
+                    {visibleLabels.map((label) => (
+                      <span key={label} className="truncate rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">
+                        {label}
+                      </span>
+                    ))}
                   </span>
-                )) : null}
+                ) : null}
                 {visibleColumnSet.has("labels") && hiddenLabelCount > 0 ? (
                   <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">+{hiddenLabelCount} labels</span>
                 ) : null}
-                {visibleColumnSet.has("customValues") ? visibleCustomValueChips.map((chip) => (
-                  <span key={chip.key} className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
-                    {chip.label}: {chip.value}
+                {visibleColumnSet.has("customValues") && visibleCustomValueChips.length > 0 ? (
+                  <span className="inline-flex shrink-0 flex-wrap gap-1" style={columnStyle("customValues")}>
+                    {visibleCustomValueChips.map((chip) => (
+                      <span key={chip.key} className="truncate rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
+                        {chip.label}: {chip.value}
+                      </span>
+                    ))}
                   </span>
-                )) : null}
+                ) : null}
                 {visibleColumnSet.has("customValues") && hiddenCustomValueCount > 0 ? (
                   <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">
                     +{hiddenCustomValueCount} fields
@@ -303,8 +518,50 @@ export function CaseRow({
             ) : null}
           </span>
         </button>
-        <span className="hidden shrink-0 px-2 text-right text-xs text-slate-500 sm:block">
-          {summaryParts.length > 0 ? summaryParts.join(" / ") : null}
+        <span className="hidden shrink-0 items-center justify-end gap-1 px-2 text-right text-xs text-slate-500 sm:flex">
+          {visibleColumnSet.has("type") ? (
+            <select
+              aria-label={`Type for ${item.caseCode}`}
+              value={caseTypeValue}
+              disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                const next = event.target.value as QuickMetadataPatch["caseType"];
+                if (next && next !== caseTypeValue) void onQuickUpdateMetadata?.({ caseType: next });
+              }}
+              className={`${inlineSelectClass} shrink-0`}
+              style={columnStyle("type")}
+            >
+              <option value="functional">Functional</option>
+              <option value="integration">Integration</option>
+              <option value="regression">Regression</option>
+            </select>
+          ) : null}
+          {visibleColumnSet.has("priority") ? (
+            <select
+              aria-label={`Priority for ${item.caseCode}`}
+              value={priorityValue}
+              disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                const next = event.target.value as QuickMetadataPatch["priority"];
+                if (next && next !== priorityValue) void onQuickUpdateMetadata?.({ priority: next });
+              }}
+              className={`${inlineSelectClass} shrink-0`}
+              style={columnStyle("priority")}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          ) : null}
+          {summaryParts.map((part) => (
+            part.column === "type" || part.column === "priority" ? null : (
+            <span key={part.column} className="shrink-0 truncate" style={columnStyle(part.column)}>
+              {part.value}
+            </span>
+            )
+          ))}
         </span>
         <button
           type="button"
@@ -324,6 +581,16 @@ export function CaseRow({
         >
           {isPanelOpen ? "›" : "‹"}
         </button>
+        {isPreviewOpen ? (
+          <CaseHoverPreview
+            item={item}
+            detail={previewDetail}
+            latestResult={previewLatestResult}
+            isDetailLoading={isPreviewDetailLoading}
+            isResultLoading={isPreviewResultLoading}
+            isResultError={isPreviewResultError}
+          />
+        ) : null}
       </div>
       {renderDetailInline && isExpanded ? (
         <ExpandableCaseDetail

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchCaseVersions } from "../api/catalogApi";
+import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
 import { CaseEditDrawer } from "./CaseEditDrawer";
@@ -30,6 +31,10 @@ export function CaseDetailBody({
   const isEditMode =
     searchParams.get("panelMode") === "edit" || searchParams.get("mode") === "edit";
   const { data, isLoading, isError, refetch } = useCaseDetail(caseId);
+  useRecordRecentlyViewed(
+    projectId,
+    data ? { kind: "case", id: String(data.id), title: `${data.caseCode} ${data.title}` } : null
+  );
   const editor = useCaseEditorActions(projectId);
   const detailLayout = layout === "panel" ? "embedded" : "page";
 

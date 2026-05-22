@@ -7,13 +7,12 @@ import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { fetchRefsCoverage } from "../../api/refsReportsApi";
 import { reportKeys } from "../../hooks/reportKeys";
 import {
-  ReportExportActions,
   ReportFilterBar,
   ReportPageHeader,
-  ReportSaveViewButton,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 export function ReportRefsCoveragePage() {
   const { projectId = "" } = useParams();
@@ -86,14 +85,12 @@ export function ReportRefsCoveragePage() {
       <ReportTablePanel
         title="References"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton projectId={projectId} reportType="refs_coverage" />
-            <ReportExportActions
-              projectId={projectId}
-              reportType="refs_coverage"
-              disabled={rows.length === 0}
-            />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="refs_coverage"
+            filters={{ ui: {}, export: {} }}
+            disabled={rows.length === 0}
+          />
         }
       >
         {rows.length === 0 ? (

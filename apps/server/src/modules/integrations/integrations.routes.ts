@@ -17,6 +17,7 @@ import {
 import { AppError } from "../../common/errors/appError.js";
 import { buildDefectTemplatePreview } from "../../domain/defectProviderApi.js";
 import {
+  listRecentDefectKeys,
   loadDefectIntegration,
   searchIssueKeys,
   setInMemoryDefectIntegration,
@@ -90,6 +91,10 @@ const issueSearchQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(25).default(10)
 });
 
+const recentDefectsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(25).default(12)
+});
+
 const pushFieldsQuerySchema = z.object({
   provider: z.string().trim().optional(),
   runId: z.coerce.bigint().optional(),
@@ -98,7 +103,12 @@ const pushFieldsQuerySchema = z.object({
   resultStatus: z.string().trim().optional(),
   resultComment: z.string().trim().optional(),
   testTitle: z.string().trim().optional(),
-  runName: z.string().trim().optional()
+  runName: z.string().trim().optional(),
+  caseCode: z.string().trim().optional(),
+  caseTitle: z.string().trim().optional(),
+  casePreconditions: z.string().trim().optional(),
+  caseExpected: z.string().trim().optional(),
+  caseRefs: z.string().trim().optional()
 });
 
 const templatePreviewQuerySchema = z.object({
@@ -217,7 +227,12 @@ export async function registerIntegrationsRoutes(
             testTitle: query.testTitle ?? `Test ${query.testId.toString()}`,
             resultId: query.resultId.toString(),
             resultStatus: query.resultStatus ?? "failed",
-            resultComment: query.resultComment ?? null
+            resultComment: query.resultComment ?? null,
+            caseCode: query.caseCode ?? null,
+            caseTitle: query.caseTitle ?? null,
+            casePreconditions: query.casePreconditions ?? null,
+            caseExpected: query.caseExpected ?? null,
+            caseRefs: query.caseRefs ?? null
           }
         : undefined;
     const payload = await getDefectPushFieldsForProject(projectId, query.provider, context, deps.prisma);
@@ -242,6 +257,15 @@ export async function registerIntegrationsRoutes(
     const { q, limit } = issueSearchQuerySchema.parse(req.query ?? {});
     const setting = await loadDefectIntegration(projectId, deps.prisma);
     const items = await searchIssueKeys(projectId, q, limit, deps.prisma, setting);
+    return reply.send(toJsonSafe(ok({ items, integrationEnabled: setting.isEnabled })));
+  });
+
+  app.get("/api/projects/:projectId/integrations/defects/recent", async (req, reply) => {
+    await requireAuthenticated(req, deps);
+    const { projectId } = projectIdParamSchema.parse(req.params);
+    const { limit } = recentDefectsQuerySchema.parse(req.query ?? {});
+    const setting = await loadDefectIntegration(projectId, deps.prisma);
+    const items = await listRecentDefectKeys(projectId, limit, deps.prisma, setting);
     return reply.send(toJsonSafe(ok({ items, integrationEnabled: setting.isEnabled })));
   });
 }

@@ -8,14 +8,14 @@ import { fetchRuns } from "../../../runs/api/runApi";
 import { fetchDefectSummary, type DefectSummaryQuery } from "../../api/defectSummaryApi";
 import { fetchMilestones, fetchPlans } from "../../api/planningApi";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportActions,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type ScopeType = "project" | "milestone" | "plan" | "run";
 
@@ -143,19 +143,13 @@ export function ReportDefectSummaryPage() {
           <ReportTablePanel
             title="Linked defects"
             toolbar={
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <ReportSaveViewButton
-                  projectId={projectId}
-                  reportType="defect_summary"
-                  filters={{ ui: { scopeType, scopeId }, export: exportQuery }}
-                />
-                <ReportExportActions
-                  projectId={projectId}
-                  reportType="defect_summary"
-                  disabled={defects.length === 0 && unlinked.length === 0}
-                  exportQuery={exportQuery}
-                />
-              </div>
+              <ReportToolbar
+                projectId={projectId}
+                reportType="defect_summary"
+                filters={{ ui: uiFiltersForReport({ scopeType, scopeId }), export: exportQuery }}
+                exportQuery={exportQuery}
+                disabled={defects.length === 0 && unlinked.length === 0}
+              />
             }
           >
             {defects.length === 0 ? (

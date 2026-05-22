@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDefaultDefectPushValues,
+  buildResultTraceback,
   defectPushFieldsForProvider,
   mapDefectPushValuesToPayload,
   validateDefectPushValues
@@ -30,6 +31,25 @@ describe("defectPushFields", () => {
     expect(values.summary).toContain("Login works");
     expect(values.description).toContain("resultId=99");
     expect(values.defectKey).toBe("QA-");
+  });
+
+  it("includes case context and result comment in traceback", () => {
+    const fields = defectPushFieldsForProvider("jira");
+    const richContext = {
+      ...context,
+      caseCode: "C12",
+      caseTitle: "Login works",
+      casePreconditions: "User exists",
+      caseRefs: "REQ-1",
+      resultComment: "Assertion error"
+    };
+    const traceback = buildResultTraceback(richContext);
+    expect(traceback).toContain("C12");
+    expect(traceback).toContain("Preconditions:");
+    expect(traceback).toContain("User exists");
+    expect(traceback).toContain("Comment: Assertion error");
+    const values = buildDefaultDefectPushValues(fields, richContext, "QA");
+    expect(values.summary).toContain("C12");
   });
 
   it("maps values to push payload with custom fields", () => {

@@ -140,5 +140,86 @@ describe("defect push dialog API", () => {
     });
     const links = listRes.json() as Array<{ defectKey: string }>;
     expect(links.some((row) => row.defectKey === "QA-99")).toBe(true);
+
+    const recentRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/integrations/defects/recent?limit=5`,
+      headers
+    });
+    expect(recentRes.statusCode).toBe(200);
+    const recent = (recentRes.json() as { data: { items: Array<{ key: string }> } }).data.items;
+    expect(recent.some((row) => row.key === "QA-99")).toBe(true);
+  });
+
+  it("prefills push fields from case and result comment", async () => {
+    const token = await login();
+    const headers = { authorization: `Bearer ${token}` };
+
+    const projectRes = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers,
+      payload: { name: "Defect prefill project" }
+    });
+    const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+    const suiteId = await getMasterSuiteId(app, projectId, headers);
+
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Prefill section" }
+    });
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+    const caseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: {
+        title: "Prefill case",
+        preconditions: "Account ready",
+        refs: "REQ-9"
+      }
+    });
+    const caseId = (caseRes.json() as { data: { id: string } }).data.id;
+
+    const runRes = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      headers,
+      payload: { suiteId, name: "Prefill run", includeAll: false, caseIds: [caseId] }
+    });
+    const runId = (runRes.json() as { run: { id: string } }).run.id;
+
+    const instancesRes = await app.inject({
+      method: "GET",
+      url: `/api/runs/${runId}?includeInstances=true`,
+      headers
+    });
+    const testId = (
+      instancesRes.json() as { data: { instances: Array<{ id: string }> } }
+    ).data.instances[0]?.id;
+
+    const resultRes = await app.inject({
+      method: "POST",
+      url: `/api/tests/${testId}/results`,
+      headers,
+      payload: { status: "failed", comment: "Step 2 failed" }
+    });
+    const resultId = (resultRes.json() as { id: string }).id;
+
+    const fieldsRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/integrations/defects/push-fields?provider=jira&runId=${runId}&testId=${testId}&resultId=${resultId}&resultStatus=failed&runName=Prefill%20run&testTitle=Prefill%20case&resultComment=Step%202%20failed&caseCode=C${caseId}&caseTitle=Prefill%20case&casePreconditions=Account%20ready&caseRefs=REQ-9`,
+      headers
+    });
+    expect(fieldsRes.statusCode).toBe(200);
+    const payload = fieldsRes.json() as {
+      data: { defaults: Record<string, string>; tracebackPreview: string };
+    };
+    expect(payload.data.tracebackPreview).toContain("Account ready");
+    expect(payload.data.tracebackPreview).toContain("Comment: Step 2 failed");
+    expect(payload.data.defaults.summary).toContain(`C${caseId}`);
   });
 });

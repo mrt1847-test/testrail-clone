@@ -3,6 +3,7 @@ import { useState } from "react";
 import { downloadRunResultsCsv, downloadRunTestsCsv } from "../../projects/api/importExportApi";
 import { HeaderDropdown, type HeaderDropdownItem } from "../../projects/content-header/HeaderDropdown";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
 import { contentHeaderActionClass } from "../../projects/content-header/contentHeaderStyles";
 
 type ExportProps = {
@@ -92,6 +93,7 @@ export function RunDetailHeaderSecondaryActions({
 }: ExportProps & SubscribeProps) {
   return (
     <>
+      <EntityCopyActions projectId={projectId} kind="run" entityId={runId} compact />
       <RunSubscribeDropdown
         subscribedCount={subscribedCount}
         totalTests={totalTests}

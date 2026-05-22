@@ -46,6 +46,10 @@
 - MVP 여부: 기본 shell과 summary는 필수
 - Later 확장 여부: 추세 차트, 기간 비교, 위젯 커스터마이징
 
+- Screenshot walkthrough notes:
+  - Desktop: `ProjectLayout` exposes Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings as primary project tabs above every project-scoped route.
+  - Narrow: the same primary tabs wrap in the project shell while preserving project context; additional views remain under More.
+
 ## 3) Test Cases
 
 ### Screen: Test Case Workspace
@@ -60,6 +64,10 @@
 - MVP 여부: 필수
 - Later 확장 여부: multi-expand, bulk actions, 컬럼 커스터마이징
 
+- Screenshot walkthrough notes:
+  - Desktop: `CaseRepositoryContentHeader`, suite switcher, persisted left/right `SectionTreePane`, compact grouped `CaseListPane`, and right `CaseDetailSidePanel` can be visible together. The section tree position intentionally follows the current implementation: default left, user-toggleable to right, stored per project.
+  - Narrow: the same workbench stacks without losing `suiteId`, `sectionId`, `panelCaseId`, `display`, `groupBy`, filters, or columns from the URL. The selected case panel can be closed or reopened while the tree/list context remains intact.
+
 #### Suite Selection Policy
 - MVP 기본값: project당 단일 기본 suite를 사용한다.
 - 다중 suite 지원 시:
@@ -67,12 +75,16 @@
   - API는 `suiteId` 컨텍스트를 기준으로 sections/cases를 조회한다.
 
 ### Test Cases Detail Policy
-- Case detail은 별도 페이지가 아니라 `CaseRow` 하단 expandable row로 구현한다.
-- 단일 확장 기본값: 한 번에 하나의 case만 open.
-- query 상태: `sectionId`, `caseId`, `mode`
-  - `/projects/1/cases?sectionId=10`
-  - `/projects/1/cases?sectionId=10&caseId=101`
-  - `/projects/1/cases?sectionId=10&caseId=101&mode=edit`
+- Case detail is available in the right `CaseDetailSidePanel` from the repository workbench and through the dedicated case detail route.
+- The selected case is represented by `panelCaseId`; closing or editing the panel preserves the surrounding tree/table context.
+- query 상태: `suiteId`, `sectionId`, `panelCaseId`, `panelMode`, `display`, `groupBy`, filters, columns
+  - `/projects/1/cases?suiteId=1&sectionId=10`
+  - `/projects/1/cases?suiteId=1&sectionId=10&panelCaseId=101`
+  - `/projects/1/cases?suiteId=1&sectionId=10&panelCaseId=101&panelMode=edit&display=compact&groupBy=priority`
+- Last view state: when the URL does not specify repository view state, the workspace restores the last `sectionId`, filters, `display`, `groupBy`, and columns for the current user/project/suite.
+- Column preferences: the case repository stores column visibility and px widths together per user/project/suite; URL `columns` and saved views continue to control visibility while persisted widths tune the row metadata lanes.
+- Inline quick edit: case rows allow title rename plus safe Type/Priority edits without opening the full editor; updates use existing case mutation validation and version checks.
+- Hover preview: case rows show a lightweight hover card with title, preconditions, first steps, expected result, and latest execution result via narrow case-detail and execution-history queries; click and keyboard navigation remain unchanged.
 
 ## 4) Milestones
 

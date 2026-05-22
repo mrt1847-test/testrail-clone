@@ -1,20 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../../shared/ui/LoadingState";
 import { apiFetch } from "../../../../shared/api/http";
 import type { Ok } from "../../../../shared/api/types";
 import { reportKeys } from "../../hooks/reportKeys";
+import { uiFiltersForReport } from "../../reports/reportExportQuery";
 import {
-  ReportExportButton,
-  ReportSaveViewButton,
   ReportFilterBar,
   ReportPageHeader,
   ReportSummaryStrip,
   ReportTablePanel
 } from "./ReportChrome";
+import { ReportToolbar } from "./ReportToolbar";
 
 type Row = {
   requirementId: string;
@@ -26,8 +26,16 @@ type Row = {
 
 export function ReportCoverageGapPage() {
   const { projectId = "" } = useParams();
-  const [search, setSearch] = useState("");
-  const [coverageFilter, setCoverageFilter] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? searchParams.get("search") ?? "");
+  const [coverageFilter, setCoverageFilter] = useState(() => searchParams.get("coverage") ?? "all");
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (search.trim().length > 0) next.set("q", search.trim());
+    if (coverageFilter !== "all") next.set("coverage", coverageFilter);
+    setSearchParams(next, { replace: true });
+  }, [coverageFilter, search, setSearchParams]);
 
   const q = useQuery({
     queryKey: reportKeys.coverageGap(projectId),
@@ -106,14 +114,12 @@ export function ReportCoverageGapPage() {
       <ReportTablePanel
         title="Requirements"
         toolbar={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <ReportSaveViewButton
-              projectId={projectId}
-              reportType="coverage_gap"
-              filters={{ ui: { search, coverage: coverageFilter } }}
-            />
-            <ReportExportButton projectId={projectId} reportType="coverage_gap" disabled={rows.length === 0} />
-          </div>
+          <ReportToolbar
+            projectId={projectId}
+            reportType="coverage_gap"
+            filters={{ ui: uiFiltersForReport({ q: search, coverage: coverageFilter }), export: {} }}
+            disabled={rows.length === 0}
+          />
         }
       >
         {filteredRows.length === 0 ? (

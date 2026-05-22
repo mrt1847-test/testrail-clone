@@ -1,13 +1,15 @@
 import { type KeyboardEvent, useState } from "react";
 
+import { RecentDefectSuggestions } from "./RecentDefectSuggestions";
 import { splitDefectKeys } from "./resultEntryUtils";
 
 type DefectKeyInputProps = {
   defects: string[];
   onChange: (defects: string[]) => void;
+  projectId?: string;
 };
 
-export function DefectKeyInput({ defects, onChange }: DefectKeyInputProps) {
+export function DefectKeyInput({ defects, onChange, projectId }: DefectKeyInputProps) {
   const [defectInput, setDefectInput] = useState("");
 
   function addDefectsFromInput(value = defectInput) {
@@ -29,6 +31,7 @@ export function DefectKeyInput({ defects, onChange }: DefectKeyInputProps) {
   }
 
   return (
+    <div className="space-y-2">
     <div className="flex min-h-8 w-full min-w-0 flex-wrap items-center gap-1 rounded border border-slate-300 px-1.5 py-1">
       {defects.map((defect) => (
         <span key={defect} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
@@ -58,6 +61,14 @@ export function DefectKeyInput({ defects, onChange }: DefectKeyInputProps) {
           }
         }}
       />
+    </div>
+    {projectId ? (
+      <RecentDefectSuggestions
+        projectId={projectId}
+        excludeKeys={defects}
+        onSelect={(key) => onChange(Array.from(new Set([...defects, key])))}
+      />
+    ) : null}
     </div>
   );
 }

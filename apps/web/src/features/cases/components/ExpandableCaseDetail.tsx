@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
+import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
 import { AttachmentPreviewDrawer } from "../../../shared/ui/AttachmentPreviewDrawer";
 import {
   deleteCaseAttachment,
@@ -1200,7 +1201,14 @@ export function ExpandableCaseDetail({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <EntityCopyActions
+              projectId={projectId}
+              kind="case"
+              entityId={data.id}
+              caseCode={data.caseCode}
+              compact
+            />
             <button
               type="button"
               onClick={onEdit}

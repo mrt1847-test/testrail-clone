@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { WEBHOOK_MAX_DELIVERY_ATTEMPTS } from "../../domain/webhookDeliveryPolicy.js";
 import { recordWebhookDeliveryFailure, recordWebhookDeliverySuccess } from "./webhookFailure.service.js";
 
-const MAX_ATTEMPTS = 8;
+const MAX_ATTEMPTS = WEBHOOK_MAX_DELIVERY_ATTEMPTS;
 
 function backoffMs(attemptNo: number) {
   const base = 5000 * 2 ** Math.max(0, attemptNo - 1);

@@ -63,6 +63,14 @@ export function upsertInMemoryResultDefectLink(input: {
   return created;
 }
 
+export function listAllInMemoryResultDefectLinks(): InMemoryResultDefectLink[] {
+  const out: InMemoryResultDefectLink[] = [];
+  for (const rows of linksByResultId.values()) {
+    out.push(...rows);
+  }
+  return out;
+}
+
 export function updateInMemoryResultDefectLinkStatus(
   resultId: bigint,
   defectLinkId: bigint,
