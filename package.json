@@ -18,6 +18,7 @@
     "build": "npm run build -w @testrail-clone/shared && npm run build -w apps/server && npm run build -w apps/web",
     "render:build:server": "npm run build -w @testrail-clone/shared && npm run prisma:generate -w apps/server && npm run prisma:deploy -w apps/server && npm run build -w apps/server",
     "test": "npm run test -w apps/server",
-    "lint": "npm run lint -w apps/server && npm run lint -w apps/web"
+    "lint": "npm run lint -w apps/server && npm run lint -w apps/web",
+    "ux:screenshots:prepare": "node scripts/prepare-ux-screenshot-capture.mjs"
   }
 }

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import type { ActivityEventRow } from "../api/settingsApi";
 import type { ProjectOverviewDto } from "../types";
 
@@ -57,8 +58,8 @@ export function ProjectActivityFeedPanel({
   const historyGroups = groupHistoryByDay(historyRows);
 
   return (
-    <section className="border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+    <section className={density.panel}>
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${density.panelHeader}`}>
         <div className="flex gap-1">
           <button
             type="button"
@@ -89,28 +90,28 @@ export function ProjectActivityFeedPanel({
       </div>
 
       {empty ? (
-        <p className="px-4 py-4 text-sm text-slate-500">No recent activity.</p>
+        <p className="px-3 py-3 text-sm text-slate-500">No recent activity.</p>
       ) : isHistory ? (
         <div className="divide-y divide-slate-200">
           {historyGroups.map((group) => (
             <div key={group.day}>
-              <div className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <div className="bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
                 {formatDayHeader(group.day)}
               </div>
               <table className="w-full text-left text-sm">
                 <tbody className="divide-y divide-slate-100">
                   {group.rows.map((row) => (
                     <tr key={row.id}>
-                      <td className="w-28 px-4 py-2 align-top">
+                      <td className="w-28 px-3 py-2 align-top">
                         <span className={`rounded px-2 py-0.5 text-xs font-medium ${eventBadgeClass(row.entityType)}`}>
                           {row.entityType}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-top">
+                      <td className="px-3 py-2 align-top">
                         <p className="font-medium text-slate-900">{row.title}</p>
                         <p className="text-xs text-slate-500">{row.eventType}</p>
                       </td>
-                      <td className="px-4 py-2 text-right align-top text-xs text-slate-500">
+                      <td className="px-3 py-2 text-right align-top text-xs text-slate-500">
                         {new Date(row.createdAt).toLocaleTimeString()}
                       </td>
                     </tr>
@@ -126,12 +127,12 @@ export function ProjectActivityFeedPanel({
             <tbody className="divide-y divide-slate-100">
               {changeRows.slice(0, 8).map((row, index) => (
                 <tr key={`${row.caseCode}-${index}`}>
-                  <td className="px-4 py-2 font-mono text-xs text-slate-700">{row.caseCode}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2 font-mono text-xs text-slate-700">{row.caseCode}</td>
+                  <td className="px-3 py-2">
                     <span className="font-medium capitalize text-slate-900">{row.status}</span>
                     <span className="ml-2 text-xs text-slate-500">{row.source}</span>
                   </td>
-                  <td className="px-4 py-2 text-right text-xs text-slate-500">{row.at}</td>
+                  <td className="px-3 py-2 text-right text-xs text-slate-500">{row.at}</td>
                 </tr>
               ))}
             </tbody>
@@ -140,14 +141,14 @@ export function ProjectActivityFeedPanel({
       )}
 
       {isHistory && historyHasMore ? (
-        <div className="border-t border-slate-200 px-4 py-3 text-center">
+        <div className="border-t border-slate-200 px-3 py-2 text-center">
           <button
             type="button"
             disabled={historyLoading}
             onClick={onLoadMoreHistory}
             className="text-xs font-medium text-indigo-800 hover:underline disabled:opacity-50"
           >
-            {historyLoading ? "Loading…" : "Show more"}
+            {historyLoading ? "Loading..." : "Show more"}
           </button>
         </div>
       ) : null}

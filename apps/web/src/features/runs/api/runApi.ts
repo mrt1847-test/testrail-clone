@@ -86,8 +86,9 @@ export async function fetchRuns(projectId: string): Promise<RunSummary[]> {
     status: r.status === "closed" ? "closed" : "open",
     progress: r.metrics?.progressPercent ?? r.progress ?? 0,
     failed: r.metrics?.counts?.failed ?? r.failed ?? 0,
-    createdAt: r.createdAt ?? "—",
+    createdAt: r.createdAt ?? "-",
     milestoneId: r.milestoneId ? String(r.milestoneId) : null,
+    planId: r.planId ? String(r.planId) : null,
     assignedTo: r.assignedTo ? String(r.assignedTo) : null
   }));
 }

@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import { ProjectContentHeader } from "../../projects/content-header/ProjectContentHeader";
 import { contentHeaderActionClass } from "../../projects/content-header/contentHeaderStyles";
 import type { CompletedOverviewItem, RunPlanOverviewItem } from "../api/runsOverviewApi";
@@ -125,16 +126,16 @@ export function RunListPage() {
 
   if (overviewQuery.isLoading) {
     return (
-      <div className="space-y-4">
+      <div className={density.mainStack}>
         {runsHeader}
-        <LoadingState message="Loading runs overview…" />
+        <LoadingState message="Loading runs overview..." />
       </div>
     );
   }
 
   if (overviewQuery.isError) {
     return (
-      <div className="space-y-4">
+      <div className={density.mainStack}>
         {runsHeader}
         <ErrorState onRetry={() => overviewQuery.refetch()} />
       </div>
@@ -145,7 +146,7 @@ export function RunListPage() {
 
   if (isEmpty) {
     return (
-      <div className="space-y-4">
+      <div className={density.mainStack}>
         {runsHeader}
         <EmptyState
           title={myRunsOnly ? "No runs assigned to you" : hasUrlFilters ? "No matching runs" : "No test runs yet"}
@@ -194,11 +195,11 @@ export function RunListPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className={density.mainStack}>
       {runsHeader}
 
       {hasUrlFilters ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+        <div className={`${density.toolbar} justify-between text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300`}>
           <span>
             {activityDrilldownOnly
               ? `Showing items with ${resultStatusFilter} coverage (from overview activity)`
@@ -210,11 +211,11 @@ export function RunListPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1 space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <header className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Open</h2>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1 space-y-3">
+          <section className={`${density.panel} dark:border-slate-700 dark:bg-slate-900`}>
+            <header className={`${density.panelHeader} dark:border-slate-700`}>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Open</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {filteredOpen.length} active {filteredOpen.length === 1 ? "run or plan" : "runs and plans"}
               </p>
@@ -222,7 +223,7 @@ export function RunListPage() {
             {filteredOpen.length === 0 ? (
               <p className="px-4 py-6 text-sm text-slate-500">No open runs or plans match the current filters.</p>
             ) : (
-              <ul className="px-4">
+              <ul className="px-3">
                 {filteredOpen.map((item: RunPlanOverviewItem) => (
                   <RunPlanSummaryRow
                     key={`${item.type}-${item.id}`}
@@ -239,9 +240,9 @@ export function RunListPage() {
             )}
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <header className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Completed</h2>
+          <section className={`${density.panel} dark:border-slate-700 dark:bg-slate-900`}>
+            <header className={`${density.panelHeader} dark:border-slate-700`}>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Completed</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {counts.completed} completed {counts.completed === 1 ? "item" : "items"}
               </p>

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import type { ProjectActivitySeriesPoint } from "../api/projectApi";
 import { buildActivityDrilldownHref } from "../utils/projectActivityDrilldown";
 
@@ -56,8 +57,8 @@ export function ProjectActivityLineChart({
   };
 
   return (
-    <section className="border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+    <section className={density.panel}>
+      <div className={`flex flex-wrap items-start justify-between gap-3 ${density.panelHeader}`}>
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Activity</h2>
           <p className="text-sm text-slate-500">
@@ -82,7 +83,7 @@ export function ProjectActivityLineChart({
         </div>
       </div>
 
-      <div className="px-4 py-4">
+      <div className="px-3 py-3">
         <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
           <button
             type="button"

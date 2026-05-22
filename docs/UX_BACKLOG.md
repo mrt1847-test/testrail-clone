@@ -51,9 +51,9 @@ Tasks:
 
 Done when:
 
-- [ ] `docs/SCREEN_INVENTORY.md` includes screenshot notes for the core routes.
-- [ ] Each route has a target layout type.
-- [ ] New UX work cannot be marked done without acceptance checks.
+- [x] `docs/SCREEN_INVENTORY.md` includes screenshot notes for the core routes.
+- [x] Each route has a target layout type.
+- [x] New UX work cannot be marked done without acceptance checks.
 
 ## Phase 1 - Global App Shell And Navigation
 
@@ -169,8 +169,8 @@ Tasks:
 
 Done when:
 
-- [ ] Assigned work is reachable in one click from the project shell.
-- [ ] Row actions route to the execution workbench, not detached modals.
+- [x] Assigned work is reachable in one click from the project shell.
+- [x] Row actions route to the execution workbench, not detached modals.
 
 ## Phase 6 - Milestones And Test Plans
 
@@ -190,8 +190,8 @@ Tasks:
 
 Done when:
 
-- [ ] A release manager can move from milestone to failing run/test in one or two clicks.
-- [ ] Plan entries show generated runs and progress without opening every entry.
+- [x] A release manager can move from milestone to failing run/test in one or two clicks.
+- [x] Plan entries show generated runs and progress without opening every entry.
 
 ## Phase 7 - Reports
 
@@ -212,8 +212,8 @@ Tasks:
 
 Done when:
 
-- [ ] Reports start from a template/category selection.
-- [ ] Report configuration feels like TestRail's report options flow.
+- [x] Reports start from a template/category selection.
+- [x] Report configuration feels like TestRail's report options flow.
 - [ ] Output tables preserve dense, printable structure.
 
 ## Phase 8 - Visual System Correction
@@ -231,8 +231,8 @@ Tasks:
 
 Done when:
 
-- [ ] Core workflows fit more information above the fold than before.
-- [ ] Tables, sidebars, drawers, and toolbars share a consistent visual grammar.
+- [x] Core workflows fit more information above the fold than before.
+- [x] Tables, sidebars, drawers, and toolbars share a consistent visual grammar.
 - [ ] No product route looks like a SaaS landing page.
 
 ## Review Gate For Every UX PR

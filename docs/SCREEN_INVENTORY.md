@@ -18,6 +18,27 @@
 - 컴포넌트 책임/교체 가능성은 `COMPONENT_MAP.md`를 기준으로 본다.
 - `Main components`는 주요 조립 컴포넌트만 적고, 세부 컴포넌트 책임은 반복하지 않는다.
 
+## UX Gate Capture Matrix
+
+Every project-scoped UX PR must follow [UX_GATE.md](./UX_GATE.md). Capture desktop (`1440x1000`) and narrow (`390x844`) screenshots for each touched core route.
+
+| Route key | Route pattern | Target layout type | Screenshot notes |
+|-----------|---------------|--------------------|------------------|
+| overview | `/projects/:projectId` | workbench | Project tabs, compact header, activity, summary, and sidebar actions are visible without landing-page styling. |
+| cases | `/projects/:projectId/cases` | split-pane | Preserve current section tree placement implementation, selected case pane, URL filters, and table density. |
+| run-list | `/projects/:projectId/runs` | workbench | Open/completed run sections, progress bars, filters, and add-run/sidebar controls stay visible. |
+| run-detail | `/projects/:projectId/runs/:runId` | split-pane | Status sidebar, section tree, compact test table, selected test pane, and `testId` URL state remain together. |
+| my-tests | `/projects/:projectId/my-tests` | table | Queue grouping, due/status filters, direct run/test links, and quick execution action stay in the table flow. |
+| milestones | `/projects/:projectId/milestones` | workbench | Lifecycle sections, display density controls, summary/progress rows, and add/count sidebar stay compact. |
+| plans | `/projects/:projectId/plans` | workbench | Plan hub table, entry/run/progress rollups, add plan, and report link remain visible. |
+| reports | `/projects/:projectId/reports` | report-config | Template catalog, category tabs, Add Report fields, Run now links, and saved/export management are visible. |
+
+Acceptance rules:
+- Desktop and narrow captures are required for touched routes before UX work is marked complete.
+- Target layout type must be named in the PR checklist.
+- URL state, selected panes, filters, section tree position, and left/right pane placement must be preserved where applicable.
+- Product routes should stay operational and dense; avoid generic SaaS dashboard or landing-page composition.
+
 ## 1) Project Selection
 
 ### Screen: Project Selection
@@ -112,6 +133,12 @@
 - MVP 여부: 후순위
 - Later 확장 여부: burnup/burndown, 리스크 알림
 
+### Milestone Hub Policy
+- Milestone list hub: lifecycle sections (Open, Upcoming, Completed), compact/medium/detail display controls, TestRail-style progress bars, row-level Edit/Add Milestone/Start/Complete actions, and a sidebar Add Milestone form with open/completed counts.
+- Milestone detail hub: lifecycle actions, progress/forecast/risk strips, failed and untested work drilldowns, linked run progress table, and sub-milestone rows remain in one work surface.
+- Direct drilldown: progress segments and detail actions route to filtered run work (`milestoneId`, `resultStatus`, or run `status`) instead of detached report-only views.
+- Remaining depth: linked plan rollups and server-backed milestone display preference are deferred.
+
 ## 5) Test Plans
 
 ### Screen: Test Plan List
@@ -137,6 +164,16 @@
 - Error state: 상세 조회 실패
 - MVP 여부: Phase 6 이후
 - Later 확장 여부: 환경 preset, 매트릭스 비교
+
+Test Plan Hub Policy:
+- Plan list (`PlansPage`) is a planning/execution hub table: plan name, entries, generated runs, open runs, progress, print, edit, and direct hub entry stay visible without opening a detached dashboard.
+- Plan detail (`PlanDetailPage`) keeps summary KPIs, entry creation, plan defaults, entry table, generated run links, per-entry run progress, configuration matrix editing, run-by-configuration creation, and configuration rollup in one project-scoped workspace.
+- The section tree placement policy remains unchanged: case repository tree placement continues to follow the current left/right implementation, and plan hub work should not move or redefine the case section tree.
+
+Visual Density Policy:
+- Shared density baseline lives in `apps/web/src/shared/ui/density/uiDensity.ts` as `workbenchDensity`: compact panel, toolbar, table cell, sidebar panel, form grid, and badge spacing tokens.
+- Core workbench routes should use compact table sections and sidebars before adding card stacks: Overview, Test Runs & Results, My Tests, Milestones, and Test Plans are the current baseline adopters.
+- Density passes must preserve workflow context and URL state. They should not move the case repository section tree or change existing left/right section tree behavior.
 
 ## 6) Test Runs
 
@@ -193,6 +230,21 @@
 - MVP 여부: Run Detail 내 Result History로 대체 가능
 - Later 확장 여부: 별도 페이지 분리
 
+### Screen: My Tests Queue
+- Route: `/projects/:projectId/my-tests`
+- Purpose: assigned tests become a tester queue, not a passive report.
+- Primary user actions: filter assigned tests, scan overdue/due-soon/attention/untested groups, open exact run/test context, add a result.
+- Main components: `MyTestsPage`, `AssignmentWorkloadSummary`, `FilterBar`, `StatusBadge`, `AssignmentAgingBadge`
+- Required API: `GET /api/projects/:projectId/tests/assigned-to-me`, `GET /api/projects/:projectId/milestones`
+- Loading state: assignment queue loading state
+- Empty state: no matching assigned tests
+- Error state: assigned test query failed + retry
+- MVP status: queue baseline complete
+- Later expansion: inline result entry from the queue if run permissions and status rules can be preserved.
+- Screenshot walkthrough notes:
+  - Desktop: My Tests is a primary project tab and shows count shortcuts, compact filters, queue group headers, and row actions that route directly to run execution with `testId`.
+  - Narrow: the same queue groups stack above the table and preserve the direct Add result link into the run workbench.
+
 ## 8) Results Explorer
 
 ### Screen: Project-wide Result Explorer
@@ -246,6 +298,13 @@
 - Error state: 위젯 단위 fallback + 재시도
 - MVP 여부: 1차 완성(기본 카드/테이블)
 - Later 확장 여부: 고급 차트, 비교 리포트
+
+Reports UX Policy:
+- Reports landing (`/projects/:projectId/reports`) must remain a template/category selection surface with Add Report configuration fields: Name, Description, Report Options, Access, and Scheduling.
+- Dashboard-style status cards are not the primary Reports entry point. Existing summaries/charts belong inside generated or fixed report outputs.
+- Saved reports and scheduled/export history stay adjacent through `/reports/saved`; adding templates must preserve direct `Run now` links to fixed report pages.
+- Current baseline components: `ReportsOverviewPage`, `ReportsLayout`, template catalog table, Add Report configuration panel, and saved reports preview.
+- Current baseline APIs: `GET /api/projects/:projectId/saved-reports`, `POST /api/projects/:projectId/saved-reports`; fixed report pages continue to use their own report APIs.
 
 ## 11) Settings
 

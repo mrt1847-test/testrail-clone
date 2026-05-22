@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import type { ActivityEventRow } from "../api/settingsApi";
 import { fetchProjectActivity } from "../api/advancedApi";
 import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
@@ -69,8 +70,8 @@ export function ProjectOverviewPage() {
   if (isError || !data) return <ErrorState title="Could not load overview" onRetry={() => refetch()} />;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <main className="space-y-4">
+    <div className={`grid ${density.pageGap} lg:grid-cols-[minmax(0,1fr)_20rem]`}>
+      <main className={density.mainStack}>
         <ProjectContentHeader
           projectId={projectId}
           variant="overview"
@@ -85,7 +86,7 @@ export function ProjectOverviewPage() {
           onDaysChange={setActivityDays}
         />
 
-        <section className="border border-slate-200 bg-white p-4 shadow-sm">
+        <section className={`${density.panel} ${density.panelBody}`}>
           <ProjectSummaryCards projectId={projectId} stats={data.stats} />
         </section>
 

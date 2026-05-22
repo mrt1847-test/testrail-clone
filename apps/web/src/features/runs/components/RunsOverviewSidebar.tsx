@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import { contentHeaderPrimaryClass } from "../../projects/content-header/contentHeaderStyles";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
@@ -21,8 +22,8 @@ export function RunsOverviewSidebar({
   onAddRun
 }: RunsOverviewSidebarProps) {
   return (
-    <aside className="w-full shrink-0 space-y-4 lg:w-56">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <aside className="w-full shrink-0 space-y-3 lg:w-56">
+      <div className={`${density.sidebarPanel} dark:border-slate-700 dark:bg-slate-900`}>
         <div className="space-y-2">
           <button type="button" onClick={onAddRun} className={`w-full ${contentHeaderPrimaryClass}`}>
             Add Test Run
@@ -34,14 +35,14 @@ export function RunsOverviewSidebar({
             Add Test Plan
           </Link>
         </div>
-        <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+        <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
           <span className="font-medium text-slate-900 dark:text-slate-100">{openCount}</span> open and{" "}
           <span className="font-medium text-slate-900 dark:text-slate-100">{completedCount}</span> completed test
           runs and plans
         </p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className={`${density.sidebarPanel} dark:border-slate-700 dark:bg-slate-900`}>
         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Order by</label>
         <select
           className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -53,7 +54,7 @@ export function RunsOverviewSidebar({
         </select>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className={`${density.sidebarPanel} text-sm dark:border-slate-700 dark:bg-slate-900`}>
         <Link
           to={buildRunComparisonPath(projectId)}
           className="font-medium text-indigo-800 hover:underline dark:text-indigo-300"

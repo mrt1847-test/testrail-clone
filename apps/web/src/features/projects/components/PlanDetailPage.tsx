@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
+import { fetchRuns } from "../../runs/api/runApi";
+import { RunPlanProgressBar } from "../../runs/components/RunPlanProgressBar";
+import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import {
   createPlanEntry,
   createRunByConfiguration,
@@ -15,13 +19,41 @@ import {
   fetchPlanEntryConfigurations,
   fetchPlanMatrix,
   fetchPlanRollupByConfiguration,
+  fetchPlanSummary,
   savePlanEntryConfigurations,
   updatePlan,
-  updatePlanEntry
+  updatePlanEntry,
+  type PlanEntryRow,
+  type PlanRollupRow
 } from "../api/advancedApi";
 import { fetchProjectMembers } from "../api/settingsApi";
 import { formatCaseIdList, parseCaseIdList } from "../utils/planCaseSelection";
-import { PrintLinkButton } from "../../print/components/PrintLinkButton";
+import { ReportSummaryStrip } from "./reports/ReportChrome";
+
+function formatDate(value?: string | null) {
+  return value ? value.slice(0, 10) : "Inherited";
+}
+
+function statusCountsForRollup(row: PlanRollupRow): Record<string, number> {
+  return {
+    passed: row.passed,
+    failed: row.failed,
+    blocked: row.blocked,
+    retest: row.retest,
+    untested: row.untested
+  };
+}
+
+function planProgressBar(progress: number) {
+  return (
+    <div className="flex min-w-36 items-center gap-2">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+      </div>
+      <span className="w-10 text-right text-xs tabular-nums text-slate-600">{progress}%</span>
+    </div>
+  );
+}
 
 export function PlanDetailPage() {
   const { projectId = "", planId = "" } = useParams();
@@ -44,6 +76,7 @@ export function PlanDetailPage() {
   const [planStartDate, setPlanStartDate] = useState("");
   const [planDueOn, setPlanDueOn] = useState("");
   const [selectedConfigurationIds, setSelectedConfigurationIds] = useState<string[]>([]);
+
   const planQuery = useQuery({
     queryKey: ["plan", projectId, planId],
     queryFn: () => fetchPlan(projectId, planId),
@@ -58,6 +91,16 @@ export function PlanDetailPage() {
     queryKey: ["plan-entries", projectId, planId],
     queryFn: () => fetchPlanEntries(projectId, planId),
     enabled: Boolean(projectId && planId)
+  });
+  const summaryQuery = useQuery({
+    queryKey: ["reports", projectId, "plan-summary"],
+    queryFn: () => fetchPlanSummary(projectId),
+    enabled: Boolean(projectId && planId)
+  });
+  const runsQuery = useQuery({
+    queryKey: ["runs", projectId],
+    queryFn: () => fetchRuns(projectId),
+    enabled: Boolean(projectId)
   });
   const matrixQuery = useQuery({
     queryKey: ["plan-matrix", projectId, planId, editingEntryId ?? "_none"],
@@ -74,10 +117,39 @@ export function PlanDetailPage() {
     queryFn: () => fetchPlanEntryConfigurations(projectId, planId, editingEntryId ?? ""),
     enabled: Boolean(projectId && planId && editingEntryId)
   });
+
+  const entries = entriesQuery.data ?? [];
+  const planSummary = useMemo(
+    () => summaryQuery.data?.find((row) => row.planId === planId) ?? null,
+    [planId, summaryQuery.data]
+  );
+  const runById = useMemo(() => new Map((runsQuery.data ?? []).map((run) => [run.id, run])), [runsQuery.data]);
+  const linkedRunCount = entries.filter((entry) => entry.runId).length;
+  const openRunCount = planSummary?.openRunCount ?? entries.filter((entry) => entry.runId && runById.get(entry.runId)?.status !== "closed").length;
+  const summaryItems = useMemo(
+    () => [
+      { label: "Entries", value: entries.length, tone: "violet" as const },
+      { label: "Generated runs", value: planSummary?.runCount ?? linkedRunCount, tone: "neutral" as const },
+      { label: "Open runs", value: openRunCount, tone: "amber" as const },
+      { label: "Failed", value: planSummary?.failed ?? 0, tone: "rose" as const },
+      { label: "Progress", value: `${planSummary?.progress ?? 0}%`, tone: "emerald" as const }
+    ],
+    [entries.length, linkedRunCount, openRunCount, planSummary]
+  );
+
+  const invalidatePlanHub = () => {
+    void qc.invalidateQueries({ queryKey: ["plan", projectId, planId] });
+    void qc.invalidateQueries({ queryKey: ["plans", projectId] });
+    void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+    void qc.invalidateQueries({ queryKey: ["plan-rollup", projectId, planId] });
+    void qc.invalidateQueries({ queryKey: ["reports", projectId, "plan-summary"] });
+    void qc.invalidateQueries({ queryKey: ["runs", projectId] });
+  };
+
   const createEntryMutation = useMutation({
     mutationFn: (input: { name: string; environment?: string }) => createPlanEntry(projectId, planId, input),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+      invalidatePlanHub();
       setEntryName("");
       setEntryEnvironment("");
     }
@@ -85,16 +157,16 @@ export function PlanDetailPage() {
   const createRunMutation = useMutation({
     mutationFn: (entryId?: string) => createRunFromPlanEntry(projectId, planId, entryId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+      invalidatePlanHub();
+      void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
     }
   });
   const createRunByConfigurationMutation = useMutation({
     mutationFn: (input: { entryId: string; configurationIds: string[] }) =>
       createRunByConfiguration({ projectId, planId, ...input }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+      invalidatePlanHub();
       void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
-      void qc.invalidateQueries({ queryKey: ["plan-rollup", projectId, planId] });
     }
   });
   const updatePlanMutation = useMutation({
@@ -105,9 +177,7 @@ export function PlanDetailPage() {
         startDate: planStartDate ? new Date(planStartDate).toISOString() : null,
         dueOn: planDueOn ? new Date(planDueOn).toISOString() : null
       }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan", projectId, planId] });
-    }
+    onSuccess: invalidatePlanHub
   });
   const updateEntryMutation = useMutation({
     mutationFn: (input: { entryId: string }) =>
@@ -125,7 +195,7 @@ export function PlanDetailPage() {
       }),
     onSuccess: () => {
       setEditingEntryId(null);
-      void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
+      invalidatePlanHub();
     }
   });
   const saveConfigurationsMutation = useMutation({
@@ -139,13 +209,12 @@ export function PlanDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["plan-entry-configurations", projectId, planId, editingEntryId ?? "_none"] });
       void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
+      invalidatePlanHub();
     }
   });
   const deleteEntryMutation = useMutation({
     mutationFn: (entryId: string) => deletePlanEntry(projectId, planId, entryId),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
-    }
+    onSuccess: invalidatePlanHub
   });
 
   useEffect(() => {
@@ -162,374 +231,467 @@ export function PlanDetailPage() {
     setPlanDueOn(planQuery.data.dueOn ? planQuery.data.dueOn.slice(0, 10) : "");
   }, [planQuery.data]);
 
-  if (planQuery.isLoading || entriesQuery.isLoading) return <LoadingState message="Loading test plan detail…" />;
+  const startEditingEntry = (entry: PlanEntryRow) => {
+    setEditingEntryId(entry.id);
+    setEditingEntryName(entry.name);
+    setEditingEntryEnvironment(entry.environment ?? "");
+    setEditingAssignedTo(entry.assignedTo ?? "");
+    setEditingRefs(entry.refs ?? "");
+    setEditingStartDate(entry.startDate ? entry.startDate.slice(0, 10) : "");
+    setEditingDueOn(entry.dueOn ? entry.dueOn.slice(0, 10) : "");
+    setEditingIncludeAll(entry.includeAll);
+    setEditingIncludeCaseIds(formatCaseIdList(entry.includeCaseIds));
+    setEditingExcludeCaseIds(formatCaseIdList(entry.excludeCaseIds));
+    setEditingIsIncluded(entry.isIncluded);
+  };
+
+  if (planQuery.isLoading || entriesQuery.isLoading) return <LoadingState message="Loading test plan detail..." />;
   if (planQuery.isError || entriesQuery.isError || !planQuery.data) {
     return <ErrorState title="Could not load test plan detail" onRetry={() => void Promise.all([planQuery.refetch(), entriesQuery.refetch()])} />;
   }
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Test Plan</p>
-          <h2 className="text-xl font-semibold text-slate-900">{planQuery.data.name}</h2>
-        </div>
-        <PrintLinkButton to={`/projects/${projectId}/plans/${planId}/print`} />
-      </header>
+    <div className={`grid ${density.pageGap} xl:grid-cols-[minmax(0,1fr)_21rem]`}>
+      <main className={density.mainStack}>
+        <header className={`${density.panel} px-3 py-2`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Test Plan Hub</p>
+              <h2 className="text-lg font-semibold text-slate-900">{planQuery.data.name}</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Manage entries, configurations, generated runs, and execution progress in one planning context.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to={`/projects/${projectId}/reports/plans`}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Plan report
+              </Link>
+              <PrintLinkButton to={`/projects/${projectId}/plans/${planId}/print`} />
+            </div>
+          </div>
+        </header>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan defaults</h3>
-        <p className="mt-1 text-xs text-slate-500">Assignee, refs, and dates inherit to entries unless overridden.</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm text-slate-700">
-            <span>Assignee</span>
-            <select
-              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-              value={planAssignedTo}
-              onChange={(e) => setPlanAssignedTo(e.target.value)}
+        <ReportSummaryStrip items={summaryItems} />
+
+        <section className={`${density.panel} ${density.panelBody}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Execution snapshot</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                {linkedRunCount} of {entries.length} entries have generated runs.
+              </p>
+            </div>
+            <button
+              className="rounded border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              disabled={createRunMutation.isPending || entries.length === 0}
+              onClick={() => void createRunMutation.mutateAsync(undefined)}
             >
-              <option value="">Unassigned</option>
-              {(membersQuery.data ?? []).map((member) => (
-                <option key={member.userId} value={member.userId}>
-                  {member.name || member.email}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm text-slate-700 sm:col-span-2">
-            <span>References</span>
-            <input
-              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-              placeholder="REQ-1, JIRA-42"
-              value={planRefs}
-              onChange={(e) => setPlanRefs(e.target.value)}
-            />
-          </label>
-          <label className="grid gap-1 text-sm text-slate-700">
-            <span>Start date</span>
-            <input
-              type="date"
-              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-              value={planStartDate}
-              onChange={(e) => setPlanStartDate(e.target.value)}
-            />
-          </label>
-          <label className="grid gap-1 text-sm text-slate-700">
-            <span>Due date</span>
-            <input
-              type="date"
-              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-              value={planDueOn}
-              onChange={(e) => setPlanDueOn(e.target.value)}
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-          disabled={updatePlanMutation.isPending}
-          onClick={() => void updatePlanMutation.mutateAsync()}
-        >
-          Save plan defaults
-        </button>
-      </section>
+              Generate next run
+            </button>
+          </div>
+          <div className="mt-3 max-w-xl">{planProgressBar(planSummary?.progress ?? 0)}</div>
+        </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add plan entry</h3>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <input
-            className="min-w-48 flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-            placeholder="Entry name"
-            value={entryName}
-            onChange={(e) => setEntryName(e.target.value)}
-          />
-          <input
-            className="min-w-40 flex-1 rounded border border-slate-300 px-3 py-1.5 text-sm"
-            placeholder="Environment (optional)"
-            value={entryEnvironment}
-            onChange={(e) => setEntryEnvironment(e.target.value)}
-          />
-          <button
-            className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            disabled={!entryName.trim() || createEntryMutation.isPending}
-            onClick={() =>
-              void createEntryMutation.mutateAsync({
-                name: entryName.trim(),
-                environment: entryEnvironment.trim() || undefined
-              })
-            }
-          >
-            Add entry
-          </button>
-          <button
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
-            disabled={createRunMutation.isPending || !entriesQuery.data || entriesQuery.data.length === 0}
-            onClick={() => void createRunMutation.mutateAsync(undefined)}
-          >
-            Generate run (first entry)
-          </button>
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Configuration matrix</h3>
-        {matrixQuery.data ? (
-          <div className="mt-3 space-y-3">
-            {matrixQuery.data.groups.map((group) => (
-              <div key={group.id}>
-                <p className="text-xs font-medium text-slate-600">{group.name}</p>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {group.configurations.map((cfg) => {
-                    const selected = selectedConfigurationIds.includes(cfg.id);
+        {entries.length > 0 ? (
+          <section className={`overflow-hidden ${density.panel}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 ${density.panelHeader}`}>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan entries</h3>
+              <span className="text-xs text-slate-500">{entries.length} entries</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className={density.tableHeaderCell}>Entry</th>
+                    <th className={density.tableHeaderCell}>Cases</th>
+                    <th className={density.tableHeaderCell}>Dates</th>
+                    <th className={density.tableHeaderCell}>Generated run</th>
+                    <th className={density.tableHeaderCell}>Progress</th>
+                    <th className={`${density.tableHeaderCell} text-right`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {entries.map((entry) => {
+                    const linkedRun = entry.runId ? runById.get(entry.runId) : undefined;
                     return (
-                      <button
-                        key={cfg.id}
-                        type="button"
-                        className={`rounded border px-2 py-1 text-xs ${selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}
-                        onClick={() =>
-                          setSelectedConfigurationIds((prev) =>
-                            selected
-                              ? prev.filter((id) => id !== cfg.id)
-                              : [...prev.filter((id) => !group.configurations.some((g) => g.id === id)), cfg.id]
-                          )
-                        }
-                      >
-                        {cfg.name}
-                      </button>
+                      <tr key={entry.id} className="align-top hover:bg-slate-50">
+                        {editingEntryId === entry.id ? (
+                          <td colSpan={6} className={density.tableCell}>
+                            <div className="grid gap-3 rounded border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+                              <input
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                value={editingEntryName}
+                                onChange={(e) => setEditingEntryName(e.target.value)}
+                              />
+                              <input
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                placeholder="Environment (optional)"
+                                value={editingEntryEnvironment}
+                                onChange={(e) => setEditingEntryEnvironment(e.target.value)}
+                              />
+                              <select
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                value={editingAssignedTo}
+                                onChange={(e) => setEditingAssignedTo(e.target.value)}
+                              >
+                                <option value="">Assignee: inherit plan</option>
+                                {(membersQuery.data ?? []).map((member) => (
+                                  <option key={member.userId} value={member.userId}>
+                                    {member.name || member.email}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                placeholder="References"
+                                value={editingRefs}
+                                onChange={(e) => setEditingRefs(e.target.value)}
+                              />
+                              <input
+                                type="date"
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                value={editingStartDate}
+                                onChange={(e) => setEditingStartDate(e.target.value)}
+                              />
+                              <input
+                                type="date"
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                value={editingDueOn}
+                                onChange={(e) => setEditingDueOn(e.target.value)}
+                              />
+                              <label className="flex items-center gap-2 text-xs text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingIsIncluded}
+                                  onChange={(e) => setEditingIsIncluded(e.target.checked)}
+                                />
+                                Include entry in run generation
+                              </label>
+                              <label className="flex items-center gap-2 text-xs text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingIncludeAll}
+                                  onChange={(e) => setEditingIncludeAll(e.target.checked)}
+                                />
+                                Include all suite cases
+                              </label>
+                              {!editingIncludeAll ? (
+                                <textarea
+                                  className="rounded border border-slate-300 px-2 py-1.5 text-sm md:col-span-2"
+                                  rows={2}
+                                  placeholder="Include case IDs (comma-separated)"
+                                  value={editingIncludeCaseIds}
+                                  onChange={(e) => setEditingIncludeCaseIds(e.target.value)}
+                                />
+                              ) : null}
+                              <textarea
+                                className="rounded border border-slate-300 px-2 py-1.5 text-sm md:col-span-2"
+                                rows={2}
+                                placeholder="Exclude case IDs (comma-separated)"
+                                value={editingExcludeCaseIds}
+                                onChange={(e) => setEditingExcludeCaseIds(e.target.value)}
+                              />
+                              <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                                <button
+                                  className="rounded border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                                  disabled={!editingEntryName.trim() || updateEntryMutation.isPending}
+                                  onClick={() => void updateEntryMutation.mutateAsync({ entryId: entry.id })}
+                                >
+                                  Save entry
+                                </button>
+                                <button
+                                  className="rounded border border-slate-300 px-3 py-1.5 text-xs"
+                                  onClick={() => {
+                                    setEditingEntryId(null);
+                                    setEditingEntryName("");
+                                    setEditingEntryEnvironment("");
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td className={density.tableCell}>
+                              <p className="font-medium text-slate-900">{entry.name}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {entry.environment || "No environment"} · {entry.isIncluded ? "included" : "excluded"}
+                                {entry.refs ? ` · refs ${entry.refs}` : ""}
+                              </p>
+                            </td>
+                            <td className={`${density.tableCell} text-xs text-slate-600`}>
+                              {entry.includeAll ? "All cases" : `${entry.includeCaseIds.length} included`}
+                              {entry.excludeCaseIds.length > 0 ? (
+                                <span className="block text-rose-700">{entry.excludeCaseIds.length} excluded</span>
+                              ) : null}
+                            </td>
+                            <td className={`${density.tableCell} text-xs text-slate-600`}>
+                              <span className="block">Start: {formatDate(entry.startDate)}</span>
+                              <span className="block">Due: {formatDate(entry.dueOn)}</span>
+                            </td>
+                            <td className={density.tableCell}>
+                              {entry.runId ? (
+                                <Link to={`/projects/${projectId}/runs/${entry.runId}`} className="text-xs font-medium text-indigo-800 hover:underline">
+                                  Run #{entry.runId}
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-slate-500">No run yet</span>
+                              )}
+                            </td>
+                            <td className={density.tableCell}>
+                              {linkedRun ? (
+                                <div className="min-w-40">
+                                  {planProgressBar(linkedRun.progress)}
+                                  {linkedRun.failed > 0 ? <p className="mt-1 text-xs text-rose-700">{linkedRun.failed} failed</p> : null}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-500">Awaiting run</span>
+                              )}
+                            </td>
+                            <td className={`${density.tableCell} text-right`}>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                {!entry.runId ? (
+                                  <button
+                                    className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                                    disabled={createRunMutation.isPending}
+                                    onClick={() => void createRunMutation.mutateAsync(entry.id)}
+                                  >
+                                    Generate run
+                                  </button>
+                                ) : null}
+                                <button className="rounded border border-slate-300 px-2 py-1 text-xs" onClick={() => startEditingEntry(entry)}>
+                                  Edit
+                                </button>
+                                <button
+                                  className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-50"
+                                  disabled={deleteEntryMutation.isPending}
+                                  onClick={() => void deleteEntryMutation.mutateAsync(entry.id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
                     );
                   })}
-                </div>
-              </div>
-            ))}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={!editingEntryId || saveConfigurationsMutation.isPending}
-                className="rounded border border-indigo-300 px-3 py-1.5 text-sm text-indigo-900 disabled:opacity-50"
-                onClick={() => editingEntryId && void saveConfigurationsMutation.mutateAsync()}
-              >
-                Save combination
-              </button>
-              <button
-                type="button"
-                disabled={!editingEntryId || createRunByConfigurationMutation.isPending}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
-                onClick={() =>
-                  editingEntryId &&
-                  void createRunByConfigurationMutation.mutateAsync({
-                    entryId: editingEntryId,
-                    configurationIds: selectedConfigurationIds
-                  })
-                }
-              >
-                Generate run by configuration
-              </button>
-              <p className="text-xs text-slate-500">엔트리를 Edit로 선택한 뒤 조합을 저장하거나 run을 생성하세요.</p>
+                </tbody>
+              </table>
             </div>
-            {editingEntryId ? (
-              <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
-                <p className="font-medium">현재 엔트리 매핑</p>
-                {selectedEntryConfigurationQuery.data && selectedEntryConfigurationQuery.data.items.length > 0 ? (
-                  <ul className="mt-1 space-y-1">
-                    {selectedEntryConfigurationQuery.data.items.map((item) => (
-                      <li key={item.configurationId}>
-                        {item.groupName ?? "Unknown group"}: {item.configurationName}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-slate-500">아직 매핑된 configuration이 없습니다.</p>
-                )}
-              </div>
-            ) : null}
-          </div>
+          </section>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">No matrix data.</p>
+          <EmptyState title="No plan entries" description="Environment entries will appear here." />
         )}
-      </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Rollup by configuration</h3>
-        {rollupQuery.data && rollupQuery.data.length > 0 ? (
-          <ul className="mt-3 space-y-2 text-xs text-slate-700">
-            {rollupQuery.data.map((row) => (
-              <li key={row.configurationId} className="rounded border border-slate-200 px-2 py-2">
-                {row.groupName} / {row.configurationName} · entries {row.entryCount} · runs {row.runCount} (open{" "}
-                {row.openRunCount}, closed {row.closedRunCount}) · failed {row.failed}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500">No rollup data.</p>
-        )}
-      </section>
-
-      {entriesQuery.data && entriesQuery.data.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan Entries</h3>
-          <ul className="mt-3 space-y-2 text-sm">
-            {entriesQuery.data.map((entry) => (
-              <li key={entry.id} className="rounded border border-slate-200 px-3 py-2">
-                {editingEntryId === entry.id ? (
-                  <div className="space-y-2">
-                    <input
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      value={editingEntryName}
-                      onChange={(e) => setEditingEntryName(e.target.value)}
-                    />
-                    <input
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      placeholder="Environment (optional)"
-                      value={editingEntryEnvironment}
-                      onChange={(e) => setEditingEntryEnvironment(e.target.value)}
-                    />
-                    <select
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      value={editingAssignedTo}
-                      onChange={(e) => setEditingAssignedTo(e.target.value)}
-                    >
-                      <option value="">Assignee: inherit plan</option>
-                      {(membersQuery.data ?? []).map((member) => (
-                        <option key={member.userId} value={member.userId}>
-                          {member.name || member.email}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      placeholder="References"
-                      value={editingRefs}
-                      onChange={(e) => setEditingRefs(e.target.value)}
-                    />
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input
-                        type="date"
-                        className="rounded border border-slate-300 px-2 py-1 text-sm"
-                        value={editingStartDate}
-                        onChange={(e) => setEditingStartDate(e.target.value)}
-                      />
-                      <input
-                        type="date"
-                        className="rounded border border-slate-300 px-2 py-1 text-sm"
-                        value={editingDueOn}
-                        onChange={(e) => setEditingDueOn(e.target.value)}
-                      />
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={editingIsIncluded}
-                        onChange={(e) => setEditingIsIncluded(e.target.checked)}
-                      />
-                      Include entry in run generation
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={editingIncludeAll}
-                        onChange={(e) => setEditingIncludeAll(e.target.checked)}
-                      />
-                      Include all suite cases
-                    </label>
-                    {!editingIncludeAll ? (
-                      <textarea
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                        rows={2}
-                        placeholder="Include case IDs (comma-separated)"
-                        value={editingIncludeCaseIds}
-                        onChange={(e) => setEditingIncludeCaseIds(e.target.value)}
-                      />
-                    ) : null}
-                    <textarea
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      rows={2}
-                      placeholder="Exclude case IDs (comma-separated)"
-                      value={editingExcludeCaseIds}
-                      onChange={(e) => setEditingExcludeCaseIds(e.target.value)}
-                    />
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-                        disabled={!editingEntryName.trim() || updateEntryMutation.isPending}
-                        onClick={() => void updateEntryMutation.mutateAsync({ entryId: entry.id })}
-                      >
-                        Save
-                      </button>
-                      <button
-                        className="rounded border border-slate-300 px-2 py-1 text-xs"
-                        onClick={() => {
-                          setEditingEntryId(null);
-                          setEditingEntryName("");
-                          setEditingEntryEnvironment("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+        <section className={`${density.panel} ${density.panelBody}`}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Configuration matrix</h3>
+          {matrixQuery.data ? (
+            <div className="mt-3 space-y-3">
+              {matrixQuery.data.groups.map((group) => (
+                <div key={group.id}>
+                  <p className="text-xs font-medium text-slate-600">{group.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {group.configurations.map((cfg) => {
+                      const selected = selectedConfigurationIds.includes(cfg.id);
+                      return (
+                        <button
+                          key={cfg.id}
+                          type="button"
+                          className={`rounded border px-2 py-1 text-xs ${selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                          onClick={() =>
+                            setSelectedConfigurationIds((prev) =>
+                              selected
+                                ? prev.filter((id) => id !== cfg.id)
+                                : [...prev.filter((id) => !group.configurations.some((g) => g.id === id)), cfg.id]
+                            )
+                          }
+                        >
+                          {cfg.name}
+                        </button>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-slate-800">{entry.name}</p>
-                      <div className="flex items-center gap-1">
-                        <button
-                          className="rounded border border-slate-300 px-2 py-1 text-xs"
-                          onClick={() => {
-                            setEditingEntryId(entry.id);
-                            setEditingEntryName(entry.name);
-                            setEditingEntryEnvironment(entry.environment ?? "");
-                            setEditingAssignedTo(entry.assignedTo ?? "");
-                            setEditingRefs(entry.refs ?? "");
-                            setEditingStartDate(entry.startDate ? entry.startDate.slice(0, 10) : "");
-                            setEditingDueOn(entry.dueOn ? entry.dueOn.slice(0, 10) : "");
-                            setEditingIncludeAll(entry.includeAll);
-                            setEditingIncludeCaseIds(formatCaseIdList(entry.includeCaseIds));
-                            setEditingExcludeCaseIds(formatCaseIdList(entry.excludeCaseIds));
-                            setEditingIsIncluded(entry.isIncluded);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-50"
-                          disabled={deleteEntryMutation.isPending}
-                          onClick={() => void deleteEntryMutation.mutateAsync(entry.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      environment: {entry.environment || "n/a"} ·{" "}
-                      {entry.isIncluded ? "included" : "excluded"} ·{" "}
-                      {entry.includeAll ? "all cases" : `${entry.includeCaseIds.length} included`}
-                      {entry.excludeCaseIds.length > 0 ? ` · ${entry.excludeCaseIds.length} excluded` : ""}
-                    </p>
-                    {!entry.runId ? (
-                      <button
-                        className="mt-1 rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-                        disabled={createRunMutation.isPending}
-                        onClick={() => void createRunMutation.mutateAsync(entry.id)}
-                      >
-                        Generate run for this entry
-                      </button>
-                    ) : null}
-                    {entry.runId ? (
-                      <Link to={`/projects/${projectId}/runs/${entry.runId}`} className="text-xs text-slate-700 underline">
-                        linked run #{entry.runId}
-                      </Link>
-                    ) : (
-                      <p className="text-xs text-slate-500">no linked run</p>
-                    )}
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <EmptyState title="No plan entries" description="Environment entries will appear here." />
-      )}
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!editingEntryId || saveConfigurationsMutation.isPending}
+                  className="rounded border border-indigo-300 px-3 py-1.5 text-sm text-indigo-900 disabled:opacity-50"
+                  onClick={() => editingEntryId && void saveConfigurationsMutation.mutateAsync()}
+                >
+                  Save combination
+                </button>
+                <button
+                  type="button"
+                  disabled={!editingEntryId || createRunByConfigurationMutation.isPending}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+                  onClick={() =>
+                    editingEntryId &&
+                    void createRunByConfigurationMutation.mutateAsync({
+                      entryId: editingEntryId,
+                      configurationIds: selectedConfigurationIds
+                    })
+                  }
+                >
+                  Generate run by configuration
+                </button>
+                <p className="text-xs text-slate-500">Select an entry with Edit, then save or generate a configuration-specific run.</p>
+              </div>
+              {editingEntryId ? (
+                <div className="rounded border border-slate-200 p-2 text-xs text-slate-600">
+                  <p className="font-medium">Current entry mapping</p>
+                  {selectedEntryConfigurationQuery.data && selectedEntryConfigurationQuery.data.items.length > 0 ? (
+                    <ul className="mt-1 space-y-1">
+                      {selectedEntryConfigurationQuery.data.items.map((item) => (
+                        <li key={item.configurationId}>
+                          {item.groupName ?? "Unknown group"}: {item.configurationName}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-slate-500">No configurations are mapped to this entry yet.</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No matrix data.</p>
+          )}
+        </section>
+
+        <section className={`${density.panel} ${density.panelBody}`}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Rollup by configuration</h3>
+          {rollupQuery.data && rollupQuery.data.length > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-[760px] w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className={density.tableHeaderCell}>Configuration</th>
+                    <th className={density.tableHeaderCell}>Entries</th>
+                    <th className={density.tableHeaderCell}>Runs</th>
+                    <th className={density.tableHeaderCell}>Result progress</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rollupQuery.data.map((row) => (
+                    <tr key={row.configurationId}>
+                      <td className={density.tableCell}>
+                        <p className="font-medium text-slate-900">{row.configurationName}</p>
+                        <p className="text-xs text-slate-500">{row.groupName}</p>
+                      </td>
+                      <td className={`${density.tableCell} tabular-nums text-slate-700`}>{row.entryCount}</td>
+                      <td className={`${density.tableCell} text-slate-700`}>
+                        {row.runCount}
+                        {row.openRunCount > 0 ? <span className="ml-1 text-xs text-slate-500">({row.openRunCount} open)</span> : null}
+                      </td>
+                      <td className={density.tableCell}>
+                        <RunPlanProgressBar statusCounts={statusCountsForRollup(row)} className="max-w-md" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No rollup data.</p>
+          )}
+        </section>
+      </main>
+
+      <aside className={density.sidebarStack}>
+        <section className={density.sidebarPanel}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add plan entry</h3>
+          <div className={density.formGrid}>
+            <input
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+              placeholder="Entry name"
+              value={entryName}
+              onChange={(e) => setEntryName(e.target.value)}
+            />
+            <input
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+              placeholder="Environment (optional)"
+              value={entryEnvironment}
+              onChange={(e) => setEntryEnvironment(e.target.value)}
+            />
+            <button
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              disabled={!entryName.trim() || createEntryMutation.isPending}
+              onClick={() =>
+                void createEntryMutation.mutateAsync({
+                  name: entryName.trim(),
+                  environment: entryEnvironment.trim() || undefined
+                })
+              }
+            >
+              Add entry
+            </button>
+          </div>
+        </section>
+
+        <section className={density.sidebarPanel}>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan defaults</h3>
+          <div className={density.formGrid}>
+            <label className="grid gap-1 text-sm text-slate-700">
+              <span>Assignee</span>
+              <select
+                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                value={planAssignedTo}
+                onChange={(e) => setPlanAssignedTo(e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {(membersQuery.data ?? []).map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {member.name || member.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm text-slate-700">
+              <span>References</span>
+              <input
+                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                placeholder="REQ-1, JIRA-42"
+                value={planRefs}
+                onChange={(e) => setPlanRefs(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-slate-700">
+              <span>Start date</span>
+              <input
+                type="date"
+                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                value={planStartDate}
+                onChange={(e) => setPlanStartDate(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-slate-700">
+              <span>Due date</span>
+              <input
+                type="date"
+                className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                value={planDueOn}
+                onChange={(e) => setPlanDueOn(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              disabled={updatePlanMutation.isPending}
+              onClick={() => void updatePlanMutation.mutateAsync()}
+            >
+              Save defaults
+            </button>
+          </div>
+        </section>
+      </aside>
     </div>
   );
 }

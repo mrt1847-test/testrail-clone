@@ -106,6 +106,19 @@ export type PlanRollupRow = {
   untested: number;
 };
 
+export type PlanSummaryRow = {
+  planId: string;
+  name: string;
+  status: string;
+  entryCount: number;
+  runCount: number;
+  openRunCount: number;
+  total: number;
+  passed: number;
+  failed: number;
+  progress: number;
+};
+
 export type PlanEntryConfigurationMapping = {
   entryId: string;
   configurationIds: string[];
@@ -216,6 +229,11 @@ export async function fetchMilestoneRuns(projectId: string, milestoneId: string)
 export async function fetchPlans(projectId: string): Promise<PlanRow[]> {
   const res = await apiFetch<Paged<PlanRow>>(`/api/projects/${projectId}/plans`);
   return res.data.map((row) => ({ ...row, id: String(row.id) }));
+}
+
+export async function fetchPlanSummary(projectId: string): Promise<PlanSummaryRow[]> {
+  const res = await apiFetch<Ok<{ items: PlanSummaryRow[] }>>(`/api/projects/${projectId}/reports/plan-summary`);
+  return (res.data.items ?? []).map((row) => ({ ...row, planId: String(row.planId) }));
 }
 
 export async function fetchPlan(projectId: string, planId: string): Promise<PlanRow> {

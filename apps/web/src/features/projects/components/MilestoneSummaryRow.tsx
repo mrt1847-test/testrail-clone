@@ -57,10 +57,10 @@ export function MilestoneSummaryRow({
 
   return (
     <li
-      className="flex gap-3 border-b border-slate-200 py-4 last:border-b-0"
+      className="flex gap-2.5 border-b border-slate-200 py-3 last:border-b-0"
       style={{ paddingLeft: `${row.depth * 1.25}rem` }}
     >
-      <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-50 text-base font-semibold text-slate-500">
+      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500">
         M
       </div>
       <div className="min-w-0 flex-1">

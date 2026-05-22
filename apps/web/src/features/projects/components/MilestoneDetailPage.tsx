@@ -34,6 +34,18 @@ function lifecycleOf(row: { lifecycleStatus?: MilestoneLifecycleStatus; isComple
   return row.lifecycleStatus ?? (row.isCompleted ? "completed" : "open");
 }
 
+function milestoneRunsPath(projectId: string, milestoneId: string, resultStatus?: "passed" | "failed" | "untested") {
+  const params = new URLSearchParams({ milestoneId });
+  if (resultStatus) params.set("resultStatus", resultStatus);
+  return `/projects/${projectId}/runs?${params.toString()}`;
+}
+
+function runStatusClass(status: string) {
+  return status === "open"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 export function MilestoneDetailPage() {
   const { projectId = "", milestoneId = "" } = useParams();
   const qc = useQueryClient();
@@ -261,18 +273,40 @@ export function MilestoneDetailPage() {
       {rollup ? (
         <>
           <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <MilestoneProgressChip
-                progress={rollup.progress}
-                runCount={rollup.runCount}
-                childCount={rollup.childCount}
-                includesSubMilestones={rollup.includesSubMilestones}
-              />
-              {rollup.includesSubMilestones ? (
-                <span className="text-xs text-slate-600">
-                  Includes sub-milestone runs ({rollup.directRunCount} direct / {rollup.runCount} total runs)
-                </span>
-              ) : null}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <MilestoneProgressChip
+                  progress={rollup.progress}
+                  runCount={rollup.runCount}
+                  childCount={rollup.childCount}
+                  includesSubMilestones={rollup.includesSubMilestones}
+                />
+                {rollup.includesSubMilestones ? (
+                  <span className="text-xs text-slate-600">
+                    Includes sub-milestone runs ({rollup.directRunCount} direct / {rollup.runCount} total runs)
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Link
+                  to={milestoneRunsPath(projectId, milestoneId, "failed")}
+                  className="rounded border border-rose-200 bg-rose-50 px-2 py-1 font-medium text-rose-800 hover:bg-rose-100"
+                >
+                  Failed work
+                </Link>
+                <Link
+                  to={milestoneRunsPath(projectId, milestoneId, "untested")}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Untested work
+                </Link>
+                <Link
+                  to={milestoneRunsPath(projectId, milestoneId)}
+                  className="rounded border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  All linked runs
+                </Link>
+              </div>
             </div>
             <MilestoneProgressBar
               projectId={projectId}
@@ -290,20 +324,65 @@ export function MilestoneDetailPage() {
       ) : null}
 
       {runsQuery.data && runsQuery.data.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Linked runs</h3>
-          <ul className="mt-3 space-y-2">
-            {runsQuery.data.map((run) => (
-              <li key={run.runId} className="rounded border border-slate-200 px-3 py-2 text-sm">
-                <Link to={`/projects/${projectId}/runs/${run.runId}`} className="font-medium text-slate-800 underline">
-                  {run.runName}
-                </Link>
-                <span className="ml-2 text-xs text-slate-500">
-                  {run.status} / {run.progress}%
-                </span>
-              </li>
-            ))}
-          </ul>
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Linked runs</h3>
+          </div>
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-2.5">Run</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5">Progress</th>
+                <th className="px-4 py-2.5 text-right">Drilldown</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {runsQuery.data.map((run) => (
+                <tr key={run.runId} className="hover:bg-slate-50">
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/projects/${projectId}/runs/${run.runId}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {run.runName}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${runStatusClass(run.status)}`}
+                    >
+                      {run.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex min-w-40 items-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full bg-emerald-500" style={{ width: `${run.progress}%` }} />
+                      </div>
+                      <span className="w-10 text-right text-xs tabular-nums text-slate-600">{run.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Link
+                        to={`/projects/${projectId}/runs/${run.runId}?status=failed`}
+                        className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+                      >
+                        Failed
+                      </Link>
+                      <Link
+                        to={`/projects/${projectId}/runs/${run.runId}?status=untested`}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Untested
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <EmptyState title="No linked runs" description="Runs connected to this milestone will appear here." />

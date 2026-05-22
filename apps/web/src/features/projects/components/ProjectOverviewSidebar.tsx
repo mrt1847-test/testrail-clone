@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import type { ProjectOverviewDto } from "../types";
 
 type ProjectOverviewSidebarProps = {
@@ -31,10 +32,10 @@ export function ProjectOverviewSidebar({ projectId, stats, recentFailures }: Pro
   ].slice(0, 5);
 
   return (
-    <aside className="space-y-4">
-      <section className="border border-slate-200 bg-white p-4 shadow-sm">
+    <aside className={density.sidebarStack}>
+      <section className={density.sidebarPanel}>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Actions</h2>
-        <div className="mt-3 space-y-3 text-sm">
+        <div className="mt-2 space-y-2 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span className="font-medium text-slate-800">Milestones</span>
             <span className="flex gap-2">
@@ -71,7 +72,7 @@ export function ProjectOverviewSidebar({ projectId, stats, recentFailures }: Pro
         </div>
       </section>
 
-      <section className="border border-slate-200 bg-white p-4 shadow-sm">
+      <section className={density.sidebarPanel}>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Todos</h2>
           <Link to={`/projects/${projectId}/team-todo`} className="text-xs font-medium text-indigo-800 hover:underline">

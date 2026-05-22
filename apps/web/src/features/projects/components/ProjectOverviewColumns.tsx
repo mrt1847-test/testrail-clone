@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import type { MilestoneSummaryPayload } from "../api/milestoneSummaryApi";
 import type { PlanRow } from "../api/planningApi";
 import type { ProjectOverviewDto } from "../types";
@@ -26,9 +27,9 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
   const runRows = recentRuns.slice(0, 4);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <section className="border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+    <div className="grid gap-3 lg:grid-cols-2">
+      <section className={density.panel}>
+        <div className={`flex items-center justify-between ${density.panelHeader}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Milestones</h2>
           <Link to={`/projects/${projectId}/milestones`} className="text-xs font-medium text-indigo-800 hover:underline">
             View All
@@ -39,7 +40,7 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
         ) : (
           <ul className="divide-y divide-slate-100">
             {milestoneRows.map((row) => (
-              <li key={row.milestoneId} className="flex items-start gap-3 px-4 py-3 text-sm">
+              <li key={row.milestoneId} className="flex items-start gap-2.5 px-3 py-2 text-sm">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-50 text-xs font-semibold text-slate-500">
                   M
                 </span>
@@ -60,8 +61,8 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
         )}
       </section>
 
-      <section className="border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+      <section className={density.panel}>
+        <div className={`flex items-center justify-between ${density.panelHeader}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Test Runs & Plans</h2>
           <Link to={`/projects/${projectId}/runs`} className="text-xs font-medium text-indigo-800 hover:underline">
             View All
@@ -72,7 +73,7 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
         ) : (
           <ul className="divide-y divide-slate-100">
             {planRows.map((plan) => (
-              <li key={`plan-${plan.id}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+              <li key={`plan-${plan.id}`} className="flex items-start gap-2.5 px-3 py-2 text-sm">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-50 text-xs font-semibold text-slate-500">
                   P
                 </span>
@@ -85,7 +86,7 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
               </li>
             ))}
             {runRows.map((run) => (
-              <li key={`run-${run.id}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+              <li key={`run-${run.id}`} className="flex items-start gap-2.5 px-3 py-2 text-sm">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-50 text-xs font-semibold text-slate-500">
                   R
                 </span>

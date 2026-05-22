@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useParams } from "react-router-dom";
 
+import { workbenchDensity as density } from "../../../../shared/ui/density/uiDensity";
+
 const linkCls = ({ isActive }: { isActive: boolean }) =>
   `rounded px-2 py-1 text-xs ${isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`;
 
@@ -8,10 +10,10 @@ export function ReportsLayout() {
   const base = `/projects/${projectId}/reports`;
 
   return (
-    <div className="space-y-4">
-      <nav className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+    <div className={density.mainStack}>
+      <nav className={density.toolbar}>
         <NavLink to={base} end className={linkCls}>
-          Overview
+          Add Report
         </NavLink>
         <NavLink to={`${base}/project-summary`} className={linkCls}>
           Project summary

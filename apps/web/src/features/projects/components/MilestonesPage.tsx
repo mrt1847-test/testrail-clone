@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import { createMilestone, deleteMilestone, fetchMilestones, updateMilestone } from "../api/advancedApi";
 import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
 import type { MilestoneLifecycleStatus, MilestoneRow } from "../api/planningApi";
@@ -173,12 +174,12 @@ export function MilestonesPage() {
   ) => {
     if (rows.length === 0) return null;
     return (
-      <section className="border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      <section className={density.panel}>
+        <div className={density.panelHeader}>
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
           {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
         </div>
-        <ul className="px-4">
+        <ul className="px-3">
           {rows.map((row) => {
             const status = lifecycleOf(row);
             return (
@@ -209,8 +210,8 @@ export function MilestonesPage() {
   if (isError) return <ErrorState title="Could not load milestones" onRetry={() => refetch()} />;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <main className="space-y-4">
+    <div className={`grid ${density.pageGap} lg:grid-cols-[minmax(0,1fr)_20rem]`}>
+      <main className={density.mainStack}>
         <ProjectContentHeader
           projectId={projectId}
           variant="milestones"
@@ -255,10 +256,10 @@ export function MilestonesPage() {
         ) : null}
       </main>
 
-      <aside className="space-y-4">
-        <section className="border border-slate-200 bg-white p-4">
+      <aside className={density.sidebarStack}>
+        <section className={density.sidebarPanel}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add Milestone</h2>
-          <div className="mt-3 grid gap-3">
+          <div className={density.formGrid}>
             <label className="grid gap-1 text-sm text-slate-700">
               <span>Name</span>
               <input
@@ -311,7 +312,7 @@ export function MilestonesPage() {
           </button>
         </section>
 
-        <section className="border border-slate-200 bg-white p-4">
+        <section className={density.sidebarPanel}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Milestone Count</h2>
           <p className="mt-2 text-sm text-slate-700">
             <span className="font-semibold text-slate-900">{dashboard?.openCount ?? grouped.open.length}</span> open and{" "}

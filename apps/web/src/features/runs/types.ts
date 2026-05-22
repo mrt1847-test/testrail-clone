@@ -10,6 +10,7 @@ export type RunSummary = {
   closedAt?: string | null;
   milestone?: string;
   milestoneId?: string | null;
+  planId?: string | null;
   assignedTo?: string | null;
 };
 
