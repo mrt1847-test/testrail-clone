@@ -13,3 +13,4 @@ export {
   type OverflowMenuItem
 } from "./OverflowMenu";
 export { WorkbenchPage, WorkbenchPageHeader, WorkbenchToolbar } from "./WorkbenchPage";
+export { FormField, type FormFieldControlProps } from "./FormField";

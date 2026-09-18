@@ -75,6 +75,7 @@ type ExpandableCaseDetailProps = {
   layout?: "embedded" | "page";
   showHeading?: boolean;
   onDuplicated?: (copiedCaseId: number) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type LocalStep = { id?: number; description: string; expected: string };
@@ -660,7 +661,8 @@ export function ExpandableCaseDetail({
   isStepsBusy = false,
   layout = "embedded",
   showHeading = true,
-  onDuplicated
+  onDuplicated,
+  onDirtyChange
 }: ExpandableCaseDetailProps) {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
@@ -677,6 +679,7 @@ export function ExpandableCaseDetail({
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [stepDeleteId, setStepDeleteId] = useState<number | null>(null);
+  const [formDirty, setFormDirty] = useState(false);
 
   const duplicateMutation = useMutation({
     mutationFn: (options: DuplicateCaseOptionsInput) => duplicateCase(data.id, options),
@@ -720,8 +723,18 @@ export function ExpandableCaseDetail({
   useEffect(() => {
     if (mode === "edit") {
       setLocalSteps(toLocalSteps(data.steps));
+      setFormDirty(false);
     }
   }, [mode, data.id, data.steps]);
+
+  const stepsDirty =
+    mode === "edit" &&
+    JSON.stringify(localSteps.map(({ id, description, expected }) => ({ id, description, expected }))) !==
+      JSON.stringify(toLocalSteps(data.steps).map(({ id, description, expected }) => ({ id, description, expected })));
+
+  useEffect(() => {
+    onDirtyChange?.(formDirty || stepsDirty);
+  }, [formDirty, onDirtyChange, stepsDirty]);
 
   function moveStep(stepId: number, direction: "up" | "down") {
     const idx = localSteps.findIndex((s) => s.id === stepId);
@@ -791,6 +804,7 @@ export function ExpandableCaseDetail({
             submitLabel={isSaving ? "Saving..." : "Save"}
             isSubmitting={isSaving}
             submitError={submitError}
+            onDirtyChange={setFormDirty}
             stepsSection={editShowsSteps ? (
               <>
                 <div className="flex items-center justify-between">

@@ -11,13 +11,25 @@ type ReferencesInputProps = {
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  inputId?: string;
+  describedBy?: string;
+  invalid?: boolean;
 };
 
 function joinRefs(tokens: string[]) {
   return tokens.join(", ");
 }
 
-export function ReferencesInput({ projectId, value, onChange, disabled = false, className }: ReferencesInputProps) {
+export function ReferencesInput({
+  projectId,
+  value,
+  onChange,
+  disabled = false,
+  className,
+  inputId,
+  describedBy,
+  invalid
+}: ReferencesInputProps) {
   const tokens = useMemo(() => parseCaseRefs(value), [value]);
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
@@ -90,6 +102,9 @@ export function ReferencesInput({ projectId, value, onChange, disabled = false, 
             </span>
           ))}
           <input
+            id={inputId}
+            aria-describedby={describedBy}
+            aria-invalid={invalid || undefined}
             type="text"
             className="min-w-[8rem] flex-1 border-0 bg-transparent p-0 text-sm outline-none"
             placeholder={tokens.length > 0 ? "" : "REQ-1, REQ-2"}

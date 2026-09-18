@@ -22,45 +22,58 @@ Goal: reduce UI clutter and make the core Test Cases and Run Execution workflows
 
 **Checklist line (exact line done when this is `[x]`):**
 
-- [ ] **UI-006 P1 — Simplify the full case editor and make its actions persistent.**
+- [ ] **UI-008 P0 — Compress the Run Execution header into one workbench header.**
 
 ### Scope (only what closes the line above)
 
-- Use shared field patterns so labels, required-state messaging, help text, and validation are visually consistent across case templates.
-- Keep Create/Save and Cancel visible in a sticky editor footer while the form scrolls.
-- Place required-field and validation messages next to the affected content instead of relying on a toast alone.
-- Require a clear discard decision before closing an editor with unsaved changes.
-- Preserve the active section and list context after a successful create or save.
+- Merge duplicate title, assignment, run state, and utility rows into one workbench header.
+- Keep result recording as the dominant workflow.
+- Move reports, export, print, duplicate, compare, and rerun into grouped utilities.
+- Reuse the workbench header and overflow patterns proven by `UI-001`.
 
 ### Acceptance
 
-- The primary Create/Save action remains visible at the top and bottom of every supported editor scroll position.
-- Submitting invalid content focuses the first invalid field and exposes an inline accessible error message.
-- Cancel or close with dirty fields presents an explicit Keep editing / Discard decision; clean editors close directly.
-- Successful create and save return to the same selected section without resetting repository filters or scroll context.
-- Keyboard users can reach the sticky actions and complete or cancel the editor without pointer input.
+- The test table begins higher in the viewport.
+- No utility control competes visually with result entry.
+- Grouped utilities remain keyboard accessible and usable at desktop and mobile breakpoints.
 
 ### Out of scope for this batch
 
-- Additional section-row wording and movement changes (`UI-007`).
-- Quick outline authoring already completed in `UI-005`.
-- Header, toolbar, case-row hierarchy, and responsive detail behavior already completed in `UI-001` through `UI-004`.
-- Run Execution changes or styling routes outside Test Cases.
+- Selection action changes reserved for `UI-009`.
+- Result-entry behavior changes reserved for later Run Execution batches.
+- Styling routes outside Run Execution.
 
 ---
 
 ## Next batch candidates
 
-Pick only unchecked lines from below when replacing **Current batch**. The order is deliberate: finish the Test Cases hierarchy before expanding the shared pattern to other routes.
+Pick only unchecked lines from below when replacing **Current batch**. The order is deliberate: finish the Run Execution header before adding its contextual bulk-action layer.
 
 | Suggested order | Checklist line |
 |-----------------|----------------|
-| 1 | `UI-007 P1 — Clarify section-row actions and relationships.` |
-| 2 | `UI-008 P0 — Compress the Run Execution header into one workbench header.` |
-| 3 | `UI-009 P0 — Show a sticky selection action bar next to selected tests.` |
+| 1 | `UI-009 P0 — Show a sticky selection action bar next to selected tests.` |
 
 ---
 
 ## Deferred capability batches
+
+### Newly reviewed UI follow-ups — not scheduled
+
+The user requested review and documentation only for the [simplicity re-review](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). UI-022–UI-029 have been added as unchecked units in the controlling usability checklist. **Do not treat this review as permission to implement them now or advance Current batch.** Current batch remains UI-008 and the next scheduled candidate remains UI-009.
+
+| Review priority | Planned unit |
+| --- | --- |
+| P0 | UI-025 — Unobstructed move/copy dialog and correct focus behavior |
+| P0 | UI-022 — Selected section / include subsections / all sections scope |
+| P1 | UI-023 — Section-owned TC blocks with path, count, and collapse |
+| P1 | UI-024 — Simpler View settings with distinct meanings |
+| P1 | UI-026 — File-tree keyboard and accessible-label behavior |
+| P1 | UI-027 — Compact project navigation above Test Cases |
+| P1 | UI-028 — One case-selection action bar and one empty-state CTA |
+| P1 | UI-029 — Content-first case detail header |
+
+These are review priorities, not a replacement execution queue. Schedule them explicitly before placing any one of them in Current batch.
+
+### Deferred feature parity work
 
 The previous cross-project reports and SSO batches remain in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md). Resume them after the usability program or when the product owner explicitly reprioritizes them; do not interleave them with the current one-PR UI sequence.

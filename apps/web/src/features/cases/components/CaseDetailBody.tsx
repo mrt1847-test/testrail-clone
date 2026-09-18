@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
@@ -9,6 +9,7 @@ import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
 import { CaseEditDrawer } from "./CaseEditDrawer";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
+import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 
 type Props = {
   projectId: string;
@@ -37,6 +38,8 @@ export function CaseDetailBody({
   );
   const editor = useCaseEditorActions(projectId);
   const detailLayout = layout === "panel" ? "embedded" : "page";
+  const [editDirty, setEditDirty] = useState(false);
+  const [discardEditOpen, setDiscardEditOpen] = useState(false);
 
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId, data?.caseTemplateId ?? null],
@@ -63,6 +66,8 @@ export function CaseDetailBody({
 
   useEffect(() => {
     clearEditErrors();
+    setEditDirty(false);
+    setDiscardEditOpen(false);
   }, [caseId, isEditMode, clearEditErrors]);
 
   const openEdit = () => {
@@ -78,10 +83,20 @@ export function CaseDetailBody({
   };
 
   const closeEdit = () => {
+    setEditDirty(false);
+    setDiscardEditOpen(false);
     const next = new URLSearchParams(searchParams);
     next.delete("mode");
     next.delete("panelMode");
     setSearchParams(next, { replace: true });
+  };
+
+  const requestCloseEdit = () => {
+    if (editDirty) {
+      setDiscardEditOpen(true);
+      return;
+    }
+    closeEdit();
   };
 
   if (isLoading) {
@@ -137,7 +152,7 @@ export function CaseDetailBody({
         onDuplicated={onDuplicated}
       />
 
-      <CaseEditDrawer open={isEditMode} title={headerTitle} onClose={closeEdit}>
+      <CaseEditDrawer open={isEditMode} title={headerTitle} onClose={requestCloseEdit}>
         <ExpandableCaseDetail
           data={data}
           versions={caseVersionsQuery.data ?? []}
@@ -147,13 +162,15 @@ export function CaseDetailBody({
           layout={detailLayout}
           showHeading={false}
           onEdit={openEdit}
-          onClose={closeEdit}
+          onClose={requestCloseEdit}
+          onDirtyChange={setEditDirty}
           onSave={async (patch) => {
             await editor.updateCaseMutation.mutateAsync({
               caseId: data.id,
               ...patch,
               expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
             });
+            setEditDirty(false);
             closeEdit();
           }}
           onDelete={async () => {
@@ -188,6 +205,16 @@ export function CaseDetailBody({
           isStepsBusy={editor.stepsBusy}
         />
       </CaseEditDrawer>
+      <ConfirmDialog
+        open={discardEditOpen}
+        title="Discard unsaved changes?"
+        description="Your unsaved test case changes will be lost."
+        cancelLabel="Keep editing"
+        confirmLabel="Discard changes"
+        variant="danger"
+        onCancel={() => setDiscardEditOpen(false)}
+        onConfirm={closeEdit}
+      />
     </>
   );
 }

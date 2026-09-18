@@ -7,6 +7,7 @@ type MoveCopyChooserDialogProps = {
   busy?: boolean;
   pendingAction?: "move" | "copy" | null;
   disabled?: boolean;
+  moveDisabled?: boolean;
   onMove: () => void;
   onCopy: () => void;
   onCancel: () => void;
@@ -19,6 +20,7 @@ export function MoveCopyChooserDialog({
   busy = false,
   pendingAction = null,
   disabled = false,
+  moveDisabled = false,
   onMove,
   onCopy,
   onCancel
@@ -59,7 +61,7 @@ export function MoveCopyChooserDialog({
           <button
             type="button"
             onClick={onMove}
-            disabled={buttonsDisabled}
+            disabled={buttonsDisabled || moveDisabled}
             className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {moveLabel}

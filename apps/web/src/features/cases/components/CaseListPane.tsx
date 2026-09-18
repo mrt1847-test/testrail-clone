@@ -198,6 +198,10 @@ export function CaseListPane({
   const [createFormVersion, setCreateFormVersion] = useState(0);
   const [createDraftSteps, setCreateDraftSteps] = useState<CaseCreateDraftStep[]>(initialCreateDraftSteps);
   const [createFormError, setCreateFormError] = useState<string | null>(null);
+  const [createFormDirty, setCreateFormDirty] = useState(false);
+  const [discardCreateOpen, setDiscardCreateOpen] = useState(false);
+  const createEditorRef = useRef<HTMLDivElement>(null);
+  const createReturnScrollRef = useRef<number | null>(null);
   const [searchDraft, setSearchDraft] = useState(caseFilters.q);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
   const selectionAnchorIndexRef = useRef<number | null>(null);
@@ -530,6 +534,11 @@ export function CaseListPane({
   useEffect(() => {
     if (!showAdd) return;
     setCreateDraftSteps(initialCreateDraftSteps());
+    if (createReturnScrollRef.current == null) createReturnScrollRef.current = window.scrollY;
+    const frame = window.requestAnimationFrame(() =>
+      createEditorRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })
+    );
+    return () => window.cancelAnimationFrame(frame);
   }, [showAdd, createFormVersion]);
 
   useEffect(() => {
@@ -604,6 +613,24 @@ export function CaseListPane({
   };
 
   const [createUsesSteps, setCreateUsesSteps] = useState(false);
+  const createStepsDirty =
+    createDraftSteps.length !== 1 ||
+    createDraftSteps.some((step) => step.description.trim().length > 0 || step.expected.trim().length > 0);
+  const createEditorDirty = createFormDirty || createStepsDirty;
+
+  const closeCreateEditor = () => {
+    const returnScroll = createReturnScrollRef.current;
+    createReturnScrollRef.current = null;
+    setShowAdd(false);
+    setCreateFormError(null);
+    setCreateFormDirty(false);
+    setDiscardCreateOpen(false);
+    setCreateDraftSteps(initialCreateDraftSteps());
+    setCreateFormVersion((current) => current + 1);
+    if (returnScroll != null) {
+      window.requestAnimationFrame(() => window.scrollTo({ top: returnScroll, behavior: "auto" }));
+    }
+  };
 
   const createCaseMutation = useMutation({
     mutationFn: async (input: {
@@ -646,9 +673,7 @@ export function CaseListPane({
     },
     onSuccess: ({ created, stepsWarning }) => {
       invalidateCases();
-      setShowAdd(false);
-      setCreateFormError(null);
-      setCreateFormVersion((current) => current + 1);
+      closeCreateEditor();
       setPanelCase(created.id, "view");
       if (stepsWarning) {
         setBulkFeedback({
@@ -1286,7 +1311,7 @@ export function CaseListPane({
           <CaseRepositoryToolbar {...toolbarProps} />
 
           {showAdd ? (
-            <div className="border-b border-slate-200 bg-slate-50 p-4">
+            <div ref={createEditorRef} className="scroll-mt-3 border-b border-slate-200 bg-slate-50 p-4">
               <h3 className="mb-3 text-lg font-semibold text-slate-900">New test case</h3>
               <CaseAuthoringForm
                 projectId={projectId}
@@ -1300,6 +1325,7 @@ export function CaseListPane({
                 submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
                 isSubmitting={createCaseMutation.isPending}
                 submitError={createFormError}
+                onDirtyChange={setCreateFormDirty}
                 stepsSection={createUsesSteps ? (
                   <>
                     <div className="flex items-center justify-between">
@@ -1387,9 +1413,11 @@ export function CaseListPane({
                   });
                 }}
                 onCancel={() => {
-                  setShowAdd(false);
-                  setCreateFormError(null);
-                  setCreateFormVersion((current) => current + 1);
+                  if (createEditorDirty) {
+                    setDiscardCreateOpen(true);
+                    return;
+                  }
+                  closeCreateEditor();
                 }}
               />
             </div>
@@ -1633,6 +1661,17 @@ export function CaseListPane({
         </section>
 
       </div>
+
+      <ConfirmDialog
+        open={discardCreateOpen}
+        title="Discard unsaved case?"
+        description="Your changes to this new test case will be lost."
+        cancelLabel="Keep editing"
+        confirmLabel="Discard changes"
+        variant="danger"
+        onCancel={() => setDiscardCreateOpen(false)}
+        onConfirm={closeCreateEditor}
+      />
 
       <ConfirmDialog
         open={bulkUpdateOpen}

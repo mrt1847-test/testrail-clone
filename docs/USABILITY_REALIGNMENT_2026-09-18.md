@@ -14,6 +14,8 @@ The new standard is:
 
 This document is the controlling usability backlog for the Test Cases and Run Execution routes. Feature parity checklists remain useful for capability tracking, but they do not override this document's hierarchy, consistency, or task-completion requirements.
 
+Follow-up review: [UI/UX simplicity review, 2026-09-18](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). This review adds planned UI-022–UI-029 work only; it does not implement changes, advance the current batch, or claim that historical screenshots are newly reproduced checks.
+
 ## 2. Executive verdict
 
 ### Result recording
@@ -372,13 +374,13 @@ Execute these items from top to bottom unless a dependency or production defect 
   - Done when: a user can add five title-only cases without reopening a modal or leaving the active section.
   - Maps to: `UX-021`.
 
-- [ ] **UI-006 P1 — Simplify the full case editor and make its actions persistent.**
+- [x] **UI-006 P1 — Simplify the full case editor and make its actions persistent.** ([before/after evidence](./ux-evidence/UI-006.md), completed 2026-09-18)
   - Visible change: use shared fields and a sticky Create/Save and Cancel footer; keep required fields and validation close to the edited content.
   - Interaction rule: closing a dirty editor requires a clear discard decision, while a successful save keeps section context.
   - Done when: the primary save action is visible at every scroll position and validation does not rely on toast-only messaging.
   - Maps to: `UX-012`, `UX-021`, `UX-042`.
 
-- [ ] **UI-007 P1 — Clarify section-row actions and relationships.**
+- [x] **UI-007 P1 — Clarify section-row actions and relationships.** ([before/after evidence](./ux-evidence/UI-007.md), completed 2026-09-18)
   - Visible change: replace ambiguous `Add` and `Add child` labels with `Add case to this section`, `Add subsection`, or equivalent contextual wording; group infrequent actions in row overflow.
   - Interaction rule: provide a non-drag move path that states the destination before confirmation.
   - Done when: a first-time user can identify where a case or subsection will be created without trial and error.
@@ -465,6 +467,63 @@ Execute these items from top to bottom unless a dependency or production defect 
   - Evidence: capture Test Cases and Run Execution at 1440 x 1000, 1280 x 720, and 390 x 844; add keyboard and accessible-name checks for primary flows.
   - Done when: the gate fails on duplicate dominant CTAs, hidden selected-row actions, clipped controls, horizontal page scroll, or unlabeled form controls.
   - Maps to: `UX-041`, `UX-042`.
+
+#### Follow-up review — planned, not yet scheduled
+
+Detailed evidence, design rules, and scope fixtures: [simplicity review](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). These follow-ups supplement earlier completed slices without treating their completion as proof that all usability defects are resolved. Keep the current NEXT_ACTIONS batch unchanged until scheduling is explicitly reprioritized.
+
+- [ ] **UI-022 P0 — Separate case query scope from display settings.**
+  - Visible change: one compact scope selector with `Selected section only`, `Include subsections`, and `All sections`; show the active section path and scope beside the list.
+  - Scope: separate the query scope from display/density across UI, server, URL, last view, and saved views. Preserve explicitly documented compatibility for existing display URLs and saved views. Update summaries and empty states to match the actual scope.
+  - Interaction rule: section selection filters direct/subtree scopes; in All sections it only navigates to the block. Scope changes clear out-of-scope selection with feedback and cannot leave an unexplained out-of-scope detail pane.
+  - Done when: the review's fixture yields 2/6/10 TC for the three scopes with Authentication selected and 3/4 for Login direct/subtree; unrelated siblings never leak into subtree scope. Refresh, Back, shared URL, filters, and saved views reproduce the same scope. Density never changes result membership.
+  - Out of scope: redesigning group blocks (UI-023), general View-menu cleanup (UI-024).
+  - Maps to: `UX-003`, `UX-022`, `UX-023`, `UX-041`.
+
+- [ ] **UI-023 P1 — Make section-owned TC blocks visually explicit.**
+  - Visible change: section-path header, direct matching TC count, collapse chevron, then compact TC rows; separate blocks with whitespace or a single thin divider. No nested cards, per-block shadows, or repeated action toolbars.
+  - Scope: reuse existing section grouping and row components; add readable ancestry and independent block collapse. Keep tree order, each TC in exactly one owning section, and parent-only headings where needed for context.
+  - Interaction rule: collapsing changes visibility only; indicate selected TC hidden in collapsed blocks. Keep Expand all / Collapse all in View. Narrow screens use wrapping paths rather than unlimited indentation.
+  - Done when: users can identify the owning section of each TC, including duplicate section names and three-level nesting. The review fixture shows 1/3/4 blocks for direct/subtree/all scope, with correct counts and no duplicate TC. Verify empty parents, filtered results, long names, keyboard collapse, and 1280/390px layouts.
+  - Dependency: UI-022's explicit scope contract. Out of scope: per-section management feature expansion.
+  - Maps to: `UX-013`, `UX-020`, `UX-023`, `UX-042`.
+
+- [ ] **UI-024 P1 — Simplify View settings and remove overlapping meanings.**
+  - Visible change: separate scope, grouping, and row spacing; eliminate duplicate `Compact` meanings and combinations that silently hide section grouping. Keep infrequent column/saved-view management behind a clear settings entry.
+  - Scope: case repository View menu only; use shared menu controls and selection semantics. Preserve existing capabilities without a long permanent menu of every option.
+  - Done when: a user can predict whether an option changes included TC, grouping, or spacing from its label; the checked grouping matches the rendered headers; keyboard selection and persisted settings work. Normal use requires only the compact scope selector plus Filter/View.
+  - Dependency: UI-022/UI-023. Maps to: `UX-010`, `UX-011`, `UX-022`.
+
+- [ ] **UI-025 P0 — Keep section move/copy dialogs above the workspace and contain focus.**
+  - Evidence: the existing UI-007 move screenshot shows background Search/View controls covering the dialog's destination summary; the current component has no focus lifecycle.
+  - Scope: repair the shared MoveCopyChooserDialog's stacking/placement and modal behavior, using the common dialog pattern; verify its section and case relocation consumers.
+  - Done when: destination and controls are unobstructed at 1280×720 and 390×844; background controls cannot be activated; focus enters the dialog, cycles inside it, Escape cancels when allowed, and close restores the trigger. Preserve busy state and current-location move prevention. Test with tree on either side and after scrolling.
+  - Out of scope: relocation API or move/copy semantics changes. Maps to: `UX-012`, `UX-042`.
+
+- [ ] **UI-026 P1 — Make the file-tree interaction match its visual promise.**
+  - Scope: section tree arrow-key navigation, one tree tab entry, expand/collapse versus selection, menu focus/arrow keys/Escape return, and correct root-creation label association. Reuse shared menu behavior rather than adding another keyboard implementation.
+  - Done when: keyboard-only users select a nested section, open its actions, start and cancel creation, then return to the same row; screen readers announce path/name, selected state and expanded state correctly. Focus remains visible and touch controls remain discoverable without desktop hover.
+  - Out of scope: introducing more visible row actions. Maps to: `UX-012`, `UX-023`, `UX-042`.
+
+- [ ] **UI-027 P1 — Reduce repeated navigation chrome above Test Cases.**
+  - Visible change: compact project/context navigation; remove always-visible default-suite configuration/help from the daily-work header and retain it in an explicit settings/context menu.
+  - Scope: shared project header as consumed by Test Cases; check other project routes for regressions without redesigning their workspaces.
+  - Done when: case work starts at least 80px higher than the baseline at 1280×720; project/suite context remains discoverable; at 390×844 a populated fixture exposes a section heading and at least one TC before the first scroll. No clipped controls or horizontal page scrolling.
+  - Out of scope: Run Execution's content header (UI-008). Maps to: `UX-010`, `UX-013`, `UX-040`, `UX-042`.
+
+- [ ] **UI-028 P1 — Consolidate case selection actions and empty-state creation.**
+  - Visible change: one contextual selection bar replaces the duplicated selected-count/edit menu and Update selected action row. Keep selection scope explicit through TC counts; secondary print/destructive commands use overflow.
+  - Scope: Test Cases selection toolbar and empty state. At zero selection avoid a permanent bulk-command strip; when empty use one dominant Add Case entry point and a lightweight message that matches scope/filter state.
+  - Done when: selecting TC exposes one edit path, a clear target count and clear-selection action; no hidden/out-of-scope TC are modified unexpectedly. Zero-selection and empty states have no duplicate dominant CTA. Keyboard and narrow layouts remain usable.
+  - Dependency: UI-022 scope semantics. Out of scope: Run Execution selection (UI-009) and project-list empty state (recorded under UX-040). Maps to: `UX-010`, `UX-022`, `UX-042`.
+
+- [ ] **UI-029 P1 — Put case detail content ahead of its utility buttons.**
+  - Visible change: detail title, main content, Edit and Close form the stable reading surface. Group ID/link copy, print and full-page navigation under a predictable utility menu.
+  - Scope: CaseDetailSidePanel header in drawer and wide inline layouts; reuse shared controls and retain the existing edit/save workflow.
+  - Done when: opening a TC immediately exposes title/content without scanning a utility button wall; utilities remain keyboard reachable, close returns focus to the case row, and 390px controls do not wrap into multiple competing toolbars.
+  - Out of scope: changing case data or the full authoring form. Maps to: `UX-010`, `UX-012`, `UX-020`.
+
+Additional UX-040 review note: the live empty Projects page repeats New project twice plus Add project in Quick links. Consolidate its creation entry point and empty-state container during the project-list rollout; this observation is not a newly completed task.
 
 ## 8. Definition of done
 

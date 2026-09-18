@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { CaseTemplateRow, CustomFieldRow } from "../../projects/api/settingsApi";
 import { ReferencesInput } from "./ReferencesInput";
+import { serializeCaseAuthoringDraft, type CaseAuthoringDraft } from "../utils/caseAuthoringDraft";
 
 import { CustomFieldValueInput } from "../../../shared/customFields/CustomFieldValueInput";
+import { Button } from "../../../shared/ui/Button";
+import { FormField } from "../../../shared/ui/FormField";
 import {
   validateCustomFieldDraft,
   type CustomFieldScalar
@@ -39,6 +42,7 @@ type CaseAuthoringFormProps = {
   isSubmitting?: boolean;
   submitError?: string | null;
   stepsSection?: ReactNode;
+  onDirtyChange?: (dirty: boolean) => void;
   onSubmit: (input: {
     title: string;
     preconditions: string;
@@ -146,6 +150,7 @@ export function CaseAuthoringForm({
   isSubmitting = false,
   submitError = null,
   stepsSection,
+  onDirtyChange,
   onSubmit,
   onCancel
 }: CaseAuthoringFormProps) {
@@ -175,19 +180,48 @@ export function CaseAuthoringForm({
   const [references, setReferences] = useState(initialReferences);
   const [expectedResult, setExpectedResult] = useState(initialExpectedResult);
   const [customValues, setCustomValues] = useState<Record<string, ScalarCustomValue>>(initialCustomValues);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(() =>
+    preferredTemplateId(activeTemplates, initialCaseTemplateId)
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const initialDraftSnapshot = useMemo(
+    () =>
+      serializeCaseAuthoringDraft({
+        title: initialTitle,
+        preconditions: initialPreconditions,
+        estimate: initialEstimate,
+        references: initialReferences,
+        expectedResult: initialExpectedResult,
+        templateId: preferredTemplateId(activeTemplates, initialCaseTemplateId),
+        customValues: initialCustomValues
+      }),
+    [
+      activeTemplates,
+      initialCaseTemplateId,
+      initialCustomValues,
+      initialEstimate,
+      initialExpectedResult,
+      initialPreconditions,
+      initialReferences,
+      initialTitle
+    ]
+  );
+  const [baselineSnapshot, setBaselineSnapshot] = useState(initialDraftSnapshot);
 
   useEffect(() => {
-    setTitle(initialTitle);
-    setPreconditions(initialPreconditions);
-    setEstimate(initialEstimate);
-    setReferences(initialReferences);
-    setExpectedResult(initialExpectedResult);
-    setCustomValues(initialCustomValues);
-    setSelectedTemplateId(preferredTemplateId(activeTemplates, initialCaseTemplateId));
+    const initialDraft = JSON.parse(initialDraftSnapshot) as CaseAuthoringDraft;
+    setTitle(initialDraft.title);
+    setPreconditions(initialDraft.preconditions);
+    setEstimate(initialDraft.estimate);
+    setReferences(initialDraft.references);
+    setExpectedResult(initialDraft.expectedResult);
+    setCustomValues(initialDraft.customValues);
+    setSelectedTemplateId(initialDraft.templateId);
+    setBaselineSnapshot(initialDraftSnapshot);
     setFieldErrors({});
-  }, [valueKey, initialCaseTemplateId, initialEstimate, initialExpectedResult, initialCustomValues, initialPreconditions, initialReferences, initialTitle, activeTemplates]);
+  }, [valueKey, initialDraftSnapshot]);
 
   useEffect(() => {
     if (activeTemplates.length === 0) {
@@ -203,6 +237,25 @@ export function CaseAuthoringForm({
   const selectedTemplateFields = selectedTemplate?.fields ?? [];
   const templateShowsSteps = templateUsesSteps(selectedTemplateFields);
   const templateShowsExpectedResult = templateUsesExpectedResult(selectedTemplateFields);
+
+  const currentDraftSnapshot = useMemo(
+    () =>
+      serializeCaseAuthoringDraft({
+        title,
+        preconditions,
+        estimate,
+        references,
+        expectedResult,
+        templateId: selectedTemplateId,
+        customValues
+      }),
+    [customValues, estimate, expectedResult, preconditions, references, selectedTemplateId, title]
+  );
+  const isDirty = currentDraftSnapshot !== baselineSnapshot;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
     if (!selectedTemplateId) return;
@@ -259,82 +312,100 @@ export function CaseAuthoringForm({
     };
 
     const titleNode = (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span className="flex items-center gap-1">
-          Title
-          <span className="text-xs font-medium text-red-600">Required</span>
-        </span>
-        <input
-          value={title}
-          onChange={(event) => {
-            setTitle(event.target.value);
-            setFieldErrors((current) => {
-              if (!current.title) return current;
-              const next = { ...current };
-              delete next.title;
-              return next;
-            });
-          }}
-          className={inputClassName(Boolean(fieldErrors.title))}
-        />
-        {fieldErrors.title ? <span className="text-xs text-red-700">{fieldErrors.title}</span> : null}
-      </label>
+      <div data-case-field="title">
+        <FormField label="Title" required error={fieldErrors.title} controlId="case-title">
+          {(controlProps) => (
+            <input
+              {...controlProps}
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setFieldErrors((current) => {
+                  if (!current.title) return current;
+                  const next = { ...current };
+                  delete next.title;
+                  return next;
+                });
+              }}
+              className={inputClassName(Boolean(fieldErrors.title))}
+            />
+          )}
+        </FormField>
+      </div>
     );
 
     const preconditionsNode = (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span>Preconditions</span>
-        <textarea
-          value={preconditions}
-          onChange={(event) => setPreconditions(event.target.value)}
-          className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-        />
-      </label>
+      <FormField label="Preconditions" controlId="case-preconditions">
+        {(controlProps) => (
+          <textarea
+            {...controlProps}
+            value={preconditions}
+            onChange={(event) => setPreconditions(event.target.value)}
+            className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+          />
+        )}
+      </FormField>
     );
 
-    const referencesNode = projectId ? (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span>References</span>
-        <ReferencesInput projectId={projectId} value={references} onChange={setReferences} disabled={isSubmitting} />
-      </label>
-    ) : (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span>References</span>
-        <input
-          type="text"
-          value={references}
-          onChange={(event) => setReferences(event.target.value)}
-          placeholder="REQ-1, REQ-2"
-          className={inputClassName(false)}
-        />
-        <span className="text-xs text-slate-500">Comma-separated requirement or story IDs.</span>
-      </label>
+    const referencesNode = (
+      <FormField
+        label="References"
+        controlId="case-references"
+        helpText={projectId ? undefined : "Comma-separated requirement or story IDs."}
+      >
+        {(controlProps) =>
+          projectId ? (
+            <ReferencesInput
+              projectId={projectId}
+              value={references}
+              onChange={setReferences}
+              disabled={isSubmitting}
+              inputId={controlProps.id}
+              describedBy={controlProps["aria-describedby"]}
+              invalid={controlProps["aria-invalid"]}
+            />
+          ) : (
+            <input
+              {...controlProps}
+              type="text"
+              value={references}
+              onChange={(event) => setReferences(event.target.value)}
+              placeholder="REQ-1, REQ-2"
+              className={inputClassName(false)}
+            />
+          )
+        }
+      </FormField>
     );
 
     const estimateNode = (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span>Estimate</span>
-        <input
-          type="text"
-          value={estimate}
-          onChange={(event) => setEstimate(event.target.value)}
-          placeholder="5m, 1h 20m, or 01:30"
-          className={inputClassName(false)}
-        />
-      </label>
+      <FormField label="Estimate" controlId="case-estimate" helpText="Examples: 5m, 1h 20m, or 01:30">
+        {(controlProps) => (
+          <input
+            {...controlProps}
+            type="text"
+            value={estimate}
+            onChange={(event) => setEstimate(event.target.value)}
+            placeholder="5m, 1h 20m, or 01:30"
+            className={inputClassName(false)}
+          />
+        )}
+      </FormField>
     );
 
     const stepsNode = stepsSection && templateShowsSteps ? <div className="grid gap-2">{stepsSection}</div> : null;
 
     const expectedResultNode = templateShowsExpectedResult ? (
-      <label className="grid gap-1 text-sm text-slate-700">
-        <span>{builtinTemplateFieldLabel("expectedResult")}</span>
-        <textarea
-          value={expectedResult}
-          onChange={(event) => setExpectedResult(event.target.value)}
-          className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-        />
-      </label>
+      <FormField label={builtinTemplateFieldLabel("expectedResult")} controlId="case-expected-result">
+        {(controlProps) => (
+          <textarea
+            {...controlProps}
+            value={expectedResult}
+            onChange={(event) => setExpectedResult(event.target.value)}
+            className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+          />
+        )}
+      </FormField>
     ) : null;
 
     const renderBuiltinTemplateField = (fieldKey: string) => {
@@ -345,28 +416,35 @@ export function CaseAuthoringForm({
       const multiline =
         normalized === "scenario" || normalized === "ai_traces" || normalized === "ai_input" || normalized === "goals";
       return (
-        <label key={normalized} className="grid gap-1 text-sm text-slate-700">
-          <span>{builtinTemplateFieldLabel(fieldKey)}</span>
-          {multiline ? (
-            <textarea
-              value={String(customValues[normalized] ?? "")}
-              onChange={(event) => setCustomValue(normalized, event.target.value)}
-              className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-            />
-          ) : (
-            <input
-              type="text"
-              value={String(customValues[normalized] ?? "")}
-              onChange={(event) => setCustomValue(normalized, event.target.value)}
-              className={inputClassName(false)}
-            />
-          )}
-        </label>
+        <FormField
+          key={normalized}
+          label={builtinTemplateFieldLabel(fieldKey)}
+          controlId={`case-${normalized.replace(/[^a-zA-Z0-9_-]/g, "-")}`}
+        >
+          {(controlProps) =>
+            multiline ? (
+              <textarea
+                {...controlProps}
+                value={String(customValues[normalized] ?? "")}
+                onChange={(event) => setCustomValue(normalized, event.target.value)}
+                className="min-h-[84px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+              />
+            ) : (
+              <input
+                {...controlProps}
+                type="text"
+                value={String(customValues[normalized] ?? "")}
+                onChange={(event) => setCustomValue(normalized, event.target.value)}
+                className={inputClassName(false)}
+              />
+            )
+          }
+        </FormField>
       );
     };
 
     const renderCustomField = (field: CaseAuthoringCustomFieldDefinition) => (
-      <div key={field.systemName}>
+      <div key={field.systemName} data-case-field={field.systemName}>
         <CustomFieldValueInput
           field={field}
           value={customValues[field.systemName] ?? null}
@@ -445,7 +523,20 @@ export function CaseAuthoringForm({
   async function handleSubmit() {
     const nextErrors = validate();
     setFieldErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    const firstInvalidKey = Object.keys(nextErrors)[0];
+    if (firstInvalidKey) {
+      window.requestAnimationFrame(() => {
+        const field = Array.from(formRef.current?.querySelectorAll<HTMLElement>("[data-case-field]") ?? []).find(
+          (element) => element.dataset.caseField === firstInvalidKey
+        );
+        const control = field?.querySelector<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        control?.focus();
+        field?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+      return;
+    }
 
     const normalizedCustomValues: Record<string, ScalarCustomValue> = { ...customValues };
     for (const field of activeCustomFields) {
@@ -482,33 +573,44 @@ export function CaseAuthoringForm({
         customValues: exploratoryCustomValues,
         templateId: selectedTemplateId || null
       });
+      setBaselineSnapshot(currentDraftSnapshot);
     } catch {
       // Parent handles submit error state.
     }
   }
 
   return (
-    <div className="grid gap-3">
+    <form
+      ref={formRef}
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit();
+      }}
+    >
       {activeTemplates.length > 0 ? (
         <div className="rounded-md border border-slate-200 bg-white p-3">
-          <label className="grid gap-1 text-sm text-slate-700">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Template</span>
-            <select
-              value={selectedTemplateId}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {activeTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                  {template.isDefault ? " (Default)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selectedTemplate?.description ? (
-            <p className="mt-2 text-xs text-slate-600">{selectedTemplate.description}</p>
-          ) : null}
+          <FormField
+            label="Template"
+            controlId="case-template"
+            helpText={selectedTemplate?.description || undefined}
+          >
+            {(controlProps) => (
+              <select
+                {...controlProps}
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                {activeTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                    {template.isDefault ? " (Default)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
           {templateShowsSteps && !stepsSection ? (
             <p className="mt-2 text-xs text-amber-700">This template expects steps. Add them after creating the case.</p>
           ) : null}
@@ -521,25 +623,29 @@ export function CaseAuthoringForm({
         ))}
       </div>
 
-      {submitError ? <p className="text-sm text-red-700">{submitError}</p> : null}
+      {submitError ? (
+        <p className="text-sm font-medium text-red-700" role="alert">
+          {submitError}
+        </p>
+      ) : null}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
+      <div
+        className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_18px_-14px_rgba(15,23,42,0.45)] backdrop-blur"
+        aria-label="Case editor actions"
+      >
+        <p className="text-xs text-slate-500">Required fields are marked.</p>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button
+          type="submit"
           disabled={isSubmitting}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
-          onClick={() => void handleSubmit()}
         >
           {submitLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          {cancelLabel}
-        </button>
+          </Button>
+        </div>
       </div>
-    </div>
+    </form>
   );
 }
