@@ -60,6 +60,7 @@ export function RunPlanSummaryRow({
         }`}
       >
         {item.type === "plan" ? "P" : "R"}
+        <span className="sr-only">{item.type === "plan" ? "Plan" : "Run"}</span>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-start justify-between gap-3">

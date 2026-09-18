@@ -15,6 +15,9 @@ export type ResultSubmitPayload = {
   aiTraces?: string;
   stepResults: Array<{ stepOrder: number; status: ResultStatus; actualResult?: string; comment?: string }>;
   scenarioResults?: Array<{ caseScenarioId: string; status: ResultStatus; comment?: string }>;
+  actualResult?: string;
+  attachments?: File[];
+  stagedAttachments?: Array<{ id: string; file: File }>;
 };
 
 export type StepResultDraft = {

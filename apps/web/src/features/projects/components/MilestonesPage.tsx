@@ -1,20 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
+import { Button, WorkbenchPage, WorkbenchToolbar } from "../../../shared/ui";
+import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
 import { createMilestone, deleteMilestone, fetchMilestones, updateMilestone } from "../api/advancedApi";
 import { fetchMilestoneSummary } from "../api/milestoneSummaryApi";
 import type { MilestoneLifecycleStatus, MilestoneRow } from "../api/planningApi";
 import { reportKeys } from "../hooks/reportKeys";
 import { orderMilestonesForHierarchy } from "../utils/milestoneDisplay";
-import { ProjectContentHeader } from "../content-header/ProjectContentHeader";
-import { MilestoneDashboardPanel } from "./MilestoneDashboardPanel";
 import { MilestoneDialog } from "./MilestoneDialog";
 import type { MilestoneDialogMode, MilestoneDialogValues } from "./MilestoneDialog";
+import { MilestonesHeader } from "./MilestonesHeader";
 import { MilestoneSummaryRow } from "./MilestoneSummaryRow";
 
 type OverviewDisplay = "compact" | "medium" | "detail";
@@ -30,9 +30,9 @@ function lifecycleOf(row: { lifecycleStatus?: MilestoneLifecycleStatus; isComple
 }
 
 function displayFromStorage(): OverviewDisplay {
-  if (typeof window === "undefined") return "detail";
+  if (typeof window === "undefined") return "medium";
   const value = window.localStorage.getItem("milestoneOverviewDisplay");
-  return value === "compact" || value === "medium" || value === "detail" ? value : "detail";
+  return value === "compact" || value === "medium" || value === "detail" ? value : "medium";
 }
 
 function groupMilestones(rows: Array<MilestoneRow & { depth: number }>) {
@@ -53,14 +53,11 @@ export function MilestonesPage() {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
   const [display, setDisplay] = useState<OverviewDisplay>(() => displayFromStorage());
-  const [newMilestoneName, setNewMilestoneName] = useState("");
-  const [parentMilestoneId, setParentMilestoneId] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
   const [dialogState, setDialogState] = useState<{
     mode: MilestoneDialogMode;
-    milestone: MilestoneRow & { depth?: number };
+    milestone?: MilestoneRow;
   } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<MilestoneRow | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["milestones", projectId],
@@ -107,6 +104,7 @@ export function MilestonesPage() {
       dueDate?: string | null;
     }) => updateMilestone({ projectId, ...input }),
     onSuccess: () => {
+      setDialogState(null);
       void qc.invalidateQueries({ queryKey: ["milestones", projectId] });
       void qc.invalidateQueries({ queryKey: reportKeys.milestoneSummary(projectId) });
     }
@@ -115,49 +113,33 @@ export function MilestonesPage() {
   const deleteMutation = useMutation({
     mutationFn: (milestoneId: string) => deleteMilestone(projectId, milestoneId),
     onSuccess: () => {
+      setPendingDelete(null);
       void qc.invalidateQueries({ queryKey: ["milestones", projectId] });
       void qc.invalidateQueries({ queryKey: reportKeys.milestoneSummary(projectId) });
     }
   });
 
-  const submitSidebarCreate = () => {
-    void createMutation
-      .mutateAsync({
-        name: newMilestoneName.trim(),
-        parentMilestoneId: parentMilestoneId ? parentMilestoneId : null,
-        startDate: startDate ? new Date(startDate).toISOString() : null,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null
-      })
-      .then(() => {
-        setNewMilestoneName("");
-        setParentMilestoneId("");
-        setStartDate("");
-        setDueDate("");
-      });
-  };
-
   const submitDialog = (values: MilestoneDialogValues) => {
     if (!dialogState) return;
-    if (dialogState.mode === "add-sub") {
+    if (dialogState.mode === "create" || dialogState.mode === "add-sub") {
       void createMutation.mutateAsync({
         name: values.name ?? "",
-        parentMilestoneId: values.parentMilestoneId ?? dialogState.milestone.id,
+        parentMilestoneId: values.parentMilestoneId ?? dialogState.milestone?.id ?? null,
         startDate: values.startDate,
         dueDate: values.dueDate
       });
       return;
     }
 
-    void updateMutation
-      .mutateAsync({
-        milestoneId: dialogState.milestone.id,
-        name: values.name,
-        parentMilestoneId: values.parentMilestoneId,
-        startDate: values.startDate,
-        dueDate: values.dueDate,
-        startNow: values.startNow
-      })
-      .then(() => setDialogState(null));
+    if (!dialogState.milestone) return;
+    void updateMutation.mutateAsync({
+      milestoneId: dialogState.milestone.id,
+      name: values.name,
+      parentMilestoneId: values.parentMilestoneId,
+      startDate: values.startDate,
+      dueDate: values.dueDate,
+      startNow: values.startNow
+    });
   };
 
   const changeDisplay = (next: OverviewDisplay) => {
@@ -167,6 +149,83 @@ export function MilestonesPage() {
     }
   };
 
+  const openCreate = () => {
+    createMutation.reset();
+    updateMutation.reset();
+    setDialogState({ mode: "create" });
+  };
+
+  const openDialog = (mode: MilestoneDialogMode, milestone: MilestoneRow) => {
+    createMutation.reset();
+    updateMutation.reset();
+    setDialogState({ mode, milestone });
+  };
+
+  const dialogBusy = createMutation.isPending || updateMutation.isPending;
+  const dialogFailed = createMutation.isError || updateMutation.isError;
+  const dialogError =
+    (createMutation.error instanceof Error ? createMutation.error.message : undefined) ??
+    (updateMutation.error instanceof Error ? updateMutation.error.message : undefined);
+
+  const header = <MilestonesHeader projectId={projectId} onAddMilestone={openCreate} />;
+  const toolbar = (
+    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Milestone display">
+        {displayOptions.map((option) => (
+          <Button
+            key={option.value}
+            size="sm"
+            variant={display === option.value ? "primary" : "secondary"}
+            aria-pressed={display === option.value}
+            onClick={() => changeDisplay(option.value)}
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
+      <p className="ml-auto text-xs text-slate-600">
+        <span className="font-medium text-slate-900">{dashboard?.openCount ?? grouped.open.length}</span> open
+        <span className="text-slate-300"> · </span>
+        <span className="font-medium text-slate-900">{dashboard?.upcomingCount ?? grouped.upcoming.length}</span>{" "}
+        upcoming
+        <span className="text-slate-300"> · </span>
+        <span className="font-medium text-slate-900">{dashboard?.completedCount ?? grouped.completed.length}</span>{" "}
+        completed
+      </p>
+    </WorkbenchToolbar>
+  );
+
+  const dialog = (
+    <MilestoneDialog
+      open={Boolean(dialogState)}
+      mode={dialogState?.mode ?? "create"}
+      milestone={dialogState?.milestone}
+      parentOptions={parentOptions}
+      saving={dialogBusy}
+      saveStatus={dialogBusy ? "saving" : dialogFailed ? "failed" : "idle"}
+      saveError={dialogError}
+      onCancel={() => setDialogState(null)}
+      onSubmit={submitDialog}
+    />
+  );
+
+  const deleteDialog = (
+    <ConfirmDialog
+      open={Boolean(pendingDelete)}
+      title="Delete milestone"
+      description={
+        pendingDelete
+          ? `Delete ${pendingDelete.name}? Linked runs stay in the project but lose this milestone.`
+          : undefined
+      }
+      confirmLabel="Delete milestone"
+      variant="danger"
+      confirmDisabled={deleteMutation.isPending}
+      onCancel={() => setPendingDelete(null)}
+      onConfirm={() => pendingDelete && void deleteMutation.mutateAsync(pendingDelete.id)}
+    />
+  );
+
   const renderSection = (
     title: string,
     rows: Array<MilestoneRow & { depth: number }>,
@@ -174,11 +233,11 @@ export function MilestonesPage() {
   ) => {
     if (rows.length === 0) return null;
     return (
-      <section className={density.panel}>
-        <div className={density.panelHeader}>
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
-        </div>
+      <section className="overflow-hidden border border-slate-300 bg-white">
+        <header className="border-b border-slate-200 px-3 py-2">
+          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          {description ? <p className="text-xs text-slate-500">{description}</p> : null}
+        </header>
         <ul className="px-3">
           {rows.map((row) => {
             const status = lifecycleOf(row);
@@ -191,13 +250,13 @@ export function MilestonesPage() {
                 rollup={summaryById.get(row.id)}
                 display={display}
                 isMutating={updateMutation.isPending || deleteMutation.isPending}
-                onEdit={(milestone) => setDialogState({ mode: "edit", milestone })}
-                onAddSubMilestone={(milestone) => setDialogState({ mode: "add-sub", milestone })}
-                onStart={(milestone) => setDialogState({ mode: "start", milestone })}
+                onEdit={(milestone) => openDialog("edit", milestone)}
+                onAddSubMilestone={(milestone) => openDialog("add-sub", milestone)}
+                onStart={(milestone) => openDialog("start", milestone)}
                 onToggleComplete={(milestoneId, isCompleted) =>
                   void updateMutation.mutateAsync({ milestoneId, isCompleted })
                 }
-                onDelete={(milestoneId) => void deleteMutation.mutateAsync(milestoneId)}
+                onDelete={(milestone) => setPendingDelete(milestone)}
               />
             );
           })}
@@ -206,141 +265,49 @@ export function MilestonesPage() {
     );
   };
 
-  if (isLoading) return <LoadingState message="Loading milestones..." />;
-  if (isError) return <ErrorState title="Could not load milestones" onRetry={() => refetch()} />;
+  if (isLoading) {
+    return (
+      <WorkbenchPage data-milestones-workbench="">
+        {header}
+        <LoadingState message="Loading milestones..." />
+        {dialog}
+      </WorkbenchPage>
+    );
+  }
+  if (isError) {
+    return (
+      <WorkbenchPage data-milestones-workbench="">
+        {header}
+        <ErrorState title="Could not load milestones" onRetry={() => refetch()} />
+        {dialog}
+      </WorkbenchPage>
+    );
+  }
+
+  const isEmpty = !data || data.length === 0;
 
   return (
-    <div className={`grid ${density.pageGap} lg:grid-cols-[minmax(0,1fr)_20rem]`}>
-      <main className={density.mainStack}>
-        <ProjectContentHeader
-          projectId={projectId}
-          variant="milestones"
-          title="Milestones"
-          subtitle="Release progress grouped by lifecycle status."
-          secondaryActions={
-            <div className="inline-flex rounded border border-slate-300 bg-white p-0.5" aria-label="Milestone display">
-              {displayOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={
-                    display === option.value
-                      ? "rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white"
-                      : "rounded px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                  }
-                  onClick={() => changeDisplay(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          }
+    <WorkbenchPage data-milestones-workbench="">
+      {header}
+      {toolbar}
+      {isEmpty ? (
+        <EmptyState
+          title="No milestones yet"
+          description="Use Add Milestone to plan a release. Reports stay in More actions."
         />
-
-        {!data || data.length === 0 ? (
-          <EmptyState title="No milestones yet" description="Milestone list will appear here." />
-        ) : (
-          <>
-            {renderSection("Open", grouped.open)}
-            {renderSection(
-              "Upcoming",
-              grouped.upcoming,
-              "Upcoming milestones have a future start date and can be started when work begins."
-            )}
-            {renderSection("Completed", grouped.completed)}
-          </>
-        )}
-
-        {dashboard ? (
-          <MilestoneDashboardPanel projectId={projectId} dashboard={dashboard} itemsById={summaryById} compact />
-        ) : null}
-      </main>
-
-      <aside className={density.sidebarStack}>
-        <section className={density.sidebarPanel}>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add Milestone</h2>
-          <div className={density.formGrid}>
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Name</span>
-              <input
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-                placeholder="e.g. Sprint 12 / Release 2.1"
-                value={newMilestoneName}
-                onChange={(e) => setNewMilestoneName(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Parent milestone</span>
-              <select
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-                value={parentMilestoneId}
-                onChange={(e) => setParentMilestoneId(e.target.value)}
-              >
-                <option value="">None (top level)</option>
-                {parentOptions.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Start date</span>
-              <input
-                type="date"
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Due date</span>
-              <input
-                type="date"
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </label>
-          </div>
-          <button
-            className="mt-3 w-full rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            disabled={!newMilestoneName.trim() || createMutation.isPending}
-            onClick={submitSidebarCreate}
-          >
-            Add milestone
-          </button>
-        </section>
-
-        <section className={density.sidebarPanel}>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Milestone Count</h2>
-          <p className="mt-2 text-sm text-slate-700">
-            <span className="font-semibold text-slate-900">{dashboard?.openCount ?? grouped.open.length}</span> open and{" "}
-            <span className="font-semibold text-slate-900">
-              {dashboard?.completedCount ?? grouped.completed.length}
-            </span>{" "}
-            completed
-          </p>
-          <Link
-            to={`/projects/${projectId}/reports/milestones`}
-            className="mt-3 inline-block text-sm font-medium text-indigo-800 hover:underline"
-          >
-            Milestone summary report
-          </Link>
-        </section>
-      </aside>
-
-      {dialogState ? (
-        <MilestoneDialog
-          open
-          mode={dialogState.mode}
-          milestone={dialogState.milestone}
-          parentOptions={parentOptions}
-          saving={createMutation.isPending || updateMutation.isPending}
-          onCancel={() => setDialogState(null)}
-          onSubmit={submitDialog}
-        />
-      ) : null}
-    </div>
+      ) : (
+        <>
+          {renderSection("Open", grouped.open)}
+          {renderSection(
+            "Upcoming",
+            grouped.upcoming,
+            "Upcoming milestones have a future start date and can be started when work begins."
+          )}
+          {renderSection("Completed", grouped.completed)}
+        </>
+      )}
+      {dialog}
+      {deleteDialog}
+    </WorkbenchPage>
   );
 }

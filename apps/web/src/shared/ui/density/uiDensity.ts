@@ -4,6 +4,10 @@ export type UiDensitySurface = "case-repository" | "run-execution" | "planning-h
 
 export const DEFAULT_UI_DENSITY: UiDensity = "comfortable";
 
+export function surfaceDefaultUiDensity(surface: UiDensitySurface): UiDensity {
+  return surface === "run-execution" ? "compact" : DEFAULT_UI_DENSITY;
+}
+
 export function uiDensityStorageKey(
   projectId: string,
   surface: UiDensitySurface,
@@ -22,8 +26,10 @@ export function readUiDensity(
   surface: UiDensitySurface,
   userId?: string | null
 ): UiDensity {
-  if (typeof window === "undefined") return DEFAULT_UI_DENSITY;
-  return parseUiDensity(window.localStorage.getItem(uiDensityStorageKey(projectId, surface, userId)));
+  if (typeof window === "undefined") return surfaceDefaultUiDensity(surface);
+  const stored = window.localStorage.getItem(uiDensityStorageKey(projectId, surface, userId));
+  if (stored == null || stored === "") return surfaceDefaultUiDensity(surface);
+  return parseUiDensity(stored);
 }
 
 export function writeUiDensity(

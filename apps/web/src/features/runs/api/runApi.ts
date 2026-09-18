@@ -13,6 +13,7 @@ import type {
   TestResultStepItem
 } from "../types";
 import { appendRunInstanceListParams, type RunInstanceListFilters } from "../utils/runInstanceListParams";
+import { isResultAttachmentPresignUnavailable } from "../utils/resultComposerModel";
 
 type ApiRun = {
   id: string;
@@ -263,8 +264,8 @@ export async function addRunResult(input: {
   aiQualityRating?: number;
   aiLatencyMs?: number;
   aiTraces?: string;
-}) {
-  return apiFetch(`/api/runs/${input.runId}/results`, {
+}): Promise<CreatedRunResult> {
+  return apiFetch<CreatedRunResult>(`/api/runs/${input.runId}/results`, {
     method: "POST",
     body: {
       testId: input.testId,
@@ -283,6 +284,11 @@ export async function addRunResult(input: {
     }
   });
 }
+
+export type CreatedRunResult = {
+  id?: string;
+  data?: { id?: string };
+};
 
 export type BulkRunResultItem = {
   index: number;
@@ -783,6 +789,25 @@ export async function uploadResultAttachmentViaPresign(
       fileSize: String(file.size)
     }
   });
+}
+
+export async function associateResultAttachment(
+  resultId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+) {
+  try {
+    return await uploadResultAttachmentViaPresign(resultId, file, onProgress);
+  } catch (error) {
+    if (!isResultAttachmentPresignUnavailable(error)) throw error;
+    onProgress?.(100);
+    return addResultAttachment(resultId, {
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+      storagePath: `local://results/${resultId}/${file.name}`,
+      fileSize: String(file.size)
+    });
+  }
 }
 
 type AttachmentDownloadUrlResponse = {

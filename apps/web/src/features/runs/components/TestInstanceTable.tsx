@@ -1,24 +1,26 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 import {
   hasRangeMultiSelectModifier,
   resolveRangeMultiSelectClick
 } from "../../../shared/selection/rangeMultiSelect";
 import type { TestInstanceRow } from "../types";
-import { CommentComposer } from "../../comments/CommentComposer";
-import { DefectKeyInput } from "./DefectKeyInput";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
-import type { ProjectStatusOption } from "../utils/projectStatuses";
-import { StatusPicker, pickDefaultStatusOption } from "./StatusPicker";
-import { UntestedPolicyHint } from "./UntestedPolicyHint";
+import { pickDefaultStatusOption } from "./StatusPicker";
 import type { ResultStatus } from "./resultEntryTypes";
+import { SaveFeedback, type SaveFeedbackStatus } from "../../../shared/ui";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
-import { normalizeElapsedInput } from "./resultEntryUtils";
 import type { ProjectMemberRow } from "../../projects/api/settingsApi";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import { RUN_LIST_COLUMN_LABELS } from "../utils/runInstanceColumns";
 import { tableDensityClasses, type UiDensity } from "../../../shared/ui/density/uiDensity";
+import { isEvidenceRequiringStatus } from "../utils/runSelectedTestState";
+import {
+  runTestRowClassName,
+  runTestTitleClassName,
+  showInlineAssigneeActions
+} from "../utils/runExecutionDensity";
 
 function formatCaseMeta(value: string | null | undefined) {
   if (!value) return "—";
@@ -51,7 +53,16 @@ type Props = {
     testId: string,
     payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
   ) => void;
+  onComposeResult?: (instance: TestInstanceRow, status: ResultStatus) => void;
   isSavingQuickResult: boolean;
+  saveFeedback?: {
+    testId: string;
+    status: SaveFeedbackStatus;
+    message: string;
+    canUndo: boolean;
+  } | null;
+  onRetrySave?: () => void;
+  onUndoSave?: () => void;
   page: number;
   totalPages: number;
   total: number;
@@ -82,7 +93,11 @@ export function TestInstanceTable(props: Props) {
     onSelectAllMatchingFilter,
     selectAllMatchingBusy,
     onQuickResultSave,
+    onComposeResult,
     isSavingQuickResult,
+    saveFeedback = null,
+    onRetrySave,
+    onUndoSave,
     page,
     totalPages,
     total,
@@ -100,33 +115,14 @@ export function TestInstanceTable(props: Props) {
     inlineStatusSelect = false,
     hidePagination = false,
     visibleColumns = [],
-    density = "comfortable"
+    density = "compact"
   } = props;
   const densityClasses = tableDensityClasses(density);
   const showPriority = visibleColumns.includes("priority");
   const showType = visibleColumns.includes("type");
   const columnCount = 6 + (showPriority ? 1 : 0) + (showType ? 1 : 0) + (onToggleSubscribe ? 1 : 0);
-  const [editingRow, setEditingRow] = useState<TestInstanceRow | null>(null);
   const statusQuery = useProjectStatuses(projectId);
   const statusOptions = statusQuery.data ?? [];
-  const [selectedStatus, setSelectedStatus] = useState<ProjectStatusOption | null>(null);
-  const [draftComment, setDraftComment] = useState("");
-  const [draftElapsed, setDraftElapsed] = useState("");
-  const [draftElapsedError, setDraftElapsedError] = useState("");
-  const [draftVersion, setDraftVersion] = useState("");
-  const [draftDefects, setDraftDefects] = useState<string[]>([]);
-  useEffect(() => {
-    if (!editingRow) return;
-    const match =
-      statusOptions.find((option) => option.canonicalStatus === editingRow.status) ??
-      pickDefaultStatusOption(statusOptions, editingRow.status as ResultStatus);
-    setSelectedStatus(match);
-    setDraftComment("");
-    setDraftElapsed("");
-    setDraftElapsedError("");
-    setDraftVersion("");
-    setDraftDefects([]);
-  }, [editingRow, statusOptions]);
 
   const selectionAnchorIndexRef = useRef<number | null>(null);
   const skipNextCheckboxChangeRef = useRef(false);
@@ -167,29 +163,6 @@ export function TestInstanceTable(props: Props) {
     if (index >= 0) selectionAnchorIndexRef.current = index;
   }
 
-  const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions);
-  const disableUntested = editingRow != null && editingRow.status !== "untested";
-
-  function closeEditor() {
-    if (isSavingQuickResult) return;
-    setEditingRow(null);
-  }
-
-  function saveDraft() {
-    if (!editingRow) return;
-    const normalizedElapsed = normalizeElapsedInput(draftElapsed);
-    setDraftElapsedError(normalizedElapsed.error ?? "");
-    if (normalizedElapsed.error) return;
-    onQuickResultSave(editingRow.id, {
-      status: activeStatus.canonicalStatus,
-      comment: draftComment.trim() || undefined,
-      elapsed: normalizedElapsed.value,
-      version: draftVersion.trim() || undefined,
-      defects: draftDefects
-    });
-    setEditingRow(null);
-  }
-
   function statusOptionForRow(row: TestInstanceRow) {
     return (
       statusOptions.find((option) => option.canonicalStatus === row.status) ??
@@ -203,11 +176,9 @@ export function TestInstanceTable(props: Props) {
       <tr
         key={row.id}
         data-test-id={row.id}
-        className={
-          selectedInstanceId === row.id
-            ? "bg-sky-50/80 hover:bg-sky-50"
-            : "cursor-pointer hover:bg-slate-50/90"
-        }
+        data-run-test-row=""
+        aria-selected={selectedInstanceId === row.id}
+        className={runTestRowClassName(selectedInstanceId === row.id)}
         onClick={() => onSelectInstance(row)}
       >
         <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
@@ -229,7 +200,11 @@ export function TestInstanceTable(props: Props) {
           />
         </td>
         <td className={`${densityClasses.cell} font-mono text-slate-800`}>{row.caseCode}</td>
-        <td className={`max-w-[24rem] truncate ${densityClasses.cell} text-slate-800`} title={row.title}>
+        <td
+          className={`${densityClasses.cell} ${runTestTitleClassName(selectedInstanceId === row.id)}`}
+          title={row.title}
+        >
+          {selectedInstanceId === row.id ? <span className="sr-only">Selected: </span> : null}
           {row.title}
         </td>
         {showPriority ? (
@@ -255,11 +230,11 @@ export function TestInstanceTable(props: Props) {
           )}
         </td>
         <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
-          <div className="space-y-1">
+          <div className={showInlineAssigneeActions(density) ? "space-y-1" : undefined}>
             <p className="truncate text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
               {memberLabelForUserId(row.assignedTo, members)}
             </p>
-            {!runClosed ? (
+            {!runClosed && showInlineAssigneeActions(density) ? (
               <TestAssigneeQuickActions
                 assignedTo={row.assignedTo}
                 currentUserId={currentUserId}
@@ -273,29 +248,46 @@ export function TestInstanceTable(props: Props) {
           </div>
         </td>
         <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
-          {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
-            <select
-              className="w-full max-w-[9rem] rounded border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-800"
-              value={statusOption.id}
-              disabled={isSavingQuickResult}
-              aria-label={`Status for ${row.caseCode}`}
-              onChange={(e) => {
-                const next = statusOptions.find((option) => option.id === e.target.value);
-                if (!next || next.isUntested) return;
-                onQuickResultSave(row.id, { status: next.canonicalStatus });
-              }}
-            >
-              {statusOptions.map((option) => (
-                <option key={option.id} value={option.id} disabled={option.isUntested}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : runClosed ? (
-            <StatusBadge status={row.status} />
-          ) : (
-            <StatusBadge status={row.status} interactive onClick={() => setEditingRow(row)} />
-          )}
+          <div className="space-y-0.5">
+            {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
+              <select
+                className={`w-full max-w-[9rem] rounded border border-slate-200 bg-white px-1.5 text-xs text-slate-800 ${
+                  density === "compact" ? "h-7 py-0" : "py-1"
+                }`}
+                value={statusOption.id}
+                disabled={isSavingQuickResult}
+                aria-label={`Status for ${row.caseCode}. Failed, Blocked, and Retest open the result composer.`}
+                title="Passed saves immediately. Failed, Blocked, and Retest open the result composer."
+                onChange={(e) => {
+                  const next = statusOptions.find((option) => option.id === e.target.value);
+                  if (!next || next.isUntested) return;
+                  if (isEvidenceRequiringStatus(next.canonicalStatus) && onComposeResult) {
+                    onComposeResult(row, next.canonicalStatus);
+                    return;
+                  }
+                  onQuickResultSave(row.id, { status: next.canonicalStatus });
+                }}
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.id} value={option.id} disabled={option.isUntested}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : runClosed ? (
+              <StatusBadge status={row.status} />
+            ) : (
+              <StatusBadge status={row.status} interactive onClick={() => onSelectInstance(row)} />
+            )}
+            {saveFeedback?.testId === row.id && saveFeedback.status !== "idle" ? (
+              <SaveFeedback
+                status={saveFeedback.status}
+                message={saveFeedback.message}
+                onRetry={saveFeedback.status === "failed" ? onRetrySave : undefined}
+                onUndo={saveFeedback.status === "saved" && saveFeedback.canUndo ? onUndoSave : undefined}
+              />
+            ) : null}
+          </div>
         </td>
         {onToggleSubscribe ? (
           <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
@@ -339,8 +331,8 @@ export function TestInstanceTable(props: Props) {
 
   return (
     <>
-      <div className="max-h-[min(70vh,720px)] overflow-auto">
-        <table className={`w-full min-w-[640px] text-left ${densityClasses.table}`}>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className={`w-full min-w-[640px] text-left ${densityClasses.table}`} data-run-density={density}>
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 font-medium uppercase tracking-wide text-slate-600 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
               <th className={`w-10 ${densityClasses.header}`} scope="col">
@@ -392,11 +384,11 @@ export function TestInstanceTable(props: Props) {
         </table>
       </div>
       {hidePagination ? (
-        <div className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
           <span className="font-medium text-slate-800">{total}</span> tests
         </div>
       ) : (
-      <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p>
             Page <span className="font-medium text-slate-800">{page}</span> of {totalPages}
@@ -443,90 +435,6 @@ export function TestInstanceTable(props: Props) {
         </div>
       </div>
       )}
-      {editingRow ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 px-4" onClick={closeEditor}>
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
-              <div className="min-w-0">
-                <p className="font-mono text-xs text-slate-500">{editingRow.caseCode}</p>
-                <h3 className="mt-1 truncate text-sm font-semibold text-slate-900">{editingRow.title}</h3>
-              </div>
-              <button type="button" className="text-xl leading-none text-slate-400 hover:text-slate-700" onClick={closeEditor}>
-                x
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <StatusPicker
-                options={statusOptions}
-                selectedId={activeStatus.id}
-                disableUntested={disableUntested}
-                onSelect={setSelectedStatus}
-              />
-              <UntestedPolicyHint visible={disableUntested} />
-
-              <CommentComposer
-                projectId={projectId}
-                label="Comment"
-                value={draftComment}
-                onChange={setDraftComment}
-                rows={3}
-                disabled={isSavingQuickResult}
-                showPreview={false}
-                textareaClassName="mt-1 min-h-24 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-              />
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-medium text-slate-600">
-                  Elapsed
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-                    placeholder="e.g. 3m 20s"
-                    value={draftElapsed}
-                    onBlur={() => {
-                      const normalized = normalizeElapsedInput(draftElapsed);
-                      setDraftElapsedError(normalized.error ?? "");
-                      if (normalized.value) setDraftElapsed(normalized.value);
-                    }}
-                    onChange={(e) => {
-                      setDraftElapsed(e.target.value);
-                      if (draftElapsedError) setDraftElapsedError("");
-                    }}
-                  />
-                  {draftElapsedError ? <span className="mt-1 block text-xs text-red-600">{draftElapsedError}</span> : null}
-                </label>
-                <label className="block text-xs font-medium text-slate-600">
-                  Version
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-                    value={draftVersion}
-                    onChange={(e) => setDraftVersion(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div>
-                <p className="mb-1 text-xs font-medium text-slate-600">Defects</p>
-                <DefectKeyInput projectId={projectId} defects={draftDefects} onChange={setDraftDefects} />
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700" onClick={closeEditor}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                  disabled={isSavingQuickResult}
-                  onClick={saveDraft}
-                >
-                  {isSavingQuickResult ? "Saving..." : "Add result"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

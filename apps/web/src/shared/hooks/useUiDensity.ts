@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 
 import {
-  DEFAULT_UI_DENSITY,
   readUiDensity,
+  surfaceDefaultUiDensity,
   writeUiDensity,
   type UiDensity,
   type UiDensitySurface
@@ -10,7 +10,7 @@ import {
 
 export function useUiDensity(projectId: string, surface: UiDensitySurface, userId?: string | null) {
   const [density, setDensityState] = useState<UiDensity>(() =>
-    projectId ? readUiDensity(projectId, surface, userId) : DEFAULT_UI_DENSITY
+    projectId ? readUiDensity(projectId, surface, userId) : surfaceDefaultUiDensity(surface)
   );
 
   const setDensity = useCallback(

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { Button } from "./Button";
+import type { ButtonSize } from "./buttonStyles";
 
 export type OverflowMenuItem = {
   id: string;
@@ -26,9 +27,15 @@ type Props = {
   label?: string;
   groups: OverflowMenuGroup[];
   align?: "left" | "right";
+  size?: ButtonSize;
 };
 
-export function OverflowMenu({ label = "More actions", groups, align = "right" }: Props) {
+export function OverflowMenu({
+  label = "More actions",
+  groups,
+  align = "right",
+  size = "md"
+}: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -111,7 +118,7 @@ export function OverflowMenu({ label = "More actions", groups, align = "right" }
       <Button
         ref={triggerRef}
         variant="secondary"
-        size="md"
+        size={size}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}

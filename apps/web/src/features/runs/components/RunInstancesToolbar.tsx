@@ -7,6 +7,7 @@ import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from
 import { countActiveRunListFilters } from "../utils/runInstanceListParams";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import { RUN_GROUP_BY_OPTIONS, RUN_SORT_OPTIONS } from "../utils/runExecutionTable";
+import { WorkbenchToolbar } from "../../../shared/ui";
 import { DensityToggle } from "../../../shared/ui/DensityToggle";
 import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import { RunColumnsDialog } from "./RunColumnsDialog";
@@ -93,8 +94,8 @@ export function RunInstancesToolbar(props: Props) {
 
   return (
     <>
-      <div className="border-b border-slate-300 bg-[#ececec]">
-        <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
+      <WorkbenchToolbar className="sticky top-0 z-20 border-b border-slate-300 bg-[#ececec]">
+        <div className="flex flex-wrap items-center gap-1 px-2 py-1">
           <button type="button" className={toolbarButtonClass} onClick={() => setColumnsDialogOpen(true)}>
             Columns
           </button>
@@ -214,7 +215,7 @@ export function RunInstancesToolbar(props: Props) {
             </label>
           </div>
         ) : null}
-      </div>
+      </WorkbenchToolbar>
       <RunColumnsDialog
         open={columnsDialogOpen}
         columns={columns}

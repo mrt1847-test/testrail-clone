@@ -25,6 +25,10 @@ import { syncProviderIssueStatus } from "../../domain/defectProviderApi.js";
 import { loadDefectIntegration } from "../integrations/defectIntegration.service.js";
 import { resolveDefectPushOutcome, toDefectApiConfig } from "../integrations/defectIssue.service.js";
 import {
+  addInMemoryResultAttachment,
+  listInMemoryResultAttachments
+} from "./resultAttachments.memory.js";
+import {
   findInMemoryResultDefectLink,
   listInMemoryResultDefectLinks,
   updateInMemoryResultDefectLinkStatus,
@@ -186,16 +190,26 @@ export async function registerResultsRoutes(
   app.post("/api/attachments", async (req, reply) => {
     const body = createAttachmentBodySchema.parse(req.body ?? {});
     if (!deps.prisma) {
+      if (!body.resultId) {
+        throw new AppError("VALIDATION_ERROR", "resultId is required", 400);
+      }
+      const created = addInMemoryResultAttachment({
+        resultId: body.resultId,
+        fileName: body.fileName,
+        contentType: body.contentType ?? null,
+        storagePath: body.storagePath,
+        fileSize: body.fileSize ?? null
+      });
       return reply.send(
         toJsonSafe({
           data: {
-            id: BigInt(Date.now()),
-            resultId: body.resultId ?? null,
-            fileName: body.fileName,
-            contentType: body.contentType ?? null,
-            storagePath: body.storagePath,
-            fileSize: body.fileSize ?? null,
-            createdAt: new Date()
+            id: created.id,
+            resultId: created.resultId,
+            fileName: created.fileName,
+            contentType: created.contentType,
+            storagePath: created.storagePath,
+            fileSize: created.fileSize,
+            createdAt: created.createdAt
           }
         })
       );
@@ -334,7 +348,20 @@ export async function registerResultsRoutes(
   app.get("/api/results/:resultId/attachments", async (req, reply) => {
     const params = resultIdParamSchema.parse(req.params);
     await requireAttachmentRoutePermission(req, deps, "read");
-    if (!deps.prisma) return reply.send(toJsonSafe([]));
+    if (!deps.prisma) {
+      return reply.send(
+        toJsonSafe(
+          listInMemoryResultAttachments(params.resultId).map((row) => ({
+            id: row.id,
+            fileName: row.fileName,
+            contentType: row.contentType,
+            storagePath: row.storagePath,
+            fileSize: row.fileSize,
+            createdAt: row.createdAt
+          }))
+        )
+      );
+    }
     const rows = await deps.prisma.attachment.findMany({
       where: {
         entityType: "result",
@@ -363,14 +390,21 @@ export async function registerResultsRoutes(
     const params = resultIdParamSchema.parse(req.params);
     const body = attachmentBodySchema.parse(req.body);
     if (!deps.prisma) {
+      const created = addInMemoryResultAttachment({
+        resultId: params.resultId,
+        fileName: body.fileName,
+        contentType: body.contentType ?? null,
+        storagePath: body.storagePath,
+        fileSize: body.fileSize ?? null
+      });
       return reply.send(
         toJsonSafe({
-          id: BigInt(Date.now()),
-          fileName: body.fileName,
-          contentType: body.contentType ?? null,
-          storagePath: body.storagePath ?? `local://results/${params.resultId.toString()}/${body.fileName}`,
-          fileSize: body.fileSize ?? null,
-          createdAt: new Date()
+          id: created.id,
+          fileName: created.fileName,
+          contentType: created.contentType,
+          storagePath: created.storagePath,
+          fileSize: created.fileSize,
+          createdAt: created.createdAt
         })
       );
     }

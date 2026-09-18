@@ -388,43 +388,43 @@ Execute these items from top to bottom unless a dependency or production defect 
 
 #### Run Execution workspace
 
-- [ ] **UI-008 P0 — Compress the Run Execution header into one workbench header.**
+- [x] **UI-008 P0 — Compress the Run Execution header into one workbench header.** ([evidence](./ux-evidence/UI-008.md): table begins ~323px at 1280×720; grouped utilities pass desktop/mobile keyboard review.)
   - Visible change: merge duplicate title, assignment, run state, and utility rows; keep result recording as the dominant workflow and move reports, export, print, duplicate, compare, and rerun into grouped utilities.
   - Component slice: reuse the workbench header and overflow patterns proven by `UI-001`.
   - Done when: the test table begins higher in the viewport and no utility control competes with result entry.
   - Maps to: `UX-010`, `UX-011`, `UX-034`.
 
-- [ ] **UI-009 P0 — Show a sticky selection action bar next to selected tests.**
+- [x] **UI-009 P0 — Show a sticky selection action bar next to selected tests.** ([evidence](./ux-evidence/UI-009.md): bar hidden at 0 selection; 2-test bulk Pass saved in-place; keyboard overflow and 1280/390 layouts pass.)
   - Visible change: after the first row selection, show selected count, result status, assignment, clear selection, and overflow immediately above or below the table.
   - Interaction rule: hide the bar at zero selection and remove the duplicate bulk-result path from distant run actions.
   - Done when: a user can select several tests and submit one bulk result without scrolling away from the selection.
   - Maps to: `UX-030`.
 
-- [ ] **UI-010 P0 — Separate one-click Pass & Next from evidence-requiring statuses.**
+- [x] **UI-010 P0 — Separate one-click Pass & Next from evidence-requiring statuses.** ([evidence](./ux-evidence/UI-010.md): 5 Pass & Next advances with QPane open; Failed/Blocked/Retest open composer uncommitted; `testId` stays consistent.)
   - Visible change: make `Pass & Next` the explicit quick action; selecting Failed, Blocked, or Retest opens the result composer with that status preselected.
   - Interaction rule: row click, previous/next, browser navigation, refresh, and Pass & Next must all use the same selected-test URL state.
   - Done when: five consecutive Pass & Next actions visibly advance five rows with the detail pane open.
   - Maps to: `UX-002`, `UX-031`.
 
-- [ ] **UI-011 P0 — Recompose result entry around evidence and completion.**
+- [x] **UI-011 P0 — Recompose result entry around evidence and completion.** ([evidence](./ux-evidence/UI-011.md): Failed+comment+JIRA-42+actual+failure.png saved from Results tab; Cancel left C1 untested.)
   - Visible change: group status, comment, actual result, defects, attachments, and Save in one focused composer tied to the selected test.
   - Interaction rule: status remains preselected when the composer was opened from a status action; Cancel returns to the unchanged test.
   - Done when: a failed result with comment, defect reference, actual result, and attachment can be recorded without visiting another panel.
   - Maps to: `UX-031`, `UX-033`.
 
-- [ ] **UI-012 P1 — Add local save, failure, retry, and undo feedback to results.**
+- [x] **UI-012 P1 — Add local save, failure, retry, and undo feedback to results.** ([evidence](./ux-evidence/UI-012.md): Failed+Retry kept C1 evidence and rolled back Untested; Saved+Undo on the affected row/pane; Pass & Next left Saved on C2 after advancing.)
   - Visible change: show Saving, Saved, and Failed next to the affected row or result pane rather than only in a global toast.
   - Interaction rule: failed optimistic updates roll back; Retry preserves entered evidence; safe updates expose a short-lived Undo.
   - Done when: users can tell which result failed and recover without re-entering its content.
   - Maps to: `UX-032`.
 
-- [ ] **UI-013 P1 — Stage attachments inside the result composer.**
+- [x] **UI-013 P1 — Stage attachments inside the result composer.** ([evidence](./ux-evidence/UI-013.md): Queued+Remove then Cancel left C1 untested; Failed attach showed Retry on the file after the result existed; Retry put failure.png on History.)
   - Visible change: show queued files, upload state, remove action, and failure state before result submission.
   - Interaction rule: associate staged files only with the successfully created result and keep History as the review/later-addition path.
   - Done when: attachment progress and ownership are unambiguous throughout save, retry, and cancel.
   - Maps to: `UX-033`.
 
-- [ ] **UI-014 P1 — Increase execution density without reducing readability.**
+- [x] **UI-014 P1 — Increase execution density without reducing readability.** ([evidence](./ux-evidence/UI-014.md): 1280×720 with pane open showed C1–C8 compact rows; empty Schedule/discussion stayed below the fold; selected row used Selected:/semibold title plus a slate edge.)
   - Visible change: use compact row and toolbar heights, remove empty default panels, and keep the workbench controls sticky inside the viewport.
   - Interaction rule: title, status, assignee, and active selection remain distinguishable by text and hierarchy, not color alone.
   - Done when: at least six test rows are visible at 1280 x 720 with the result pane open.
@@ -432,27 +432,27 @@ Execute these items from top to bottom unless a dependency or production defect 
 
 #### Shared rollout, one route at a time
 
-- [ ] **UI-015 P1 — Apply the workbench pattern to the run list.**
+- [x] **UI-015 P1 — Apply the workbench pattern to the run list.** ([evidence](./ux-evidence/UI-015.md): one Add Run; More actions held plan/compare/reports/defects; My runs and Order by in one toolbar; sidebar CTAs removed.)
   - Visible change: one compact header, one primary create action, one toolbar, and grouped utilities.
   - Done when: route-specific button, toolbar, table, modal, and feedback styling is removed or documented as an exception.
   - Maps to: `UX-012`, `UX-040`.
 
-- [ ] **UI-016 P1 — Apply the workbench pattern to My Tests.**
+- [x] **UI-016 P1 — Apply the workbench pattern to My Tests.** ([evidence](./ux-evidence/UI-016.md): workbench table/filters; More actions held team-to-do/reports; selection Add result opened Run Execution `?testId=`; no shortcut cards.)
   - Visible change: prioritize the assigned-test table, filters, and result action; demote reporting and view utilities.
   - Done when: the same action hierarchy and selection feedback used in Run Execution are reused without a parallel implementation.
   - Maps to: `UX-012`, `UX-040`.
 
-- [ ] **UI-017 P1 — Apply the workbench pattern to Milestones.**
+- [x] **UI-017 P1 — Apply the workbench pattern to Milestones.** ([evidence](./ux-evidence/UI-017.md): one Add Milestone; More actions held reports; sidebar create/count/dashboard removed; drawer used named fields.)
   - Visible change: use the shared page header, toolbar, table or list density, empty state, dialog, and feedback grammar.
   - Done when: the route has one dominant create action and no unexplained route-specific control styling.
   - Maps to: `UX-012`, `UX-040`.
 
-- [ ] **UI-018 P1 — Apply the workbench pattern to Plans.**
+- [x] **UI-018 P1 — Apply the workbench pattern to Plans.** ([evidence](./ux-evidence/UI-018.md): one Add Plan; hub Add entry; More actions held defaults/reports/print; sidebar create/count/report strip removed.)
   - Visible change: simplify page-level actions and use shared selection, overflow, dialog, and save feedback patterns.
   - Done when: plan composition remains the dominant surface and administrative actions no longer occupy permanent toolbar space.
   - Maps to: `UX-012`, `UX-040`.
 
-- [ ] **UI-019 P1 — Apply the workbench pattern to Reports.**
+- [x] **UI-019 P1 — Apply the workbench pattern to Reports.** ([evidence](./ux-evidence/UI-019.md): catalog Open + one Add report; 20-link toolbar gone; export/print/save-view in overflow.)
   - Visible change: prioritize report selection and results; group export, subscription, schedule, print, and administrative utilities by context.
   - Done when: creating or opening a report does not require scanning unrelated permanent actions.
   - Maps to: `UX-012`, `UX-040`.

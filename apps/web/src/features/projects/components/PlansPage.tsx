@@ -2,18 +2,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { Button, DataTable, WorkbenchPage, WorkbenchToolbar } from "../../../shared/ui";
+import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { workbenchDensity as density } from "../../../shared/ui/density/uiDensity";
-import { PrintLinkButton } from "../../print/components/PrintLinkButton";
-import { buildPlanPrintPath } from "../../print/api/printApi";
-import { createPlan, deletePlan, fetchPlans, fetchPlanSummary, updatePlan } from "../api/advancedApi";
-import { ReportSummaryStrip } from "./reports/ReportChrome";
+import { createPlan, deletePlan, fetchPlans, fetchPlanSummary, updatePlan, type PlanRow } from "../api/advancedApi";
+import { PlanNameDialog } from "./PlanNameDialog";
+import { PlansHeader } from "./PlansHeader";
+
+type PlanListRow = PlanRow & {
+  entryCount: number | null;
+  runCount: number | null;
+  openRunCount: number;
+  progress: number | null;
+};
 
 function progressBar(progress: number) {
   return (
-    <div className="flex min-w-36 items-center gap-2">
+    <div className="flex min-w-28 items-center gap-2">
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
       </div>
@@ -25,9 +32,10 @@ function progressBar(progress: number) {
 export function PlansPage() {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
-  const [newPlanName, setNewPlanName] = useState("");
-  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [editingPlanName, setEditingPlanName] = useState("");
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
+  const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PlanRow | null>(null);
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["plans", projectId],
     queryFn: () => fetchPlans(projectId),
@@ -42,34 +50,36 @@ export function PlansPage() {
     () => new Map((summaryQuery.data ?? []).map((row) => [row.planId, row])),
     [summaryQuery.data]
   );
-  const summaryItems = useMemo(() => {
-    const rows = summaryQuery.data ?? [];
-    const entries = rows.reduce((acc, row) => acc + row.entryCount, 0);
-    const runs = rows.reduce((acc, row) => acc + row.runCount, 0);
-    const openRuns = rows.reduce((acc, row) => acc + row.openRunCount, 0);
-    const failed = rows.reduce((acc, row) => acc + row.failed, 0);
-    return [
-      { label: "Plans", value: rows.length, tone: "neutral" as const },
-      { label: "Entries", value: entries, tone: "violet" as const },
-      { label: "Runs", value: runs, tone: "neutral" as const },
-      { label: "Open runs", value: openRuns, tone: "amber" as const },
-      { label: "Failed", value: failed, tone: "rose" as const }
-    ];
-  }, [summaryQuery.data]);
+  const openRunCount = (summaryQuery.data ?? []).reduce((acc, row) => acc + row.openRunCount, 0);
+
+  const rows = useMemo<PlanListRow[]>(
+    () =>
+      (data ?? []).map((plan) => {
+        const summary = summaryById.get(plan.id);
+        return {
+          ...plan,
+          entryCount: summary?.entryCount ?? null,
+          runCount: summary?.runCount ?? null,
+          openRunCount: summary?.openRunCount ?? 0,
+          progress: summary?.progress ?? null
+        };
+      }),
+    [data, summaryById]
+  );
 
   const createPlanMutation = useMutation({
     mutationFn: (name: string) => createPlan(projectId, { name }),
     onSuccess: () => {
+      setDialogMode(null);
       void qc.invalidateQueries({ queryKey: ["plans", projectId] });
       void qc.invalidateQueries({ queryKey: ["reports", projectId, "plan-summary"] });
-      setNewPlanName("");
     }
   });
   const updatePlanMutation = useMutation({
     mutationFn: (input: { planId: string; name: string }) => updatePlan(projectId, input.planId, { name: input.name }),
     onSuccess: () => {
-      setEditingPlanId(null);
-      setEditingPlanName("");
+      setDialogMode(null);
+      setEditingPlan(null);
       void qc.invalidateQueries({ queryKey: ["plans", projectId] });
       void qc.invalidateQueries({ queryKey: ["reports", projectId, "plan-summary"] });
     }
@@ -77,169 +87,180 @@ export function PlansPage() {
   const deletePlanMutation = useMutation({
     mutationFn: (planId: string) => deletePlan(projectId, planId),
     onSuccess: () => {
+      setPendingDelete(null);
       void qc.invalidateQueries({ queryKey: ["plans", projectId] });
       void qc.invalidateQueries({ queryKey: ["reports", projectId, "plan-summary"] });
     }
   });
 
-  if (isLoading) return <LoadingState message="Loading test plans..." />;
-  if (isError) return <ErrorState title="Could not load test plans" onRetry={() => refetch()} />;
+  const nameSaving = createPlanMutation.isPending || updatePlanMutation.isPending;
+  const nameFailed = createPlanMutation.isError || updatePlanMutation.isError;
+  const nameError =
+    (createPlanMutation.error instanceof Error ? createPlanMutation.error.message : undefined) ??
+    (updatePlanMutation.error instanceof Error ? updatePlanMutation.error.message : undefined);
+
+  const openCreate = () => {
+    createPlanMutation.reset();
+    updatePlanMutation.reset();
+    setEditingPlan(null);
+    setDialogMode("create");
+  };
+
+  const header = <PlansHeader projectId={projectId} onAddPlan={openCreate} />;
+  const toolbar = (
+    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
+      <p className="text-xs text-slate-600">
+        <span className="font-medium text-slate-900">{data?.length ?? 0}</span> plans
+        <span className="text-slate-300"> · </span>
+        <span className="font-medium text-slate-900">{openRunCount}</span> open runs
+      </p>
+    </WorkbenchToolbar>
+  );
+
+  const dialogs = (
+    <>
+      <PlanNameDialog
+        open={dialogMode !== null}
+        mode={dialogMode ?? "create"}
+        initialName={editingPlan?.name}
+        saving={nameSaving}
+        saveStatus={nameSaving ? "saving" : nameFailed ? "failed" : "idle"}
+        saveError={nameError}
+        onCancel={() => {
+          setDialogMode(null);
+          setEditingPlan(null);
+        }}
+        onSubmit={(name) => {
+          if (dialogMode === "edit" && editingPlan) {
+            void updatePlanMutation.mutateAsync({ planId: editingPlan.id, name });
+            return;
+          }
+          void createPlanMutation.mutateAsync(name);
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete plan"
+        description={
+          pendingDelete ? `Delete ${pendingDelete.name}? Generated runs stay in the project.` : undefined
+        }
+        confirmLabel="Delete plan"
+        variant="danger"
+        confirmDisabled={deletePlanMutation.isPending}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && void deletePlanMutation.mutateAsync(pendingDelete.id)}
+      />
+    </>
+  );
+
+  if (isLoading) {
+    return (
+      <WorkbenchPage data-plans-workbench="">
+        {header}
+        <LoadingState message="Loading test plans..." />
+        {dialogs}
+      </WorkbenchPage>
+    );
+  }
+  if (isError) {
+    return (
+      <WorkbenchPage data-plans-workbench="">
+        {header}
+        <ErrorState title="Could not load test plans" onRetry={() => refetch()} />
+        {dialogs}
+      </WorkbenchPage>
+    );
+  }
+
   return (
-    <div className={`grid ${density.pageGap} lg:grid-cols-[minmax(0,1fr)_20rem]`}>
-      <main className={density.mainStack}>
-        <header className={`${density.panel} px-3 py-2`}>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Test Plans</p>
-          <h2 className="text-lg font-semibold text-slate-900">Plan hub</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Entries, generated runs, and execution progress for configuration-based testing.
-          </p>
-        </header>
-
-        <ReportSummaryStrip items={summaryItems} />
-
-        {!data || data.length === 0 ? (
-          <EmptyState title="No plans yet" description="Environment matrix plans will appear here." />
-        ) : (
-          <div className={`overflow-hidden ${density.panel}`}>
-            <div className={density.panelHeader}>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Test Plans</h2>
-            </div>
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className={density.tableHeaderCell}>Plan</th>
-                  <th className={density.tableHeaderCell}>Entries</th>
-                  <th className={density.tableHeaderCell}>Runs</th>
-                  <th className={density.tableHeaderCell}>Progress</th>
-                  <th className={`${density.tableHeaderCell} text-right`}>Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.map((row) => {
-                  const summary = summaryById.get(row.id);
-                  return (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className={density.tableCell}>
-                        {editingPlanId === row.id ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              className="min-w-44 flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                              value={editingPlanName}
-                              onChange={(e) => setEditingPlanName(e.target.value)}
-                            />
-                            <button
-                              className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-                              disabled={!editingPlanName.trim() || updatePlanMutation.isPending}
-                              onClick={() =>
-                                void updatePlanMutation.mutateAsync({ planId: row.id, name: editingPlanName.trim() })
-                              }
-                            >
-                              Save
-                            </button>
-                            <button
-                              className="rounded border border-slate-300 px-2 py-1 text-xs"
-                              onClick={() => {
-                                setEditingPlanId(null);
-                                setEditingPlanName("");
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <Link to={`/projects/${projectId}/plans/${row.id}`} className="font-medium text-slate-900 hover:underline">
-                            {row.name}
-                          </Link>
-                        )}
-                      </td>
-                      <td className={`${density.tableCell} tabular-nums text-slate-700`}>{summary?.entryCount ?? "-"}</td>
-                      <td className={`${density.tableCell} text-slate-700`}>
-                        {summary ? (
-                          <>
-                            {summary.runCount}
-                            {summary.openRunCount > 0 ? (
-                              <span className="ml-1 text-xs text-slate-500">({summary.openRunCount} open)</span>
-                            ) : null}
-                          </>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className={density.tableCell}>{summary ? progressBar(summary.progress) : "-"}</td>
-                      <td className={`${density.tableCell} text-right`}>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Link
-                            to={`/projects/${projectId}/plans/${row.id}`}
-                            className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-700"
-                          >
-                            Open hub
-                          </Link>
-                          <PrintLinkButton
-                            to={buildPlanPrintPath(projectId, row.id)}
-                            label="Print"
-                            className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          />
-                          <button
-                            className="rounded border border-slate-300 px-2 py-1 text-xs"
-                            onClick={() => {
-                              setEditingPlanId(row.id);
-                              setEditingPlanName(row.name);
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-50"
-                            disabled={deletePlanMutation.isPending}
-                            onClick={() => void deletePlanMutation.mutateAsync(row.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
-
-      <aside className={density.sidebarStack}>
-        <section className={density.sidebarPanel}>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Add Plan</h2>
-          <div className={density.formGrid}>
-            <input
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-              placeholder="e.g. Release 1.2 matrix"
-              value={newPlanName}
-              onChange={(e) => setNewPlanName(e.target.value)}
-            />
-            <button
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              disabled={!newPlanName.trim() || createPlanMutation.isPending}
-              onClick={() => void createPlanMutation.mutateAsync(newPlanName.trim())}
-            >
-              Add plan
-            </button>
-          </div>
+    <WorkbenchPage data-plans-workbench="">
+      {header}
+      {toolbar}
+      {rows.length === 0 ? (
+        <EmptyState
+          title="No plans yet"
+          description="Use Add Plan to compose entries and generate runs. Reports stay in More actions."
+        />
+      ) : (
+        <section className="overflow-hidden border border-slate-300 bg-white">
+          <DataTable
+            dense
+            className="rounded-none border-0"
+            rowKey={(row) => row.id}
+            rows={rows}
+            columns={[
+              {
+                key: "name",
+                header: "Plan",
+                cell: (row) => (
+                  <Link
+                    to={`/projects/${projectId}/plans/${row.id}`}
+                    className="font-medium text-slate-900 underline-offset-2 hover:underline"
+                  >
+                    {row.name}
+                  </Link>
+                )
+              },
+              {
+                key: "entries",
+                header: "Entries",
+                headerClassName: "hidden sm:table-cell",
+                cellClassName: "hidden sm:table-cell tabular-nums text-slate-700",
+                cell: (row) => row.entryCount ?? "—"
+              },
+              {
+                key: "runs",
+                header: "Runs",
+                headerClassName: "hidden md:table-cell",
+                cellClassName: "hidden md:table-cell text-slate-700",
+                cell: (row) =>
+                  row.runCount == null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {row.runCount}
+                      {row.openRunCount > 0 ? (
+                        <span className="ml-1 text-xs text-slate-500">({row.openRunCount} open)</span>
+                      ) : null}
+                    </>
+                  )
+              },
+              {
+                key: "progress",
+                header: "Progress",
+                headerClassName: "hidden md:table-cell",
+                cellClassName: "hidden md:table-cell",
+                cell: (row) => (row.progress == null ? "—" : progressBar(row.progress))
+              },
+              {
+                key: "actions",
+                header: "Action",
+                align: "right",
+                cell: (row) => (
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        createPlanMutation.reset();
+                        updatePlanMutation.reset();
+                        setEditingPlan(row);
+                        setDialogMode("edit");
+                      }}
+                    >
+                      Rename
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => setPendingDelete(row)}>
+                      Delete
+                    </Button>
+                  </div>
+                )
+              }
+            ]}
+          />
         </section>
-
-        <section className={density.sidebarPanel}>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Plan Count</h2>
-          <p className="mt-2 text-sm text-slate-700">
-            <span className="font-semibold text-slate-900">{data?.length ?? 0}</span> plans with{" "}
-            <span className="font-semibold text-slate-900">
-              {(summaryQuery.data ?? []).reduce((acc, row) => acc + row.openRunCount, 0)}
-            </span>{" "}
-            open runs.
-          </p>
-          <Link to={`/projects/${projectId}/reports/plans`} className="mt-3 inline-block text-sm font-medium text-indigo-800 hover:underline">
-            Plan summary report
-          </Link>
-        </section>
-      </aside>
-    </div>
+      )}
+      {dialogs}
+    </WorkbenchPage>
   );
 }

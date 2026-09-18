@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { Button, buttonClassName } from "../../../shared/ui";
 import { buildMilestonePrintPath } from "../../print/api/printApi";
-import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import type { MilestoneSummaryRow as MilestoneSummary } from "../api/milestoneSummaryApi";
 import type { MilestoneLifecycleStatus, MilestoneRow } from "../api/planningApi";
 import { MilestoneLifecycleBadge } from "./MilestoneLifecycleBadge";
@@ -20,7 +20,7 @@ type MilestoneSummaryRowProps = {
   onAddSubMilestone: (row: MilestoneRow) => void;
   onStart: (row: MilestoneRow) => void;
   onToggleComplete: (milestoneId: string, isCompleted: boolean) => void;
-  onDelete: (milestoneId: string) => void;
+  onDelete: (row: MilestoneRow) => void;
   isMutating?: boolean;
 };
 
@@ -80,41 +80,32 @@ export function MilestoneSummaryRow({
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                 <span>{formatDate(row.dueDate)}</span>
                 <span aria-hidden="true">|</span>
-                <button
-                  type="button"
-                  className="text-indigo-800 hover:underline disabled:text-slate-400"
-                  disabled={isMutating}
-                  onClick={() => onEdit(row)}
-                >
+                <Button variant="link" size="sm" disabled={isMutating} onClick={() => onEdit(row)}>
                   Edit
-                </button>
+                </Button>
                 <span aria-hidden="true">|</span>
-                <button
-                  type="button"
-                  className="text-indigo-800 hover:underline disabled:text-slate-400"
-                  disabled={isMutating}
-                  onClick={() => onAddSubMilestone(row)}
-                >
-                  Add Milestone
-                </button>
+                <Button variant="link" size="sm" disabled={isMutating} onClick={() => onAddSubMilestone(row)}>
+                  Add sub-milestone
+                </Button>
                 <span aria-hidden="true">|</span>
-                <button
-                  type="button"
-                  className="text-indigo-800 hover:underline disabled:text-slate-400"
+                <Button
+                  variant="link"
+                  size="sm"
                   disabled={isMutating}
                   onClick={() => onToggleComplete(row.id, status !== "completed")}
                 >
                   {status === "completed" ? "Reopen" : "Complete"}
-                </button>
+                </Button>
                 <span aria-hidden="true">|</span>
-                <button
-                  type="button"
-                  className="text-rose-700 hover:underline disabled:text-slate-400"
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-rose-700"
                   disabled={isMutating}
-                  onClick={() => onDelete(row.id)}
+                  onClick={() => onDelete(row)}
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>
@@ -124,20 +115,18 @@ export function MilestoneSummaryRow({
                 <MilestoneScheduleBadge status={rollup.forecast.scheduleStatus} />
               </span>
             ) : null}
-            <PrintLinkButton
+            <Link
+              className={buttonClassName({ variant: "secondary", size: "sm" })}
               to={buildMilestonePrintPath(projectId, row.id)}
-              label="Print"
-              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            />
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Print
+            </Link>
             {status === "upcoming" ? (
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-                disabled={isMutating}
-                onClick={() => onStart(row)}
-              >
+              <Button size="sm" variant="secondary" disabled={isMutating} onClick={() => onStart(row)}>
                 Start
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

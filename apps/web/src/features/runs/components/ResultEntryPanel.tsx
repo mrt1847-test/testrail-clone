@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { CommentComposer } from "../../comments/CommentComposer";
 import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
+import { Button, FormField, SaveFeedback } from "../../../shared/ui";
 import { DefectKeyInput } from "./DefectKeyInput";
 import { ElapsedTimerField } from "./ElapsedTimerField";
 import {
@@ -27,6 +28,14 @@ import {
   normalizeElapsedInput,
   runningElapsedSeconds
 } from "./resultEntryUtils";
+import {
+  applyCaseActualResult,
+  canRemoveStagedComposerFile,
+  mergeStagedComposerFiles,
+  stagedComposerStatusLabel,
+  type StagedComposerFile,
+  type StagedComposerUploadPatch
+} from "../utils/resultComposerModel";
 
 export type { ResultStatus, ResultSubmitPayload } from "./resultEntryTypes";
 
@@ -41,7 +50,14 @@ type ResultEntryPanelProps = {
   hasResultHistory?: boolean;
   aiEvaluation?: { expectedOutput?: string };
   showInstanceHeader?: boolean;
-  onSubmit: (payload: ResultSubmitPayload) => void;
+  initialStatus?: ResultStatus | null;
+  onSubmit: (payload: ResultSubmitPayload) => void | Promise<void>;
+  onCancel?: () => void;
+  saveFeedback?: { status: "idle" | "saving" | "saved" | "failed"; message?: string; canUndo?: boolean } | null;
+  onRetrySave?: () => void;
+  onUndoSave?: () => void;
+  attachmentUploadById?: Record<string, StagedComposerUploadPatch>;
+  onRetryStagedAttachment?: (id: string) => void;
 };
 
 export function ResultEntryPanel({
@@ -55,13 +71,22 @@ export function ResultEntryPanel({
   hasResultHistory = false,
   aiEvaluation,
   showInstanceHeader = true,
-  onSubmit
+  initialStatus = null,
+  onSubmit,
+  onCancel,
+  saveFeedback = null,
+  onRetrySave,
+  onUndoSave,
+  attachmentUploadById,
+  onRetryStagedAttachment
 }: ResultEntryPanelProps) {
   const statusQuery = useProjectStatuses(projectId);
   const statusOptions = statusQuery.data ?? [];
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatusOption | null>(null);
   const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions);
   const [comment, setComment] = useState("");
+  const [actualResult, setActualResult] = useState("");
+  const [stagedFiles, setStagedFiles] = useState<StagedComposerFile[]>([]);
   const [elapsed, setElapsed] = useState("");
   const [elapsedError, setElapsedError] = useState("");
   const [elapsedBaseSeconds, setElapsedBaseSeconds] = useState(0);
@@ -111,6 +136,14 @@ export function ResultEntryPanel({
     if (elapsedError || Object.values(customValueErrors).some(Boolean)) setShowDetails(true);
   }, [customValueErrors, elapsedError]);
 
+  useEffect(() => {
+    if (!initialStatus || statusOptions.length === 0) return;
+    const match =
+      statusOptions.find((option) => option.canonicalStatus === initialStatus) ??
+      pickDefaultStatusOption(statusOptions, initialStatus);
+    setSelectedStatus(match);
+  }, [initialStatus, statusOptions]);
+
   function startElapsedTimer() {
     const normalized = normalizeElapsedInput(elapsed);
     setElapsedError(normalized.error ?? "");
@@ -141,7 +174,7 @@ export function ResultEntryPanel({
     return Object.keys(errors).length === 0;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const elapsedForSubmit = isElapsedTimerRunning ? formatElapsed(runningElapsedSeconds(elapsedBaseSeconds, elapsedStartedAt)) : elapsed;
     const normalizedElapsed = normalizeElapsedInput(elapsedForSubmit);
     setElapsedError(normalizedElapsed.error ?? "");
@@ -152,39 +185,57 @@ export function ResultEntryPanel({
     );
     const parsedQuality = aiQualityRating.trim() ? Number(aiQualityRating) : undefined;
     const parsedLatency = aiLatencyMs.trim() ? Number(aiLatencyMs) : undefined;
+    const trimmedActual = actualResult.trim();
 
-    onSubmit({
-      status: activeStatus.canonicalStatus,
-      comment: comment.trim() || undefined,
-      elapsed: normalizedElapsed.value,
-      version: version.trim() || undefined,
-      defects,
-      customValues: submittedCustomValues,
-      ...(showAiEvaluation
-        ? {
-            aiActualOutput: aiActualOutput.trim() || undefined,
-            aiQualityRating:
-              parsedQuality !== undefined && Number.isInteger(parsedQuality) ? parsedQuality : undefined,
-            aiLatencyMs: parsedLatency !== undefined && Number.isInteger(parsedLatency) ? parsedLatency : undefined,
-            aiTraces: aiTraces.trim() || undefined
-          }
-        : {}),
-      stepResults: stepResults.map((step, index) => ({
-        stepOrder: Number.isInteger(step.stepOrder) && step.stepOrder > 0 ? step.stepOrder : index + 1,
-        status: step.status,
-        actualResult: step.actualResult.trim() || undefined,
-        comment: step.comment.trim() || undefined
-      })),
-      scenarioResults:
-        caseScenarios.length > 0
-          ? scenarioResults.map((row) => ({
-              caseScenarioId: row.caseScenarioId,
-              status: row.status,
-              comment: row.comment.trim() || undefined
-            }))
-          : undefined
-    });
+    try {
+      await onSubmit({
+        status: activeStatus.canonicalStatus,
+        comment: comment.trim() || undefined,
+        elapsed: normalizedElapsed.value,
+        version: version.trim() || undefined,
+        defects,
+        customValues: submittedCustomValues,
+        actualResult: trimmedActual || undefined,
+        attachments: stagedFiles.map((row) => row.file),
+        stagedAttachments: stagedFiles.map((row) => ({ id: row.id, file: row.file })),
+        ...(showAiEvaluation
+          ? {
+              aiActualOutput: aiActualOutput.trim() || undefined,
+              aiQualityRating:
+                parsedQuality !== undefined && Number.isInteger(parsedQuality) ? parsedQuality : undefined,
+              aiLatencyMs: parsedLatency !== undefined && Number.isInteger(parsedLatency) ? parsedLatency : undefined,
+              aiTraces: aiTraces.trim() || undefined
+            }
+          : {}),
+        stepResults: applyCaseActualResult(
+          stepResults.map((step, index) => ({
+            stepOrder: Number.isInteger(step.stepOrder) && step.stepOrder > 0 ? step.stepOrder : index + 1,
+            status: step.status,
+            actualResult: step.actualResult.trim() || undefined,
+            comment: step.comment.trim() || undefined
+          })),
+          trimmedActual
+        ),
+        scenarioResults:
+          caseScenarios.length > 0
+            ? scenarioResults.map((row) => ({
+                caseScenarioId: row.caseScenarioId,
+                status: row.status,
+                comment: row.comment.trim() || undefined
+              }))
+            : undefined
+      });
+      resetComposerDraft();
+    } catch {
+      // Parent owns Failed/Retry; keep the entered evidence for recovery.
+    }
+  }
+
+  function resetComposerDraft() {
+    setSelectedStatus(null);
     setComment("");
+    setActualResult("");
+    setStagedFiles([]);
     setElapsed("");
     setElapsedError("");
     setElapsedBaseSeconds(0);
@@ -199,11 +250,23 @@ export function ResultEntryPanel({
     setAiQualityRating("");
     setAiLatencyMs("");
     setAiTraces("");
+    setShowDetails(false);
   }
 
-  const detailsCount = [elapsed, version, defects.length > 0 ? defects.join(",") : "", activeResultFields.length > 0 ? "fields" : ""].filter(
-    Boolean
-  ).length;
+  useEffect(() => {
+    if (saveFeedback?.status === "saved") resetComposerDraft();
+  }, [saveFeedback?.status]);
+
+  function handleCancel() {
+    resetComposerDraft();
+    onCancel?.();
+  }
+
+  const detailsCount = [elapsed, version, activeResultFields.length > 0 ? "fields" : ""].filter(Boolean).length;
+  const visibleStagedFiles = stagedFiles.map((row) => {
+    const overlay = attachmentUploadById?.[row.id];
+    return overlay ? { ...row, ...overlay } : row;
+  });
 
   return (
     <div className="space-y-3 text-sm text-slate-700">
@@ -216,26 +279,134 @@ export function ResultEntryPanel({
         <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Record result</p>
       )}
 
-      <div className="space-y-3">
-        <StatusPicker
-          options={statusOptions}
-          selectedId={activeStatus.id}
-          disableUntested={disableUntested}
-          onSelect={setSelectedStatus}
-        />
+      <div
+        className="space-y-3"
+        data-result-composer=""
+        data-composer-status={initialStatus ?? activeStatus.canonicalStatus}
+        data-staged-attachment-count={stagedFiles.length}
+      >
+        <div role="group" aria-label="Result status">
+          <StatusPicker
+            options={statusOptions}
+            selectedId={activeStatus.id}
+            disableUntested={disableUntested}
+            onSelect={setSelectedStatus}
+          />
+        </div>
         <UntestedPolicyHint visible={disableUntested} />
         <ResultCorrectionPolicyHint hasHistory={hasResultHistory} />
 
-        <CommentComposer
-          projectId={projectId}
-          label="Comment"
-          value={comment}
-          onChange={setComment}
-          rows={3}
-          placeholder="Add a short note for this result"
-          disabled={isSubmitting}
-          textareaClassName="mt-1 min-h-20 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-        />
+        <FormField label="Comment">
+          {(control) => (
+            <CommentComposer
+              id={control.id}
+              projectId={projectId}
+              value={comment}
+              onChange={setComment}
+              rows={3}
+              placeholder="Add a short note for this result"
+              disabled={isSubmitting}
+              textareaClassName="min-h-20 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+            />
+          )}
+        </FormField>
+
+        <FormField label="Actual result">
+          {(control) => (
+            <textarea
+              {...control}
+              rows={3}
+              disabled={isSubmitting}
+              value={actualResult}
+              placeholder="What actually happened"
+              className="min-h-20 w-full resize-y rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+              onChange={(e) => setActualResult(e.target.value)}
+            />
+          )}
+        </FormField>
+
+        <FormField label="Defects" helpText="Issue keys are saved with this result.">
+          {(control) => <DefectKeyInput id={control.id} projectId={projectId} defects={defects} onChange={setDefects} />}
+        </FormField>
+
+        <FormField
+          label="Attachments"
+          helpText="Queued files attach after the result is saved. History is for reviewing or adding more later."
+        >
+          {(control) => (
+            <div className="space-y-2">
+              <input
+                {...control}
+                type="file"
+                multiple
+                disabled={isSubmitting}
+                data-composer-attachment-input=""
+                className="w-full min-w-0 rounded border border-slate-300 px-2 py-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700"
+                onChange={(e) => {
+                  setStagedFiles((current) => mergeStagedComposerFiles(current, Array.from(e.target.files ?? [])));
+                  e.target.value = "";
+                }}
+              />
+              {visibleStagedFiles.length === 0 ? (
+                <p className="text-xs text-slate-500">No files staged.</p>
+              ) : (
+                <ul className="space-y-2" aria-label="Staged attachments">
+                  {visibleStagedFiles.map((item) => (
+                    <li
+                      key={item.id}
+                      className="min-w-0 space-y-0.5 rounded border border-slate-200 px-2 py-1.5"
+                      data-staged-attachment=""
+                      data-staged-attachment-status={item.status}
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium text-slate-800">{item.file.name}</p>
+                          {item.status === "failed" ? (
+                            <SaveFeedback
+                              status="failed"
+                              message={item.message ?? "Couldn't attach file"}
+                              onRetry={onRetryStagedAttachment ? () => onRetryStagedAttachment(item.id) : undefined}
+                            />
+                          ) : (
+                            <p
+                              className={`text-[11px] leading-4 ${
+                                item.status === "uploaded" ? "text-emerald-700" : "text-slate-500"
+                              }`}
+                              role={item.status === "uploading" ? "status" : undefined}
+                              aria-live={item.status === "uploading" ? "polite" : undefined}
+                            >
+                              {stagedComposerStatusLabel(item.status, item.progress)}
+                            </p>
+                          )}
+                        </div>
+                        {canRemoveStagedComposerFile(item.status) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={isSubmitting && item.status !== "failed"}
+                            aria-label={`Remove ${item.file.name}`}
+                            onClick={() => setStagedFiles((current) => current.filter((row) => row.id !== item.id))}
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                      </div>
+                      {item.status === "uploading" && item.progress != null && item.progress > 0 ? (
+                        <div className="h-1 overflow-hidden rounded bg-slate-200" aria-hidden="true">
+                          <div
+                            className="h-full bg-slate-600 transition-all"
+                            style={{ width: `${Math.min(100, item.progress)}%` }}
+                          />
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </FormField>
 
         {showAiEvaluation ? (
           <AiEvaluationResultFields
@@ -250,6 +421,31 @@ export function ResultEntryPanel({
             onTracesChange={setAiTraces}
           />
         ) : null}
+
+        <div className="space-y-1 border-t border-slate-100 pt-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              className="flex-1"
+              disabled={isSubmitting}
+              onClick={() => void handleSubmit()}
+            >
+              {isSubmitting ? "Saving..." : hasResultHistory ? "Add result" : "Save result"}
+            </Button>
+            <Button type="button" variant="secondary" disabled={isSubmitting} onClick={handleCancel}>
+              Cancel
+            </Button>
+          </div>
+          {saveFeedback && saveFeedback.status !== "idle" ? (
+            <SaveFeedback
+              status={saveFeedback.status}
+              message={saveFeedback.message}
+              onRetry={saveFeedback.status === "failed" ? onRetrySave ?? (() => void handleSubmit()) : undefined}
+              onUndo={saveFeedback.status === "saved" && saveFeedback.canUndo ? onUndoSave : undefined}
+            />
+          ) : null}
+        </div>
 
         <details className="group border-t border-slate-100 pt-2" open={showDetails} onToggle={(event) => setShowDetails(event.currentTarget.open)}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-slate-700">
@@ -278,19 +474,17 @@ export function ResultEntryPanel({
               onStart={startElapsedTimer}
               onStop={stopElapsedTimer}
             />
-            <label className="block text-xs font-medium text-slate-600">
-              Version
-              <input
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-                placeholder="Build or release version"
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-              />
-            </label>
-            <div>
-              <p className="mb-1 text-xs font-medium text-slate-600">Defects</p>
-              <DefectKeyInput projectId={projectId} defects={defects} onChange={setDefects} />
-            </div>
+            <FormField label="Version">
+              {(control) => (
+                <input
+                  {...control}
+                  className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+                  placeholder="Build or release version"
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                />
+              )}
+            </FormField>
             <ResultCustomFields
               fields={activeResultFields}
               values={customValues}
@@ -316,15 +510,6 @@ export function ResultEntryPanel({
           onChange={setScenarioResults}
           disabled={isSubmitting}
         />
-
-        <button
-          type="button"
-          className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          disabled={isSubmitting}
-          onClick={handleSubmit}
-        >
-          {isSubmitting ? "Saving..." : hasResultHistory ? "Add result" : "Save result"}
-        </button>
       </div>
     </div>
   );

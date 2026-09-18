@@ -8,10 +8,18 @@ type RunSchedulePanelProps = {
   dateWarnings: string[];
   canEdit: boolean;
   isSaving: boolean;
+  embedded?: boolean;
   onSave: (patch: { startedAt: string | null; dueOn: string | null }) => Promise<void>;
 };
 
-export function RunSchedulePanel({ run, dateWarnings, canEdit, isSaving, onSave }: RunSchedulePanelProps) {
+export function RunSchedulePanel({
+  run,
+  dateWarnings,
+  canEdit,
+  isSaving,
+  embedded = false,
+  onSave
+}: RunSchedulePanelProps) {
   const [startDate, setStartDate] = useState(toDateInputValue(run.startedAt));
   const [endDate, setEndDate] = useState(toDateInputValue(run.dueOn));
   const [dirty, setDirty] = useState(false);
@@ -25,9 +33,9 @@ export function RunSchedulePanel({ run, dateWarnings, canEdit, isSaving, onSave 
   const closedLabel = run.closedAt ? new Date(run.closedAt).toLocaleString() : null;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
-      <h3 className="font-medium text-slate-900">Schedule</h3>
-      <p className="mt-1 text-xs text-slate-500">
+    <section className={embedded ? "text-sm" : "rounded-lg border border-slate-200 bg-white p-3 text-sm"}>
+      {embedded ? null : <h3 className="font-medium text-slate-900">Schedule</h3>}
+      <p className={embedded ? "text-xs text-slate-500" : "mt-1 text-xs text-slate-500"}>
         Planned start and end dates are optional. Closing a run is manual and does not happen automatically when the end
         date passes.
       </p>

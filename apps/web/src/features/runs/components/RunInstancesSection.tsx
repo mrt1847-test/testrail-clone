@@ -6,8 +6,12 @@ import type { RunInstanceGroupBy } from "../types";
 import type { RunFilterCaseType, RunFilterPriority, RunSortBy, RunSortDir } from "../utils/runInstanceListParams";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import type { TestInstanceRow } from "../types";
+import type { SaveFeedbackStatus } from "../../../shared/ui";
 import type { ResultStatus } from "./resultEntryTypes";
+import type { BulkResultFeedback } from "../hooks/useRunBulkActions";
+import type { ProjectStatusOption } from "../utils/projectStatuses";
 import { RunInstancesToolbar } from "./RunInstancesToolbar";
+import { RunSelectionActionBar } from "./RunSelectionActionBar";
 import { TestInstanceTable, type TestInstanceTableGroup } from "./TestInstanceTable";
 
 type Props = {
@@ -39,6 +43,18 @@ type Props = {
   onClearFilters: () => void;
   selectedTestIds: string[];
   setSelectedTestIds: Dispatch<SetStateAction<string[]>>;
+  statusOptions: ProjectStatusOption[];
+  bulkStatus: ResultStatus;
+  onBulkStatusChange: (value: ResultStatus) => void;
+  bulkDisableUntested: boolean;
+  bulkComment: string;
+  onBulkCommentChange: (value: string) => void;
+  canBulkSubmit: boolean;
+  isBulkPending: boolean;
+  bulkFeedback?: BulkResultFeedback | null;
+  onDismissBulkFeedback?: () => void;
+  onBulkSubmit: () => void;
+  onAssignSelected: (assignedTo: string | null) => void;
   allPageSelected: boolean;
   allFilteredSelected: boolean;
   onSelectAllMatchingFilter: () => void;
@@ -47,7 +63,16 @@ type Props = {
     testId: string,
     payload: { status: ResultStatus; comment?: string; elapsed?: string; version?: string; defects?: string[] }
   ) => void;
+  onComposeResult?: (instance: TestInstanceRow, status: ResultStatus) => void;
   isSavingQuickResult: boolean;
+  saveFeedback?: {
+    testId: string;
+    status: SaveFeedbackStatus;
+    message: string;
+    canUndo: boolean;
+  } | null;
+  onRetrySave?: () => void;
+  onUndoSave?: () => void;
   page: number;
   totalPages: number;
   total: number;
@@ -99,12 +124,28 @@ export function RunInstancesSection(props: Props) {
     onClearFilters,
     selectedTestIds,
     setSelectedTestIds,
+    statusOptions,
+    bulkStatus,
+    onBulkStatusChange,
+    bulkDisableUntested,
+    bulkComment,
+    onBulkCommentChange,
+    canBulkSubmit,
+    isBulkPending,
+    bulkFeedback,
+    onDismissBulkFeedback,
+    onBulkSubmit,
+    onAssignSelected,
     allPageSelected,
     allFilteredSelected,
     onSelectAllMatchingFilter,
     selectAllMatchingBusy,
     onQuickResultSave,
+    onComposeResult,
     isSavingQuickResult,
+    saveFeedback,
+    onRetrySave,
+    onUndoSave,
     page,
     totalPages,
     total,
@@ -128,7 +169,7 @@ export function RunInstancesSection(props: Props) {
   const listTotal = groupedTotal ?? total;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:h-full">
       <RunInstancesToolbar
         searchText={searchText}
         onSearchTextChange={onSearchTextChange}
@@ -156,6 +197,30 @@ export function RunInstancesSection(props: Props) {
         density={density}
         onDensityChange={onDensityChange}
       />
+      <RunSelectionActionBar
+        members={members}
+        statusOptions={statusOptions}
+        selectedCount={selectedTestIds.length}
+        totalMatching={listTotal}
+        allFilteredSelected={allFilteredSelected}
+        bulkStatus={bulkStatus}
+        onBulkStatusChange={onBulkStatusChange}
+        bulkDisableUntested={bulkDisableUntested}
+        bulkComment={bulkComment}
+        onBulkCommentChange={onBulkCommentChange}
+        canBulkSubmit={canBulkSubmit}
+        isBulkPending={isBulkPending}
+        bulkFeedback={bulkFeedback}
+        onDismissBulkFeedback={onDismissBulkFeedback}
+        onBulkSubmit={onBulkSubmit}
+        onClearSelection={() => setSelectedTestIds([])}
+        onSelectAllMatching={onSelectAllMatchingFilter}
+        selectAllMatchingBusy={selectAllMatchingBusy}
+        currentUserId={currentUserId}
+        onAssignSelected={onAssignSelected}
+        isAssignPending={assigningTestId === "__bulk__"}
+        readOnly={runClosed}
+      />
       <TestInstanceTable
         projectId={projectId}
         pagedInstances={pagedInstances}
@@ -168,7 +233,11 @@ export function RunInstancesSection(props: Props) {
         onSelectAllMatchingFilter={onSelectAllMatchingFilter}
         selectAllMatchingBusy={selectAllMatchingBusy}
         onQuickResultSave={onQuickResultSave}
+        onComposeResult={onComposeResult}
         isSavingQuickResult={isSavingQuickResult}
+        saveFeedback={saveFeedback}
+        onRetrySave={onRetrySave}
+        onUndoSave={onUndoSave}
         page={page}
         totalPages={totalPages}
         onPrevPage={onPrevPage}

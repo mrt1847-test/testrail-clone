@@ -3,8 +3,9 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { OverflowMenu, WorkbenchPageHeader } from "../../../../shared/ui";
 import { FilterBar, type FilterField } from "../../../../shared/ui/FilterBar";
-import { PageHeader } from "../../../../shared/ui/PageHeader";
+import { reportDetailHeaderMenuGroups } from "../../utils/reportHeaderMenu";
 import { copyTextToClipboard } from "../../../../shared/utils/clipboard";
 import {
   formatReportSummaryItems,
@@ -28,9 +29,16 @@ const toneCls: Record<ReportSummaryTone, string> = {
   violet: "border-violet-200 bg-violet-50 text-violet-900"
 };
 
-/** Page title + optional description for report drilldown routes. */
+/** Page title + catalog/admin overflow for report drilldown routes. */
 export function ReportPageHeader({ title, description }: { title: string; description?: string }) {
-  return <PageHeader title={title} description={description} />;
+  const { projectId = "" } = useParams();
+  return (
+    <WorkbenchPageHeader
+      title={title}
+      description={description}
+      utilityAction={projectId ? <OverflowMenu groups={reportDetailHeaderMenuGroups(projectId)} /> : undefined}
+    />
+  );
 }
 
 function ReportCopySummaryButton({

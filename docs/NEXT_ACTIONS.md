@@ -22,36 +22,19 @@ Goal: reduce UI clutter and make the core Test Cases and Run Execution workflows
 
 **Checklist line (exact line done when this is `[x]`):**
 
-- [ ] **UI-008 P0 — Compress the Run Execution header into one workbench header.**
+No unit is scheduled. `UI-019` shipped. Do not start `UI-020` (Settings), `UI-021`, or UI-022–UI-029 until one of them is explicitly placed here.
 
-### Scope (only what closes the line above)
+### Out of scope until scheduled
 
-- Merge duplicate title, assignment, run state, and utility rows into one workbench header.
-- Keep result recording as the dominant workflow.
-- Move reports, export, print, duplicate, compare, and rerun into grouped utilities.
-- Reuse the workbench header and overflow patterns proven by `UI-001`.
-
-### Acceptance
-
-- The test table begins higher in the viewport.
-- No utility control competes visually with result entry.
-- Grouped utilities remain keyboard accessible and usable at desktop and mobile breakpoints.
-
-### Out of scope for this batch
-
-- Selection action changes reserved for `UI-009`.
-- Result-entry behavior changes reserved for later Run Execution batches.
-- Styling routes outside Run Execution.
+- Shared Settings controls (`UI-020`).
+- Cross-route visual/accessibility regression gate (`UI-021`).
+- The deferred simplicity-review units UI-022–UI-029.
 
 ---
 
 ## Next batch candidates
 
-Pick only unchecked lines from below when replacing **Current batch**. The order is deliberate: finish the Run Execution header before adding its contextual bulk-action layer.
-
-| Suggested order | Checklist line |
-|-----------------|----------------|
-| 1 | `UI-009 P0 — Show a sticky selection action bar next to selected tests.` |
+No further rows were listed in this table after `UI-019`. Do not invent a next unit.
 
 ---
 
@@ -59,7 +42,7 @@ Pick only unchecked lines from below when replacing **Current batch**. The order
 
 ### Newly reviewed UI follow-ups — not scheduled
 
-The user requested review and documentation only for the [simplicity re-review](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). UI-022–UI-029 have been added as unchecked units in the controlling usability checklist. **Do not treat this review as permission to implement them now or advance Current batch.** Current batch remains UI-008 and the next scheduled candidate remains UI-009.
+The user requested review and documentation only for the [simplicity re-review](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). UI-022–UI-029 have been added as unchecked units in the controlling usability checklist. **Do not treat this review as permission to implement them now or advance Current batch.** No Current batch unit is scheduled after UI-019.
 
 | Review priority | Planned unit |
 | --- | --- |

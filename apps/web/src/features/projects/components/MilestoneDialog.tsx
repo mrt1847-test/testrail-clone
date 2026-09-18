@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
+import { Button, FormField, SaveFeedback, type SaveFeedbackStatus } from "../../../shared/ui";
+import { Drawer } from "../../../shared/ui/Drawer";
 import type { MilestoneRow } from "../api/planningApi";
 
-export type MilestoneDialogMode = "edit" | "add-sub" | "start";
+export type MilestoneDialogMode = "create" | "edit" | "add-sub" | "start";
 
 export type MilestoneDialogValues = {
   name?: string;
@@ -15,9 +17,11 @@ export type MilestoneDialogValues = {
 type MilestoneDialogProps = {
   open: boolean;
   mode: MilestoneDialogMode;
-  milestone: MilestoneRow;
+  milestone?: MilestoneRow | null;
   parentOptions: MilestoneRow[];
   saving?: boolean;
+  saveStatus?: SaveFeedbackStatus;
+  saveError?: string;
   onCancel: () => void;
   onSubmit: (values: MilestoneDialogValues) => void;
 };
@@ -31,12 +35,27 @@ function isoOrNull(value: string) {
   return value ? new Date(value).toISOString() : null;
 }
 
+function dialogCopy(mode: MilestoneDialogMode) {
+  if (mode === "create") {
+    return { title: "Add Milestone", confirm: "Add milestone" };
+  }
+  if (mode === "add-sub") {
+    return { title: "Add sub-milestone", confirm: "Add sub-milestone" };
+  }
+  if (mode === "start") {
+    return { title: "Start Milestone", confirm: "Start milestone" };
+  }
+  return { title: "Edit Milestone", confirm: "Save changes" };
+}
+
 export function MilestoneDialog({
   open,
   mode,
   milestone,
   parentOptions,
   saving = false,
+  saveStatus = "idle",
+  saveError,
   onCancel,
   onSubmit
 }: MilestoneDialogProps) {
@@ -47,26 +66,42 @@ export function MilestoneDialog({
 
   useEffect(() => {
     if (!open) return;
-    setName(mode === "add-sub" ? "" : milestone.name);
-    setParentMilestoneId(mode === "add-sub" ? milestone.id : (milestone.parentMilestoneId ?? ""));
-    setStartDate(mode === "start" ? new Date().toISOString().slice(0, 10) : dateInputValue(milestone.startDate));
-    setDueDate(dateInputValue(milestone.dueDate));
+    if (mode === "create") {
+      setName("");
+      setParentMilestoneId("");
+      setStartDate("");
+      setDueDate("");
+      return;
+    }
+    setName(mode === "add-sub" ? "" : milestone?.name ?? "");
+    setParentMilestoneId(mode === "add-sub" ? milestone?.id ?? "" : (milestone?.parentMilestoneId ?? ""));
+    setStartDate(mode === "start" ? new Date().toISOString().slice(0, 10) : dateInputValue(milestone?.startDate));
+    setDueDate(dateInputValue(milestone?.dueDate));
   }, [milestone, mode, open]);
 
-  if (!open) return null;
-
+  const isCreate = mode === "create";
   const isAddSub = mode === "add-sub";
   const isStart = mode === "start";
-  const title = isAddSub ? "Add Sub-milestone" : isStart ? "Start Milestone" : "Edit Milestone";
-  const confirmLabel = isAddSub ? "Add milestone" : isStart ? "Start milestone" : "Save changes";
+  const copy = dialogCopy(mode);
   const submitDisabled = saving || (!isStart && !name.trim());
-  const validParentOptions = parentOptions.filter((option) => option.id !== milestone.id);
+  const validParentOptions = parentOptions.filter((option) => option.id !== milestone?.id);
+  const inputClass = "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm";
 
   const submit = () => {
+    if (isCreate) {
+      onSubmit({
+        name: name.trim(),
+        parentMilestoneId: parentMilestoneId ? parentMilestoneId : null,
+        startDate: isoOrNull(startDate),
+        dueDate: isoOrNull(dueDate)
+      });
+      return;
+    }
+
     if (isAddSub) {
       onSubmit({
         name: name.trim(),
-        parentMilestoneId: milestone.id,
+        parentMilestoneId: milestone?.id,
         startDate: isoOrNull(startDate),
         dueDate: isoOrNull(dueDate)
       });
@@ -91,39 +126,53 @@ export function MilestoneDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="milestone-dialog-title"
-        className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-lg"
-      >
-        <h2 id="milestone-dialog-title" className="text-lg font-semibold text-slate-900">
-          {title}
-        </h2>
-        <div className="mt-4 grid gap-3">
-          {!isStart ? (
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Name</span>
+    <Drawer
+      open={open}
+      onClose={onCancel}
+      title={copy.title}
+      widthClassName="max-w-md"
+      footer={
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <SaveFeedback
+            className="mr-auto"
+            status={saveStatus === "idle" && saving ? "saving" : saveStatus}
+            message={saveStatus === "failed" ? saveError ?? "Could not save milestone." : undefined}
+          />
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" disabled={submitDisabled} loading={saving} onClick={submit}>
+            {copy.confirm}
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-4">
+        {!isStart ? (
+          <FormField label="Name" required>
+            {(control) => (
               <input
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                {...control}
+                className={inputClass}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                autoFocus
+                placeholder={isAddSub ? "Sub-milestone name" : "e.g. Sprint 12 / Release 2.1"}
               />
-            </label>
-          ) : (
-            <p className="text-sm text-slate-600">
-              Starting <span className="font-medium text-slate-900">{milestone.name}</span> moves it into active
-              milestone planning.
-            </p>
-          )}
+            )}
+          </FormField>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Starting <span className="font-medium text-slate-900">{milestone?.name}</span> moves it into active
+            milestone planning.
+          </p>
+        )}
 
-          {!isAddSub && !isStart ? (
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Parent milestone</span>
+        {!isAddSub && !isStart ? (
+          <FormField label="Parent milestone">
+            {(control) => (
               <select
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                {...control}
+                className={inputClass}
                 value={parentMilestoneId}
                 onChange={(event) => setParentMilestoneId(event.target.value)}
               >
@@ -134,49 +183,35 @@ export function MilestoneDialog({
                   </option>
                 ))}
               </select>
-            </label>
-          ) : null}
+            )}
+          </FormField>
+        ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Start date</span>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Start date">
+            {(control) => (
               <input
+                {...control}
                 type="date"
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                className={inputClass}
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-700">
-              <span>Due date</span>
+            )}
+          </FormField>
+          <FormField label="Due date">
+            {(control) => (
               <input
+                {...control}
                 type="date"
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                className={inputClass}
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
               />
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={submitDisabled}
-            onClick={submit}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {confirmLabel}
-          </button>
+            )}
+          </FormField>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }

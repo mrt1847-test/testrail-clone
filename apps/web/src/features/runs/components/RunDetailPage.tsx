@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/context/AuthContext";
@@ -13,10 +13,11 @@ import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
 import { KeyboardShortcutsDialog } from "../../../shared/ui/KeyboardShortcutsDialog";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
-import { fetchAllRunInstances, fetchRuns } from "../api/runApi";
+import { fetchAllRunInstances, fetchRuns, associateResultAttachment } from "../api/runApi";
 import type { TestInstanceRow } from "../types";
 import { useRunBulkActions } from "../hooks/useRunBulkActions";
 import { flattenGroupedInstances, mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
+import { shouldExpandRunSchedulePanel } from "../utils/runExecutionDensity";
 import {
   readJumpToNextAfterResult,
   readQpaneWidth,
@@ -33,6 +34,20 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
 import { useRunColumnPreferences } from "../hooks/useRunColumnPreferences";
 import { defaultRunInstanceListFilters } from "../utils/runInstanceListParams";
+import { nextVisibleTestId, resolveVisibleSelectedRunTest } from "../utils/runSelectedTestState";
+import { createdResultId, stagedAttachmentsFromPayload, type StagedComposerUploadPatch } from "../utils/resultComposerModel";
+import type { ResultStatus } from "./resultEntryTypes";
+import {
+  RESULT_SAVE_CLEARED_MS,
+  RESULT_SAVE_UNDO_MS,
+  canUndoResultSave,
+  overlayInstanceStatus,
+  pruneMatchedStatusOverrides,
+  resultSaveErrorMessage,
+  type ResultSaveAdvanceOptions,
+  type ResultSaveFeedback,
+  type ResultSaveRetryPayload
+} from "../utils/resultSaveFeedback";
 import {
   useAddResultAttachmentMutation,
   useAddResultDefectMutation,
@@ -55,16 +70,14 @@ import {
   useUpdateRunCompositionMutation,
   useRunTestSubscriptionsQuery,
   useTestSubscriptionMutation,
+  runKeys
 } from "../hooks/useRunsApi";
 import type { RunCompositionInfo } from "../types";
 import { CloseRunDialog } from "./CloseRunDialog";
-import { RunActionsPanel } from "./RunActionsPanel";
-import { RunDetailHeaderSecondaryActions } from "./RunDetailHeaderActions";
-import { RunExecutionStatsBar } from "./RunExecutionStatsBar";
 import { RunPlanBreadcrumb } from "./RunPlanBreadcrumb";
-import { RunHeader } from "./RunHeader";
 import { RunDetailSidebar } from "./RunDetailSidebar";
 import { RunExecutionToolbar } from "./RunExecutionToolbar";
+import { RunExecutionHeader } from "./RunExecutionHeader";
 import { RunInstancesSection } from "./RunInstancesSection";
 import { RUN_DETAIL_SHORTCUTS, useRunKeyboardShortcuts } from "../hooks/useRunKeyboardShortcuts";
 import { useRunTestNavigation } from "../hooks/useRunTestNavigation";
@@ -84,19 +97,56 @@ import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
-import { ProjectContentHeader } from "../../projects/content-header/ProjectContentHeader";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
 
 const AT_RISK_STATUSES = new Set(["failed", "blocked", "retest"]);
 
 export function RunDetailPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { projectId = "", runId = "" } = useParams();
   const [runUiDensity, setRunUiDensity] = useUiDensity(projectId, "run-execution", user?.id);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
+  const [composerStatus, setComposerStatus] = useState<ResultStatus | null>(null);
+  const [isAssociatingAttachments, setIsAssociatingAttachments] = useState(false);
+  const pendingSelectedTestIdRef = useRef<string | null>(null);
+  const selectedRef = useRef<TestInstanceRow | null>(null);
+  selectedRef.current = selected;
+  const writeSelectedTestId = useCallback(
+    (testId: string | null) => {
+      pendingSelectedTestIdRef.current = testId;
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (testId) next.set("testId", testId);
+          else next.delete("testId");
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+  const selectInstance = useCallback(
+    (instance: TestInstanceRow, options?: { composerStatus?: ResultStatus | null }) => {
+      setComposerStatus(options?.composerStatus ?? null);
+      setSelected(instance);
+      writeSelectedTestId(instance.id);
+    },
+    [writeSelectedTestId]
+  );
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<ResultSaveFeedback | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
+  const [stagedUploadById, setStagedUploadById] = useState<Record<string, StagedComposerUploadPatch>>({});
+  const saveTimersRef = useRef<{ undo: number | null; clear: number | null }>({ undo: null, clear: null });
+  const lastCommittedStatusRef = useRef<Record<string, ResultStatus>>({});
+  const saveFeedbackRef = useRef<ResultSaveFeedback | null>(null);
+  saveFeedbackRef.current = saveFeedback;
+  const stagedUploadByIdRef = useRef(stagedUploadById);
+  stagedUploadByIdRef.current = stagedUploadById;
   const [assigneeInput, setAssigneeInput] = useState("");
   const [closeRunDialogOpen, setCloseRunDialogOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
@@ -118,8 +168,7 @@ export function RunDetailPage() {
   const selectedCaseId = selected?.caseId ? Number(selected.caseId) : null;
   const urlState = useRunUrlState({
     searchParams,
-    setSearchParams,
-    selectedTestId: selected?.id ?? null
+    setSearchParams
   });
   const {
     statusFilter,
@@ -248,7 +297,6 @@ export function RunDetailPage() {
     allPageSelected,
     allFilteredSelected,
     canBulkSubmit,
-    selectedCount,
     bulkDisableUntested
   } = bulkActions;
 
@@ -392,6 +440,18 @@ export function RunDetailPage() {
     if (useGroupedExecution) return flattenGroupedInstances(groupedTableQuery.data?.groups ?? []);
     return pagedInstances;
   }, [groupedTableQuery.data?.groups, pagedInstances, useGroupedExecution]);
+  const displayedExecutionInstances = useMemo(
+    () => overlayInstanceStatus(executionInstances, statusOverrides),
+    [executionInstances, statusOverrides]
+  );
+  const displayedTableGroups = useMemo(
+    () =>
+      tableGroups.map((group) => ({
+        ...group,
+        instances: overlayInstanceStatus(group.instances, statusOverrides)
+      })),
+    [tableGroups, statusOverrides]
+  );
   const groupedTotal = groupedTableQuery.data?.total ?? filteredInstanceTotal;
   const hasSectionTree = useGroupedExecution && Boolean(suiteId && sectionsQuery.data?.sections);
   const workbenchGridClass = selected
@@ -412,48 +472,259 @@ export function RunDetailPage() {
     searchText,
     setStatusFilter,
     setInstancePage,
-    onSelectInstance: setSelected
+    onSelectInstance: selectInstance
   });
   const runLoaded = Boolean(run);
   const runClosed = run?.status === "closed";
 
+  const clearSaveTimers = useCallback(() => {
+    if (saveTimersRef.current.undo != null) window.clearTimeout(saveTimersRef.current.undo);
+    if (saveTimersRef.current.clear != null) window.clearTimeout(saveTimersRef.current.clear);
+    saveTimersRef.current = { undo: null, clear: null };
+  }, []);
+
+  useEffect(() => () => clearSaveTimers(), [clearSaveTimers]);
+
+  useEffect(() => {
+    setStatusOverrides((current) => pruneMatchedStatusOverrides(current, executionInstances));
+  }, [executionInstances]);
+
+  const resolvePreviousStatus = useCallback((testId: string): ResultStatus => {
+    const committed = lastCommittedStatusRef.current[testId];
+    if (committed) return committed;
+    const row = executionInstances.find((item) => item.id === testId);
+    if (row?.status) return row.status as ResultStatus;
+    if (selectedRef.current?.id === testId) return selectedRef.current.status as ResultStatus;
+    return "untested";
+  }, [executionInstances]);
+
+  const scheduleSavedClear = useCallback(
+    (testId: string, canUndo: boolean) => {
+      clearSaveTimers();
+      if (canUndo) {
+        saveTimersRef.current.undo = window.setTimeout(() => {
+          setSaveFeedback((current) =>
+            current?.testId === testId && current.status === "saved" ? { ...current, canUndo: false } : current
+          );
+        }, RESULT_SAVE_UNDO_MS);
+        saveTimersRef.current.clear = window.setTimeout(() => {
+          setSaveFeedback((current) => (current?.testId === testId && current.status === "saved" ? null : current));
+        }, RESULT_SAVE_UNDO_MS);
+      } else {
+        saveTimersRef.current.clear = window.setTimeout(() => {
+          setSaveFeedback((current) => (current?.testId === testId && current.status === "saved" ? null : current));
+        }, RESULT_SAVE_CLEARED_MS);
+      }
+    },
+    [clearSaveTimers]
+  );
+
+  const patchStagedUpload = useCallback((id: string, patch: StagedComposerUploadPatch) => {
+    setStagedUploadById((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+  }, []);
+
+  const associateStagedAttachments = useCallback(
+    async (resultId: string, items: Array<{ id: string; file: File }>) => {
+      if (items.length === 0) return;
+      setIsAssociatingAttachments(true);
+      const failures: string[] = [];
+      try {
+        for (const item of items) {
+          if (stagedUploadByIdRef.current[item.id]?.status === "uploaded") continue;
+          patchStagedUpload(item.id, { status: "uploading", progress: 0 });
+          try {
+            await associateResultAttachment(resultId, item.file, (progress) => {
+              patchStagedUpload(item.id, { status: "uploading", progress });
+            });
+            patchStagedUpload(item.id, { status: "uploaded", progress: 100 });
+          } catch (error) {
+            patchStagedUpload(item.id, { status: "failed", message: resultSaveErrorMessage(error) });
+            failures.push(item.file.name);
+          }
+        }
+        await queryClient.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) });
+        if (failures.length === 1) throw new Error(`Couldn't attach ${failures[0]}`);
+        if (failures.length > 1) throw new Error(`Couldn't attach ${failures.length} files`);
+      } finally {
+        setIsAssociatingAttachments(false);
+      }
+    },
+    [patchStagedUpload, queryClient]
+  );
+
   const submitRunResult = async (
     testId: string,
-    payload: {
-      status: "passed" | "failed" | "blocked" | "retest" | "untested";
-      comment?: string;
-      elapsed?: string;
-      version?: string;
-      defects?: string[];
-      customValues?: Record<string, string | number | boolean | string[] | null>;
-      stepResults?: Array<{
-        stepOrder: number;
-        status: "passed" | "failed" | "blocked" | "retest" | "untested";
-        actualResult?: string;
-        comment?: string;
-      }>;
-      scenarioResults?: Array<{
-        caseScenarioId: string;
-        status: "passed" | "failed" | "blocked" | "retest" | "untested";
-        comment?: string;
-      }>;
-      aiActualOutput?: string;
-      aiQualityRating?: number;
-      aiLatencyMs?: number;
-      aiTraces?: string;
-    },
-    options?: { advanceOnPass?: boolean }
+    payload: ResultSaveRetryPayload,
+    options?: ResultSaveAdvanceOptions
   ) => {
     if (runClosed) return;
-    await addResultMutation.mutateAsync({ testId, ...payload });
-    if (options?.advanceOnPass && jumpToNext && payload.status === "passed") {
-      testNavigation.goNextTest();
+    if (saveFeedbackRef.current?.status === "saving") return;
+    const stagedItems = stagedAttachmentsFromPayload(payload);
+    if (saveFeedbackRef.current?.status === "failed" && saveFeedbackRef.current.createdResultId && stagedItems.length > 0) {
+      const existingId = saveFeedbackRef.current.createdResultId;
+      clearSaveTimers();
+      setSaveFeedback({
+        ...saveFeedbackRef.current,
+        status: "saving",
+        message: "Saving…",
+        canUndo: false,
+        retryPayload: payload,
+        retryAdvance: options
+      });
+      try {
+        await associateStagedAttachments(existingId, stagedItems);
+        const canUndo = canUndoResultSave(saveFeedbackRef.current.previousStatus);
+        setSaveFeedback({
+          testId,
+          status: "saved",
+          message: "Saved",
+          previousStatus: saveFeedbackRef.current.previousStatus,
+          canUndo,
+          retryPayload: payload,
+          retryAdvance: options,
+          createdResultId: existingId
+        });
+        scheduleSavedClear(testId, canUndo);
+        return;
+      } catch (error) {
+        setSaveFeedback({
+          testId,
+          status: "failed",
+          message: resultSaveErrorMessage(error),
+          previousStatus: saveFeedbackRef.current.previousStatus,
+          canUndo: false,
+          retryPayload: payload,
+          retryAdvance: options,
+          createdResultId: existingId
+        });
+        throw error;
+      }
+    }
+
+    const previousStatus = resolvePreviousStatus(testId);
+    const { attachments: _attachments, stagedAttachments: _stagedAttachments, ...resultPayload } = payload;
+    clearSaveTimers();
+    setStatusOverrides((current) => ({ ...current, [testId]: payload.status }));
+    setSaveFeedback({
+      testId,
+      status: "saving",
+      message: "Saving…",
+      previousStatus,
+      canUndo: false,
+      retryPayload: payload,
+      retryAdvance: options
+    });
+
+    let createdId: string | null = null;
+    try {
+      const created = await addResultMutation.mutateAsync({ testId, ...resultPayload });
+      createdId = createdResultId(created);
+      if (createdId) setSelectedResultId(createdId);
+      lastCommittedStatusRef.current[testId] = payload.status;
+      if (createdId) {
+        await associateStagedAttachments(createdId, stagedAttachmentsFromPayload(payload));
+      }
+      const canUndo = canUndoResultSave(previousStatus);
+      setSaveFeedback({
+        testId,
+        status: "saved",
+        message: "Saved",
+        previousStatus,
+        canUndo,
+        retryPayload: payload,
+        retryAdvance: options,
+        createdResultId: createdId
+      });
+      scheduleSavedClear(testId, canUndo);
+      const nextId =
+        options?.advanceToTestId ??
+        (options?.advanceOnPass && payload.status === "passed" && jumpToNext
+          ? nextVisibleTestId(testId, executionInstances)
+          : null);
+      if (nextId && nextId !== testId) {
+        const nextRow = displayedExecutionInstances.find((row) => row.id === nextId);
+        if (nextRow) selectInstance(nextRow);
+        else writeSelectedTestId(nextId);
+      }
+    } catch (error) {
+      if (!createdId) {
+        setStatusOverrides((current) => {
+          const next = { ...current };
+          delete next[testId];
+          return next;
+        });
+      }
+      setSaveFeedback({
+        testId,
+        status: "failed",
+        message: resultSaveErrorMessage(error),
+        previousStatus,
+        canUndo: false,
+        retryPayload: payload,
+        retryAdvance: options,
+        createdResultId: createdId
+      });
+      throw error;
     }
   };
 
+  const retryResultSave = () => {
+    const current = saveFeedbackRef.current;
+    if (!current || current.status !== "failed") return;
+    void submitRunResult(current.testId, current.retryPayload, current.retryAdvance);
+  };
+
+  const retryStagedAttachment = (id: string) => {
+    const current = saveFeedbackRef.current;
+    const resultId = current?.createdResultId;
+    if (!current || !resultId) return;
+    const item = stagedAttachmentsFromPayload(current.retryPayload).find((row) => row.id === id);
+    if (!item) return;
+    void (async () => {
+      try {
+        setSaveFeedback({ ...current, status: "saving", message: "Saving…", canUndo: false });
+        await associateStagedAttachments(resultId, [item]);
+        const unfinished = stagedAttachmentsFromPayload(current.retryPayload).some(
+          (row) => stagedUploadByIdRef.current[row.id]?.status !== "uploaded"
+        );
+        if (unfinished) {
+          setSaveFeedback({
+            ...current,
+            status: "failed",
+            message: "Couldn't attach one or more files",
+            canUndo: false
+          });
+          return;
+        }
+        const canUndo = canUndoResultSave(current.previousStatus);
+        setSaveFeedback({
+          ...current,
+          status: "saved",
+          message: "Saved",
+          canUndo
+        });
+        scheduleSavedClear(current.testId, canUndo);
+      } catch (error) {
+        setSaveFeedback({
+          ...current,
+          status: "failed",
+          message: resultSaveErrorMessage(error),
+          canUndo: false
+        });
+      }
+    })();
+  };
+
+  const undoResultSave = () => {
+    const current = saveFeedbackRef.current;
+    if (!current || current.status !== "saved" || !current.canUndo) return;
+    void submitRunResult(current.testId, { status: current.previousStatus });
+  };
+
   const handlePassAndNext = () => {
-    if (!selected || runClosed) return;
-    void submitRunResult(selected.id, { status: "passed" }, { advanceOnPass: true });
+    if (!selected || runClosed || addResultMutation.isPending) return;
+    const nextId = nextVisibleTestId(selected.id, executionInstances);
+    void submitRunResult(selected.id, { status: "passed" }, { advanceToTestId: nextId });
   };
 
   useRunKeyboardShortcuts({
@@ -498,48 +769,33 @@ export function RunDetailPage() {
   };
 
   useEffect(() => {
-    const selectedTestId = searchParams.get("testId");
-    if (!selectedTestId) return;
-    if (selected?.id === selectedTestId) return;
-    const matched = executionInstances.find((row) => row.id === selectedTestId);
-    if (matched) setSelected(matched);
-  }, [executionInstances, searchParams, selected?.id]);
-
-  useEffect(() => {
     const dataReady = useGroupedExecution ? !groupedTableQuery.isLoading : !runInstancesQuery.isLoading;
     if (!dataReady) return;
-
     const urlTestId = searchParams.get("testId");
-    if (urlTestId) {
-      const matched = executionInstances.find((row) => row.id === urlTestId);
-      if (matched) {
-        if (selected?.id !== matched.id) setSelected(matched);
-        return;
-      }
-      return;
+    if (urlTestId === pendingSelectedTestIdRef.current) {
+      pendingSelectedTestIdRef.current = null;
     }
-
-    const firstVisible = executionInstances[0] ?? null;
-    if (!firstVisible) {
-      if (selected) setSelected(null);
-      return;
-    }
-    if (!selected || !executionInstances.some((row: TestInstanceRow) => row.id === selected.id)) {
-      setSelected(firstVisible);
-    }
+    const resolved = resolveVisibleSelectedRunTest({
+      urlTestId,
+      instances: displayedExecutionInstances,
+      pendingTestId: pendingSelectedTestIdRef.current,
+      current: selectedRef.current
+    });
+    setSelected(resolved.selected);
+    if (resolved.seedUrlTestId) writeSelectedTestId(resolved.seedUrlTestId);
   }, [
-    executionInstances,
+    displayedExecutionInstances,
     groupedTableQuery.isLoading,
     runInstancesQuery.isLoading,
     searchParams,
-    selected,
-    selected?.id,
-    useGroupedExecution
+    useGroupedExecution,
+    writeSelectedTestId
   ]);
 
   useEffect(() => {
     setSelectedResultId(null);
     setHistoryPage(1);
+    setStagedUploadById({});
   }, [selected?.id]);
 
   useEffect(() => {
@@ -619,7 +875,7 @@ export function RunDetailPage() {
 
   return (
     <div
-      className="space-y-4"
+      className="space-y-3"
       onContextMenu={(event) =>
         openEntityContextMenu(event, { projectId, kind: "run", entityId: runId })
       }
@@ -731,48 +987,38 @@ export function RunDetailPage() {
         />
       ) : null}
 
-      <ProjectContentHeader
+      <RunExecutionHeader
         projectId={projectId}
-        variant="run-detail"
-        title={run.name}
-        subtitle={[
-          run.environment,
-          run.milestoneId ? milestoneQuery.data?.name ?? `Milestone #${run.milestoneId}` : null,
-          run.assignedTo?.trim() ? `Assigned: ${run.assignedTo}` : "Unassigned"
-        ]
-          .filter(Boolean)
-          .join(" · ")}
         runId={runId}
-        onPushDefect={
-          selected
-            ? () => {
-                setPushDefectResultId(selectedResultId);
-                setPushDefectDialogOpen(true);
-              }
-            : undefined
-        }
-        secondaryActions={
-          <RunDetailHeaderSecondaryActions
-            projectId={projectId}
-            runId={runId}
-            suiteId={suiteId}
-            subscribedCount={subscribedTestIds.size}
-            totalTests={groupedTotal}
-            onScrollToTests={() => testNavigation.scrollToTests()}
-          />
-        }
-      />
-      <RunHeader run={run} milestoneName={milestoneQuery.data?.name} showTitle={false} />
-
-      <RunExecutionStatsBar
-        className="mt-3 lg:hidden"
-        counts={counts}
-        activeStatus={statusFilter}
-        onStatusClick={(status) => testNavigation.jumpToStatus(status)}
+        suiteId={suiteId}
+        run={run}
+        milestoneName={milestoneQuery.data?.name}
+        members={members}
+        assigneeInput={assigneeInput}
+        onAssigneeInputChange={setAssigneeInput}
+        onAssignRun={() => void assigneeMutation.mutateAsync(assigneeInput.trim() || null)}
+        isAssignPending={assigneeMutation.isPending}
+        onOpenDuplicate={() => {
+          setDuplicateName("");
+          setDuplicateCopyAssignee(true);
+          setDuplicateCopySchedule(false);
+          setDuplicateCopyEnvironment(true);
+          setDuplicateDialogOpen(true);
+        }}
+        isDuplicatePending={duplicateMutation.isPending}
+        onOpenCompare={() => setCompareDialogOpen(true)}
+        onOpenRerun={() => setRerunDialogOpen(true)}
+        isRerunPending={rerunMutation.isPending}
+        onOpenCloseRun={() => setCloseRunDialogOpen(true)}
+        isCloseRunPending={closeRunMutation.isPending}
+        onReopenRun={() => void reopenRunMutation.mutateAsync()}
+        isReopenRunPending={reopenRunMutation.isPending}
+        onPushDefect={canPushDefectForSelected ? openPushDefectDialog : undefined}
       />
 
       <div
-        className={`mt-3 grid grid-cols-1 gap-3 ${workbenchGridClass}`}
+        data-run-workbench=""
+        className={`mt-2 grid min-h-0 grid-cols-1 gap-3 lg:max-h-[calc(100dvh-17.5rem)] ${workbenchGridClass}`}
         style={{ ["--run-qpane-width" as string]: `${qpaneWidth}px` }}
       >
         <RunDetailSidebar
@@ -789,6 +1035,7 @@ export function RunDetailPage() {
               onNextBlocked={testNavigation.goNextBlocked}
               onNextUntested={testNavigation.goNextUntested}
               onPassAndNext={runClosed ? undefined : handlePassAndNext}
+              isSavingResult={addResultMutation.isPending}
               jumpToNext={jumpToNext}
               onJumpToNextChange={(enabled) => {
                 setJumpToNext(enabled);
@@ -813,7 +1060,7 @@ export function RunDetailPage() {
             onDisplayChange={setDisplay}
           />
         ) : null}
-        <div id="run-tests-section" className="min-w-0">
+        <div id="run-tests-section" className="flex min-h-0 min-w-0 flex-col lg:h-full lg:overflow-hidden">
           {groupedTableQuery.data?.truncated ? (
             <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
               Showing first 5,000 tests. Narrow filters to see more.
@@ -821,9 +1068,9 @@ export function RunDetailPage() {
           ) : null}
           <RunInstancesSection
           projectId={projectId}
-          pagedInstances={useGroupedExecution ? executionInstances : pagedInstances}
+          pagedInstances={displayedExecutionInstances}
           selectedInstanceId={selected?.id ?? null}
-          onSelectInstance={setSelected}
+          onSelectInstance={selectInstance}
           members={members}
           searchText={searchText}
           onSearchTextChange={(value) => {
@@ -878,6 +1125,20 @@ export function RunDetailPage() {
           onClearFilters={clearRunListFilters}
           selectedTestIds={selectedTestIds}
           setSelectedTestIds={setSelectedTestIds}
+          statusOptions={statusQuery.data ?? []}
+          bulkStatus={bulkStatus}
+          onBulkStatusChange={setBulkStatus}
+          bulkDisableUntested={bulkDisableUntested}
+          bulkComment={bulkComment}
+          onBulkCommentChange={setBulkComment}
+          canBulkSubmit={!runClosed && canBulkSubmit}
+          isBulkPending={bulkResultMutation.isPending}
+          bulkFeedback={bulkFeedback}
+          onDismissBulkFeedback={() => setBulkFeedback(null)}
+          onBulkSubmit={() => {
+            if (!runClosed) void bulkResultMutation.mutateAsync();
+          }}
+          onAssignSelected={(assignedTo) => void assignSelectedTests(assignedTo)}
           allPageSelected={allPageSelected}
           allFilteredSelected={allFilteredSelected}
           onSelectAllMatchingFilter={() => void selectAllMatchingFilter()}
@@ -891,9 +1152,18 @@ export function RunDetailPage() {
               defects: payload.defects
             })
           }
-          isSavingQuickResult={addResultMutation.isPending}
-          groups={useGroupedExecution ? tableGroups : undefined}
-          inlineStatusSelect={useGroupedExecution}
+          onComposeResult={(instance, status) => {
+            selectInstance(instance, { composerStatus: status });
+            window.requestAnimationFrame(() => {
+              document.getElementById("run-result-composer")?.scrollIntoView({ block: "nearest" });
+            });
+          }}
+          isSavingQuickResult={addResultMutation.isPending || isAssociatingAttachments}
+          saveFeedback={saveFeedback}
+          onRetrySave={retryResultSave}
+          onUndoSave={undoResultSave}
+          groups={useGroupedExecution ? displayedTableGroups : undefined}
+          inlineStatusSelect
           hidePagination={useGroupedExecution}
           groupedTotal={groupedTotal}
           page={runInstancesQuery.data?.page ?? instancePage}
@@ -918,7 +1188,9 @@ export function RunDetailPage() {
 
         {selected ? (
           <aside
-            className="relative rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto"
+            id="run-result-composer"
+            aria-live="polite"
+            className="relative min-h-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:h-full lg:overflow-y-auto"
             style={{ width: "100%", maxWidth: "100%" }}
           >
             <div
@@ -982,6 +1254,7 @@ export function RunDetailPage() {
               </button>
             ) : null}
             <RunQPanePanel
+              key={selected.id}
               results={
                 runClosed ? (
                   <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
@@ -989,7 +1262,7 @@ export function RunDetailPage() {
                   </div>
                 ) : (
                   <ResultEntryPanel
-                    key={selected.id}
+                    key={`${selected.id}:${composerStatus ?? "default"}`}
                     projectId={projectId}
                     instance={{
                       id: selected.id,
@@ -997,10 +1270,11 @@ export function RunDetailPage() {
                       caseCode: selected.caseCode,
                       title: selected.title
                     }}
+                    initialStatus={composerStatus}
                     caseSteps={selectedCaseDetail.data?.steps ?? []}
                     caseScenarios={selectedCaseScenariosQuery.data ?? []}
                     isCaseStepsLoading={selectedCaseDetail.isLoading}
-                    isSubmitting={addResultMutation.isPending}
+                    isSubmitting={addResultMutation.isPending || isAssociatingAttachments}
                     disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
                     hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
                     aiEvaluation={
@@ -1009,8 +1283,25 @@ export function RunDetailPage() {
                         : undefined
                     }
                     showInstanceHeader={false}
-                    onSubmit={(payload) => {
-                      void submitRunResult(
+                    saveFeedback={
+                      saveFeedback?.testId === selected.id
+                        ? {
+                            status: saveFeedback.status,
+                            message: saveFeedback.message,
+                            canUndo: saveFeedback.canUndo
+                          }
+                        : null
+                    }
+                    onRetrySave={retryResultSave}
+                    onUndoSave={undoResultSave}
+                    attachmentUploadById={stagedUploadById}
+                    onRetryStagedAttachment={retryStagedAttachment}
+                    onCancel={() => {
+                      setComposerStatus(null);
+                      setStagedUploadById({});
+                    }}
+                    onSubmit={(payload) =>
+                      submitRunResult(
                         selected.id,
                         {
                           status: payload.status,
@@ -1024,11 +1315,13 @@ export function RunDetailPage() {
                           aiActualOutput: payload.aiActualOutput,
                           aiQualityRating: payload.aiQualityRating,
                           aiLatencyMs: payload.aiLatencyMs,
-                          aiTraces: payload.aiTraces
+                          aiTraces: payload.aiTraces,
+                          attachments: payload.attachments,
+                          stagedAttachments: payload.stagedAttachments
                         },
                         { advanceOnPass: true }
-                      );
-                    }}
+                      )
+                    }
                   />
                 )
               }
@@ -1101,242 +1394,204 @@ export function RunDetailPage() {
                 />
               }
             />
-            <div className="mt-3 space-y-3 text-sm text-slate-700">
-              <CollapsibleSection title="Test discussion" defaultOpen={false}>
-                <ExecutionCommentsPanel
-                  projectId={projectId}
-                  scope="test_instance"
-                  testId={selected.id}
-                  canPost={run.status === "open"}
-                  emptyHint="Discuss this test without adding a result."
-                />
-              </CollapsibleSection>
-              {run.status === "open" ? (
-                <CollapsibleSection title="Composition" defaultOpen={false}>
-                <RunCompositionPanel
-                  projectId={projectId}
-                  compositionMode={composition?.compositionMode ?? "static"}
-                  compositionSummary={compositionSummary}
-                  filterPriority={filterPriority}
-                  filterState={filterState}
-                  onFilterPriorityChange={setFilterPriority}
-                  onFilterStateChange={setFilterState}
-                  isApplyingFilter={updateCompositionMutation.isPending}
-                  onApplyFilter={(mode) => {
-                    void updateCompositionMutation
-                      .mutateAsync({
-                        filterDefinition: {
-                          ...(filterPriority ? { priority: filterPriority } : {}),
-                          state: filterState
-                        },
-                        filterSelectionMode: mode,
-                        sync: true
-                      })
-                      .then((res) => {
-                        if (res.sync && !res.sync.skipped) {
-                          setCompositionFeedback({
-                            kind: "synced",
-                            added: res.sync.added,
-                            removed: res.sync.removed
-                          });
-                          return;
-                        }
-                        if (res.sync?.skipped && res.sync.reason) {
-                          setCompositionFeedback({
-                            kind: "error",
-                            message: `Sync skipped: ${res.sync.reason}`
-                          });
-                          return;
-                        }
-                        setCompositionFeedback({
-                          kind: "synced",
-                          added: 0,
-                          removed: 0
-                        });
-                      })
-                      .catch((err) => {
-                        setCompositionFeedback({
-                          kind: "error",
-                          message: err instanceof Error ? err.message : "Could not apply filter."
-                        });
-                      });
-                  }}
-                  isSyncing={syncCompositionMutation.isPending}
-                  onSyncComposition={() => {
-                    void syncCompositionMutation
-                      .mutateAsync()
-                      .then((res) => {
-                        if (res.skipped) {
-                          setCompositionFeedback({
-                            kind: "error",
-                            message: res.reason ? `Sync skipped: ${res.reason}` : "Sync skipped."
-                          });
-                          return;
-                        }
-                        setCompositionFeedback({
-                          kind: "synced",
-                          added: res.added,
-                          removed: res.removed
-                        });
-                      })
-                      .catch((err) => {
-                        setCompositionFeedback({
-                          kind: "error",
-                          message: err instanceof Error ? err.message : "Could not sync composition."
-                        });
-                      });
-                  }}
-                  addCasesInput={addCasesInput}
-                  onAddCasesInputChange={setAddCasesInput}
-                  isAdding={addCasesMutation.isPending}
-                  onAddCases={() => {
-                    const ids = addCasesInput
-                      .split(/[,\s]+/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    if (ids.length === 0) return;
-                    void addCasesMutation
-                      .mutateAsync(ids)
-                      .then((res) => {
-                        setAddCasesInput("");
-                        const added = res.data.added ?? [];
-                        setCompositionFeedback({
-                          kind: "added",
-                          addedCount: added.length,
-                          skipped: res.data.skipped ?? 0,
-                          caseIds: added.map((row: { caseId: string | number }) => String(row.caseId))
-                        });
-                      })
-                      .catch((err) => {
-                        setCompositionFeedback({
-                          kind: "error",
-                          message: err instanceof Error ? err.message : "Could not add cases."
-                        });
-                      });
-                  }}
-                  selectedTestId={selected?.id ?? null}
-                  isRemoving={removeTestMutation.isPending}
-                  onRemoveWithoutResults={() => {
-                    if (!selected) return;
-                    void removeTestMutation
-                      .mutateAsync({ testId: selected.id })
-                      .then((res) => {
-                        setCompositionFeedback({
-                          kind: "removed",
-                          caseId: String(res.data.caseId),
-                          title: res.data.titleSnapshot
-                        });
-                        setSelected(null);
-                      })
-                      .catch((err) => {
-                        setCompositionFeedback({
-                          kind: "error",
-                          message: err instanceof Error ? err.message : "Could not remove test."
-                        });
-                      });
-                  }}
-                  onRemoveWithResults={() => {
-                    if (!selected) return;
-                    if (!window.confirm("All result history for this test will be deleted. Continue?")) return;
-                    void removeTestMutation
-                      .mutateAsync({ testId: selected.id, confirmDataLoss: true })
-                      .then((res) => {
-                        setCompositionFeedback({
-                          kind: "removed",
-                          caseId: String(res.data.caseId),
-                          title: res.data.titleSnapshot
-                        });
-                        setSelected(null);
-                      })
-                      .catch((err) => {
-                        setCompositionFeedback({
-                          kind: "error",
-                          message: err instanceof Error ? err.message : "Could not remove test."
-                        });
-                      });
-                  }}
-                  feedback={compositionFeedback}
-                  onDismissFeedback={() => setCompositionFeedback(null)}
-                />
-                </CollapsibleSection>
-              ) : null}
-            </div>
           </aside>
         ) : null}
       </div>
 
-      <RunSchedulePanel
-        run={run}
-        dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
-        canEdit={run.status === "open"}
-        isSaving={scheduleMutation.isPending}
-        onSave={async (patch) => {
-          await scheduleMutation.mutateAsync(patch);
-        }}
-      />
+      <div className="space-y-2">
+        <CollapsibleSection
+          title="Schedule"
+          defaultOpen={shouldExpandRunSchedulePanel({
+            startedAt: run.startedAt,
+            dueOn: run.dueOn,
+            closedAt: run.closedAt,
+            warningCount: runDetailQuery.data?.dateWarnings?.length ?? 0
+          })}
+        >
+          <RunSchedulePanel
+            run={run}
+            dateWarnings={runDetailQuery.data?.dateWarnings ?? []}
+            canEdit={run.status === "open"}
+            isSaving={scheduleMutation.isPending}
+            embedded
+            onSave={async (patch) => {
+              await scheduleMutation.mutateAsync(patch);
+            }}
+          />
+        </CollapsibleSection>
+        {selected ? (
+          <CollapsibleSection title="Test discussion" defaultOpen={false}>
+            <ExecutionCommentsPanel
+              projectId={projectId}
+              scope="test_instance"
+              testId={selected.id}
+              canPost={run.status === "open"}
+              emptyHint="Discuss this test without adding a result."
+            />
+          </CollapsibleSection>
+        ) : null}
+        {run.status === "open" ? (
+          <CollapsibleSection title="Composition" defaultOpen={false}>
+            <RunCompositionPanel
+              projectId={projectId}
+              compositionMode={composition?.compositionMode ?? "static"}
+              compositionSummary={compositionSummary}
+              filterPriority={filterPriority}
+              filterState={filterState}
+              onFilterPriorityChange={setFilterPriority}
+              onFilterStateChange={setFilterState}
+              isApplyingFilter={updateCompositionMutation.isPending}
+              onApplyFilter={(mode) => {
+                void updateCompositionMutation
+                  .mutateAsync({
+                    filterDefinition: {
+                      ...(filterPriority ? { priority: filterPriority } : {}),
+                      state: filterState
+                    },
+                    filterSelectionMode: mode,
+                    sync: true
+                  })
+                  .then((res) => {
+                    if (res.sync && !res.sync.skipped) {
+                      setCompositionFeedback({
+                        kind: "synced",
+                        added: res.sync.added,
+                        removed: res.sync.removed
+                      });
+                      return;
+                    }
+                    if (res.sync?.skipped && res.sync.reason) {
+                      setCompositionFeedback({
+                        kind: "error",
+                        message: `Sync skipped: ${res.sync.reason}`
+                      });
+                      return;
+                    }
+                    setCompositionFeedback({
+                      kind: "synced",
+                      added: 0,
+                      removed: 0
+                    });
+                  })
+                  .catch((err) => {
+                    setCompositionFeedback({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : "Could not apply filter."
+                    });
+                  });
+              }}
+              isSyncing={syncCompositionMutation.isPending}
+              onSyncComposition={() => {
+                void syncCompositionMutation
+                  .mutateAsync()
+                  .then((res) => {
+                    if (res.skipped) {
+                      setCompositionFeedback({
+                        kind: "error",
+                        message: res.reason ? `Sync skipped: ${res.reason}` : "Sync skipped."
+                      });
+                      return;
+                    }
+                    setCompositionFeedback({
+                      kind: "synced",
+                      added: res.added,
+                      removed: res.removed
+                    });
+                  })
+                  .catch((err) => {
+                    setCompositionFeedback({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : "Could not sync composition."
+                    });
+                  });
+              }}
+              addCasesInput={addCasesInput}
+              onAddCasesInputChange={setAddCasesInput}
+              isAdding={addCasesMutation.isPending}
+              onAddCases={() => {
+                const ids = addCasesInput
+                  .split(/[,\s]+/)
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                if (ids.length === 0) return;
+                void addCasesMutation
+                  .mutateAsync(ids)
+                  .then((res) => {
+                    setAddCasesInput("");
+                    const added = res.data.added ?? [];
+                    setCompositionFeedback({
+                      kind: "added",
+                      addedCount: added.length,
+                      skipped: res.data.skipped ?? 0,
+                      caseIds: added.map((row: { caseId: string | number }) => String(row.caseId))
+                    });
+                  })
+                  .catch((err) => {
+                    setCompositionFeedback({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : "Could not add cases."
+                    });
+                  });
+              }}
+              selectedTestId={selected?.id ?? null}
+              isRemoving={removeTestMutation.isPending}
+              onRemoveWithoutResults={() => {
+                if (!selected) return;
+                void removeTestMutation
+                  .mutateAsync({ testId: selected.id })
+                  .then((res) => {
+                    setCompositionFeedback({
+                      kind: "removed",
+                      caseId: String(res.data.caseId),
+                      title: res.data.titleSnapshot
+                    });
+                    setSelected(null);
+                    writeSelectedTestId(null);
+                  })
+                  .catch((err) => {
+                    setCompositionFeedback({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : "Could not remove test."
+                    });
+                  });
+              }}
+              onRemoveWithResults={() => {
+                if (!selected) return;
+                if (!window.confirm("All result history for this test will be deleted. Continue?")) return;
+                void removeTestMutation
+                  .mutateAsync({ testId: selected.id, confirmDataLoss: true })
+                  .then((res) => {
+                    setCompositionFeedback({
+                      kind: "removed",
+                      caseId: String(res.data.caseId),
+                      title: res.data.titleSnapshot
+                    });
+                    setSelected(null);
+                    writeSelectedTestId(null);
+                  })
+                  .catch((err) => {
+                    setCompositionFeedback({
+                      kind: "error",
+                      message: err instanceof Error ? err.message : "Could not remove test."
+                    });
+                  });
+              }}
+              feedback={compositionFeedback}
+              onDismissFeedback={() => setCompositionFeedback(null)}
+            />
+          </CollapsibleSection>
+        ) : null}
+        <CollapsibleSection title="Run discussion" defaultOpen={false}>
+          <ExecutionCommentsPanel
+            projectId={projectId}
+            scope="test_run"
+            runId={runId}
+            canPost={run.status === "open"}
+            emptyHint="Discuss this run with your team."
+          />
+        </CollapsibleSection>
+      </div>
 
-      <CollapsibleSection title="Run discussion" defaultOpen={false}>
-        <ExecutionCommentsPanel
-          projectId={projectId}
-          scope="test_run"
-          runId={runId}
-          canPost={run.status === "open"}
-          emptyHint="Discuss this run with your team."
-        />
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Run actions" defaultOpen={false}>
-        <RunActionsPanel
-          projectId={projectId}
-          members={members}
-          statusOptions={statusQuery.data ?? []}
-          bulkDisableUntested={bulkDisableUntested}
-          bulkStatus={bulkStatus}
-          onBulkStatusChange={setBulkStatus}
-          bulkComment={bulkComment}
-          onBulkCommentChange={setBulkComment}
-          canBulkSubmit={!runClosed && canBulkSubmit}
-          isBulkPending={bulkResultMutation.isPending}
-          selectedCount={selectedCount}
-          bulkFeedback={bulkFeedback}
-          onDismissBulkFeedback={() => setBulkFeedback(null)}
-          onBulkSubmit={() => {
-            if (!runClosed) void bulkResultMutation.mutateAsync();
-          }}
-          assigneeInput={assigneeInput}
-          onAssigneeInputChange={setAssigneeInput}
-          isAssignPending={assigneeMutation.isPending}
-          onAssignRun={() => void assigneeMutation.mutateAsync(assigneeInput.trim() || null)}
-          currentUserId={user?.id ?? null}
-          onAssignRunToMe={
-            user?.id && !runClosed ? () => void assigneeMutation.mutateAsync(user.id) : undefined
-          }
-          onClearRunAssignee={!runClosed ? () => void assigneeMutation.mutateAsync(null) : undefined}
-          onAssignSelectedToMe={
-            user?.id && !runClosed ? () => void assignSelectedTests(user.id) : undefined
-          }
-          onClearSelectedAssignees={!runClosed ? () => void assignSelectedTests(null) : undefined}
-          isTestAssignPending={testAssigneeMutation.isPending}
-          isRerunPending={rerunMutation.isPending}
-          onOpenRerunDialog={() => setRerunDialogOpen(true)}
-          isDuplicatePending={duplicateMutation.isPending}
-          onOpenDuplicateDialog={() => {
-            setDuplicateName("");
-            setDuplicateCopyAssignee(true);
-            setDuplicateCopySchedule(false);
-            setDuplicateCopyEnvironment(true);
-            setDuplicateDialogOpen(true);
-          }}
-          onOpenCompareDialog={() => setCompareDialogOpen(true)}
-          canCloseRun={run.status !== "closed"}
-          isCloseRunPending={closeRunMutation.isPending}
-          onOpenCloseRunDialog={() => setCloseRunDialogOpen(true)}
-          canReopenRun={run.status === "closed"}
-          isReopenRunPending={reopenRunMutation.isPending}
-          onReopenRun={() => void reopenRunMutation.mutateAsync()}
-          readOnly={runClosed}
-        />
-      </CollapsibleSection>
     </div>
   );
 }

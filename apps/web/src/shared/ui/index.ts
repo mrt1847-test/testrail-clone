@@ -13,4 +13,6 @@ export {
   type OverflowMenuItem
 } from "./OverflowMenu";
 export { WorkbenchPage, WorkbenchPageHeader, WorkbenchToolbar } from "./WorkbenchPage";
+export { SelectionActionBar } from "./SelectionActionBar";
 export { FormField, type FormFieldControlProps } from "./FormField";
+export { SaveFeedback, type SaveFeedbackStatus } from "./SaveFeedback";

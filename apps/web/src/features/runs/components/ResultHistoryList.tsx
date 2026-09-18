@@ -218,7 +218,7 @@ export function ResultHistoryList({
       <div className="rounded border border-slate-200 p-2">
         <p className="text-xs font-medium text-slate-700">Evidence attachments</p>
         {!selectedResultId ? (
-          <p className="mt-1 text-xs text-slate-500">Select a result to view or add attachments.</p>
+          <p className="mt-1 text-xs text-slate-500">Select a result to review files or add more later.</p>
         ) : (
           <>
             <div className="mt-2 flex flex-wrap gap-2">

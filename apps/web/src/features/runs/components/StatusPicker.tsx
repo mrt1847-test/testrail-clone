@@ -41,6 +41,8 @@ export function StatusPicker({ options, selectedId, onSelect, disableUntested = 
                     ? "Final status"
                     : undefined
             }
+            aria-pressed={selected}
+            data-canonical-status={option.canonicalStatus}
             disabled={optionDisabled}
             className={`rounded border px-2 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
               selected ? "ring-2 ring-slate-900 ring-offset-1" : "border-transparent"

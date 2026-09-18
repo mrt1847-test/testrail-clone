@@ -411,7 +411,7 @@ export function MilestoneDetailPage() {
                   onToggleComplete={(targetMilestoneId, isCompleted) =>
                     void updateMutation.mutateAsync({ milestoneId: targetMilestoneId, isCompleted })
                   }
-                  onDelete={(targetMilestoneId) => void deleteMutation.mutateAsync(targetMilestoneId)}
+                  onDelete={(milestone) => void deleteMutation.mutateAsync(milestone.id)}
                 />
               );
             })}

@@ -7,9 +7,10 @@ type DefectKeyInputProps = {
   defects: string[];
   onChange: (defects: string[]) => void;
   projectId?: string;
+  id?: string;
 };
 
-export function DefectKeyInput({ defects, onChange, projectId }: DefectKeyInputProps) {
+export function DefectKeyInput({ defects, onChange, projectId, id }: DefectKeyInputProps) {
   const [defectInput, setDefectInput] = useState("");
 
   function addDefectsFromInput(value = defectInput) {
@@ -47,6 +48,7 @@ export function DefectKeyInput({ defects, onChange, projectId }: DefectKeyInputP
         </span>
       ))}
       <input
+        id={id}
         className="min-w-20 flex-1 border-0 p-0 text-xs outline-none"
         placeholder={defects.length > 0 ? "" : "defect key"}
         value={defectInput}
