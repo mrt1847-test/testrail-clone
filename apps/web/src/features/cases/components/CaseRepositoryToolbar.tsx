@@ -12,16 +12,16 @@ import type {
   SavedCaseView
 } from "../types";
 import { CASE_GROUP_BY_OPTIONS, type CaseGroupBy } from "../utils/caseRepositoryGrouping";
-import { DensityToggle } from "../../../shared/ui/DensityToggle";
 import type { UiDensity } from "../../../shared/ui/density/uiDensity";
+import { CASE_DISPLAY_MODES, type CaseDisplayMode } from "../caseRepositoryView";
 import { CaseColumnsDialog } from "./CaseColumnsDialog";
-import { CaseToolbarMenu } from "./CaseToolbarMenu";
+import { OverflowMenu, WorkbenchToolbar, type OverflowMenuGroup } from "../../../shared/ui";
 
 const toolbarButtonClass =
-  "rounded border border-slate-400 bg-gradient-to-b from-white to-slate-100 px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm hover:from-slate-50 hover:to-slate-200 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50";
 
 const toolbarButtonActiveClass =
-  "rounded border border-slate-600 bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-900 shadow-inner";
+  "inline-flex min-h-8 items-center justify-center rounded-md border border-slate-700 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-950 shadow-inner focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
 
 export type BulkEditScope = "selected" | "view" | "filter";
 
@@ -45,6 +45,8 @@ type CaseRepositoryToolbarProps = {
   onStateChange: (value: CaseFilterState) => void;
   groupByValue: CaseGroupBy;
   onGroupByChange: (value: CaseGroupBy) => void;
+  displayValue: CaseDisplayMode;
+  onDisplayChange: (value: CaseDisplayMode) => void;
   columnsValue: CaseListColumn[];
   columnWidths: Record<CaseListColumn, number>;
   onColumnsChange: (value: CaseListColumn[]) => void;
@@ -61,7 +63,6 @@ type CaseRepositoryToolbarProps = {
   onSaveView: () => void;
   onCancelSaveView: () => void;
   onDeleteSavedView: () => void;
-  onAddCase?: () => void;
   onBulkEditScope?: (scope: BulkEditScope) => void;
   selectedCaseCount?: number;
   visibleCaseCount?: number;
@@ -91,6 +92,8 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     onStateChange,
     groupByValue,
     onGroupByChange,
+    displayValue,
+    onDisplayChange,
     columnsValue,
     columnWidths,
     onColumnsChange,
@@ -107,7 +110,6 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     onSaveView,
     onCancelSaveView,
     onDeleteSavedView,
-    onAddCase,
     onBulkEditScope,
     selectedCaseCount = 0,
     visibleCaseCount = 0,
@@ -120,119 +122,167 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(activeFilterCount > 0);
   const showDeleted = stateValue === "archived";
-
-  const groupByLabel = CASE_GROUP_BY_OPTIONS.find((option) => option.id === groupByValue)?.label ?? "Section";
+  const matchedSavedView = savedViews.find((view) => view.id === matchedSavedViewId);
+  const viewGroups: OverflowMenuGroup[] = [
+    {
+      id: "display",
+      label: "Display",
+      items: CASE_DISPLAY_MODES.map((mode) => ({
+        id: `display-${mode.id}`,
+        label: mode.label,
+        description: mode.hint,
+        selected: displayValue === mode.id,
+        onSelect: () => onDisplayChange(mode.id)
+      }))
+    },
+    {
+      id: "group",
+      label: "Group cases by",
+      items: CASE_GROUP_BY_OPTIONS.map((option) => ({
+        id: `group-${option.id}`,
+        label: option.label,
+        description:
+          option.id === "section_id"
+            ? "Group cases under section headers"
+            : option.id === "none"
+              ? "Flat list without group headers"
+              : `Group cases by ${option.label.toLowerCase()}`,
+        selected: groupByValue === option.id,
+        onSelect: () => onGroupByChange(option.id)
+      }))
+    },
+    {
+      id: "density",
+      label: "Density",
+      items: [
+        {
+          id: "density-compact",
+          label: "Compact",
+          selected: density === "compact",
+          onSelect: () => onDensityChange("compact")
+        },
+        {
+          id: "density-comfortable",
+          label: "Comfortable",
+          selected: density === "comfortable",
+          onSelect: () => onDensityChange("comfortable")
+        }
+      ]
+    },
+    {
+      id: "data",
+      label: "Columns and scope",
+      items: [
+        {
+          id: "columns",
+          label: "Columns and saved views",
+          description: `${columnsValue.length} metadata column${columnsValue.length === 1 ? "" : "s"} visible`,
+          onSelect: () => setColumnsDialogOpen(true)
+        },
+        {
+          id: "archived",
+          label: "Archived cases",
+          description: showDeleted ? "Showing archived cases" : "Show cases marked as deleted",
+          selected: showDeleted,
+          onSelect: () => onStateChange(showDeleted ? "active" : "archived")
+        }
+      ]
+    },
+    {
+      id: "saved-views",
+      label: "Saved views",
+      items:
+        savedViews.length > 0
+          ? savedViews.map((view) => ({
+              id: `saved-view-${view.id}`,
+              label: view.name,
+              selected: matchedSavedViewId === view.id,
+              onSelect: () => onSavedViewSelect(view.id)
+            }))
+          : [
+              {
+                id: "saved-view-empty",
+                label: "No saved views yet",
+                description: "Use Columns and saved views to save the current setup",
+                disabled: true
+              }
+            ]
+    }
+  ];
+  const bulkGroups: OverflowMenuGroup[] = [
+    {
+      id: "bulk-edit",
+      label: `${selectedCaseCount} selected`,
+      items: [
+        {
+          id: "selected",
+          label: "Edit selected",
+          description: `${selectedCaseCount} case${selectedCaseCount === 1 ? "" : "s"} selected`,
+          onSelect: () => onBulkEditScope?.("selected")
+        },
+        {
+          id: "view",
+          label: "Edit cases in current view",
+          description:
+            visibleCaseCount > 0
+              ? `${visibleCaseCount} case${visibleCaseCount === 1 ? "" : "s"} loaded in the list`
+              : "No cases in the current view",
+          disabled: visibleCaseCount === 0,
+          onSelect: () => onBulkEditScope?.("view")
+        },
+        {
+          id: "filter",
+          label: "Edit all cases matching filter",
+          description: filterScopeBusy ? "Loading cases…" : "Includes cases not loaded in the current page",
+          disabled: filterScopeBusy,
+          onSelect: () => onBulkEditScope?.("filter")
+        }
+      ]
+    }
+  ];
 
   return (
     <>
-      <div id="contentToolbar" className="border-b border-slate-300 bg-[#ececec]">
-        <div className="flex flex-wrap items-center gap-1 border-b border-slate-300 px-2 py-1.5">
+      <WorkbenchToolbar id="contentToolbar" className="border-b border-slate-300 bg-slate-50">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2">
           {selectedSectionLabel ? (
-            <span className="mr-2 truncate text-xs font-semibold text-slate-700">{selectedSectionLabel}</span>
+            <span className="max-w-36 truncate text-xs font-semibold text-slate-600" title={selectedSectionLabel}>
+              {selectedSectionLabel}
+            </span>
           ) : null}
-          <button type="button" className={toolbarButtonClass} onClick={() => setColumnsDialogOpen(true)}>
-            Columns
-          </button>
+          <label className="relative min-w-[220px] flex-1 sm:max-w-md">
+            <span className="sr-only">Search cases</span>
+            <input
+              aria-label="Search cases"
+              placeholder="Search cases…"
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="min-h-8 w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
           <button
             type="button"
             className={filtersOpen ? toolbarButtonActiveClass : toolbarButtonClass}
+            aria-expanded={filtersOpen}
+            aria-controls="caseRepositoryFilters"
+            aria-label={activeFilterCount > 0 ? `Filter, ${activeFilterCount} active` : "Filter cases"}
             onClick={() => setFiltersOpen((value) => !value)}
           >
-            Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+            Filter
+            {activeFilterCount > 0 ? (
+              <span className="ml-1.5 rounded-full bg-blue-700 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                {activeFilterCount}
+              </span>
+            ) : null}
           </button>
-          <CaseToolbarMenu
-            label={`Sort: ${groupByLabel}`}
-            active={groupByValue !== "section_id"}
-            items={CASE_GROUP_BY_OPTIONS.map((option) => ({
-              id: option.id,
-              label: option.label,
-              description:
-                option.id === "section_id"
-                  ? "Group cases under section headers"
-                  : option.id === "none"
-                    ? "Flat list without group headers"
-                    : `Group cases by ${option.label.toLowerCase()}`,
-              onSelect: () => onGroupByChange(option.id)
-            }))}
-          />
-          <div className="mx-1 h-5 w-px bg-slate-400" aria-hidden="true" />
-          <button
-            type="button"
-            className={showDeleted ? toolbarButtonActiveClass : toolbarButtonClass}
-            onClick={() => onStateChange(showDeleted ? "active" : "archived")}
-            title="Show archived (deleted) test cases"
-          >
-            Display deleted
-          </button>
-          <CaseToolbarMenu
-            label="Edit"
-            disabled={!onBulkEditScope || isProjectArchived}
-            items={[
-              {
-                id: "selected",
-                label: "Edit selected",
-                description:
-                  selectedCaseCount > 0
-                    ? `${selectedCaseCount} case${selectedCaseCount === 1 ? "" : "s"} selected`
-                    : "Select cases with checkboxes first",
-                disabled: selectedCaseCount === 0,
-                onSelect: () => onBulkEditScope?.("selected")
-              },
-              {
-                id: "view",
-                label: "Edit cases in current view",
-                description:
-                  visibleCaseCount > 0
-                    ? `${visibleCaseCount} case${visibleCaseCount === 1 ? "" : "s"} loaded in the list`
-                    : "No cases in the current view",
-                disabled: visibleCaseCount === 0,
-                onSelect: () => onBulkEditScope?.("view")
-              },
-              {
-                id: "filter",
-                label: "Edit all cases matching filter",
-                description: filterScopeBusy
-                  ? "Loading cases…"
-                  : "Includes cases not loaded in the current page",
-                disabled: filterScopeBusy,
-                onSelect: () => onBulkEditScope?.("filter")
-              }
-            ]}
-          />
-          <DensityToggle value={density} onChange={onDensityChange} />
-          <div className="flex-1" />
-          <input
-            aria-label="Search cases"
-            placeholder="Search…"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="min-w-[160px] max-w-xs rounded border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-500"
-          />
-          <select
-            aria-label="Saved case views"
-            value={matchedSavedViewId}
-            onChange={(e) => onSavedViewSelect(e.target.value)}
-            className="max-w-[160px] rounded border border-slate-400 bg-white px-2 py-1 text-xs text-slate-800"
-          >
-            <option value="">Custom view</option>
-            {savedViews.map((view) => (
-              <option key={view.id} value={view.id}>
-                {view.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={isProjectArchived}
-            onClick={onAddCase}
-            className="rounded border border-blue-900 bg-blue-700 px-3 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Add Case
-          </button>
+          <OverflowMenu label={matchedSavedView ? `View: ${matchedSavedView.name}` : "View"} groups={viewGroups} />
+          {selectedCaseCount > 0 && onBulkEditScope && !isProjectArchived ? (
+            <OverflowMenu label={`${selectedCaseCount} selected`} groups={bulkGroups} />
+          ) : null}
         </div>
 
         {filtersOpen ? (
-          <div className="border-b border-slate-300 bg-[#fafafa] px-3 py-2">
+          <div id="caseRepositoryFilters" className="border-b border-slate-300 bg-white px-3 py-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700">Filter cases</span>
               <button
@@ -246,6 +296,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
             </div>
             <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-4">
               <select
+                aria-label="Filter by priority"
                 value={priorityValue}
                 onChange={(e) => onPriorityChange(e.target.value as CaseFilterPriority)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -256,6 +307,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
                 <option value="high">High</option>
               </select>
               <select
+                aria-label="Filter by case type"
                 value={caseTypeValue}
                 onChange={(e) => onCaseTypeChange(e.target.value as CaseFilterType)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -266,6 +318,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
                 <option value="regression">Regression</option>
               </select>
               <select
+                aria-label="Filter by automation"
                 value={automationValue}
                 onChange={(e) => onAutomationChange(e.target.value as CaseFilterAutomation)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -275,6 +328,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
                 <option value="automated">Automated</option>
               </select>
               <select
+                aria-label="Filter by references"
                 value={refsValue}
                 onChange={(e) => onRefsChange(e.target.value as CasePresenceFilter)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -284,6 +338,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
                 <option value="without">Without refs</option>
               </select>
               <select
+                aria-label="Filter by labels"
                 value={labelsValue}
                 onChange={(e) => onLabelsChange(e.target.value as CasePresenceFilter)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -293,6 +348,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
                 <option value="without">Without labels</option>
               </select>
               <select
+                aria-label="Filter by estimate"
                 value={estimateValue}
                 onChange={(e) => onEstimateChange(e.target.value as CasePresenceFilter)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -304,7 +360,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
             </div>
           </div>
         ) : null}
-      </div>
+      </WorkbenchToolbar>
 
       <CaseColumnsDialog
         open={columnsDialogOpen}

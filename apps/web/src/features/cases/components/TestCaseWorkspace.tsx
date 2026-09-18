@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
@@ -17,6 +17,42 @@ import { useWorkspacePreferences } from "../../projects/hooks/useWorkspacePrefer
 import { suiteStorageKey } from "../../projects/workspacePreferences";
 import { useAuth } from "../../auth/context/AuthContext";
 import { SuiteSwitcherBar } from "./SuiteSwitcherBar";
+import { WorkbenchPage } from "../../../shared/ui";
+
+const WIDE_SPLIT_QUERY = "(min-width: 1536px)";
+const DETAIL_PANE_MIN_WIDTH = 360;
+const DETAIL_PANE_MAX_WIDTH = 560;
+const DETAIL_PANE_DEFAULT_WIDTH = 440;
+
+function clampDetailPaneWidth(value: number) {
+  return Math.min(DETAIL_PANE_MAX_WIDTH, Math.max(DETAIL_PANE_MIN_WIDTH, Math.round(value)));
+}
+
+function detailPaneStorageKey(projectId: string, userId?: string | null) {
+  return `cases:detail-pane-width:${userId ?? "anonymous"}:${projectId}`;
+}
+
+function readDetailPaneWidth(key: string) {
+  if (typeof window === "undefined") return DETAIL_PANE_DEFAULT_WIDTH;
+  const parsed = Number(window.localStorage.getItem(key));
+  return Number.isFinite(parsed) ? clampDetailPaneWidth(parsed) : DETAIL_PANE_DEFAULT_WIDTH;
+}
+
+function useWideSplitLayout() {
+  const [wide, setWide] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(WIDE_SPLIT_QUERY).matches
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia(WIDE_SPLIT_QUERY);
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return wide;
+}
 
 export function TestCaseWorkspace() {
   const { projectId = "" } = useParams();
@@ -60,9 +96,59 @@ export function TestCaseWorkspace() {
       ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? activeSuiteId)
       : activeSuiteId;
   const panelOpen = panelCaseId != null;
+  const wideSplitLayout = useWideSplitLayout();
+  const detailPaneKey = detailPaneStorageKey(projectId, user?.id);
+  const [detailPaneWidth, setDetailPaneWidth] = useState(() => readDetailPaneWidth(detailPaneKey));
   const [addCaseRequest, setAddCaseRequest] = useState(0);
   const [editDescriptionRequest, setEditDescriptionRequest] = useState(0);
   const [copyMoveRequest, setCopyMoveRequest] = useState(0);
+
+  useEffect(() => {
+    setDetailPaneWidth(readDetailPaneWidth(detailPaneKey));
+  }, [detailPaneKey]);
+
+  const persistDetailPaneWidth = useCallback(
+    (value: number) => {
+      const next = clampDetailPaneWidth(value);
+      setDetailPaneWidth(next);
+      window.localStorage.setItem(detailPaneKey, String(next));
+    },
+    [detailPaneKey]
+  );
+
+  const closeDetail = useCallback(() => {
+    const closingCaseId = panelCaseId;
+    setPanelCase(null);
+    if (closingCaseId == null) return;
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(`[data-case-row-id="${closingCaseId}"] [data-case-open-button]`)
+        ?.focus();
+    });
+  }, [panelCaseId, setPanelCase]);
+
+  const startDetailPaneResize = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = detailPaneWidth;
+    const onMove = (moveEvent: globalThis.MouseEvent) => {
+      setDetailPaneWidth(clampDetailPaneWidth(startWidth - (moveEvent.clientX - startX)));
+    };
+    const onUp = (upEvent: globalThis.MouseEvent) => {
+      const next = clampDetailPaneWidth(startWidth - (upEvent.clientX - startX));
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      persistDetailPaneWidth(next);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const resizeDetailPaneWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    persistDetailPaneWidth(detailPaneWidth + (event.key === "ArrowLeft" ? 16 : -16));
+  };
 
   useCaseRepositoryKeyboard({
     enabled: !sectionsLoading && sections.length > 0,
@@ -150,13 +236,20 @@ export function TestCaseWorkspace() {
     return <LoadingState message="Preparing the case repository..." />;
   }
 
-  const gridCols = panelOpen
-    ? treeSide === "right"
-      ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,38%)_260px]"
-      : "xl:grid-cols-[260px_minmax(0,1fr)_minmax(340px,38%)]"
-    : treeSide === "right"
-      ? "xl:grid-cols-[minmax(0,1fr)_260px]"
-      : "xl:grid-cols-[260px_minmax(0,1fr)]";
+  const gridCols = treeSide === "right"
+    ? "xl:grid-cols-[minmax(0,1fr)_260px]"
+    : "xl:grid-cols-[260px_minmax(0,1fr)]";
+  const wideGridStyle: CSSProperties | undefined = wideSplitLayout
+    ? {
+        gridTemplateColumns: panelOpen
+          ? treeSide === "right"
+            ? `minmax(0, 1fr) ${detailPaneWidth}px 260px`
+            : `260px minmax(0, 1fr) ${detailPaneWidth}px`
+          : treeSide === "right"
+            ? "minmax(0, 1fr) 260px"
+            : "260px minmax(0, 1fr)"
+      }
+    : undefined;
 
   const caseList = (
     <CaseListPane
@@ -177,7 +270,20 @@ export function TestCaseWorkspace() {
       caseId={panelCaseId}
       sectionId={selectedSectionId ?? sections[0]?.id ?? 0}
       mode={panelMode}
-      onClose={() => setPanelCase(null)}
+      onClose={closeDetail}
+      onEdit={() => setPanelCase(panelCaseId, "edit")}
+      onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
+    />
+  ) : null;
+
+  const detailDrawer = panelOpen && !wideSplitLayout ? (
+    <CaseDetailSidePanel
+      projectId={projectId}
+      caseId={panelCaseId}
+      sectionId={selectedSectionId ?? sections[0]?.id ?? 0}
+      mode={panelMode}
+      presentation="drawer"
+      onClose={closeDetail}
       onEdit={() => setPanelCase(panelCaseId, "edit")}
       onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
     />
@@ -190,7 +296,6 @@ export function TestCaseWorkspace() {
       selectedSectionId={selectedSectionId}
       onSelectSection={setTreeFocusSection}
       onClearExpand={() => setPanelCase(null)}
-      onAddTestCase={() => setAddCaseRequest((value) => value + 1)}
       editDescriptionRequest={editDescriptionRequest}
       treeSide={treeSide}
       onToggleTreeSide={toggleTreeSide}
@@ -212,10 +317,11 @@ export function TestCaseWorkspace() {
   );
 
   return (
-    <div className="grid gap-3">
+    <WorkbenchPage>
       <CaseRepositoryContentHeader
         projectId={projectId}
         suiteId={activeSuiteId}
+        onAddCase={() => setAddCaseRequest((value) => value + 1)}
         onCopyMoveCases={() => setCopyMoveRequest((value) => value + 1)}
       />
       <SuiteSwitcherBar
@@ -234,12 +340,31 @@ export function TestCaseWorkspace() {
           setSearchParams(next);
         }}
       />
-      <div className={["grid items-start gap-3", gridCols].join(" ")}>
+      <div className={["grid items-start gap-3", gridCols].join(" ")} style={wideGridStyle}>
         {treeSide === "left" ? sectionTree : null}
-        {caseList}
-        {detailPanel}
+        <div className="min-w-0">{caseList}</div>
+        {panelOpen && wideSplitLayout ? (
+          <div className="relative min-w-0">
+            <div
+              role="separator"
+              aria-label="Resize test case detail panel"
+              aria-orientation="vertical"
+              aria-valuemin={DETAIL_PANE_MIN_WIDTH}
+              aria-valuemax={DETAIL_PANE_MAX_WIDTH}
+              aria-valuenow={detailPaneWidth}
+              tabIndex={0}
+              className="absolute -left-2 top-0 z-10 flex h-full w-4 cursor-col-resize items-stretch justify-center outline-none focus-visible:bg-sky-100"
+              onMouseDown={startDetailPaneResize}
+              onKeyDown={resizeDetailPaneWithKeyboard}
+            >
+              <span aria-hidden="true" className="w-px bg-slate-300" />
+            </div>
+            {detailPanel}
+          </div>
+        ) : null}
         {treeSide === "right" ? sectionTree : null}
       </div>
-    </div>
+      {detailDrawer}
+    </WorkbenchPage>
   );
 }

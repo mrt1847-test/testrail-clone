@@ -88,4 +88,32 @@
   html.dark .hover\:bg-slate-100:hover {
     @apply bg-slate-800;
   }
+
+  .case-list-row {
+    container-type: inline-size;
+  }
+
+  @media (min-width: 1024px) {
+    .case-list-row__title {
+      min-width: 240px !important;
+    }
+  }
+
+  @container (max-width: 839px) {
+    .case-list-row__metadata [data-case-column="estimate"] {
+      display: none !important;
+    }
+  }
+
+  @container (max-width: 759px) {
+    .case-list-row__metadata [data-case-column="automation"] {
+      display: none !important;
+    }
+  }
+
+  @container (max-width: 679px) {
+    .case-list-row__metadata {
+      display: none !important;
+    }
+  }
 }

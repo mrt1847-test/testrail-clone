@@ -6,13 +6,21 @@ This gate keeps TestRail parity work from being marked complete without visual p
 
 Every PR that changes project-scoped UX must include this checklist:
 
+- [ ] I identified the single primary user task and the one dominant CTA, if a CTA is needed.
+- [ ] I classified visible actions as primary, secondary, contextual, utility, or administrative.
+- [ ] I removed duplicate entry points and moved non-daily utilities into an overflow or contextual surface.
+- [ ] I used shared workbench, button, field, table, dialog/drawer, and feedback components, or documented a concrete exception.
 - [ ] I identified the touched target layout type: `workbench`, `table`, `split-pane`, `wizard`, `report-config`, or `settings`.
 - [ ] I captured desktop and narrow screenshots for every touched core route, or explained why the route is not affected.
 - [ ] I checked that project context stays visible and navigation does not fall back to a generic SaaS dashboard pattern.
 - [ ] I checked dense table/list/pane layout above the fold.
+- [ ] I checked that entity titles remain readable before optional metadata columns are shown.
+- [ ] I checked that selecting rows reveals relevant bulk actions next to the selection.
 - [ ] I checked that URL state, selected entities, filters, section tree position, and right/left pane placement are preserved where applicable.
 - [ ] I checked empty, loading, and error states if this PR changes data loading or route structure.
 - [ ] I linked the screenshot folder or artifact in the PR.
+
+For Test Cases and Run Execution, also apply the action hierarchy and task backlog in [USABILITY_REALIGNMENT_2026-09-18.md](./USABILITY_REALIGNMENT_2026-09-18.md).
 
 ## Screenshot Capture Workflow
 
@@ -26,6 +34,7 @@ Every PR that changes project-scoped UX must include this checklist:
 3. Open each route from the generated manifest.
 4. Capture both viewports:
    - Desktop: `1440x1000`
+   - Laptop: `1280x720`
    - Narrow: `390x844`
 5. Save screenshots using the generated file names.
 6. Paste the screenshot folder path into the PR checklist.

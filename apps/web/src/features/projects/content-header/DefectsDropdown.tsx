@@ -12,6 +12,25 @@ type Props = {
 };
 
 export function DefectsDropdown({ projectId, runId, onPushDefect }: Props) {
+  const items = useDefectDropdownItems({ projectId, runId, onPushDefect });
+
+  return (
+    <HeaderDropdown
+      label="Defects"
+      items={items}
+      footer={
+        <Link
+          to={`/projects/${projectId}/settings/defect-integration`}
+          className="text-xs font-medium text-blue-700 hover:underline"
+        >
+          Defect integration settings
+        </Link>
+      }
+    />
+  );
+}
+
+export function useDefectDropdownItems({ projectId, runId, onPushDefect }: Props) {
   const settingsQuery = useQuery({
     queryKey: ["defect-integration-settings", projectId],
     queryFn: () => fetchDefectIntegrationSettings(projectId),
@@ -86,18 +105,5 @@ export function DefectsDropdown({ projectId, runId, onPushDefect }: Props) {
     href: buildReportPageHref(projectId, "defect_coverage")
   });
 
-  return (
-    <HeaderDropdown
-      label="Defects"
-      items={items}
-      footer={
-        <Link
-          to={`/projects/${projectId}/settings/defect-integration`}
-          className="text-xs font-medium text-blue-700 hover:underline"
-        >
-          Defect integration settings
-        </Link>
-      }
-    />
-  );
+  return items;
 }

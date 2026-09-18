@@ -317,7 +317,7 @@ export function CaseRow({
   const densityStyles = caseRowDensityClasses(density ?? "comfortable");
 
   const rowClasses = [
-    "relative flex items-center gap-2 pl-3 transition-colors",
+    "case-list-row relative flex items-center gap-2 pl-3 transition-colors",
     isPanelOpen
       ? "bg-sky-50 ring-2 ring-inset ring-sky-200"
       : isKeyboardFocused
@@ -400,12 +400,13 @@ export function CaseRow({
         ) : null}
         <button
           type="button"
+          data-case-open-button
           onClick={onOpenCase}
-          className={`flex min-w-0 flex-1 items-center text-left ${densityStyles.rowButton}`}
+          className={`case-list-row__primary flex min-w-0 flex-1 items-center text-left ${densityStyles.rowButton}`}
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate">
-              <span className="inline-flex items-center gap-1 font-mono text-xs text-slate-500">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-slate-500">
                 {item.caseCode}
                 {projectId ? (
                   <EntityCopyActions
@@ -416,7 +417,7 @@ export function CaseRow({
                     compact
                   />
                 ) : null}
-              </span>{" "}
+              </span>
               {editingTitle && onRenameTitle ? (
                 <input
                   type="text"
@@ -449,11 +450,11 @@ export function CaseRow({
                     setTitleDraft(item.title);
                     setEditingTitle(false);
                   }}
-                  className="ml-1 w-[min(100%,28rem)] rounded border border-slate-300 px-1.5 py-0.5 text-sm text-slate-900"
+                  className="case-list-row__title min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-sm text-slate-900"
                 />
               ) : (
                 <span
-                  className="text-slate-900"
+                  className="case-list-row__title min-w-0 flex-1 truncate font-medium text-slate-900"
                   onDoubleClick={(event) => {
                     if (!onRenameTitle || item.archivedAt) return;
                     event.preventDefault();
@@ -467,7 +468,7 @@ export function CaseRow({
                 </span>
               )}
               {item.archivedAt ? (
-                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
                   Deleted
                 </span>
               ) : null}
@@ -518,9 +519,10 @@ export function CaseRow({
             ) : null}
           </span>
         </button>
-        <span className="hidden shrink-0 items-center justify-end gap-1 px-2 text-right text-xs text-slate-500 sm:flex">
+        <span className="case-list-row__metadata hidden min-w-0 items-center justify-end gap-1 overflow-hidden px-2 text-right text-xs text-slate-500 sm:flex">
           {visibleColumnSet.has("type") ? (
             <select
+              data-case-column="type"
               aria-label={`Type for ${item.caseCode}`}
               value={caseTypeValue}
               disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
@@ -539,6 +541,7 @@ export function CaseRow({
           ) : null}
           {visibleColumnSet.has("priority") ? (
             <select
+              data-case-column="priority"
               aria-label={`Priority for ${item.caseCode}`}
               value={priorityValue}
               disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
@@ -557,7 +560,12 @@ export function CaseRow({
           ) : null}
           {summaryParts.map((part) => (
             part.column === "type" || part.column === "priority" ? null : (
-            <span key={part.column} className="shrink-0 truncate" style={columnStyle(part.column)}>
+            <span
+              key={part.column}
+              data-case-column={part.column}
+              className="shrink-0 truncate"
+              style={columnStyle(part.column)}
+            >
               {part.value}
             </span>
             )

@@ -152,6 +152,7 @@ export function CaseListPane({
     setCaseFilters,
     setCaseColumns,
     setCaseGroupBy,
+    setCaseDisplay,
     clearCaseFilters,
     applySavedView,
     applyRepositoryView,
@@ -1078,6 +1079,8 @@ export function CaseListPane({
     onStateChange: (value: "active" | "archived") => setCaseFilters({ state: value }),
     groupByValue: caseGroupBy,
     onGroupByChange: setCaseGroupBy,
+    displayValue: caseDisplay,
+    onDisplayChange: setCaseDisplay,
     columnsValue: effectiveColumns,
     columnWidths,
     activeFilterCount,
@@ -1123,12 +1126,6 @@ export function CaseListPane({
       deleteView(matchedSavedView.id);
       setSaveViewOpen(false);
       setSaveViewName("");
-    },
-    onAddCase: () => {
-      setBulkFeedback(null);
-      setCreateFormError(null);
-      setShowAdd(true);
-      setCreateFormVersion((value) => value + 1);
     },
     selectedSectionLabel: selectedSection?.name,
     onColumnsChange: (columns) => {
@@ -1284,7 +1281,7 @@ export function CaseListPane({
   return (
     <>
       <div>
-        <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
+        <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="border-b border-slate-300 bg-[#f8f8f8] px-3 py-1.5 text-xs text-slate-600">{listSummary}</div>
           <CaseRepositoryToolbar {...toolbarProps} />
 
@@ -1546,7 +1543,7 @@ export function CaseListPane({
                   <div key={group.key}>
                     {group.label ? (
                       <div
-                        className="border-b border-t border-slate-300 bg-[#e5e5e5] px-3 py-1.5 text-xs font-semibold text-slate-800"
+                        className="border-y border-slate-200 bg-slate-100/70 px-3 py-1.5 text-xs font-semibold text-slate-800"
                         {...(isSectionGroup && group.sectionId != null
                           ? { "data-section-group-id": group.sectionId }
                           : {})}

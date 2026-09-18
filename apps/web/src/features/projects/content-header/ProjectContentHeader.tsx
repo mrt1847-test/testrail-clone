@@ -1,13 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import type { ContentHeaderReportContext } from "./contentHeaderReportMenus";
-import {
-  contentHeaderActionClass,
-  contentHeaderDisabledClass,
-  contentHeaderPrimaryClass
-} from "./contentHeaderStyles";
-import { DefectsDropdown } from "./DefectsDropdown";
+import { Button, OverflowMenu, WorkbenchPageHeader, type OverflowMenuGroup } from "../../../shared/ui";
+import { useProjectArchived } from "../context/ProjectArchiveContext";
+import { reportMenuItems, type ContentHeaderReportContext } from "./contentHeaderReportMenus";
+import { contentHeaderActionClass } from "./contentHeaderStyles";
+import { DefectsDropdown, useDefectDropdownItems } from "./DefectsDropdown";
 import { ReportsDropdown } from "./ReportsDropdown";
 
 export type ProjectContentHeaderVariant = ContentHeaderReportContext;
@@ -65,62 +63,117 @@ export function ProjectContentHeader({
 type CaseRepositoryHeaderProps = {
   projectId: string;
   suiteId: string;
+  onAddCase: () => void;
   onCopyMoveCases?: () => void;
 };
 
-export function CaseRepositoryContentHeader({ projectId, suiteId, onCopyMoveCases }: CaseRepositoryHeaderProps) {
+export function CaseRepositoryContentHeader({
+  projectId,
+  suiteId,
+  onAddCase,
+  onCopyMoveCases
+}: CaseRepositoryHeaderProps) {
+  const isProjectArchived = useProjectArchived();
+  const defectItems = useDefectDropdownItems({ projectId });
+  const reportItems = reportMenuItems(projectId, "cases", { suiteId });
+  const groups: OverflowMenuGroup[] = [
+    {
+      id: "workflow",
+      label: "Workflow",
+      items: [
+        {
+          id: "run-test",
+          label: "Run this suite",
+          description: "Create a test run from the current suite",
+          to: `/projects/${projectId}/runs/new?suiteId=${suiteId}`
+        },
+        {
+          id: "shared-steps",
+          label: "Shared steps",
+          description: "Manage reusable steps for this project",
+          to: `/projects/${projectId}/shared-steps`
+        }
+      ]
+    },
+    {
+      id: "reports",
+      label: "Reports",
+      items: [
+        ...reportItems.map((item, index) => ({
+          id: `report-${index}`,
+          label: item.label,
+          description: item.description,
+          to: item.href
+        })),
+        {
+          id: "all-reports",
+          label: "All reports",
+          description: "Open the reports catalog",
+          to: `/projects/${projectId}/reports`
+        }
+      ]
+    },
+    {
+      id: "defects",
+      label: "Defects",
+      items: [
+        ...defectItems.map((item) => ({
+          ...item,
+          to: item.external ? undefined : item.href,
+          href: item.external ? item.href : undefined
+        })),
+        {
+          id: "defect-settings",
+          label: "Defect integration settings",
+          to: `/projects/${projectId}/settings/defect-integration`
+        }
+      ]
+    },
+    {
+      id: "manage",
+      label: "Manage and output",
+      items: [
+        {
+          id: "copy-move",
+          label: "Copy or move cases",
+          description: "Choose cases, then move or copy them to another section",
+          disabled: !onCopyMoveCases,
+          onSelect: onCopyMoveCases
+        },
+        {
+          id: "import",
+          label: "Import cases",
+          to: `/projects/${projectId}/import-export?kind=import&suiteId=${suiteId}`
+        },
+        {
+          id: "export",
+          label: "Export cases",
+          to: `/projects/${projectId}/import-export?kind=export&suiteId=${suiteId}`
+        },
+        {
+          id: "print",
+          label: "Print view",
+          to: `/projects/${projectId}/cases/print`
+        }
+      ]
+    }
+  ];
+
   return (
-    <ProjectContentHeader
-      projectId={projectId}
+    <WorkbenchPageHeader
       title="Test Cases"
-      subtitle="Suite repository view, grouped by section."
-      variant="cases"
-      suiteId={suiteId}
-      primaryActions={
-        <Link
-          to={`/projects/${projectId}/runs/new?suiteId=${suiteId}`}
-          className={contentHeaderPrimaryClass}
+      description="Organize cases by section, then open one to review or edit."
+      primaryAction={
+        <Button
+          size="md"
+          disabled={isProjectArchived}
+          title={isProjectArchived ? "Archived projects are read-only" : "Add a case to the selected section"}
+          onClick={onAddCase}
         >
-          Run Test
-        </Link>
+          Add Case
+        </Button>
       }
-      secondaryActions={
-        <>
-          <Link to={`/projects/${projectId}/cases/print`} className={contentHeaderActionClass}>
-            Print
-          </Link>
-          <HeaderExportImportMenu projectId={projectId} suiteId={suiteId} />
-          <button
-            type="button"
-            className={onCopyMoveCases ? contentHeaderActionClass : contentHeaderDisabledClass}
-            disabled={!onCopyMoveCases}
-            title={
-              onCopyMoveCases
-                ? "Copy or move selected test cases to another section"
-                : "Copy/move is unavailable"
-            }
-            onClick={onCopyMoveCases}
-          >
-            Copy/Move Cases
-          </button>
-        </>
-      }
+      utilityAction={<OverflowMenu groups={groups} />}
     />
-  );
-}
-
-function HeaderExportImportMenu({ projectId, suiteId }: { projectId: string; suiteId: string }) {
-  const exportBase = `/projects/${projectId}/import-export?kind=export&suiteId=${suiteId}`;
-  const importBase = `/projects/${projectId}/import-export?kind=import&suiteId=${suiteId}`;
-
-  return (
-    <>
-      <Link to={exportBase} className={contentHeaderActionClass}>
-        Export
-      </Link>
-      <Link to={importBase} className={contentHeaderActionClass}>
-        Import
-      </Link>
-    </>
   );
 }

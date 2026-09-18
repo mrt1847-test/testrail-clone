@@ -2,6 +2,8 @@
 
 Last updated: 2026-05-18
 
+> **2026-09-18 usability correction:** This backlog remains a feature-area reference, but it is not the controlling source for visual hierarchy, feature exposure, shared-component consolidation, or task-level acceptance. Use [USABILITY_REALIGNMENT_2026-09-18.md](./USABILITY_REALIGNMENT_2026-09-18.md) for those decisions. A checked capability does not mean that the workflow is clear, uncluttered, or TestRail-like.
+
 This backlog supersedes the 2026-05-16 quick-win UX waves. Those waves improved isolated interactions, but they did not force the product back into TestRail's core workbench shape. Future UI work should be judged against this document and [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md), not against generic SaaS dashboard polish.
 
 ## North Star
