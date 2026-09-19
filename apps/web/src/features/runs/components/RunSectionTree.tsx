@@ -128,7 +128,7 @@ export function RunSectionTree({
 
   return (
     <nav
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:w-52 xl:w-56"
+      className="flex max-h-28 min-h-0 min-w-0 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm lg:max-h-none lg:h-full lg:overflow-hidden lg:w-52 xl:w-56"
       aria-label="Run sections"
     >
       <div className="border-b border-slate-100 bg-slate-50 px-2 py-2">

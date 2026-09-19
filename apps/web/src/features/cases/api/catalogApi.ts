@@ -346,6 +346,7 @@ function buildSuiteCasesQuery(
   if (filters.refs) params.set("refs", filters.refs);
   if (filters.labels) params.set("labels", filters.labels);
   if (filters.estimate) params.set("estimate", filters.estimate);
+  if (filters.sectionScope) params.set("sectionScope", filters.sectionScope);
   if (filters.state) params.set("state", filters.state);
   return params.toString();
 }

@@ -330,12 +330,49 @@ export class InMemoryRunsRepository implements RunsRepository {
     return this.runs.find((r) => r.id === runId) ?? null;
   }
 
-  private enrichMemoryInstances(runId: bigint, instances: TestInstance[]): TestInstance[] {
+  private async catalogCasesForRun(run: TestRun | null): Promise<TestCase[]> {
+    if (!run) return [];
+    if (this.catalog) {
+      const rows = await this.catalog.listCasesForSuite(run.projectId, run.suiteId, "all");
+      return rows.map((row) => mapCatalogCaseToTestCase(row, run.projectId, run.suiteId));
+    }
+    return this.cases.filter((row) => row.projectId === run.projectId && row.suiteId === run.suiteId);
+  }
+
+  private async catalogSectionsForSuite(suiteId: bigint): Promise<
+    Array<{ id: bigint; name: string; displayOrder: number; parentSectionId: bigint | null }>
+  > {
+    if (this.catalog) {
+      const rows = await this.catalog.listSectionsBySuite(suiteId);
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        displayOrder: row.displayOrder ?? 0,
+        parentSectionId: row.parentSectionId ?? null
+      }));
+    }
+    return [...new Map(
+      this.cases
+        .filter((row) => row.suiteId === suiteId && row.sectionId != null)
+        .map((row) => [
+          row.sectionId!,
+          {
+            id: row.sectionId!,
+            name: `Section ${row.sectionId}`,
+            displayOrder: 0,
+            parentSectionId: null as bigint | null
+          }
+        ])
+    ).values()];
+  }
+
+  private async enrichMemoryInstances(runId: bigint, instances: TestInstance[]): Promise<TestInstance[]> {
     const run = this.runs.find((r) => r.id === runId);
+    const catalogCases = await this.catalogCasesForRun(run ?? null);
     const casesById = new Map<bigint, LiveCaseFields>();
     for (const inst of instances) {
       if (casesById.has(inst.caseId)) continue;
-      const row = this.cases.find((c) => c.id === inst.caseId);
+      const row = catalogCases.find((item) => item.id === inst.caseId) ?? this.cases.find((item) => item.id === inst.caseId);
       if (!row) continue;
       casesById.set(inst.caseId, {
         lockVersion: row.lockVersion ?? 1,
@@ -414,14 +451,8 @@ export class InMemoryRunsRepository implements RunsRepository {
 
     let sectionFilterIds: bigint[] | undefined;
     if (input.sectionId != null) {
-      const sectionRows = this.cases
-        .filter((c) => c.suiteId === input.suiteId)
-        .map((c) => ({ id: c.sectionId!, parentSectionId: null as bigint | null }));
-      const unique = new Map<bigint, { id: bigint; parentSectionId: bigint | null }>();
-      for (const row of sectionRows) {
-        if (row.id != null) unique.set(row.id, { id: row.id, parentSectionId: row.parentSectionId });
-      }
-      sectionFilterIds = expandSectionSubtreeIdsPure([...unique.values()], [input.sectionId]);
+      const sectionRows = await this.catalogSectionsForSuite(input.suiteId);
+      sectionFilterIds = expandSectionSubtreeIdsPure(sectionRows, [input.sectionId]);
       filtered = filtered.filter((row) => row.sectionId != null && sectionFilterIds!.includes(row.sectionId));
     }
 
@@ -437,24 +468,7 @@ export class InMemoryRunsRepository implements RunsRepository {
       count
     }));
 
-    const sections = this.cases
-      .filter((c) => c.suiteId === input.suiteId && c.sectionId != null)
-      .reduce<Map<bigint, { id: bigint; name: string; displayOrder: number; parentSectionId: bigint | null }>>(
-        (acc, c) => {
-          if (!acc.has(c.sectionId!)) {
-            acc.set(c.sectionId!, {
-              id: c.sectionId!,
-              name: `Section ${c.sectionId}`,
-              displayOrder: 0,
-              parentSectionId: null
-            });
-          }
-          return acc;
-        },
-        new Map()
-      );
-
-    const { groups } = buildRunInstanceGroups(filtered, [...sections.values()], input.groupBy);
+    const { groups } = buildRunInstanceGroups(filtered, await this.catalogSectionsForSuite(input.suiteId), input.groupBy);
     return {
       total: input.caseChanged || input.sectionId != null ? filteredTotal : total,
       truncated,
@@ -484,26 +498,39 @@ export class InMemoryRunsRepository implements RunsRepository {
         return run;
       },
       getCasesForRun: async (input) => {
-        const { projectId, suiteId, caseIds, excludedCaseIds, includeAll, includedSectionIds, excludedSectionIds } = input;
+        const {
+          projectId,
+          suiteId,
+          caseIds,
+          excludedCaseIds,
+          includeAll,
+          includedSectionIds,
+          excludedSectionIds,
+          compositionMode,
+          filterDefinition
+        } = input;
+        const filterSectionIds = (filterDefinition?.includedSectionIds ?? []).map((id) => BigInt(id));
+        const effectiveIncludedSectionIds =
+          includedSectionIds?.length ? includedSectionIds : filterSectionIds.length ? filterSectionIds : undefined;
         let sectionRows: Array<{ id: bigint; parentSectionId: bigint | null }> = [];
-        if (this.catalog && (includedSectionIds?.length || excludedSectionIds?.length)) {
+        if (this.catalog && (effectiveIncludedSectionIds?.length || excludedSectionIds?.length)) {
           const sec = await this.catalog.listSectionsBySuite(suiteId);
           sectionRows = sec.map((s) => ({ id: s.id, parentSectionId: s.parentSectionId ?? null }));
-        } else if (!this.catalog && (includedSectionIds?.length || excludedSectionIds?.length)) {
+        } else if (!this.catalog && (effectiveIncludedSectionIds?.length || excludedSectionIds?.length)) {
           const baseSec = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
           const ids = new Set(baseSec.map((c) => c.sectionId).filter((x): x is bigint => typeof x === "bigint"));
           sectionRows = [...ids].map((id) => ({ id, parentSectionId: null }));
         }
-        if (includedSectionIds?.length || excludedSectionIds?.length) {
-          const merged = [...(includedSectionIds ?? []), ...(excludedSectionIds ?? [])];
+        if (effectiveIncludedSectionIds?.length || excludedSectionIds?.length) {
+          const merged = [...(effectiveIncludedSectionIds ?? []), ...(excludedSectionIds ?? [])];
           for (const id of merged) {
             if (!sectionRows.some((s) => s.id === id)) {
               throw new AppError("VALIDATION_ERROR", "includedSectionIds or excludedSectionIds must belong to the run suite", 400);
             }
           }
         }
-        const allowed = includedSectionIds?.length
-          ? new Set(expandSectionSubtreeIdsPure(sectionRows, includedSectionIds))
+        const allowed = effectiveIncludedSectionIds?.length
+          ? new Set(expandSectionSubtreeIdsPure(sectionRows, effectiveIncludedSectionIds))
           : null;
         const excludedSet = excludedSectionIds?.length
           ? new Set(expandSectionSubtreeIdsPure(sectionRows, excludedSectionIds))
@@ -514,21 +541,24 @@ export class InMemoryRunsRepository implements RunsRepository {
           if (excludedSet && sid != null && excludedSet.has(sid)) return false;
           return true;
         };
-        const base = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
-        let selected = includeAll
-          ? base.filter((c) => !excludedCaseIds?.includes(c.id)).filter(filterBySection)
-          : base.filter((c) => caseIds?.includes(c.id)).filter(filterBySection);
-        if (selected.length === 0 && this.catalog) {
-          const rows = await this.catalog.listCasesForSuite(projectId, suiteId);
+        const catalogState = compositionMode === "dynamic_filter" && filterDefinition?.state === "archived" ? "archived" : "active";
+        let selected: TestCase[] = this.cases.filter((c) => c.projectId === projectId && c.suiteId === suiteId);
+        if (this.catalog) {
+          const rows = await this.catalog.listCasesForSuite(projectId, suiteId, catalogState);
           selected = rows.map((c) => mapCatalogCaseToTestCase(c, projectId, suiteId));
-          if (!includeAll && caseIds?.length) {
-            selected = selected.filter((c) => caseIds.includes(c.id));
-          } else if (includeAll && excludedCaseIds?.length) {
-            selected = selected.filter((c) => !excludedCaseIds.includes(c.id));
-          }
-          selected = selected.filter(filterBySection);
         }
-        return selected;
+        if (compositionMode === "dynamic_filter") {
+          if (filterDefinition?.priority) {
+            selected = selected.filter((row) => row.priority === filterDefinition.priority);
+          }
+        } else if (includeAll || compositionMode === "include_all_live") {
+          if (excludedCaseIds?.length) {
+            selected = selected.filter((row) => !excludedCaseIds.includes(row.id));
+          }
+        } else {
+          selected = selected.filter((row) => caseIds?.includes(row.id));
+        }
+        return selected.filter(filterBySection);
       },
       countResultsForTestInstance: async (testInstanceId) => {
         return this.results.filter((r) => r.testInstanceId === testInstanceId).length;

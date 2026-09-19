@@ -158,7 +158,9 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
       caseCode: `C${item.caseId}`,
       status: item.status,
       source: item.source ?? "manual",
-      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
+      at: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-",
+      runId: item.runId,
+      title: item.title
     }))
   };
 }

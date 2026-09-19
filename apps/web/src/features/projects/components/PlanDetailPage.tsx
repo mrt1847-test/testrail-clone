@@ -1,22 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import {
-  Button,
-  DataTable,
-  OverflowMenu,
-  SelectionActionBar,
-  WorkbenchPage,
-  WorkbenchPageHeader,
-  WorkbenchToolbar
-} from "../../../shared/ui";
+import { Button, OverflowMenu, SaveFeedback, WorkbenchPage, WorkbenchPageHeader, WorkbenchToolbar } from "../../../shared/ui";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { fetchRuns } from "../../runs/api/runApi";
 import { RunPlanProgressBar } from "../../runs/components/RunPlanProgressBar";
+import { runKeys, useRunsOverviewQuery } from "../../runs/hooks/useRunsApi";
+import { formatRunListWorkSummary } from "../../runs/utils/runListHubModel";
 import {
   createPlanEntry,
   createRunByConfiguration,
@@ -26,30 +20,23 @@ import {
   fetchPlanEntries,
   fetchPlanEntryConfigurations,
   fetchPlanMatrix,
-  fetchPlanRollupByConfiguration,
-  fetchPlanSummary,
   savePlanEntryConfigurations,
   updatePlan,
   updatePlanEntry,
-  type PlanEntryRow,
-  type PlanRollupRow
+  type PlanEntryRow
 } from "../api/advancedApi";
 import { fetchProjectMembers } from "../api/settingsApi";
 import { useProjectArchived } from "../context/ProjectArchiveContext";
 import { parseCaseIdList } from "../utils/planCaseSelection";
+import {
+  buildPlanExecutionEntries,
+  describeGeneratePreview,
+  expectedGeneratedRunCount
+} from "../utils/planExecutionModel";
 import { planDetailHeaderMenuGroups } from "../utils/planHeaderMenu";
+import { planMatrixSavePayload, resolvePlanMatrixOwner } from "../utils/planMatrixContext";
 import { PlanDefaultsDialog, type PlanDefaultsValues } from "./PlanDefaultsDialog";
 import { PlanEntryDialog, type PlanEntryDialogValues } from "./PlanEntryDialog";
-
-function statusCountsForRollup(row: PlanRollupRow): Record<string, number> {
-  return {
-    passed: row.passed,
-    failed: row.failed,
-    blocked: row.blocked,
-    retest: row.retest,
-    untested: row.untested
-  };
-}
 
 function isoOrNull(value: string) {
   return value ? new Date(value).toISOString() : null;
@@ -64,7 +51,6 @@ export function PlanDetailPage() {
   const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PlanEntryRow | null>(null);
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
-  const [matrixEntryId, setMatrixEntryId] = useState<string | null>(null);
   const [selectedConfigurationIds, setSelectedConfigurationIds] = useState<string[]>([]);
 
   const planQuery = useQuery({
@@ -82,54 +68,81 @@ export function PlanDetailPage() {
     queryFn: () => fetchPlanEntries(projectId, planId),
     enabled: Boolean(projectId && planId)
   });
-  const summaryQuery = useQuery({
-    queryKey: ["reports", projectId, "plan-summary"],
-    queryFn: () => fetchPlanSummary(projectId),
-    enabled: Boolean(projectId && planId)
-  });
+  const matrixOwner = resolvePlanMatrixOwner(entriesQuery.data ?? [], selectedEntryIds);
+  const matrixEntryId = matrixOwner?.id ?? null;
   const runsQuery = useQuery({
-    queryKey: ["runs", projectId],
+    queryKey: runKeys.list(projectId),
     queryFn: () => fetchRuns(projectId),
     enabled: Boolean(projectId)
   });
+  const overviewQuery = useRunsOverviewQuery(projectId);
   const matrixQuery = useQuery({
     queryKey: ["plan-matrix", projectId, planId, matrixEntryId ?? "_none"],
     queryFn: () => fetchPlanMatrix(projectId, planId, matrixEntryId ?? undefined),
-    enabled: Boolean(projectId && planId)
-  });
-  const rollupQuery = useQuery({
-    queryKey: ["plan-rollup", projectId, planId],
-    queryFn: () => fetchPlanRollupByConfiguration(projectId, planId),
-    enabled: Boolean(projectId && planId)
+    enabled: Boolean(projectId && planId && matrixEntryId)
   });
   const selectedEntryConfigurationQuery = useQuery({
     queryKey: ["plan-entry-configurations", projectId, planId, matrixEntryId ?? "_none"],
     queryFn: () => fetchPlanEntryConfigurations(projectId, planId, matrixEntryId ?? ""),
     enabled: Boolean(projectId && planId && matrixEntryId)
   });
-
   const entries = entriesQuery.data ?? [];
-  const members = membersQuery.data ?? [];
-  const planSummary = useMemo(
-    () => summaryQuery.data?.find((row) => row.planId === planId) ?? null,
-    [planId, summaryQuery.data]
-  );
-  const runById = useMemo(() => new Map((runsQuery.data ?? []).map((run) => [run.id, run])), [runsQuery.data]);
-  const linkedRunCount = entries.filter((entry) => entry.runId).length;
-  const openRunCount =
-    planSummary?.openRunCount ??
-    entries.filter((entry) => entry.runId && runById.get(entry.runId)?.status !== "closed").length;
+  const entryConfigurationQueries = useQueries({
+    queries: entries.map((entry) => ({
+      queryKey: ["plan-entry-configurations", projectId, planId, entry.id],
+      queryFn: () => fetchPlanEntryConfigurations(projectId, planId, entry.id),
+      enabled: Boolean(projectId && planId)
+    }))
+  });
 
-  const selectedRows = entries.filter((entry) => selectedEntryIds.includes(entry.id));
-  const generateTargets = selectedRows.filter((entry) => !entry.runId);
+  const members = membersQuery.data ?? [];
+  const configurationsByEntryId = useMemo(() => {
+    const map = new Map<string, (typeof entryConfigurationQueries)[number]["data"]>();
+    entries.forEach((entry, index) => {
+      map.set(entry.id, entryConfigurationQueries[index]?.data);
+    });
+    return map;
+  }, [entries, entryConfigurationQueries]);
+  const executionEntries = useMemo(
+    () =>
+      buildPlanExecutionEntries({
+        projectId,
+        entries,
+        runs: runsQuery.data ?? [],
+        overviewItems: overviewQuery.data?.open.items ?? [],
+        configurationsByEntryId
+      }),
+    [configurationsByEntryId, entries, overviewQuery.data, projectId, runsQuery.data]
+  );
+  const generatedCount = executionEntries.filter((entry) => entry.run).length;
+  const untestedOpen = executionEntries.filter(
+    (entry) => entry.run && entry.run.status === "open" && (entry.run.untested > 0 || entry.run.totalTests === 0)
+  ).length;
+
+  const matrixSavePayload = planMatrixSavePayload(
+    matrixEntryId,
+    selectedEntryConfigurationQuery.data?.entryId ?? null,
+    selectedConfigurationIds
+  );
+  const selectedEntry = matrixOwner ? entries.find((entry) => entry.id === matrixOwner.id) ?? null : null;
+  const selectedExecution = matrixOwner
+    ? executionEntries.find((entry) => entry.id === matrixOwner.id) ?? null
+    : null;
+  const previewConfigurationNames = useMemo(() => {
+    if (!matrixQuery.data) return selectedExecution?.configurationNames ?? [];
+    return matrixQuery.data.groups.flatMap((group) =>
+      group.configurations.filter((cfg) => selectedConfigurationIds.includes(cfg.id)).map((cfg) => cfg.name)
+    );
+  }, [matrixQuery.data, selectedConfigurationIds, selectedExecution?.configurationNames]);
 
   const invalidatePlanHub = () => {
     void qc.invalidateQueries({ queryKey: ["plan", projectId, planId] });
     void qc.invalidateQueries({ queryKey: ["plans", projectId] });
     void qc.invalidateQueries({ queryKey: ["plan-entries", projectId, planId] });
-    void qc.invalidateQueries({ queryKey: ["plan-rollup", projectId, planId] });
+    void qc.invalidateQueries({ queryKey: ["plan-entry-configurations", projectId, planId] });
     void qc.invalidateQueries({ queryKey: ["reports", projectId, "plan-summary"] });
     void qc.invalidateQueries({ queryKey: ["runs", projectId] });
+    void qc.invalidateQueries({ queryKey: ["runs-overview", projectId] });
   };
 
   const createEntryMutation = useMutation({
@@ -140,15 +153,12 @@ export function PlanDetailPage() {
     }
   });
   const createRunMutation = useMutation({
-    mutationFn: (entryId?: string) => createRunFromPlanEntry(projectId, planId, entryId),
-    onSuccess: () => {
-      invalidatePlanHub();
-      void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
-    }
-  });
-  const createRunByConfigurationMutation = useMutation({
-    mutationFn: (input: { entryId: string; configurationIds: string[] }) =>
-      createRunByConfiguration({ projectId, planId, ...input }),
+    mutationFn: async (entryId: string) => {
+      if (matrixSavePayload && matrixSavePayload.entryId === entryId && matrixSavePayload.configurationIds.length > 0) {
+        return createRunByConfiguration({ projectId, planId, ...matrixSavePayload });
+      }
+      return createRunFromPlanEntry(projectId, planId, entryId);
+    },
     onSuccess: () => {
       invalidatePlanHub();
       void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
@@ -188,15 +198,15 @@ export function PlanDetailPage() {
     }
   });
   const saveConfigurationsMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: { entryId: string; configurationIds: string[] }) =>
       savePlanEntryConfigurations({
         projectId,
         planId,
-        entryId: matrixEntryId ?? "",
-        configurationIds: selectedConfigurationIds
+        entryId: input.entryId,
+        configurationIds: input.configurationIds
       }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["plan-entry-configurations", projectId, planId, matrixEntryId ?? "_none"] });
+    onSuccess: (_result, input) => {
+      void qc.invalidateQueries({ queryKey: ["plan-entry-configurations", projectId, planId, input.entryId] });
       void qc.invalidateQueries({ queryKey: ["plan-matrix", projectId, planId] });
       invalidatePlanHub();
     }
@@ -206,16 +216,32 @@ export function PlanDetailPage() {
     onSuccess: (_result, entryId) => {
       setPendingDelete(null);
       setSelectedEntryIds((current) => current.filter((id) => id !== entryId));
-      if (matrixEntryId === entryId) setMatrixEntryId(null);
       invalidatePlanHub();
     }
   });
 
   useEffect(() => {
-    if (selectedEntryConfigurationQuery.data) {
-      setSelectedConfigurationIds(selectedEntryConfigurationQuery.data.configurationIds);
+    setSelectedConfigurationIds([]);
+    saveConfigurationsMutation.reset();
+    createRunMutation.reset();
+  }, [matrixEntryId]);
+
+  useEffect(() => {
+    const mapping = selectedEntryConfigurationQuery.data;
+    if (mapping && mapping.entryId === matrixEntryId) {
+      setSelectedConfigurationIds(mapping.configurationIds);
     }
-  }, [selectedEntryConfigurationQuery.data]);
+  }, [matrixEntryId, selectedEntryConfigurationQuery.data]);
+
+  useEffect(() => {
+    const rows = entriesQuery.data;
+    if (!rows) return;
+    const visible = new Set(rows.map((entry) => entry.id));
+    setSelectedEntryIds((current) => {
+      const next = current.filter((id) => visible.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [entriesQuery.data]);
 
   const overflowGroups = useMemo(
     () =>
@@ -239,17 +265,14 @@ export function PlanDetailPage() {
     createEntryMutation.reset();
     updateEntryMutation.reset();
     setEditingEntry(entry);
-    setMatrixEntryId(entry.id);
+    setSelectedEntryIds([entry.id]);
     setEntryDialog("edit");
   };
 
-  const toggleSelected = (entryId: string, checked: boolean) => {
-    setSelectedEntryIds((current) =>
-      checked ? Array.from(new Set([...current, entryId])) : current.filter((id) => id !== entryId)
-    );
+  const selectEntry = (entryId: string) => {
+    setSelectedEntryIds((current) => (current.length === 1 && current[0] === entryId ? [] : [entryId]));
   };
 
-  const allSelected = entries.length > 0 && selectedEntryIds.length === entries.length;
   const entrySaving = createEntryMutation.isPending || updateEntryMutation.isPending;
   const entryFailed = createEntryMutation.isError || updateEntryMutation.isError;
   const entryError =
@@ -259,7 +282,6 @@ export function PlanDetailPage() {
   const header = (
     <WorkbenchPageHeader
       title={planQuery.data?.name ?? "Test plan"}
-      description="Compose entries, then generate runs. Plan settings stay in More actions."
       primaryAction={
         <Button
           size="md"
@@ -274,30 +296,18 @@ export function PlanDetailPage() {
     />
   );
 
-  const toolbar = (
-    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
-      <p className="text-xs text-slate-600">
-        <span className="font-medium text-slate-900">{entries.length}</span> entries
-        <span className="text-slate-300"> · </span>
-        <span className="font-medium text-slate-900">{planSummary?.runCount ?? linkedRunCount}</span> generated runs
-        <span className="text-slate-300"> · </span>
-        <span className="font-medium text-slate-900">{openRunCount}</span> open
-        <span className="text-slate-300"> · </span>
-        <span className="font-medium text-slate-900">{planSummary?.progress ?? 0}%</span> complete
-      </p>
-      <div className="ml-auto">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={createRunMutation.isPending || entries.length === 0 || isProjectArchived}
-          loading={createRunMutation.isPending}
-          onClick={() => void createRunMutation.mutateAsync(undefined)}
-        >
-          Generate next run
-        </Button>
-      </div>
-    </WorkbenchToolbar>
-  );
+  const toolbar =
+    entries.length === 0 ? null : (
+      <WorkbenchToolbar className="flex flex-wrap items-center gap-2">
+        <p className="text-xs text-slate-600">
+          <span className="font-medium text-slate-900">{generatedCount}</span> generated runs
+          <span className="text-slate-300"> · </span>
+          <span className="font-medium text-slate-900">{untestedOpen}</span> still need work
+          <span className="text-slate-300"> · </span>
+          <span className="font-medium text-slate-900">{entries.length}</span> entries
+        </p>
+      </WorkbenchToolbar>
+    );
 
   const dialogs = (
     <>
@@ -373,280 +383,198 @@ export function PlanDetailPage() {
     <WorkbenchPage data-plan-hub-workbench="">
       {header}
       {toolbar}
-      <SelectionActionBar selectedCount={selectedRows.length} aria-label="Selected plan entries">
-        <div className="flex flex-wrap items-center gap-2">
-          <strong className="whitespace-nowrap text-sm text-sky-950">{selectedRows.length} selected</strong>
-          <Button
-            size="sm"
-            disabled={generateTargets.length === 0 || createRunMutation.isPending || isProjectArchived}
-            loading={createRunMutation.isPending}
-            onClick={() => {
-              void (async () => {
-                for (const entry of generateTargets) {
-                  await createRunMutation.mutateAsync(entry.id);
-                }
-              })();
-            }}
-          >
-            Generate run
-          </Button>
-          <div className="ml-auto">
-            <Button variant="ghost" size="sm" onClick={() => setSelectedEntryIds([])}>
-              Clear selection
-            </Button>
-          </div>
-        </div>
-      </SelectionActionBar>
-
       {entries.length === 0 ? (
-        <EmptyState
-          title="No plan entries"
-          description="Use Add entry to compose this plan. Plan defaults and reports stay in More actions."
-        />
+        <EmptyState title="No plan entries" description="Add an entry to compose this plan." />
       ) : (
-        <section className="overflow-hidden border border-slate-300 bg-white">
-          <header className="border-b border-slate-200 px-3 py-2">
-            <h2 className="text-sm font-semibold text-slate-900">Plan entries</h2>
-            <p className="text-xs text-slate-500">
-              {linkedRunCount} of {entries.length} entries have generated runs.
-            </p>
-          </header>
-          <DataTable
-            dense
-            className="rounded-none border-0"
-            rowKey={(row) => row.id}
-            rows={entries}
-            columns={[
-              {
-                key: "select",
-                header: (
-                  <input
-                    type="checkbox"
-                    aria-label="Select all plan entries"
-                    checked={allSelected}
-                    ref={(element) => {
-                      if (element) element.indeterminate = selectedRows.length > 0 && !allSelected;
-                    }}
-                    onChange={(event) =>
-                      setSelectedEntryIds(event.target.checked ? entries.map((entry) => entry.id) : [])
-                    }
-                  />
-                ),
-                cell: (row) => (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${row.name}`}
-                    checked={selectedEntryIds.includes(row.id)}
-                    onChange={(event) => toggleSelected(row.id, event.target.checked)}
-                  />
-                )
-              },
-              {
-                key: "entry",
-                header: "Entry",
-                cell: (row) => (
-                  <div>
-                    <p className="font-medium text-slate-900">{row.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {row.environment || "No environment"} · {row.isIncluded ? "included" : "excluded"}
-                      {row.refs ? ` · refs ${row.refs}` : ""}
-                    </p>
-                  </div>
-                )
-              },
-              {
-                key: "cases",
-                header: "Cases",
-                headerClassName: "hidden md:table-cell",
-                cellClassName: "hidden md:table-cell text-xs text-slate-600",
-                cell: (row) => (
-                  <>
-                    {row.includeAll ? "All cases" : `${row.includeCaseIds.length} included`}
-                    {row.excludeCaseIds.length > 0 ? (
-                      <span className="block text-rose-700">{row.excludeCaseIds.length} excluded</span>
-                    ) : null}
-                  </>
-                )
-              },
-              {
-                key: "run",
-                header: "Generated run",
-                cell: (row) =>
-                  row.runId ? (
-                    <Link
-                      to={`/projects/${projectId}/runs/${row.runId}`}
-                      className="text-xs font-medium text-slate-800 underline-offset-2 hover:underline"
-                    >
-                      Run #{row.runId}
-                    </Link>
-                  ) : (
-                    <span className="text-xs text-slate-500">No run yet</span>
-                  )
-              },
-              {
-                key: "actions",
-                header: "Action",
-                align: "right",
-                cell: (row) => (
-                  <div className="flex flex-wrap justify-end gap-1">
-                    {!row.runId ? (
+        <section>
+          <h2 className="border-b border-slate-200 py-1.5 text-sm font-semibold text-slate-900">Runs to execute</h2>
+          <ul>
+            {executionEntries.map((row) => {
+              const selected = selectedEntryIds.length === 1 && selectedEntryIds[0] === row.id;
+              const configLabel = row.configurationNames.length > 0 ? row.configurationNames.join(" · ") : "No configuration";
+              return (
+                <li
+                  key={row.id}
+                  data-plan-entry-id={row.id}
+                  className={`border-b border-slate-200 py-2 last:border-b-0 ${selected ? "bg-sky-50/80" : ""}`}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{configLabel}</p>
+                      <p className="font-medium text-slate-900">{row.name}</p>
+                      <p className="text-xs text-slate-500">{row.caseSummary}</p>
+                      {row.run ? (
+                        <>
+                          <Link
+                            to={row.run.href}
+                            aria-label={`Open run ${row.run.name} (${configLabel})`}
+                            className="mt-1 inline-block text-sm font-medium text-slate-900 underline-offset-2 hover:underline"
+                          >
+                            Open run · {row.run.name}
+                          </Link>
+                          <p className="text-xs text-slate-600">
+                            {row.run.totalTests > 0
+                              ? formatRunListWorkSummary({
+                                  totalTests: row.run.totalTests,
+                                  statusCounts: row.run.statusCounts
+                                })
+                              : row.run.status === "closed"
+                                ? "Closed"
+                                : "No tests yet"}
+                            {row.run.status === "closed" && row.run.totalTests > 0 ? " · Closed" : ""}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-500">Not generated yet</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {row.run ? (
+                        <p className="text-sm font-semibold tabular-nums text-slate-900">{row.run.percentPassed}%</p>
+                      ) : null}
                       <Button
+                        variant={selected ? "secondary" : "ghost"}
                         size="sm"
-                        disabled={createRunMutation.isPending || isProjectArchived}
-                        onClick={() => void createRunMutation.mutateAsync(row.id)}
+                        aria-pressed={selected}
+                        aria-label={`${selected ? "Configuring" : "Configure"} ${row.name}`}
+                        onClick={() => selectEntry(row.id)}
                       >
-                        Generate run
+                        {selected ? "Configuring" : "Configure"}
                       </Button>
-                    ) : null}
-                    <Button variant="secondary" size="sm" onClick={() => openEditEntry(row)}>
-                      Edit
-                    </Button>
-                    <Button variant="danger" size="sm" onClick={() => setPendingDelete(row)}>
-                      Delete
-                    </Button>
+                    </div>
                   </div>
-                )
-              }
-            ]}
-          />
+                  {row.run ? <RunPlanProgressBar compact statusCounts={row.run.statusCounts} className="mt-1.5 max-w-xl" /> : null}
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 
-      <section className="border border-slate-300 bg-white px-3 py-3">
-        <h2 className="text-sm font-semibold text-slate-900">Configuration matrix</h2>
-        <p className="mt-0.5 text-xs text-slate-500">
-          {matrixEntryId
-            ? `Mapped to ${entries.find((entry) => entry.id === matrixEntryId)?.name ?? "the selected entry"}.`
-            : "Edit an entry to choose its configurations."}
-        </p>
-        {matrixQuery.data ? (
-          <div className="mt-3 space-y-3">
-            {matrixQuery.data.groups.map((group) => (
-              <div key={group.id}>
-                <p className="text-xs font-medium text-slate-600">{group.name}</p>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {group.configurations.map((cfg) => {
-                    const selected = selectedConfigurationIds.includes(cfg.id);
-                    return (
-                      <Button
-                        key={cfg.id}
-                        type="button"
-                        size="sm"
-                        variant={selected ? "primary" : "secondary"}
-                        aria-pressed={selected}
-                        disabled={!matrixEntryId}
-                        onClick={() =>
-                          setSelectedConfigurationIds((prev) =>
-                            selected
-                              ? prev.filter((id) => id !== cfg.id)
-                              : [...prev.filter((id) => !group.configurations.some((item) => item.id === id)), cfg.id]
-                          )
-                        }
-                      >
-                        {cfg.name}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!matrixEntryId || saveConfigurationsMutation.isPending}
-                loading={saveConfigurationsMutation.isPending}
-                onClick={() => matrixEntryId && void saveConfigurationsMutation.mutateAsync()}
-              >
-                Save combination
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!matrixEntryId || createRunByConfigurationMutation.isPending || isProjectArchived}
-                loading={createRunByConfigurationMutation.isPending}
-                onClick={() =>
-                  matrixEntryId &&
-                  void createRunByConfigurationMutation.mutateAsync({
-                    entryId: matrixEntryId,
-                    configurationIds: selectedConfigurationIds
-                  })
-                }
-              >
-                Generate run by configuration
-              </Button>
-            </div>
-            {matrixEntryId ? (
-              <div className="text-xs text-slate-600">
-                <p className="font-medium">Current entry mapping</p>
-                {selectedEntryConfigurationQuery.data && selectedEntryConfigurationQuery.data.items.length > 0 ? (
-                  <ul className="mt-1 space-y-1">
-                    {selectedEntryConfigurationQuery.data.items.map((item) => (
-                      <li key={item.configurationId}>
-                        {item.groupName ?? "Unknown group"}: {item.configurationName}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-slate-500">No configurations are mapped to this entry yet.</p>
-                )}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500">No matrix data.</p>
-        )}
-      </section>
-
-      <section className="overflow-hidden border border-slate-300 bg-white">
-        <header className="border-b border-slate-200 px-3 py-2">
-          <h2 className="text-sm font-semibold text-slate-900">Rollup by configuration</h2>
-        </header>
-        {rollupQuery.data && rollupQuery.data.length > 0 ? (
-          <DataTable
-            dense
-            className="rounded-none border-0"
-            rowKey={(row) => row.configurationId}
-            rows={rollupQuery.data}
-            columns={[
-              {
-                key: "name",
-                header: "Configuration",
-                cell: (row) => (
-                  <div>
-                    <p className="font-medium text-slate-900">{row.configurationName}</p>
-                    <p className="text-xs text-slate-500">{row.groupName}</p>
+      {matrixOwner && selectedEntry && selectedExecution ? (
+        <section className="border-t border-slate-200 py-3" data-plan-matrix="" data-plan-matrix-owner={matrixOwner.id}>
+          <h2 className="text-sm font-semibold text-slate-900">Configure {matrixOwner.name}</h2>
+          <p className="mt-1 text-xs text-slate-600">
+            {describeGeneratePreview({
+              entryName: matrixOwner.name,
+              configurationNames: previewConfigurationNames,
+              hasRun: Boolean(selectedEntry.runId)
+            })}{" "}
+            Expected: {expectedGeneratedRunCount(Boolean(selectedEntry.runId))} run.
+          </p>
+          {matrixQuery.data ? (
+            <div className="mt-3 space-y-3">
+              {matrixQuery.data.groups.map((group) => (
+                <div key={group.id}>
+                  <p className="text-xs font-medium text-slate-600">{group.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {group.configurations.map((cfg) => {
+                      const selected = selectedConfigurationIds.includes(cfg.id);
+                      return (
+                        <Button
+                          key={cfg.id}
+                          type="button"
+                          size="sm"
+                          variant={selected ? "primary" : "secondary"}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setSelectedConfigurationIds((prev) =>
+                              selected
+                                ? prev.filter((id) => id !== cfg.id)
+                                : [...prev.filter((id) => !group.configurations.some((item) => item.id === id)), cfg.id]
+                            )
+                          }
+                        >
+                          {cfg.name}
+                        </Button>
+                      );
+                    })}
                   </div>
-                )
-              },
-              {
-                key: "entries",
-                header: "Entries",
-                cell: (row) => row.entryCount
-              },
-              {
-                key: "runs",
-                header: "Runs",
-                cell: (row) => (
-                  <>
-                    {row.runCount}
-                    {row.openRunCount > 0 ? (
-                      <span className="ml-1 text-xs text-slate-500">({row.openRunCount} open)</span>
-                    ) : null}
-                  </>
-                )
-              },
-              {
-                key: "progress",
-                header: "Result progress",
-                cell: (row) => <RunPlanProgressBar statusCounts={statusCountsForRollup(row)} className="max-w-md" />
-              }
-            ]}
-          />
-        ) : (
-          <p className="px-3 py-3 text-sm text-slate-500">No rollup data.</p>
-        )}
-      </section>
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!matrixSavePayload || saveConfigurationsMutation.isPending}
+                  loading={saveConfigurationsMutation.isPending}
+                  onClick={() => {
+                    createRunMutation.reset();
+                    if (matrixSavePayload) void saveConfigurationsMutation.mutateAsync(matrixSavePayload);
+                  }}
+                >
+                  Save configuration
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={createRunMutation.isPending || isProjectArchived}
+                  loading={createRunMutation.isPending}
+                  onClick={() => {
+                    saveConfigurationsMutation.reset();
+                    void createRunMutation.mutateAsync(matrixOwner.id);
+                  }}
+                >
+                  Generate run
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => openEditEntry(selectedEntry)}>
+                  Edit entry
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setPendingDelete(selectedEntry)}>
+                  Delete
+                </Button>
+                <SaveFeedback
+                  status={
+                    saveConfigurationsMutation.isPending
+                      ? "saving"
+                      : saveConfigurationsMutation.isError
+                        ? "failed"
+                        : saveConfigurationsMutation.isSuccess
+                          ? "saved"
+                          : createRunMutation.isPending
+                            ? "saving"
+                            : createRunMutation.isError
+                              ? "failed"
+                              : createRunMutation.isSuccess
+                                ? "saved"
+                                : "idle"
+                  }
+                  message={
+                    saveConfigurationsMutation.isPending
+                      ? `Saving ${matrixOwner.name}…`
+                      : saveConfigurationsMutation.isError
+                        ? `Could not save ${matrixOwner.name}`
+                        : saveConfigurationsMutation.isSuccess
+                          ? `Saved ${matrixOwner.name}`
+                          : createRunMutation.isPending
+                            ? `Generating run for ${matrixOwner.name}…`
+                            : createRunMutation.isError
+                              ? `Could not generate a run for ${matrixOwner.name}`
+                              : createRunMutation.isSuccess
+                                ? selectedExecution.run
+                                  ? `Opened the existing run for ${matrixOwner.name}`
+                                  : `Generated a run for ${matrixOwner.name}`
+                                : undefined
+                  }
+                  onRetry={
+                    saveConfigurationsMutation.isError && matrixSavePayload
+                      ? () => void saveConfigurationsMutation.mutateAsync(matrixSavePayload)
+                      : createRunMutation.isError
+                        ? () => void createRunMutation.mutateAsync(matrixOwner.id)
+                        : undefined
+                  }
+                />
+              </div>
+            </div>
+          ) : matrixQuery.isError ? (
+            <ErrorState
+              title={`Could not load configurations for ${matrixOwner.name}`}
+              onRetry={() => void matrixQuery.refetch()}
+            />
+          ) : (
+            <LoadingState message={`Loading configurations for ${matrixOwner.name}...`} />
+          )}
+        </section>
+      ) : null}
       {dialogs}
     </WorkbenchPage>
   );

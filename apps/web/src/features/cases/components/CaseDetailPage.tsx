@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { Button } from "../../../shared/ui/Button";
 import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { PageHeader } from "../../../shared/ui/PageHeader";
@@ -19,10 +20,11 @@ function parseSectionId(value: string | null): number | null {
 
 export function CaseDetailPage() {
   const { projectId = "", caseId: caseIdParam = "" } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const caseId = Number(caseIdParam);
   const sectionId = parseSectionId(searchParams.get("sectionId"));
+  const isEditing = searchParams.get("mode") === "edit";
   const listPath = buildCaseListPath(projectId, { sectionId });
   const { data, isLoading, isError, refetch } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
 
@@ -65,6 +67,19 @@ export function CaseDetailPage() {
         description={data.archivedAt ? `Archived on ${new Date(data.archivedAt).toLocaleString()}` : undefined}
         actions={
           <>
+            {!data.archivedAt && !isEditing ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.set("mode", "edit");
+                  setSearchParams(next);
+                }}
+              >
+                Edit
+              </Button>
+            ) : null}
             <EntityCopyActions
               projectId={projectId}
               kind="case"

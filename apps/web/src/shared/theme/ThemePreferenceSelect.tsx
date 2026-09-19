@@ -1,3 +1,4 @@
+import { FormField } from "../ui/FormField";
 import { useTheme } from "./ThemeProvider";
 import type { ThemePreference } from "./themePreference";
 
@@ -36,22 +37,25 @@ export function ThemePreferenceSelect({ className = "", compact = false }: Theme
   }
 
   return (
-    <label className={`block space-y-1 text-sm text-slate-700 dark:text-slate-200 ${className}`}>
-      <span className="font-medium">Color theme</span>
-      <select
-        className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-        value={preference}
-        onChange={(event) => setPreference(event.target.value as ThemePreference)}
-      >
-        {OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <span className="text-xs text-slate-500 dark:text-slate-400">
-        Stored in this browser. System follows your OS appearance setting.
-      </span>
-    </label>
+    <FormField
+      className={className}
+      label="Color theme"
+      helpText="Stored in this browser. System follows your OS appearance setting."
+    >
+      {(control) => (
+        <select
+          {...control}
+          className="w-full max-w-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          value={preference}
+          onChange={(event) => setPreference(event.target.value as ThemePreference)}
+        >
+          {OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </FormField>
   );
 }

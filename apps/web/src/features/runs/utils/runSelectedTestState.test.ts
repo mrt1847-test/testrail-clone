@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isEvidenceRequiringStatus,
   nextVisibleTestId,
+  nextUnwrappedVisibleTestId,
   resolveSelectedRunTest,
   resolveVisibleSelectedRunTest
 } from "./runSelectedTestState";
@@ -38,6 +39,12 @@ describe("runSelectedTestState", () => {
       path.push(current);
     }
     expect(path).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  it("does not wrap Save & Next past the last visible test", () => {
+    const instances = ["1", "2"].map(row);
+    expect(nextUnwrappedVisibleTestId("1", instances)).toBe("2");
+    expect(nextUnwrappedVisibleTestId("2", instances)).toBeNull();
   });
 
   it("uses the URL test id as the selected test", () => {

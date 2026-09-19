@@ -53,6 +53,8 @@ type Props = {
   isBulkPending: boolean;
   bulkFeedback?: BulkResultFeedback | null;
   onDismissBulkFeedback?: () => void;
+  onRetryFailedBulk?: () => void;
+  canRetryFailedBulk?: boolean;
   onBulkSubmit: () => void;
   onAssignSelected: (assignedTo: string | null) => void;
   allPageSelected: boolean;
@@ -71,8 +73,17 @@ type Props = {
     message: string;
     canUndo: boolean;
   } | null;
-  onRetrySave?: () => void;
-  onUndoSave?: () => void;
+  saveFeedbackByTestId?: Record<
+    string,
+    {
+      testId: string;
+      status: SaveFeedbackStatus;
+      message: string;
+      canUndo: boolean;
+    }
+  >;
+  onRetrySave?: (testId: string) => void;
+  onUndoSave?: (testId: string) => void;
   page: number;
   totalPages: number;
   total: number;
@@ -134,6 +145,8 @@ export function RunInstancesSection(props: Props) {
     isBulkPending,
     bulkFeedback,
     onDismissBulkFeedback,
+    onRetryFailedBulk,
+    canRetryFailedBulk,
     onBulkSubmit,
     onAssignSelected,
     allPageSelected,
@@ -144,6 +157,7 @@ export function RunInstancesSection(props: Props) {
     onComposeResult,
     isSavingQuickResult,
     saveFeedback,
+    saveFeedbackByTestId,
     onRetrySave,
     onUndoSave,
     page,
@@ -212,6 +226,8 @@ export function RunInstancesSection(props: Props) {
         isBulkPending={isBulkPending}
         bulkFeedback={bulkFeedback}
         onDismissBulkFeedback={onDismissBulkFeedback}
+        onRetryFailedBulk={onRetryFailedBulk}
+        canRetryFailedBulk={canRetryFailedBulk}
         onBulkSubmit={onBulkSubmit}
         onClearSelection={() => setSelectedTestIds([])}
         onSelectAllMatching={onSelectAllMatchingFilter}
@@ -236,6 +252,7 @@ export function RunInstancesSection(props: Props) {
         onComposeResult={onComposeResult}
         isSavingQuickResult={isSavingQuickResult}
         saveFeedback={saveFeedback}
+        saveFeedbackByTestId={saveFeedbackByTestId}
         onRetrySave={onRetrySave}
         onUndoSave={onUndoSave}
         page={page}

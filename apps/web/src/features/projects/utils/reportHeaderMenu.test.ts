@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  REPORT_ACTIONS_MENU_LABEL,
+  REPORT_NAVIGATION_MENU_LABEL,
   reportDetailHeaderMenuGroups,
   reportResultMenuGroups,
   reportsCatalogHeaderMenuGroups
@@ -34,5 +36,27 @@ describe("reportHeaderMenuGroups", () => {
     expect(labels).toEqual(["Save view", "Print view", "Export CSV", "Queue export"]);
     expect(labels).not.toContain("Add report");
     expect(labels).not.toContain("All reports");
+  });
+
+  it("names navigation and current-report menus differently", () => {
+    expect(REPORT_NAVIGATION_MENU_LABEL).toBe("Reports");
+    expect(REPORT_ACTIONS_MENU_LABEL).toBe("This report");
+    expect(REPORT_NAVIGATION_MENU_LABEL).not.toBe(REPORT_ACTIONS_MENU_LABEL);
+  });
+
+  it("does not offer print or enabled export when the report has no output", () => {
+    const groups = reportResultMenuGroups({
+      printPath: "/print",
+      disabled: true,
+      onSaveView: () => undefined,
+      onExportCsv: () => undefined,
+      onQueueExport: () => undefined
+    });
+    const items = groups.flatMap((group) => group.items);
+    expect(items.map((item) => item.label)).toEqual(["Save view", "Export CSV", "Queue export"]);
+    expect(items.find((item) => item.id === "print")).toBeUndefined();
+    expect(items.find((item) => item.id === "csv")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "queue")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "save-view")?.disabled).not.toBe(true);
   });
 });

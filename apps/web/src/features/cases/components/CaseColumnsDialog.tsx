@@ -1,5 +1,6 @@
-import type { CaseColumnWidths, CaseListColumn } from "../types";
+import type { CaseColumnWidths, CaseListColumn, SavedCaseView } from "../types";
 import { defaultCaseColumnWidths } from "../hooks/useCaseColumnPreferences";
+import { defaultCaseListColumns } from "../hooks/useExpandedCase";
 
 type CaseColumnsDialogProps = {
   open: boolean;
@@ -16,6 +17,9 @@ type CaseColumnsDialogProps = {
   onCancelSaveView: () => void;
   canDeleteSavedView: boolean;
   onDeleteSavedView: () => void;
+  savedViews?: SavedCaseView[];
+  matchedSavedViewId?: string;
+  onSavedViewSelect?: (viewId: string) => void;
 };
 
 const columnOptions: Array<{ value: CaseListColumn; label: string }> = [
@@ -43,7 +47,10 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
     onSaveView,
     onCancelSaveView,
     canDeleteSavedView,
-    onDeleteSavedView
+    onDeleteSavedView,
+    savedViews = [],
+    matchedSavedViewId,
+    onSavedViewSelect
   } = props;
 
   if (!open) return null;
@@ -52,7 +59,7 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
     const next = checked
       ? Array.from(new Set([...columns, column]))
       : columns.filter((item) => item !== column);
-    onColumnsChange(next.length > 0 ? next : ["type", "priority", "automation", "estimate"]);
+    onColumnsChange(next.length > 0 ? next : defaultCaseListColumns);
   };
 
   const updateWidth = (column: CaseListColumn, rawValue: string) => {
@@ -113,6 +120,25 @@ export function CaseColumnsDialog(props: CaseColumnsDialogProps) {
           <button type="button" className="mt-3 text-xs text-blue-700 hover:underline" onClick={onToggleSaveView}>
             {saveViewOpen ? "Close save view" : "Save as column view"}
           </button>
+          {savedViews.length > 0 ? (
+            <div className="mt-3 grid gap-1">
+              <span className="text-xs font-medium text-slate-700">Saved views</span>
+              {savedViews.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={[
+                    "rounded px-2 py-1 text-left text-xs",
+                    matchedSavedViewId === view.id ? "bg-slate-200 font-semibold text-slate-950" : "text-slate-800 hover:bg-slate-100"
+                  ].join(" ")}
+                  aria-current={matchedSavedViewId === view.id ? "true" : undefined}
+                  onClick={() => onSavedViewSelect?.(view.id)}
+                >
+                  {view.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {saveViewOpen ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <input

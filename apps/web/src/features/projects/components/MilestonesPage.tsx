@@ -169,7 +169,7 @@ export function MilestonesPage() {
 
   const header = <MilestonesHeader projectId={projectId} onAddMilestone={openCreate} />;
   const toolbar = (
-    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
+    <WorkbenchToolbar className="flex flex-wrap items-center gap-2">
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Milestone display">
         {displayOptions.map((option) => (
           <Button

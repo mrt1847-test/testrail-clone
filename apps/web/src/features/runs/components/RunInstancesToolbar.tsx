@@ -140,7 +140,7 @@ export function RunInstancesToolbar(props: Props) {
             placeholder="Search…"
             value={searchText}
             onChange={(e) => onSearchTextChange(e.target.value)}
-            className="min-w-[160px] max-w-xs rounded border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-500"
+            className="min-w-0 w-full basis-full rounded border border-slate-400 bg-white px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-500 sm:w-28 sm:flex-1 sm:basis-auto sm:min-w-[10rem] sm:flex-none"
           />
         </div>
         {filtersOpen ? (

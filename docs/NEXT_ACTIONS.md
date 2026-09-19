@@ -1,62 +1,99 @@
 # Next Actions
 
-Last aligned: 2026-09-18
+Last aligned: 2026-09-20 — UI-021 반복 중단 및 수정 작업 편성
 
-Goal: reduce UI clutter and make the core Test Cases and Run Execution workflows immediately understandable. Product direction and outcome gates live in [USABILITY_REALIGNMENT_2026-09-18.md](./USABILITY_REALIGNMENT_2026-09-18.md). Progress for this program is tracked by flipping exactly one `UI-*` line in that document from `[ ]` to `[x]`.
+Goal: 테스터가 TestRail처럼 단순한 화면에서 케이스를 관리하고 지침을 읽으며 테스트를 수행·기록·재개한다. 작업 범위와 완료 체크는 [USABILITY_REALIGNMENT_2026-09-18.md](./USABILITY_REALIGNMENT_2026-09-18.md), 실행 순서는 **이 문서만** 따른다.
 
-`FEATURE_CHECKLIST.md` continues to track capability parity. It is not the completion source for this usability realignment.
+## 이번 실행 순서 결정
 
-## Loop
+사용자의 “NEXT ACTION 문서를 수정해줘, 해야 할 작업이 많다” 요청에 따라 [UI-021 실행 기록](./ux-evidence/UI-021.md)의 결함을 **UI-052–063의 개별 수정 작업**으로 편성한다. UI-021은 완료 처리하지 않고 마지막 재검증으로 이동한다. 검증을 반복하면서 수정은 금지하던 이전 Current/빈 후보 목록은 이 편성으로 대체한다.
 
-1. Implement only the unchecked `UI-*` line named in **Current batch**.
-2. Include the code, focused interaction checks, and required screenshots in the same batch.
-3. When it ships, flip only that exact line to `[x]` and add a short evidence note.
-4. Move the first still-unchecked item from **Next batch candidates** into **Current batch**.
-5. If implementation reveals a larger problem, record it under the relevant `UX-*` outcome without silently expanding the current batch.
+- 기존 UI-001–051 체크는 이력으로 보존한다. 새 UX 19개 항목과 J01–J08은 각 수정의 목적/검증 기준이며 별도의 무제한 구현 큐가 아니다.
+- 기록된 결함은 실행 당시 관찰이다. 현재 코드에서 재현하고 원인을 확인한 뒤 고친다. fixture/기대값 오류이거나 이미 해결됐다면 이를 입증하고 해당 단위의 모든 수용 기준을 검증한다. 재현되지 않았다는 이유만으로 억지 코드를 추가하지 않는다.
+- 수정은 정확히 한 Current 단위만 수행한다. 이 문서 변경은 실제 제품 수정·결함 해결·예약 설정 변경을 뜻하지 않는다.
 
----
+## Loop — 한 번에 하나의 수정과 그 검증
+
+1. Current와 상위 문서의 같은 UI 체크리스트, 연결된 UX/J 시나리오를 읽는다. 기존 사용자 변경과 진행 중 작업을 확인하고 중복 실행하지 않는다.
+2. 해당 현상을 재현하고 관련 실패 회귀를 먼저 만든다. 같은 fixture의 요청/응답/저장 후 재조회로 원인을 좁힌다. 의미 있는 새 배치가 필요하면 §5.3의 검토를 따른다. 기존 승인된 배치의 동작 복구는 새 전면 설계로 확대하지 않는다.
+3. 범위 내 최소 수정 후 관련 테스트·타입 검사·빌드와 화면/키보드 검증을 수행한다. 웹은 `npm.cmd run lint -w apps/web`, `npm.cmd run build -w apps/web`; 서버 변경 시 관련 서버 테스트/빌드도 실행한다. 테스트 환경과 fixture를 재현 가능하게 준비하고, “빌드가 fixture를 지운다”는 기존 기록을 확인 없이 빌드 생략 사유로 반복하지 않는다.
+4. `docs/ux-evidence/UI-XXX.md`에 재현, 변경, 테스트 명령/결과, 실제 화면, 저장 대상/재조회, 제한을 기록한다. 1440×1000/1280×720/390×844 중 변경 화면의 필요한 상태를 캡처하며 helper 테스트나 옛 화면으로 현재 실조작을 대체하지 않는다.
+5. 해당 단위 완료 조건이 모두 통과할 때만 그 UI 체크를 완료하고 첫 미완료 Next 후보를 Current로 이동한 뒤 종료한다. 코드 수정 단위에 모든 UX 통합 조건을 떠넘기지 않는다. 단, 해당 단위에 필요한 키보드/저장 검증을 최종 단계로 미뤄 거짓 완료하지 않는다.
+6. 미완료면 Current/체크를 유지한다. 막힌 사유와 **재개 조건**(어떤 코드/환경/권한/검토가 바뀌어야 하는지)을 남긴다. 다음 실행에서 그 조건이 변하지 않았다면 읽기 전용 준비 상태 확인만 하고 끝낸다. 동일 전체 테스트·스크린샷·fixture 생성·같은 증거 문서 덧쓰기를 반복하지 않는다. 다른 구현 단위로 자동 건너뛰거나 새 단위를 임의 추가하지 않는다.
+7. Codex/ChatGPT 사용량 제한·크레딧 부족·rate limit·quota 감지 시 즉시 중단한다. 이후 저장소/체크/Git 상태를 생성·변경·삭제하지 않고 실행 결과에 사유만 남긴다. 자동 재설정/구매 금지. 예약을 유지하고 다음 5분 주기에 같은 Current를 재시도한다.
+8. UI-021 진입은 아래 준비 조건을 확인한 뒤다. 아직 실패한 수정 작업이나 변하지 않은 외부 차단이 있으면 전체 통합 검증을 다시 시작하지 않는다. UI-021에서 새 결함이 발견되면 범위/재현/완료 기준을 갖춘 수정 후보를 보고하고 별도 편성 결정을 요청한다. 반복 검증을 결함 수정 대신 수행하지 않는다.
 
 ## Current batch
 
-**Program:** TestRail-style usability realignment
+**Exact checklist unit: UI-052 P0 — 모바일 Run 목록 복귀와 선택 복원 충돌 수정.**
 
-**Checklist line (exact line done when this is `[x]`):**
+### 사용자에게 보일 결과
 
-No unit is scheduled. `UI-019` shipped. Do not start `UI-020` (Settings), `UI-021`, or UI-022–UI-029 until one of them is explicitly placed here.
+390px에서 Back to tests를 누르면 사용 가능한 목록이 유지된다. 선택했던 상세가 즉시 다시 열려 목록을 막지 않는다. 명시적인 testId 링크는 해당 지침을 정상적으로 연다.
 
-### Out of scope until scheduled
+### 범위와 시작점
 
-- Shared Settings controls (`UI-020`).
-- Cross-route visual/accessibility regression gate (`UI-021`).
-- The deferred simplicity-review units UI-022–UI-029.
+- `apps/web/src/features/runs/components/RunDetailPage.tsx`
+- `apps/web/src/features/runs/utils/runSelectedTestState.ts` 및 관련 테스트
+- 선택/URL 복원과 목록·상세 표시 상태만 수정한다. 상단 통계, 결과창, 케이스 지침 내용은 보존한다.
+- 근거: UI-021 J08에서 testId 없는 경로가 C4로 자동 복원되고, Back to tests 후 C4가 다시 열리며 목록 행 높이가 0으로 관찰됐다.
+- 상위 UI-052의 범위/완료 조건이 상세 계약이다. 관련 UX-002/020/034/042, J04/J08.
 
----
+### 실행 체크리스트
+
+- [ ] 390px에서 상세 → Back to tests → 대기/재렌더 이후에도 목록이 유지되는 실패 회귀를 작성한다.
+- [ ] 명시적 목록 복귀와 저장된 선택 복원을 구분한다. 한 번 뒤로 갔다가 같은 testId가 자동 재삽입되는 효과를 제거한다.
+- [ ] 목록 행과 체크박스가 실제 크기를 갖고 클릭/키보드 접근 가능함을 확인한다. 행을 열면 올바른 지침을 읽고 다시 목록으로 돌아온다.
+- [ ] 직접 testId URL, testId 없는 모바일 URL, 새로고침, 브라우저 Back/Forward, 필터 변경과 1280/1440 데스크톱 선택을 회귀 확인한다.
+- [ ] 관련 테스트·웹 타입 검사/빌드, 실제 화면 및 포커스 검증을 `docs/ux-evidence/UI-052.md`에 기록한다. 다음 UI-053은 같은 실행에서 시작하지 않는다.
 
 ## Next batch candidates
 
-No further rows were listed in this table after `UI-019`. Do not invent a next unit.
+숫자 ID가 아니라 아래 순서로 진행한다. 각 행은 상위 문서의 동일 ID에 범위·재현·완료 기준을 가진다.
 
----
+| 순서 | 단위 | 작업 결과 |
+| --- | --- | --- |
+| 1 | UI-053 P0 — 결과 Defects 저장/재조회 | 입력한 결함 키가 payload부터 저장된 결과/이력까지 유지 |
+| 2 | UI-054 P0 — 케이스 References 저장/재조회 | 작성/편집한 참조가 케이스 재열기와 Run에서 유지 |
+| 3 | UI-055 P0 — bulk 결과 후 상태 동기화 | 새로고침 없이 목록·선택 상세·이력·통계가 같은 결과 표시; 실패 대상 재시도 |
+| 4 | UI-056 P0 — 저장과 명시적 다음 이동 | Add Result는 유지, Save & Next/Pass & Next만 정상 다음 이동; 오해를 주는 Jump 설정 정리 |
+| 5 | UI-057 P0 — 부분 실패 초안/재시도 유지 | 결과 중복 없이 첨부/할당 실패 복구, 재열기와 파일 재선택 필요 여부를 정직하게 안내 |
+| 6 | UI-058 P0 — All/Dynamic 포함 규칙 정합성 | 실제 기존 자동 포함 계약과 동작 일치; Selected 고정, 필요한 Sync 접근 방해 제거 |
+| 7 | UI-059 P1 — 이동/복사 목적지 경로 | 동일 이름 섹션을 부모 경로로 구분하고 올바른 계층 표시 |
+| 8 | UI-060 P1 — 섹션 개수/조회 안내 갱신 | 범위 변경·추가·이동 후 트리/블록/안내가 실제 대상 수와 일치 |
+| 9 | UI-061 P1 — 긴 프로젝트 이름 표시 | 이름 앞부분 잘림과 헤더 겹침 수정, 전체 이름 접근 보장 |
+| 10 | UI-062 P1 — Run 제어 이름과 실제 키보드 조작 | 전체 선택/Discussion 이름, 실제 Tab·메뉴·모달 복귀 검증과 필요한 수정 |
+| 11 | UI-063 P1 — Overview/Milestone 집계 문맥 | 케이스 수와 테스트 인스턴스 수·실제 연결을 구분한 정확한 집계/표시 |
+| 12 | UI-021 P1 — 최종 통합 재검증 | 수정 완료 및 아래 준비 조건 충족 후 UX 19개/J01–J08 판정 |
 
-## Deferred capability batches
+UI-052–063은 **12개 수정 단위**다. UI-021은 13번째 최종 검증이며 먼저 반복하는 작업이 아니다.
 
-### Newly reviewed UI follow-ups — not scheduled
+## 외부 준비 조건 — 코드 수정 큐와 별도 관리
 
-The user requested review and documentation only for the [simplicity re-review](./UI_UX_SIMPLICITY_REVIEW_2026-09-18.md). UI-022–UI-029 have been added as unchecked units in the controlling usability checklist. **Do not treat this review as permission to implement them now or advance Current batch.** No Current batch unit is scheduled after UI-019.
+이 항목은 자동으로 새 인프라를 만들라는 작업이 아니다. 코드 수정은 관련 없는 외부 준비를 기다리며 모두 멈추지 않는다. 각 단위에 필요한 검증만 요구하고, 실제 저장소 성공·독립 테스터 관찰은 최종 검증 전에 충족한다.
 
-| Review priority | Planned unit |
-| --- | --- |
-| P0 | UI-025 — Unobstructed move/copy dialog and correct focus behavior |
-| P0 | UI-022 — Selected section / include subsections / all sections scope |
-| P1 | UI-023 — Section-owned TC blocks with path, count, and collapse |
-| P1 | UI-024 — Simpler View settings with distinct meanings |
-| P1 | UI-026 — File-tree keyboard and accessible-label behavior |
-| P1 | UI-027 — Compact project navigation above Test Cases |
-| P1 | UI-028 — One case-selection action bar and one empty-state CTA |
-| P1 | UI-029 — Content-first case detail header |
+| 준비 ID | 필요한 준비/담당 | 충족 증거와 재개 조건 |
+| --- | --- | --- |
+| E01 실제 첨부 저장소 | 프로젝트 운영자와 실행 담당자가 기존 지원 저장소/테스트 환경을 확인 | 테스트용 계정으로 presign/upload/read/download 가능한 실제 설정. UI-021의 501은 당시 환경의 결과이지 저장 구현 전체 부재의 증거가 아니다. 키/비밀 출력, 임의 구매·외부 자원 생성 금지. 환경이 준비되면 원본 bytes 왕복을 검증 |
+| E02 실제 키보드 검증 경로 | 실행 담당자가 키 입력이 앱에 가로채이지 않는 브라우저 경로 확보, 불가하면 사용자 수동 확인 요청 | 실제 Tab/Shift+Tab/Enter/Escape 및 포커스 복귀의 조작 기록. DOM focus만으로 통과시키지 않음. UI-062에서 해당 경로를 사용 |
+| E03 테스터/디자인 검토 | 프로젝트 소유자 또는 지정 테스터 | J01–J08의 목적만 제공한 관찰과 필요한 배치 검토. 기존 승인 재사용 가능, 새 화면 승인/사람의 참여를 추정하지 않음 |
+| E04 재현 가능한 검증 환경 | 실행 담당자 | build/재시작 영향 확인, 테스트 데이터 보존 또는 안전한 재생성 절차와 명령. 사용자 DB를 초기화하지 않음. fixture 우려만으로 빌드를 영구 생략하지 않음 |
 
-These are review priorities, not a replacement execution queue. Schedule them explicitly before placing any one of them in Current batch.
+실행자가 처음 확인했을 때 준비 결과와 필요한 사용자 조치를 증거에 한 번 기록한다. 준비가 그대로라면 반복 생성/실패 주입/전체 캡처 대신 준비 상태만 확인한다. 이 문서는 예약 주기나 활성 상태를 변경하지 않는다.
 
-### Deferred feature parity work
+## UI-021 재진입 기준과 수행 범위
 
-The previous cross-project reports and SSO batches remain in [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md). Resume them after the usability program or when the product owner explicitly reprioritizes them; do not interleave them with the current one-PR UI sequence.
+- UI-052–063의 완료 증거가 있어야 한다. 현재 코드에서 비재현으로 끝난 단위도 정확한 fixture·기대 계약·회귀 결과가 있어야 하며 단순 “안 보임”은 완료가 아니다.
+- E01–E04 중 필수 검증에 해당하는 환경/도구/검토가 준비돼야 한다. 준비되지 않으면 UI-021은 미완료/대기이고 같은 전 범위 검증을 계속 반복하지 않는다.
+- 통합 빌드에서 새 UX 19개, J01–J08을 실행하고 자동 검사/화면/실제 키보드/영속화/테스터 관찰을 분리해 기록한다. UI-031/UI-051의 첨부 성공·키보드·검토 미완료도 해소한다.
+- 기존 UI-021 보고의 기대값을 검증한다. **일반 Add Result 후 유지하는 것은 정상**이다. 명시적 다음 행동을 별도로 시험한다. Overview 테스트 수는 같은 케이스의 여러 Run 포함 때문에 고유 케이스 수와 다를 수 있다. 연결하지 않은 Run이 특정 milestone에 없다고 오류로 단정하지 않는다.
+- 매번 전체를 처음부터 재작성하지 않는다. 같은 빌드/fixture/전제에서 유효한 증거는 연결하고, 수정 영향과 필수 통합 흐름을 다시 확인한다. 빌드/전제가 바뀌면 재검증 범위를 명시한다.
+- 최종 판정은 `docs/ux-evidence/UI-021.md`에 남긴다. 미해결 코드 결함은 별도 수정 후보로, 환경/사람 대기는 E 항목으로 구분한다. UI-021이나 UX 체크를 임의 완료해 반복을 끝내지 않는다.
+
+## 유지할 설계 계약
+
+- [공통 결과 입력창](./RUN_RESULT_DIALOG_DESIGN_2026-09-19.md): UI-051의 작은 2열 폼, 두 진입점, 일반 저장/명시적 다음, 취소 무변경을 유지한다.
+- [상단 통계](./RUN_STATUS_OVERVIEW_DESIGN_2026-09-19.md): 영구 왼쪽 통계 열로 되돌리지 않는다.
+- [UX 명세](./USABILITY_REALIGNMENT_2026-09-18.md): 텍스트 중심 폴더 트리, 섹션별 TC 블록, 지침 읽기 패널, 정확한 결과 대상·복구를 우선한다.
+- 기존 [완료 검토](./UI_UX_COMPLETION_REVIEW_2026-09-19.md)와 [전체 배치 검토](./TESTRAIL_UI_REALIGNMENT_REVIEW_2026-09-19.md)는 근거이며 이 큐보다 실행 순서가 우선하지 않는다.
+- Cross-project reports/SSO 등은 [FEATURE_CHECKLIST](./FEATURE_CHECKLIST.md)에 보류한다. 이번 수정 큐로 기능 범위를 확장하지 않는다.

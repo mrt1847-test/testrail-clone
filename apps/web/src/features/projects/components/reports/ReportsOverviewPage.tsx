@@ -67,7 +67,7 @@ export function ReportsOverviewPage() {
     />
   );
   const toolbar = (
-    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
+    <WorkbenchToolbar className="flex flex-wrap items-center gap-2">
       <div className="flex flex-wrap gap-1">
         {REPORT_CATEGORIES.map((item) => (
           <Button

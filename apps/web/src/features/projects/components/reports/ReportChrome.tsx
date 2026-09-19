@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { OverflowMenu, WorkbenchPageHeader } from "../../../../shared/ui";
 import { FilterBar, type FilterField } from "../../../../shared/ui/FilterBar";
-import { reportDetailHeaderMenuGroups } from "../../utils/reportHeaderMenu";
+import { REPORT_NAVIGATION_MENU_LABEL, reportDetailHeaderMenuGroups } from "../../utils/reportHeaderMenu";
 import { copyTextToClipboard } from "../../../../shared/utils/clipboard";
 import {
   formatReportSummaryItems,
@@ -36,7 +36,11 @@ export function ReportPageHeader({ title, description }: { title: string; descri
     <WorkbenchPageHeader
       title={title}
       description={description}
-      utilityAction={projectId ? <OverflowMenu groups={reportDetailHeaderMenuGroups(projectId)} /> : undefined}
+      utilityAction={
+        projectId ? (
+          <OverflowMenu label={REPORT_NAVIGATION_MENU_LABEL} groups={reportDetailHeaderMenuGroups(projectId)} />
+        ) : undefined
+      }
     />
   );
 }
@@ -79,7 +83,7 @@ export function ReportSummaryStrip({ items }: { items: ReportSummaryItem[] }) {
   const copyText = formatReportSummaryItems(items);
   return (
     <div
-      className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:flex-row sm:items-start sm:justify-between"
+      className="flex flex-col gap-2 border-b border-slate-200 pb-2 sm:flex-row sm:items-start sm:justify-between"
       aria-label="Report summary"
     >
       <div className="flex flex-wrap gap-2">
@@ -127,7 +131,7 @@ export type ReportFilterField = FilterField;
 
 /** Compact filter row for report drilldown pages (client-side filtering baseline). */
 export function ReportFilterBar({ fields }: { fields: ReportFilterField[] }) {
-  return <FilterBar fields={fields} ariaLabel="Report filters" variant="card" />;
+  return <FilterBar fields={fields} ariaLabel="Report filters" variant="toolbar" />;
 }
 
 /** CSV export for the current report type (uses ad-hoc GET export API). */

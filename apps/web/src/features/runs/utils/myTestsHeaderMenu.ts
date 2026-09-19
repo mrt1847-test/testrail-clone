@@ -8,7 +8,7 @@ export type MyTestsHeaderMenuGroup = {
 
 /**
  * My Tests keeps recording in Run Execution. Reports and team-wide views stay
- * in overflow so the assigned table and Add result remain the primary work.
+ * in overflow so the assigned queue and Open test remain the primary work.
  */
 export function myTestsHeaderMenuGroups(projectId: string): MyTestsHeaderMenuGroup[] {
   return [

@@ -16,6 +16,20 @@ import { useRunCompositionDraft } from "../hooks/useRunCompositionDraft";
 import { useCreateRunMutation } from "../hooks/useRunsApi";
 import type { RunCompositionCaseRow } from "./RunCompositionCaseTable";
 import { RunCompositionWorkbench } from "./RunCompositionWorkbench";
+import { matchCasesByCreateFilter } from "../utils/runFilterSelection";
+import {
+  buildRunCreateMembershipFields,
+  buildRunCreateTargetSummary,
+  captureChooserSnapshot,
+  compositionFromMembership,
+  defaultFreshMembershipKind,
+  emptyMembershipSelection,
+  isRunCreateSubmitDisabled,
+  membershipKindFromComposition,
+  selectAllCurrentCaseIds,
+  type RunCreateChooserSnapshot,
+  type RunMembershipKind
+} from "../utils/runCreateMembershipModel";
 import {
   buildDescendantIdsBySection,
   buildSubtreeCaseCounts,
@@ -55,7 +69,12 @@ export function RunCreatePage() {
   const [endDate, setEndDate] = useState("");
   const [environment, setEnvironment] = useState("");
   const [includeAll, setIncludeAll] = useState(true);
-  const [compositionMode, setCompositionMode] = useState<RunCompositionMode>("static");
+  const [compositionMode, setCompositionMode] = useState<RunCompositionMode>(
+    compositionFromMembership(defaultFreshMembershipKind()).compositionMode
+  );
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [chooserMode, setChooserMode] = useState<"select" | "exclude">("select");
+  const chooserSnapshotRef = useRef<RunCreateChooserSnapshot | null>(null);
   const [filterPriority, setFilterPriority] = useState<"" | "low" | "medium" | "high">("");
   const [filterState, setFilterState] = useState<"active" | "archived">("active");
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
@@ -223,98 +242,151 @@ export function RunCreatePage() {
     return count;
   }, [excludedSectionIds, includedSectionIds]);
 
-  const runScopeSummary = useMemo(() => {
-    if (compositionMode === "dynamic_filter") {
-      return `Dynamic filter · priority ${filterPriority || "any"} · ${filterState} · section roots ${includedSectionIds.length}`;
-    }
-    if (includeAll || compositionMode === "include_all_live") {
-      return `${cases.length} cases in suite · include roots ${includedSectionIds.length} · exclude roots ${excludedSectionIds.length} · excluded cases ${excludedCaseIds.length}`;
-    }
-    return `${selectedCaseIds.length} selected · ${selectedCaseCountInScope} in section scope`;
-  }, [
-    cases.length,
-    compositionMode,
-    excludedCaseIds.length,
-    excludedSectionIds.length,
-    filterPriority,
-    filterState,
-    includeAll,
-    includedSectionIds.length,
-    selectedCaseCountInScope,
-    selectedCaseIds.length
-  ]);
+  const membershipKind = membershipKindFromComposition(compositionMode, includeAll);
+  const matchingCaseIds = useMemo(
+    () =>
+      matchCasesByCreateFilter(cases, {
+        priority: filterPriority,
+        state: filterState,
+        includedSectionIds,
+        includedScopedCaseIds
+      }),
+    [cases, filterPriority, filterState, includedScopedCaseIds, includedSectionIds]
+  );
+  const suiteName = suites.find((suite) => String(suite.id) === suiteId)?.name ?? "";
+
+  const runScopeSummary = useMemo(
+    () =>
+      buildRunCreateTargetSummary({
+        kind: membershipKind,
+        suiteName,
+        caseCount: cases.length,
+        selectedCount: selectedCaseIds.length,
+        excludedCount: excludedCaseIds.length,
+        includedSectionCount: includedSectionIds.length,
+        matchingCount: matchingCaseIds.length,
+        filterPriority,
+        filterState
+      }),
+    [
+      cases.length,
+      excludedCaseIds.length,
+      filterPriority,
+      filterState,
+      includedSectionIds.length,
+      matchingCaseIds.length,
+      membershipKind,
+      selectedCaseIds.length,
+      suiteName
+    ]
+  );
 
   const selectionValidationMessage = useMemo(() => {
     if (!suiteId) return "Select a suite first.";
-    if (compositionMode === "dynamic_filter") return null;
-    if (!includeAll && selectedCaseIds.length === 0) return "Select at least one case.";
-    if (!includeAll && includedSectionIds.length > 0 && selectedCaseCountInScope === 0) {
+    if (membershipKind === "dynamic") return null;
+    if (membershipKind === "selected" && selectedCaseIds.length === 0) return "Select at least one case.";
+    if (membershipKind === "selected" && includedSectionIds.length > 0 && selectedCaseCountInScope === 0) {
       return "Selected cases do not intersect with included section scope.";
     }
-    if (includeAll && sectionOverlapCount > 0) {
+    if (membershipKind === "all" && sectionOverlapCount > 0) {
       return "Some section roots are selected in both include and exclude scope.";
     }
     return null;
   }, [
-    compositionMode,
-    includeAll,
     includedSectionIds.length,
+    membershipKind,
     sectionOverlapCount,
     selectedCaseCountInScope,
     selectedCaseIds.length,
     suiteId
   ]);
 
-  const effectiveIncludeAll = compositionMode === "include_all_live" ? true : includeAll;
-  const isSubmitDisabled =
-    !name.trim() ||
-    !suiteId ||
-    mutation.isPending ||
-    (compositionMode === "static" && !effectiveIncludeAll && selectedCaseIds.length === 0) ||
-    (compositionMode === "static" &&
-      !effectiveIncludeAll &&
-      includedSectionIds.length > 0 &&
-      selectedCaseCountInScope === 0);
+  const isSubmitDisabled = isRunCreateSubmitDisabled({
+    name,
+    suiteId,
+    kind: membershipKind,
+    selectedCaseIds,
+    isPending: mutation.isPending
+  });
+
+  const applyMembershipSelection = (next: RunCreateChooserSnapshot) => {
+    setSelectedCaseIds(next.selectedCaseIds);
+    setExcludedCaseIds(next.excludedCaseIds);
+    setIncludedSectionIds(next.includedSectionIds);
+    setExcludedSectionIds(next.excludedSectionIds);
+    setSelectedSectionId(next.selectedSectionId);
+  };
 
   const resetSuiteSelection = () => {
-    setSelectedCaseIds([]);
-    setExcludedCaseIds([]);
-    setIncludedSectionIds([]);
-    setExcludedSectionIds([]);
-    setSelectedSectionId(null);
+    applyMembershipSelection(emptyMembershipSelection());
     setSectionFilterNotice(null);
     suiteHydratedRef.current = null;
+  };
+
+  const applyMembershipKind = (kind: RunMembershipKind) => {
+    const next = compositionFromMembership(kind);
+    setCompositionMode(next.compositionMode);
+    setIncludeAll(next.includeAll);
+    if (kind === "all") {
+      setSelectedCaseIds([]);
+    } else if (kind === "selected") {
+      setExcludedCaseIds([]);
+      setExcludedSectionIds([]);
+    } else {
+      setSelectedCaseIds([]);
+      setExcludedCaseIds([]);
+      setExcludedSectionIds([]);
+    }
+  };
+
+  const currentChooserSnapshot = (): RunCreateChooserSnapshot =>
+    captureChooserSnapshot({
+      selectedCaseIds,
+      excludedCaseIds,
+      includedSectionIds,
+      excludedSectionIds,
+      selectedSectionId
+    });
+
+  const openChooser = (mode: "select" | "exclude") => {
+    chooserSnapshotRef.current = currentChooserSnapshot();
+    setChooserMode(mode);
+    setChooserOpen(true);
+  };
+
+  const applyChooser = () => {
+    chooserSnapshotRef.current = null;
+    setChooserOpen(false);
+  };
+
+  const cancelChooser = () => {
+    const snapshot = chooserSnapshotRef.current;
+    if (snapshot) applyMembershipSelection(snapshot);
+    chooserSnapshotRef.current = null;
+    setChooserOpen(false);
   };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !suiteId) return;
-    const filterDefinition =
-      compositionMode === "dynamic_filter"
-        ? {
-            ...(filterPriority ? { priority: filterPriority } : {}),
-            state: filterState,
-            ...(includedSectionIds.length > 0 ? { includedSectionIds } : {})
-          }
-        : undefined;
+    const membership = buildRunCreateMembershipFields({
+      kind: membershipKind,
+      selectedCaseIds,
+      excludedCaseIds,
+      includedSectionIds,
+      excludedSectionIds,
+      filterPriority,
+      filterState
+    });
     mutation.mutate(
       {
         suiteId,
         name: name.trim(),
-        includeAll: effectiveIncludeAll,
-        caseIds: effectiveIncludeAll ? undefined : selectedCaseIds,
-        excludedCaseIds: effectiveIncludeAll ? excludedCaseIds : undefined,
-        includedSectionIds:
-          compositionMode !== "dynamic_filter" && includedSectionIds.length > 0
-            ? includedSectionIds
-            : undefined,
-        excludedSectionIds: effectiveIncludeAll && excludedSectionIds.length > 0 ? excludedSectionIds : undefined,
         milestoneId: milestoneId || null,
         startedAt: dateInputToIso(startDate),
         dueOn: dateInputToIso(endDate),
         environment: environment.trim() || undefined,
-        compositionMode,
-        filterDefinition
+        ...membership
       },
       {
         onSuccess: (run) => navigate(`/projects/${projectId}/runs/${run.id}`)
@@ -322,17 +394,15 @@ export function RunCreatePage() {
     );
   };
 
-  if (suitesQuery.isLoading || casesQuery.isLoading || milestonesQuery.isLoading) {
-    return <LoadingState message="Loading run create workbench…" />;
+  if (suitesQuery.isLoading && !suitesQuery.data) {
+    return <LoadingState message="Loading run create…" />;
   }
-  if (suitesQuery.isError || casesQuery.isError || milestonesQuery.isError) {
+  if (suitesQuery.isError) {
     return (
       <ErrorState
-        title="Could not load suite/case data"
+        title="Could not load suites"
         onRetry={() => {
           void suitesQuery.refetch();
-          void casesQuery.refetch();
-          void milestonesQuery.refetch();
         }}
       />
     );
@@ -359,23 +429,8 @@ export function RunCreatePage() {
       environment={environment}
       onEnvironmentChange={setEnvironment}
       compositionMode={compositionMode}
-      onCompositionModeChange={(mode) => {
-        setCompositionMode(mode);
-        if (mode === "dynamic_filter") {
-          setIncludeAll(false);
-          setSelectedCaseIds([]);
-        }
-      }}
+      onMembershipKindChange={applyMembershipKind}
       includeAll={includeAll}
-      onIncludeAllChange={(next) => {
-        setIncludeAll(next);
-        if (next) {
-          setSelectedCaseIds([]);
-        } else {
-          setExcludedCaseIds([]);
-          setExcludedSectionIds([]);
-        }
-      }}
       filterPriority={filterPriority}
       onFilterPriorityChange={setFilterPriority}
       filterState={filterState}
@@ -394,6 +449,7 @@ export function RunCreatePage() {
       }
       subtreeCaseCountBySectionId={subtreeCaseCountBySectionId}
       cases={cases}
+      casesLoading={casesQuery.isLoading}
       visibleCaseIds={visibleCaseIds}
       selectedCaseIds={selectedCaseIds}
       excludedCaseIds={excludedCaseIds}
@@ -405,9 +461,34 @@ export function RunCreatePage() {
       sectionFilterNotice={sectionFilterNotice}
       isSubmitDisabled={isSubmitDisabled}
       isPending={mutation.isPending}
+      chooserOpen={chooserOpen}
+      chooserMode={chooserMode}
+      onOpenChooser={openChooser}
+      onApplyChooser={applyChooser}
+      onCancelChooser={cancelChooser}
+      onSelectAllCurrentCases={() =>
+        setSelectedCaseIds(
+          selectAllCurrentCaseIds(
+            includedSectionIds.length > 0 ? [...includedScopedCaseIds] : cases.map((row) => row.id)
+          )
+        )
+      }
       onCancel={() => navigate(`/projects/${projectId}/runs`)}
       onSubmit={onSubmit}
-      errorSlot={mutation.isError ? <ErrorState title="Could not create run" /> : null}
+      errorSlot={
+        mutation.isError ? (
+          <p className="text-sm text-red-700" role="alert">
+            Could not create run. Check the details and try Create run again.
+          </p>
+        ) : casesQuery.isError ? (
+          <p className="text-sm text-red-700" role="alert">
+            Could not load cases.{" "}
+            <button type="button" className="font-medium underline" onClick={() => void casesQuery.refetch()}>
+              Retry
+            </button>
+          </p>
+        ) : null
+      }
     />
   );
 }

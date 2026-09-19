@@ -25,16 +25,16 @@ export function runListHeaderMenuGroups(projectId: string): RunListHeaderMenuGro
       label: "Workflow",
       items: [
         {
-          id: "add-plan",
-          label: "Add test plan",
-          description: "Open plans to create or manage a plan",
-          to: `/projects/${projectId}/plans`
-        },
-        {
           id: "compare",
           label: "Compare runs",
           description: "Compare results across two runs",
           to: buildRunComparisonPath(projectId)
+        },
+        {
+          id: "plans",
+          label: "Manage plans",
+          description: "Open the plan list",
+          to: `/projects/${projectId}/plans`
         }
       ]
     },

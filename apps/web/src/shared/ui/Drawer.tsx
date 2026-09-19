@@ -1,7 +1,8 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
+import { trapModalTab, useModalFocus } from "./modalFocus";
 
 type DrawerProps = {
   open: boolean;
@@ -26,49 +27,18 @@ export function Drawer({
 }: DrawerProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onCloseRef.current();
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousOverflow;
-      window.requestAnimationFrame(() => previouslyFocused?.focus());
-    };
-  }, [open]);
+  useModalFocus({
+    open,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+    onClose
+  });
 
   if (!open) return null;
 
   const position = side === "right" ? "justify-end" : "justify-start";
   const handleDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    ).filter((element) => element.offsetParent !== null);
-    if (focusable.length === 0) return;
-    const first = focusable[0]!;
-    const last = focusable[focusable.length - 1]!;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    trapModalTab(dialogRef.current, event);
   };
 
   return (
@@ -100,15 +70,15 @@ export function Drawer({
           </IconButton>
         </div>
         <div className="flex-1 overflow-auto px-5 py-4">{children}</div>
-        {footer ? (
-          <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">{footer}</div>
-        ) : (
+        {footer === undefined ? (
           <div className="flex justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>
           </div>
-        )}
+        ) : footer ? (
+          <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">{footer}</div>
+        ) : null}
       </aside>
     </div>
   );

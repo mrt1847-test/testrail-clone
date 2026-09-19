@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { FormField, SaveFeedback, type SaveFeedbackStatus } from "../../../shared/ui";
 import { fetchSuites } from "../api/suitesApi";
 import type { SuiteSummary } from "../types";
 import {
@@ -32,8 +33,11 @@ const emptyView = {
     estimate: "" as const,
     state: "active" as const
   },
-  columns: defaultCaseListColumns
+  columns: defaultCaseListColumns,
+  scope: "subtree" as const
 };
+
+const selectClass = "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm";
 
 export function WorkspacePreferencesPanel({ projectId }: WorkspacePreferencesPanelProps) {
   const { user } = useAuth();
@@ -49,7 +53,8 @@ export function WorkspacePreferencesPanel({ projectId }: WorkspacePreferencesPan
   const [landingPage, setLandingPage] = useState<WorkspaceLandingPage>("overview");
   const [defaultSuiteId, setDefaultSuiteId] = useState("");
   const [defaultSavedViewId, setDefaultSavedViewId] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveFeedbackStatus>("idle");
+  const [lastPatch, setLastPatch] = useState<Partial<WorkspacePreferences> | null>(null);
 
   useEffect(() => {
     const prefs = preferencesQuery.data;
@@ -60,18 +65,22 @@ export function WorkspacePreferencesPanel({ projectId }: WorkspacePreferencesPan
   }, [preferencesQuery.data]);
 
   async function savePreferences(patch: Partial<WorkspacePreferences>) {
-    setSaved(false);
-    const next = await updateMutation.mutateAsync({
-      landingPage: patch.landingPage ?? landingPage,
-      defaultSuiteId: patch.defaultSuiteId !== undefined ? patch.defaultSuiteId : defaultSuiteId || null,
-      defaultSavedViewId:
-        patch.defaultSavedViewId !== undefined ? patch.defaultSavedViewId : defaultSavedViewId || null
-    });
-    setLandingPage(next.landingPage);
-    setDefaultSuiteId(next.defaultSuiteId ?? "");
-    setDefaultSavedViewId(next.defaultSavedViewId ?? "");
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2000);
+    setLastPatch(patch);
+    setSaveStatus("saving");
+    try {
+      const next = await updateMutation.mutateAsync({
+        landingPage: patch.landingPage ?? landingPage,
+        defaultSuiteId: patch.defaultSuiteId !== undefined ? patch.defaultSuiteId : defaultSuiteId || null,
+        defaultSavedViewId:
+          patch.defaultSavedViewId !== undefined ? patch.defaultSavedViewId : defaultSavedViewId || null
+      });
+      setLandingPage(next.landingPage);
+      setDefaultSuiteId(next.defaultSuiteId ?? "");
+      setDefaultSavedViewId(next.defaultSavedViewId ?? "");
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("failed");
+    }
   }
 
   if (preferencesQuery.isLoading) {
@@ -81,84 +90,88 @@ export function WorkspacePreferencesPanel({ projectId }: WorkspacePreferencesPan
   const suites: SuiteSummary[] = suitesQuery.data ?? [];
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <section className="space-y-3">
       <h2 className="text-sm font-semibold text-slate-900">My workspace defaults</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Choose where this project opens for you, which suite loads in Test Cases, and which saved view applies when no
-        filters are in the URL.
-      </p>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <label className="block space-y-1 text-sm text-slate-700">
-          <span className="font-medium">Default landing page</span>
-          <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={landingPage}
-            onChange={(event) => {
-              const value = event.target.value as WorkspaceLandingPage;
-              setLandingPage(value);
-              void savePreferences({ landingPage: value });
-            }}
-          >
-            {WORKSPACE_LANDING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block space-y-1 text-sm text-slate-700">
-          <span className="font-medium">Default test suite</span>
-          <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={defaultSuiteId}
-            onChange={(event) => {
-              const value = event.target.value;
-              setDefaultSuiteId(value);
-              void savePreferences({ defaultSuiteId: value || null });
-            }}
-          >
-            <option value="">Use last selected suite</option>
-            {suites.map((suite) => (
-              <option key={suite.id} value={suite.id}>
-                {suite.name}
-                {suite.isMaster ? " (Master)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block space-y-1 text-sm text-slate-700 md:col-span-2">
-          <span className="font-medium">Default saved case view</span>
-          <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            value={defaultSavedViewId}
-            onChange={(event) => {
-              const value = event.target.value;
-              setDefaultSavedViewId(value);
-              void savePreferences({ defaultSavedViewId: value || null });
-            }}
-          >
-            <option value="">No default saved view</option>
-            {savedViews.map((view) => (
-              <option key={view.id} value={view.id}>
-                {view.name}
-              </option>
-            ))}
-          </select>
-          {savedViews.length === 0 ? (
-            <span className="text-xs text-slate-500">
-              Save a view from the Test Cases toolbar to list it here.
-            </span>
-          ) : null}
-        </label>
+      <div className="grid gap-4 md:grid-cols-2">
+        <FormField label="Default landing page">
+          {(control) => (
+            <select
+              {...control}
+              className={selectClass}
+              value={landingPage}
+              onChange={(event) => {
+                const value = event.target.value as WorkspaceLandingPage;
+                setLandingPage(value);
+                void savePreferences({ landingPage: value });
+              }}
+            >
+              {WORKSPACE_LANDING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+        <FormField label="Default test suite">
+          {(control) => (
+            <select
+              {...control}
+              className={selectClass}
+              value={defaultSuiteId}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDefaultSuiteId(value);
+                void savePreferences({ defaultSuiteId: value || null });
+              }}
+            >
+              <option value="">Use last selected suite</option>
+              {suites.map((suite) => (
+                <option key={suite.id} value={suite.id}>
+                  {suite.name}
+                  {suite.isMaster ? " (Master)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+        <FormField
+          className="md:col-span-2"
+          label="Default saved case view"
+          helpText={savedViews.length === 0 ? "Save a view from the Test Cases toolbar to list it here." : undefined}
+        >
+          {(control) => (
+            <select
+              {...control}
+              className={selectClass}
+              value={defaultSavedViewId}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDefaultSavedViewId(value);
+                void savePreferences({ defaultSavedViewId: value || null });
+              }}
+            >
+              <option value="">No default saved view</option>
+              {savedViews.map((view) => (
+                <option key={view.id} value={view.id}>
+                  {view.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
       </div>
-
-      {updateMutation.isError ? (
-        <p className="mt-3 text-sm text-rose-700">Could not save workspace defaults. Try again.</p>
-      ) : null}
-      {saved ? <p className="mt-3 text-sm text-emerald-700">Workspace defaults saved.</p> : null}
+      <SaveFeedback
+        status={saveStatus}
+        message={
+          saveStatus === "failed"
+            ? "Could not save workspace defaults."
+            : saveStatus === "saved"
+              ? "Workspace defaults saved."
+              : undefined
+        }
+        onRetry={lastPatch ? () => void savePreferences(lastPatch) : undefined}
+      />
     </section>
   );
 }

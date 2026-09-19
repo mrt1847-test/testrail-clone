@@ -1,4 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+import { Button } from "../../../shared/ui";
+import { trapModalTab, useModalFocus } from "../../../shared/ui/modalFocus";
 
 type MoveCopyChooserDialogProps = {
   open: boolean;
@@ -25,49 +29,60 @@ export function MoveCopyChooserDialog({
   onCopy,
   onCancel
 }: MoveCopyChooserDialogProps) {
-  if (!open) return null;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus({
+    open,
+    containerRef: dialogRef,
+    onClose: onCancel,
+    closeOnEscape: !busy
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const root = document.getElementById("root");
+    if (!root) return;
+    root.setAttribute("inert", "");
+    return () => root.removeAttribute("inert");
+  }, [open]);
+
+  if (!open || typeof document === "undefined") return null;
 
   const moveLabel = busy && pendingAction === "move" ? "Moving..." : "Move";
   const copyLabel = busy && pendingAction === "copy" ? "Copying..." : "Copy";
   const buttonsDisabled = busy || disabled;
+  const titleId = "move-copy-chooser-title";
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    trapModalTab(dialogRef.current, event);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" role="presentation">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-lg"
+        onKeyDown={handleDialogKeyDown}
       >
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <h2 id={titleId} className="text-lg font-semibold text-slate-900">
+          {title}
+        </h2>
         {description ? <div className="mt-2 text-sm text-slate-600">{description}</div> : null}
         <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onCopy}
-            disabled={buttonsDisabled}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="secondary" onClick={onCopy} disabled={buttonsDisabled}>
             {copyLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onMove}
-            disabled={buttonsDisabled || moveDisabled}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="primary" onClick={onMove} disabled={buttonsDisabled || moveDisabled}>
             {moveLabel}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

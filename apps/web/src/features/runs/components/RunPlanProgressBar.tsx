@@ -3,9 +3,10 @@ import { RUN_STATUS_SEGMENTS, runStatusTotal } from "../utils/runProgressSegment
 type RunPlanProgressBarProps = {
   statusCounts: Record<string, number>;
   className?: string;
+  compact?: boolean;
 };
 
-export function RunPlanProgressBar({ statusCounts, className = "" }: RunPlanProgressBarProps) {
+export function RunPlanProgressBar({ statusCounts, className = "", compact = false }: RunPlanProgressBarProps) {
   const counts = {
     passed: statusCounts.passed ?? 0,
     failed: statusCounts.failed ?? 0,
@@ -19,7 +20,9 @@ export function RunPlanProgressBar({ statusCounts, className = "" }: RunPlanProg
   return (
     <div className={className}>
       <div
-        className="flex h-5 w-full overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-600"
+        className={`flex overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-600 ${
+          compact ? "h-2 w-full" : "h-5 w-full"
+        }`}
         aria-label={`${passedPercent}% passed`}
       >
         {total === 0 ? (
@@ -37,12 +40,14 @@ export function RunPlanProgressBar({ statusCounts, className = "" }: RunPlanProg
           )
         )}
       </div>
-      <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
-        <span className="font-medium text-slate-900 dark:text-slate-100">{passedPercent}% passed</span>
-        <span>
-          {counts.passed}/{total} passed · {counts.failed} failed
-        </span>
-      </div>
+      {compact ? null : (
+        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
+          <span className="font-medium text-slate-900 dark:text-slate-100">{passedPercent}% passed</span>
+          <span>
+            {counts.passed}/{total} passed · {counts.failed} failed
+          </span>
+        </div>
+      )}
     </div>
   );
 }

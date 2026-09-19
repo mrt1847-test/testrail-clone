@@ -10,18 +10,16 @@ import type {
   CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
-import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
+import {
+  caseListRowClassName,
+  caseListRowMetadataParts,
+  caseListRowTitleClassName
+} from "../utils/caseListRowPresentation";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { CaseRefTokens } from "./CaseRefTokens";
 import { caseRowDensityClasses } from "../../../shared/ui/density/uiDensity";
 import type { UiDensity } from "../../../shared/ui/density/uiDensity";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
-
-type SummaryColumnPart = { column: CaseListColumn; value: string };
-type QuickMetadataPatch = {
-  priority?: "low" | "medium" | "high";
-  caseType?: "functional" | "integration" | "regression";
-};
 
 type CaseRowProps = {
   projectId?: string;
@@ -50,8 +48,6 @@ type CaseRowProps = {
   onOpenCase: () => void;
   onRenameTitle?: (title: string) => Promise<void>;
   isRenamingTitle?: boolean;
-  onQuickUpdateMetadata?: (patch: QuickMetadataPatch) => Promise<void>;
-  isQuickUpdatingMetadata?: boolean;
   onTogglePanel: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
@@ -239,8 +235,6 @@ export function CaseRow({
   onOpenCase,
   onRenameTitle,
   isRenamingTitle = false,
-  onQuickUpdateMetadata,
-  isQuickUpdatingMetadata = false,
   onTogglePanel,
   onEdit,
   onCloseDetail,
@@ -296,43 +290,25 @@ export function CaseRow({
     (visibleColumnSet.has("automation") && item.automationKey.trim().length > 0) ||
     (visibleColumnSet.has("labels") && visibleLabels.length > 0) ||
     (visibleColumnSet.has("customValues") && visibleCustomValueChips.length > 0);
-  const summaryParts: SummaryColumnPart[] = [];
-  if (visibleColumnSet.has("type")) summaryParts.push({ column: "type", value: item.type });
-  if (visibleColumnSet.has("priority")) summaryParts.push({ column: "priority", value: item.priority });
-  if (visibleColumnSet.has("automation")) summaryParts.push({ column: "automation", value: item.automationStatus });
-  if (visibleColumnSet.has("estimate") && item.estimate !== "-") {
-    summaryParts.push({ column: "estimate", value: item.estimate });
-  }
+  const metadataParts = caseListRowMetadataParts(item, visibleColumns);
 
   const columnStyle = (column: CaseListColumn) => ({
     width: `${columnWidths[column]}px`,
     maxWidth: `${columnWidths[column]}px`
   });
-  const canQuickEditMetadata = Boolean(onQuickUpdateMetadata) && !item.archivedAt;
-  const priorityValue = item.priority.toLowerCase() as "low" | "medium" | "high";
-  const caseTypeValue = item.type.toLowerCase() as "functional" | "integration" | "regression";
-  const inlineSelectClass =
-    "rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-slate-700 disabled:bg-slate-100 disabled:text-slate-400";
 
   const densityStyles = caseRowDensityClasses(density ?? "comfortable");
 
-  const rowClasses = [
-    "case-list-row relative flex items-center gap-2 pl-3 transition-colors",
-    isPanelOpen
-      ? "bg-sky-50 ring-2 ring-inset ring-sky-200"
-      : isKeyboardFocused
-        ? "bg-amber-50/80 ring-2 ring-inset ring-amber-300"
-        : isExpanded
-          ? "bg-slate-50"
-          : "bg-white hover:bg-slate-50",
-    isDraggingThis ? "opacity-50" : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const rowClasses = caseListRowClassName({
+    readingSelected: isPanelOpen || isExpanded,
+    keyboardFocused: isKeyboardFocused,
+    dragging: isDraggingThis
+  });
 
   return (
     <article
       data-case-row-id={item.id}
+      aria-selected={isPanelOpen}
       className="relative border-b border-slate-100 last:border-0"
       onContextMenu={
         projectId
@@ -401,22 +377,14 @@ export function CaseRow({
         <button
           type="button"
           data-case-open-button
+          aria-label={`Open ${item.caseCode} ${item.title}`}
           onClick={onOpenCase}
           className={`case-list-row__primary flex min-w-0 flex-1 items-center text-left ${densityStyles.rowButton}`}
         >
           <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-slate-500">
+            <span className="flex min-w-0 items-start gap-2">
+              <span className="inline-flex shrink-0 items-center pt-0.5 font-mono text-xs text-slate-500">
                 {item.caseCode}
-                {projectId ? (
-                  <EntityCopyActions
-                    projectId={projectId}
-                    kind="case"
-                    entityId={item.id}
-                    caseCode={item.caseCode}
-                    compact
-                  />
-                ) : null}
               </span>
               {editingTitle && onRenameTitle ? (
                 <input
@@ -454,7 +422,7 @@ export function CaseRow({
                 />
               ) : (
                 <span
-                  className="case-list-row__title min-w-0 flex-1 truncate font-medium text-slate-900"
+                  className={caseListRowTitleClassName(isPanelOpen || isExpanded)}
                   onDoubleClick={(event) => {
                     if (!onRenameTitle || item.archivedAt) return;
                     event.preventDefault();
@@ -519,47 +487,8 @@ export function CaseRow({
             ) : null}
           </span>
         </button>
-        <span className="case-list-row__metadata hidden min-w-0 items-center justify-end gap-1 overflow-hidden px-2 text-right text-xs text-slate-500 sm:flex">
-          {visibleColumnSet.has("type") ? (
-            <select
-              data-case-column="type"
-              aria-label={`Type for ${item.caseCode}`}
-              value={caseTypeValue}
-              disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) => {
-                const next = event.target.value as QuickMetadataPatch["caseType"];
-                if (next && next !== caseTypeValue) void onQuickUpdateMetadata?.({ caseType: next });
-              }}
-              className={`${inlineSelectClass} shrink-0`}
-              style={columnStyle("type")}
-            >
-              <option value="functional">Functional</option>
-              <option value="integration">Integration</option>
-              <option value="regression">Regression</option>
-            </select>
-          ) : null}
-          {visibleColumnSet.has("priority") ? (
-            <select
-              data-case-column="priority"
-              aria-label={`Priority for ${item.caseCode}`}
-              value={priorityValue}
-              disabled={!canQuickEditMetadata || isQuickUpdatingMetadata}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) => {
-                const next = event.target.value as QuickMetadataPatch["priority"];
-                if (next && next !== priorityValue) void onQuickUpdateMetadata?.({ priority: next });
-              }}
-              className={`${inlineSelectClass} shrink-0`}
-              style={columnStyle("priority")}
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          ) : null}
-          {summaryParts.map((part) => (
-            part.column === "type" || part.column === "priority" ? null : (
+        <span className="case-list-row__metadata hidden min-w-0 items-center justify-end gap-3 overflow-hidden px-2 text-right text-xs text-slate-500 sm:flex">
+          {metadataParts.map((part) => (
             <span
               key={part.column}
               data-case-column={part.column}
@@ -568,23 +497,22 @@ export function CaseRow({
             >
               {part.value}
             </span>
-            )
           ))}
         </span>
         <button
           type="button"
-          aria-label={isPanelOpen ? "Close side preview" : "Open side preview"}
+          aria-label={isPanelOpen ? `Close details for ${item.caseCode}` : `Open details for ${item.caseCode}`}
           aria-expanded={isPanelOpen}
-          title={isPanelOpen ? "Close side preview" : "Open side preview"}
+          title={isPanelOpen ? "Close case details" : "Open case details"}
           onClick={(event) => {
             event.stopPropagation();
             onTogglePanel();
           }}
           className={[
-            "mr-2 flex h-8 w-7 shrink-0 items-center justify-center rounded border text-sm transition-colors",
+            "mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600",
             isPanelOpen
-              ? "border-sky-300 bg-sky-100 text-sky-800"
-              : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+              ? "text-slate-900"
+              : "text-slate-400 hover:bg-slate-100 hover:text-slate-800"
           ].join(" ")}
         >
           {isPanelOpen ? "›" : "‹"}

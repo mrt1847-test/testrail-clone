@@ -1,14 +1,14 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { OverflowMenu } from "../../../../shared/ui";
+import { OverflowMenu, SaveFeedback } from "../../../../shared/ui";
 import type { ReportExportType } from "../../api/reportsApi";
 import { downloadReportCsv } from "../../api/reportsApi";
 import { requestReportExportJob } from "../../api/importExportApi";
 import { createSavedReport, type SavedReportFilters } from "../../api/savedReportsApi";
 import { buildReportPrintPath } from "../../../print/api/reportPrintApi";
-import { reportResultMenuGroups } from "../../utils/reportHeaderMenu";
+import { REPORT_ACTIONS_MENU_LABEL, reportResultMenuGroups } from "../../utils/reportHeaderMenu";
 import { ReportFilterPresetSelect } from "./ReportFilterPresetSelect";
 import { ReportSaveViewDialog } from "./ReportSaveViewDialog";
 
@@ -27,6 +27,7 @@ export function ReportToolbar({ projectId, reportType, filters, exportQuery, dis
   const [saveOpen, setSaveOpen] = useState(false);
   const [busy, setBusy] = useState<"download" | "queue" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failedExport, setFailedExport] = useState<"download" | "queue" | null>(null);
   const [queuedJobId, setQueuedJobId] = useState<string | null>(null);
 
   const saveMutation = useMutation({
@@ -44,56 +45,57 @@ export function ReportToolbar({ projectId, reportType, filters, exportQuery, dis
   });
 
   const printPath = buildReportPrintPath(routeProjectId, reportType, exportQuery);
-  const groups = useMemo(
-    () =>
-      reportResultMenuGroups({
-        printPath,
-        disabled: disabled || busy != null,
-        onSaveView: () => {
-          saveMutation.reset();
-          setSaveOpen(true);
-        },
-        onExportCsv: () => {
-          void (async () => {
-            setBusy("download");
-            setError(null);
-            try {
-              await downloadReportCsv(projectId, reportType, exportQuery);
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Export failed");
-            } finally {
-              setBusy(null);
-            }
-          })();
-        },
-        onQueueExport: () => {
-          void (async () => {
-            setBusy("queue");
-            setError(null);
-            try {
-              const { jobId } = await requestReportExportJob(projectId, {
-                reportType,
-                format: "csv",
-                ...exportQuery
-              });
-              setQueuedJobId(jobId);
-              void qc.invalidateQueries({ queryKey: ["report-export-jobs", projectId] });
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Could not queue export");
-            } finally {
-              setBusy(null);
-            }
-          })();
-        }
-      }),
-    [busy, disabled, exportQuery, printPath, projectId, qc, reportType, saveMutation]
-  );
+
+  async function handleDownload() {
+    setBusy("download");
+    setError(null);
+    setFailedExport(null);
+    try {
+      await downloadReportCsv(projectId, reportType, exportQuery);
+    } catch (e) {
+      setFailedExport("download");
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleQueue() {
+    setBusy("queue");
+    setError(null);
+    setFailedExport(null);
+    try {
+      const { jobId } = await requestReportExportJob(projectId, {
+        reportType,
+        format: "csv",
+        ...exportQuery
+      });
+      setQueuedJobId(jobId);
+      void qc.invalidateQueries({ queryKey: ["report-export-jobs", projectId] });
+    } catch (e) {
+      setFailedExport("queue");
+      setError(e instanceof Error ? e.message : "Could not queue export");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const groups = reportResultMenuGroups({
+    printPath,
+    disabled: disabled || busy != null,
+    onSaveView: () => {
+      saveMutation.reset();
+      setSaveOpen(true);
+    },
+    onExportCsv: () => void handleDownload(),
+    onQueueExport: () => void handleQueue()
+  });
 
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex flex-wrap items-center justify-end gap-2">
         <ReportFilterPresetSelect projectId={projectId} reportType={reportType} />
-        <OverflowMenu groups={groups} size="sm" />
+        <OverflowMenu label={REPORT_ACTIONS_MENU_LABEL} groups={groups} size="sm" />
         {extra}
       </div>
       {queuedJobId ? (
@@ -104,7 +106,13 @@ export function ReportToolbar({ projectId, reportType, filters, exportQuery, dis
           </Link>
         </p>
       ) : null}
-      {error ? <p className="text-xs text-rose-700">{error}</p> : null}
+      {error ? (
+        <SaveFeedback
+          status="failed"
+          message={error}
+          onRetry={() => void (failedExport === "queue" ? handleQueue() : handleDownload())}
+        />
+      ) : null}
       <ReportSaveViewDialog
         open={saveOpen}
         saving={saveMutation.isPending}

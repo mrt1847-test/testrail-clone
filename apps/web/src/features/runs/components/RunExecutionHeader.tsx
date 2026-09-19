@@ -19,6 +19,7 @@ type Props = {
   onAssignRun: () => void;
   isAssignPending: boolean;
   onOpenDuplicate: () => void;
+  onOpenActivity: () => void;
   isDuplicatePending: boolean;
   onOpenCompare: () => void;
   onOpenRerun: () => void;
@@ -42,6 +43,7 @@ export function RunExecutionHeader({
   onAssignRun,
   isAssignPending,
   onOpenDuplicate,
+  onOpenActivity,
   isDuplicatePending,
   onOpenCompare,
   onOpenRerun,
@@ -65,6 +67,7 @@ export function RunExecutionHeader({
       ...group,
       items: [
         ...group.items.map((item) => {
+          if (item.id === "activity") return { ...item, onSelect: onOpenActivity };
           if (item.id === "duplicate") return { ...item, disabled: isDuplicatePending, onSelect: onOpenDuplicate };
           if (item.id === "compare") return { ...item, onSelect: onOpenCompare };
           if (item.id === "rerun") return { ...item, disabled: isRerunPending, onSelect: onOpenRerun };
@@ -127,6 +130,7 @@ export function RunExecutionHeader({
     isOpen,
     isReopenRunPending,
     isRerunPending,
+    onOpenActivity,
     onOpenCloseRun,
     onOpenCompare,
     onOpenDuplicate,

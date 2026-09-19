@@ -1,18 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
-import { bulkAddRunResults, type BulkRunResultItem } from "../api/runApi";
+import { bulkAddRunResults } from "../api/runApi";
 import type { ResultStatus } from "../components/resultEntryTypes";
 import type { TestInstanceRow } from "../types";
+import {
+  captureBulkSubmitSnapshot,
+  failedBulkRecovery,
+  type BulkResultFailureRow,
+  type BulkSubmitSnapshot
+} from "../utils/runBulkSelectionScope";
 
-export type BulkResultFailureRow = {
-  caseId: string;
-  caseCode: string;
-  title: string;
-  message: string;
-};
+export type { BulkResultFailureRow };
 
 export type BulkResultFeedback =
   | {
@@ -37,47 +38,23 @@ export type BulkResultFeedback =
 type Input = {
   projectId: string;
   runId: string;
-  pagedInstances: TestInstanceRow[];
+  displayedInstances: TestInstanceRow[];
   instanceLookup: Map<string, TestInstanceRow>;
   filteredTotal: number;
 };
 
-function mapFailures(
-  failedItems: BulkRunResultItem[],
-  instanceByCaseId: Map<string, TestInstanceRow>
-): BulkResultFailureRow[] {
-  return failedItems.map((item) => {
-    const row = instanceByCaseId.get(item.caseId);
-    return {
-      caseId: item.caseId,
-      caseCode: row?.caseCode ?? `C${item.caseId}`,
-      title: row?.title ?? "Unknown case",
-      message:
-        item.errorCode === "UNTESTED_NOT_ALLOWED"
-          ? "Untested cannot be set after a result exists for this test."
-          : (item.message ?? item.errorCode ?? "Failed to save result")
-    };
-  });
-}
-
 export function useRunBulkActions(input: Input) {
-  const { projectId, runId, pagedInstances, instanceLookup, filteredTotal } = input;
+  const { projectId, runId, displayedInstances, instanceLookup, filteredTotal } = input;
   const qc = useQueryClient();
 
   const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<ResultStatus>("passed");
   const [bulkComment, setBulkComment] = useState("");
   const [bulkFeedback, setBulkFeedback] = useState<BulkResultFeedback | null>(null);
+  const submittedSnapshotRef = useRef<BulkSubmitSnapshot | null>(null);
+  const [recoverySnapshot, setRecoverySnapshot] = useState<BulkSubmitSnapshot | null>(null);
 
   const instanceByTestId = instanceLookup;
-
-  const instanceByCaseId = useMemo(() => {
-    const map = new Map<string, TestInstanceRow>();
-    for (const row of instanceLookup.values()) {
-      map.set(row.caseId, row);
-    }
-    return map;
-  }, [instanceLookup]);
 
   const bulkDisableUntested = useMemo(
     () =>
@@ -95,20 +72,28 @@ export function useRunBulkActions(input: Input) {
   }, [bulkDisableUntested, bulkStatus]);
 
   const bulkResultMutation = useMutation({
-    mutationFn: async () => {
-      const targets = selectedTestIds
-        .map((testId) => instanceByTestId.get(testId))
-        .filter((row): row is TestInstanceRow => Boolean(row));
-      if (targets.length === 0) {
-        throw new Error("Select at least one test.");
+    mutationFn: async (snapshotArg?: BulkSubmitSnapshot) => {
+      let snapshot = snapshotArg ?? null;
+      if (!snapshot) {
+        const captured = captureBulkSubmitSnapshot({
+          selectedTestIds,
+          lookup: instanceLookup,
+          status: bulkStatus,
+          comment: bulkComment
+        });
+        if (!captured.ok || !captured.snapshot) {
+          throw new Error(!captured.ok ? captured.message : "Select at least one test.");
+        }
+        snapshot = captured.snapshot;
       }
+      submittedSnapshotRef.current = snapshot;
       return bulkAddRunResults({
         runId,
         atomic: false,
-        results: targets.map((row) => ({
+        results: snapshot.targets.map((row) => ({
           caseId: row.caseId,
-          status: bulkStatus,
-          comment: bulkComment.trim() || undefined
+          status: snapshot.status,
+          comment: snapshot.comment.trim() || undefined
         }))
       });
     },
@@ -128,21 +113,16 @@ export function useRunBulkActions(input: Input) {
         })
       ]);
 
-      const failedItems = response.items.filter((item) => item.status === "failed");
-      const failures = mapFailures(failedItems, instanceByCaseId);
+      const snapshot = submittedSnapshotRef.current;
       const saved = response.saved;
+      const recovery = snapshot
+        ? failedBulkRecovery(response.items, snapshot)
+        : { selectedTestIds: [] as string[], failures: [] as BulkResultFailureRow[], recovery: null };
 
       setBulkComment("");
-      if (failedItems.length === 0) {
-        setSelectedTestIds([]);
-      } else {
-        const failedTestIds = failedItems
-          .map((item) => instanceByCaseId.get(item.caseId)?.id)
-          .filter((id): id is string => Boolean(id));
-        setSelectedTestIds(failedTestIds);
-      }
-
       if (response.failed === 0) {
+        setSelectedTestIds([]);
+        setRecoverySnapshot(null);
         setBulkFeedback({
           type: "success",
           saved,
@@ -155,13 +135,16 @@ export function useRunBulkActions(input: Input) {
         return;
       }
 
+      setSelectedTestIds(recovery.selectedTestIds);
+      setRecoverySnapshot(recovery.recovery);
+
       if (saved > 0) {
         setBulkFeedback({
           type: "partial",
           saved,
           failed: response.failed,
           message: `Saved ${saved} of ${response.total}; ${response.failed} failed.`,
-          failures
+          failures: recovery.failures
         });
         return;
       }
@@ -169,7 +152,7 @@ export function useRunBulkActions(input: Input) {
       setBulkFeedback({
         type: "error",
         message: `No results saved (${response.failed} failed).`,
-        failures
+        failures: recovery.failures
       });
     },
     onError: (err) => {
@@ -179,7 +162,7 @@ export function useRunBulkActions(input: Input) {
   });
 
   const allPageSelected =
-    pagedInstances.length > 0 && pagedInstances.every((row) => selectedTestIds.includes(row.id));
+    displayedInstances.length > 0 && displayedInstances.every((row) => selectedTestIds.includes(row.id));
   const allFilteredSelected = filteredTotal > 0 && selectedTestIds.length === filteredTotal;
   const canBulkSubmit = selectedTestIds.length > 0 && !bulkResultMutation.isPending;
   const selectedCount = selectedTestIds.length;
@@ -187,6 +170,14 @@ export function useRunBulkActions(input: Input) {
     () => ["failed"] as Array<"failed" | "blocked" | "retest">,
     []
   );
+  const retryFailedBulkResults = () => {
+    if (!recoverySnapshot || bulkResultMutation.isPending) return;
+    void bulkResultMutation.mutateAsync(recoverySnapshot);
+  };
+  const dismissBulkFeedback = () => {
+    setBulkFeedback(null);
+    setRecoverySnapshot(null);
+  };
 
   return {
     selectedTestIds,
@@ -198,6 +189,9 @@ export function useRunBulkActions(input: Input) {
     bulkResultMutation,
     bulkFeedback,
     setBulkFeedback,
+    dismissBulkFeedback,
+    retryFailedBulkResults,
+    canRetryFailedBulk: Boolean(recoverySnapshot) && !bulkResultMutation.isPending,
     allPageSelected,
     allFilteredSelected,
     canBulkSubmit,

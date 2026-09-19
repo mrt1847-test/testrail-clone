@@ -10,6 +10,7 @@ import type {
   CasePresenceFilter,
   SavedCaseView
 } from "../types";
+import { defaultCaseListColumns } from "../hooks/useExpandedCase";
 
 type CaseListToolbarProps = {
   searchValue: string;
@@ -95,7 +96,7 @@ export function CaseListToolbar({
     const next = checked
       ? Array.from(new Set([...columnsValue, column]))
       : columnsValue.filter((item) => item !== column);
-    onColumnsChange(next.length > 0 ? next : ["type", "priority", "automation", "estimate"]);
+    onColumnsChange(next.length > 0 ? next : defaultCaseListColumns);
   };
 
   return (

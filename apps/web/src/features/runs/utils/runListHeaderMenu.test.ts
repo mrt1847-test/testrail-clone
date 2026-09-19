@@ -9,8 +9,9 @@ describe("runListHeaderMenuGroups", () => {
 
     expect(groups.map((group) => group.label)).toEqual(["Workflow", "Reports"]);
     expect(labels).toEqual(
-      expect.arrayContaining(["Add test plan", "Compare runs", "Runs summary", "All reports"])
+      expect.arrayContaining(["Compare runs", "Manage plans", "Runs summary", "All reports"])
     );
+    expect(labels).not.toContain("Add test plan");
     expect(labels).not.toContain("Add Run");
     expect(labels).not.toContain("Add Test Run");
     expect(labels).not.toContain("New run");

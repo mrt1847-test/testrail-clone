@@ -82,6 +82,7 @@ export class CasesService {
     suiteId: bigint;
     sectionId?: bigint;
     display?: "tree" | "subtree" | "compact";
+    sectionScope?: "direct" | "subtree";
     groupBy?: SuiteCaseGroupBy;
     q?: string;
     priority?: string;
@@ -92,7 +93,7 @@ export class CasesService {
     estimate?: "with" | "without";
     state?: "active" | "archived" | "all";
   }) {
-    const sectionScope = input.display === "tree" ? "direct" : "subtree";
+    const sectionScope = input.sectionScope ?? (input.display === "tree" ? "direct" : "subtree");
     const cases = await this.repo.listCases({
       projectId: input.projectId,
       suiteId: input.suiteId,

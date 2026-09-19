@@ -10,6 +10,7 @@ describe("runExecutionHeaderMenuGroups", () => {
     expect(groups.map((group) => group.label)).toEqual(["Run management", "Reports", "Output"]);
     expect(labels).toEqual(
       expect.arrayContaining([
+        "Activity",
         "Duplicate run",
         "Compare runs",
         "Create rerun",

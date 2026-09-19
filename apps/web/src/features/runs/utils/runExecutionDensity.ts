@@ -21,6 +21,6 @@ export function runTestRowClassName(selected: boolean): string {
 
 export function runTestTitleClassName(selected: boolean): string {
   return selected
-    ? "max-w-[24rem] truncate font-semibold text-slate-950"
-    : "max-w-[24rem] truncate font-normal text-slate-800";
+    ? "w-full max-w-0 truncate font-semibold text-slate-950"
+    : "w-full max-w-0 truncate font-normal text-slate-800";
 }

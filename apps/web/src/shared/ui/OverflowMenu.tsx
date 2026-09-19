@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { Button } from "./Button";
-import type { ButtonSize } from "./buttonStyles";
+import type { ButtonSize, ButtonVariant } from "./buttonStyles";
 
 export type OverflowMenuItem = {
   id: string;
@@ -23,24 +23,64 @@ export type OverflowMenuGroup = {
   items: OverflowMenuItem[];
 };
 
+export type OverflowMenuHandle = {
+  open: () => void;
+  close: (restoreFocus?: boolean) => void;
+};
+
 type Props = {
   label?: string;
   groups: OverflowMenuGroup[];
   align?: "left" | "right";
   size?: ButtonSize;
+  variant?: ButtonVariant;
+  iconOnly?: boolean;
+  compact?: boolean;
+  triggerClassName?: string;
+  triggerTabIndex?: number;
+  menuMark?: "ellipsis" | "chevron" | "none";
+  triggerContent?: ReactNode;
+  title?: string;
+  disabled?: boolean;
 };
 
-export function OverflowMenu({
-  label = "More actions",
-  groups,
-  align = "right",
-  size = "md"
-}: Props) {
+export const OverflowMenu = forwardRef<OverflowMenuHandle, Props>(function OverflowMenu(
+  {
+    label = "More actions",
+    groups,
+    align = "right",
+    size = "md",
+    variant = "secondary",
+    iconOnly = false,
+    compact = false,
+    triggerClassName,
+    triggerTabIndex,
+    menuMark = "ellipsis",
+    triggerContent,
+    title,
+    disabled = false
+  },
+  ref
+) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLElement>>([]);
   const menuId = useId();
+  const showSelectionMarks = groups.some((group) => group.items.some((item) => item.selected !== undefined));
+
+  const close = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  useImperativeHandle(ref, () => ({
+    open: () => {
+      itemRefs.current = [];
+      setOpen(true);
+    },
+    close
+  }));
 
   useEffect(() => {
     if (!open) return;
@@ -55,17 +95,13 @@ export function OverflowMenu({
     };
   }, [open]);
 
-  const close = (restoreFocus = false) => {
-    setOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
-  };
-
   const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const enabledItems = itemRefs.current.filter((item) => !item.hasAttribute("disabled"));
     if (enabledItems.length === 0) return;
     const currentIndex = enabledItems.indexOf(document.activeElement as HTMLElement);
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close(true);
       return;
     }
@@ -102,10 +138,12 @@ export function OverflowMenu({
       .join(" ");
 
   const content = (item: OverflowMenuItem) => (
-    <span className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2">
-      <span aria-hidden="true" className="text-center font-semibold text-slate-700">
-        {item.selected === true ? "✓" : ""}
-      </span>
+    <span className={showSelectionMarks ? "grid grid-cols-[1rem_minmax(0,1fr)] gap-2" : "block"}>
+      {showSelectionMarks ? (
+        <span aria-hidden="true" className="text-center font-semibold text-slate-700">
+          {item.selected === true ? "✓" : ""}
+        </span>
+      ) : null}
       <span>
         <span className="block font-medium">{item.label}</span>
         {item.description ? <span className="mt-0.5 block text-xs text-slate-500">{item.description}</span> : null}
@@ -117,8 +155,13 @@ export function OverflowMenu({
     <div ref={rootRef} className="relative">
       <Button
         ref={triggerRef}
-        variant="secondary"
+        variant={variant}
         size={size}
+        tabIndex={triggerTabIndex}
+        className={triggerClassName}
+        title={title}
+        disabled={disabled}
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
@@ -127,10 +170,12 @@ export function OverflowMenu({
           setOpen((value) => !value);
         }}
       >
-        {label}
-        <span aria-hidden="true" className="text-slate-500">
-          •••
-        </span>
+        {iconOnly ? null : (triggerContent ?? label)}
+        {menuMark === "none" ? null : (
+          <span aria-hidden="true" className={iconOnly ? undefined : "text-slate-500"}>
+            {menuMark === "chevron" ? "▾" : "•••"}
+          </span>
+        )}
       </Button>
 
       {open ? (
@@ -140,22 +185,25 @@ export function OverflowMenu({
           aria-label={label}
           onKeyDown={handleMenuKeyDown}
           className={[
-            "absolute z-40 mt-2 max-h-[min(70vh,560px)] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl",
+            "absolute z-40 mt-2 max-h-[min(70vh,560px)] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl",
+            compact ? "w-56 p-1" : "w-[min(340px,calc(100vw-2rem))] p-2",
             align === "right" ? "right-0" : "left-0"
           ].join(" ")}
         >
           {groups.map((group, groupIndex) => (
             <section
               key={group.id}
-              aria-labelledby={`${menuId}-${group.id}`}
+              aria-labelledby={group.label ? `${menuId}-${group.id}` : undefined}
               className={groupIndex > 0 ? "mt-2 border-t border-slate-200 pt-2" : undefined}
             >
-              <h3
-                id={`${menuId}-${group.id}`}
-                className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500"
-              >
-                {group.label}
-              </h3>
+              {group.label ? (
+                <h3
+                  id={`${menuId}-${group.id}`}
+                  className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500"
+                >
+                  {group.label}
+                </h3>
+              ) : null}
               {group.items.map((item) => {
                 const itemRole = item.selected === undefined ? "menuitem" : "menuitemcheckbox";
                 const commonProps = {
@@ -209,4 +257,4 @@ export function OverflowMenu({
       ) : null}
     </div>
   );
-}
+});

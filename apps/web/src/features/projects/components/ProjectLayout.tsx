@@ -1,27 +1,33 @@
-import { Link, Outlet, useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../shared/ui/AppShell";
 import { Breadcrumb } from "../../../shared/ui/Breadcrumb";
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
-import { ProjectHeader } from "../../../shared/ui/ProjectHeader";
+import { OverflowMenu } from "../../../shared/ui/OverflowMenu";
 import { ProjectSwitcher } from "../../../shared/ui/ProjectSwitcher";
 import { ProjectTabs } from "../../../shared/ui/ProjectTabs";
+import { useTheme } from "../../../shared/theme/ThemeProvider";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchNotifications } from "../api/advancedApi";
 import { ArchivedProjectBanner } from "./ArchivedProjectBanner";
 import { ProjectArchiveProvider } from "../context/ProjectArchiveContext";
 import { useProjectQuery, useProjectsQuery } from "../hooks/useProjectsApi";
-import { ThemePreferenceSelect } from "../../../shared/theme/ThemePreferenceSelect";
+import { isPrimaryProjectTabPath } from "../utils/primaryProjectTabPath";
+import { buildProjectAccountMenu } from "../utils/projectAccountMenu";
 import { EntityContextMenuProvider } from "../../../shared/ui/EntityContextMenu";
 import { ProjectCommandPalette, useProjectCommandPalette } from "./ProjectCommandPalette";
 import { ProjectGlobalSearch } from "./ProjectGlobalSearch";
 
 export function ProjectLayout() {
   const { projectId = "" } = useParams();
+  const location = useLocation();
   const commandPalette = useProjectCommandPalette();
   const { user, logout } = useAuth();
+  const { preference, setPreference } = useTheme();
+  const [narrowSearchOpen, setNarrowSearchOpen] = useState(false);
   const { data: project, isLoading, isError, refetch } = useProjectQuery(projectId);
   const { data: allProjects = [] } = useProjectsQuery();
   const { data: notifications } = useQuery({
@@ -53,49 +59,62 @@ export function ProjectLayout() {
 
   const top = (
     <>
-      <div className="shell-bar border-b px-4 py-2">
-        <div className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-between gap-3">
+      <div className="shell-bar border-b px-4 py-1.5">
+        <div className="mx-auto flex max-w-[90rem] min-w-0 flex-nowrap items-center gap-2">
           <Link
             to="/projects"
-            className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100"
+            className="shrink-0 text-sm font-semibold tracking-tight text-slate-900 sm:text-lg dark:text-slate-100"
           >
             QA Rail
           </Link>
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => commandPalette.setOpen(true)}
-              className="hidden rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 sm:inline dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-              title="Command palette (Ctrl+K)"
-            >
-              Jump to…
-            </button>
-            <ProjectGlobalSearch projectId={projectId} />
-            <ProjectSwitcher projects={allProjects} currentProjectId={projectId} />
-            <Link
-              to={`/projects/${projectId}/notifications`}
-              className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Inbox {notifications?.unreadCount ? `(${notifications.unreadCount})` : ""}
-            </Link>
-            <ThemePreferenceSelect compact />
-            <div className="text-right">
-              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email ?? "unknown user"}</p>
-              <button
-                type="button"
-                onClick={() => void logout()}
-                className="text-xs font-medium text-slate-700 underline dark:text-slate-300"
-              >
-                Logout
-              </button>
-            </div>
+          <div className="min-w-0 flex-1">
+            <ProjectSwitcher
+              projects={allProjects}
+              currentProjectId={projectId}
+              isArchived={project.isArchived}
+            />
           </div>
+          <div className="hidden min-w-[12rem] max-w-md flex-1 sm:block">
+            <ProjectGlobalSearch projectId={projectId} />
+          </div>
+          <OverflowMenu
+            label="Account"
+            size="sm"
+            align="right"
+            groups={buildProjectAccountMenu({
+              projectId,
+              unreadCount: notifications?.unreadCount,
+              theme: preference,
+              userEmail: user?.email,
+              includeSearch: true,
+              onJumpTo: () => commandPalette.setOpen(true),
+              onSearch: () => {
+                if (window.matchMedia("(min-width: 640px)").matches) {
+                  document.getElementById("project-global-search")?.focus();
+                  return;
+                }
+                setNarrowSearchOpen(true);
+              },
+              onTheme: setPreference,
+              onLogout: () => void logout()
+            })}
+          />
         </div>
       </div>
-      <ProjectHeader projectName={project.name} subtitle={project.description} isArchived={project.isArchived} />
+      {narrowSearchOpen ? (
+        <div className="shell-bar border-b px-4 py-1.5 sm:hidden">
+          <ProjectGlobalSearch
+            projectId={projectId}
+            inputId="project-global-search-narrow"
+            autoFocus
+          />
+        </div>
+      ) : null}
       <ArchivedProjectBanner />
       <ProjectTabs projectId={projectId} />
-      <Breadcrumb projectId={projectId} projectName={project.name} />
+      {isPrimaryProjectTabPath(location.pathname) ? null : (
+        <Breadcrumb projectId={projectId} projectName={project.name} />
+      )}
     </>
   );
 

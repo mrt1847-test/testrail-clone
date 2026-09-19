@@ -18,7 +18,15 @@ export const CASE_REPOSITORY_PARAM_KEYS = [
   "columns"
 ] as const;
 
-export const RUN_LIST_PARAM_KEYS = ["mine", "milestoneId", "resultStatus", "highlightRunId"] as const;
+export const RUN_LIST_PARAM_KEYS = [
+  "mine",
+  "milestoneId",
+  "resultStatus",
+  "highlightRunId",
+  "scope",
+  "orderBy",
+  "completed"
+] as const;
 
 export const RUN_EXECUTION_PARAM_KEYS = [
   "status",

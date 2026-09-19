@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { useProjectArchived } from "../../projects/context/ProjectArchiveContext";
 import type {
   CaseFilterAutomation,
   CaseFilterPriority,
@@ -11,19 +10,17 @@ import type {
   CasePresenceFilter,
   SavedCaseView
 } from "../types";
-import { CASE_GROUP_BY_OPTIONS, type CaseGroupBy } from "../utils/caseRepositoryGrouping";
+import type { CaseGroupBy } from "../utils/caseRepositoryGrouping";
 import type { UiDensity } from "../../../shared/ui/density/uiDensity";
-import { CASE_DISPLAY_MODES, type CaseDisplayMode } from "../caseRepositoryView";
+import { buildCaseRepositoryViewMenu } from "../utils/caseRepositoryViewMenu";
 import { CaseColumnsDialog } from "./CaseColumnsDialog";
-import { OverflowMenu, WorkbenchToolbar, type OverflowMenuGroup } from "../../../shared/ui";
+import { OverflowMenu, WorkbenchToolbar } from "../../../shared/ui";
 
 const toolbarButtonClass =
   "inline-flex min-h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50";
 
 const toolbarButtonActiveClass =
   "inline-flex min-h-8 items-center justify-center rounded-md border border-slate-700 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-950 shadow-inner focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600";
-
-export type BulkEditScope = "selected" | "view" | "filter";
 
 type CaseRepositoryToolbarProps = {
   selectedSectionLabel?: string;
@@ -45,8 +42,6 @@ type CaseRepositoryToolbarProps = {
   onStateChange: (value: CaseFilterState) => void;
   groupByValue: CaseGroupBy;
   onGroupByChange: (value: CaseGroupBy) => void;
-  displayValue: CaseDisplayMode;
-  onDisplayChange: (value: CaseDisplayMode) => void;
   columnsValue: CaseListColumn[];
   columnWidths: Record<CaseListColumn, number>;
   onColumnsChange: (value: CaseListColumn[]) => void;
@@ -63,12 +58,10 @@ type CaseRepositoryToolbarProps = {
   onSaveView: () => void;
   onCancelSaveView: () => void;
   onDeleteSavedView: () => void;
-  onBulkEditScope?: (scope: BulkEditScope) => void;
-  selectedCaseCount?: number;
-  visibleCaseCount?: number;
-  filterScopeBusy?: boolean;
   density: UiDensity;
   onDensityChange: (value: UiDensity) => void;
+  onExpandAllGroups?: () => void;
+  onCollapseAllGroups?: () => void;
 };
 
 export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
@@ -92,8 +85,6 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     onStateChange,
     groupByValue,
     onGroupByChange,
-    displayValue,
-    onDisplayChange,
     columnsValue,
     columnWidths,
     onColumnsChange,
@@ -110,136 +101,28 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
     onSaveView,
     onCancelSaveView,
     onDeleteSavedView,
-    onBulkEditScope,
-    selectedCaseCount = 0,
-    visibleCaseCount = 0,
-    filterScopeBusy = false,
     density,
-    onDensityChange
+    onDensityChange,
+    onExpandAllGroups,
+    onCollapseAllGroups
   } = props;
 
-  const isProjectArchived = useProjectArchived();
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(activeFilterCount > 0);
   const showDeleted = stateValue === "archived";
   const matchedSavedView = savedViews.find((view) => view.id === matchedSavedViewId);
-  const viewGroups: OverflowMenuGroup[] = [
-    {
-      id: "display",
-      label: "Display",
-      items: CASE_DISPLAY_MODES.map((mode) => ({
-        id: `display-${mode.id}`,
-        label: mode.label,
-        description: mode.hint,
-        selected: displayValue === mode.id,
-        onSelect: () => onDisplayChange(mode.id)
-      }))
-    },
-    {
-      id: "group",
-      label: "Group cases by",
-      items: CASE_GROUP_BY_OPTIONS.map((option) => ({
-        id: `group-${option.id}`,
-        label: option.label,
-        description:
-          option.id === "section_id"
-            ? "Group cases under section headers"
-            : option.id === "none"
-              ? "Flat list without group headers"
-              : `Group cases by ${option.label.toLowerCase()}`,
-        selected: groupByValue === option.id,
-        onSelect: () => onGroupByChange(option.id)
-      }))
-    },
-    {
-      id: "density",
-      label: "Density",
-      items: [
-        {
-          id: "density-compact",
-          label: "Compact",
-          selected: density === "compact",
-          onSelect: () => onDensityChange("compact")
-        },
-        {
-          id: "density-comfortable",
-          label: "Comfortable",
-          selected: density === "comfortable",
-          onSelect: () => onDensityChange("comfortable")
-        }
-      ]
-    },
-    {
-      id: "data",
-      label: "Columns and scope",
-      items: [
-        {
-          id: "columns",
-          label: "Columns and saved views",
-          description: `${columnsValue.length} metadata column${columnsValue.length === 1 ? "" : "s"} visible`,
-          onSelect: () => setColumnsDialogOpen(true)
-        },
-        {
-          id: "archived",
-          label: "Archived cases",
-          description: showDeleted ? "Showing archived cases" : "Show cases marked as deleted",
-          selected: showDeleted,
-          onSelect: () => onStateChange(showDeleted ? "active" : "archived")
-        }
-      ]
-    },
-    {
-      id: "saved-views",
-      label: "Saved views",
-      items:
-        savedViews.length > 0
-          ? savedViews.map((view) => ({
-              id: `saved-view-${view.id}`,
-              label: view.name,
-              selected: matchedSavedViewId === view.id,
-              onSelect: () => onSavedViewSelect(view.id)
-            }))
-          : [
-              {
-                id: "saved-view-empty",
-                label: "No saved views yet",
-                description: "Use Columns and saved views to save the current setup",
-                disabled: true
-              }
-            ]
-    }
-  ];
-  const bulkGroups: OverflowMenuGroup[] = [
-    {
-      id: "bulk-edit",
-      label: `${selectedCaseCount} selected`,
-      items: [
-        {
-          id: "selected",
-          label: "Edit selected",
-          description: `${selectedCaseCount} case${selectedCaseCount === 1 ? "" : "s"} selected`,
-          onSelect: () => onBulkEditScope?.("selected")
-        },
-        {
-          id: "view",
-          label: "Edit cases in current view",
-          description:
-            visibleCaseCount > 0
-              ? `${visibleCaseCount} case${visibleCaseCount === 1 ? "" : "s"} loaded in the list`
-              : "No cases in the current view",
-          disabled: visibleCaseCount === 0,
-          onSelect: () => onBulkEditScope?.("view")
-        },
-        {
-          id: "filter",
-          label: "Edit all cases matching filter",
-          description: filterScopeBusy ? "Loading cases…" : "Includes cases not loaded in the current page",
-          disabled: filterScopeBusy,
-          onSelect: () => onBulkEditScope?.("filter")
-        }
-      ]
-    }
-  ];
+  const viewGroups = buildCaseRepositoryViewMenu({
+    groupByValue,
+    density,
+    showDeleted,
+    visibleColumnCount: columnsValue.length,
+    onGroupByChange,
+    onDensityChange,
+    onOpenColumnsAndViews: () => setColumnsDialogOpen(true),
+    onToggleArchived: () => onStateChange(showDeleted ? "active" : "archived"),
+    onExpandAllGroups,
+    onCollapseAllGroups
+  });
 
   return (
     <>
@@ -275,10 +158,7 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
               </span>
             ) : null}
           </button>
-          <OverflowMenu label={matchedSavedView ? `View: ${matchedSavedView.name}` : "View"} groups={viewGroups} />
-          {selectedCaseCount > 0 && onBulkEditScope && !isProjectArchived ? (
-            <OverflowMenu label={`${selectedCaseCount} selected`} groups={bulkGroups} />
-          ) : null}
+          <OverflowMenu label={matchedSavedView ? `View: ${matchedSavedView.name}` : "View"} groups={viewGroups} align="left" />
         </div>
 
         {filtersOpen ? (
@@ -377,6 +257,12 @@ export function CaseRepositoryToolbar(props: CaseRepositoryToolbarProps) {
         onCancelSaveView={onCancelSaveView}
         canDeleteSavedView={Boolean(matchedSavedViewId)}
         onDeleteSavedView={onDeleteSavedView}
+        savedViews={savedViews}
+        matchedSavedViewId={matchedSavedViewId}
+        onSavedViewSelect={(viewId) => {
+          onSavedViewSelect(viewId);
+          setColumnsDialogOpen(false);
+        }}
       />
     </>
   );

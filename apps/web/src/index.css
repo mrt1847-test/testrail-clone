@@ -116,4 +116,63 @@
       display: none !important;
     }
   }
+
+  .run-instance-table {
+    container-type: inline-size;
+  }
+
+  .run-case-instruction {
+    container-type: inline-size;
+  }
+
+  .run-case-instruction__step {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  @container (min-width: 360px) {
+    .run-case-instruction__step {
+      grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .run-case-instruction__step-index {
+      padding-top: 0.125rem;
+    }
+
+    .run-case-instruction__action {
+      grid-column-start: 2;
+    }
+
+    .run-case-instruction__expected {
+      grid-column-start: 3;
+    }
+  }
+
+  /* Demote Watch/Updated/Type before clipping Title and Status. */
+  @container (max-width: 639px) {
+    .run-instance-table [data-run-col="watch"],
+    .run-instance-table [data-run-col="updated"],
+    .run-instance-table [data-run-col="type"] {
+      display: none !important;
+    }
+  }
+
+  /* Demote Priority/Assignee next; assignment stays in the result pane. */
+  @container (max-width: 499px) {
+    .run-instance-table [data-run-col="priority"],
+    .run-instance-table [data-run-col="assignee"] {
+      display: none !important;
+    }
+  }
+
+  @media (min-width: 1024px) and (max-width: 1439px) {
+    [data-run-workbench][data-run-pane="open"][data-run-tree="open"] {
+      grid-template-columns: 10.5rem minmax(0, 1fr) minmax(18rem, min(var(--run-qpane-width), 20rem));
+    }
+
+    [data-run-workbench][data-run-pane="open"][data-run-tree="open"] [aria-label="Run sections"] {
+      width: 100%;
+      min-width: 0;
+    }
+  }
 }

@@ -2,10 +2,23 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { CaseTemplateRow, CustomFieldRow } from "../../projects/api/settingsApi";
 import { ReferencesInput } from "./ReferencesInput";
+import { CaseStepsEditor } from "./CaseStepsEditor";
 import { serializeCaseAuthoringDraft, type CaseAuthoringDraft } from "../utils/caseAuthoringDraft";
+import {
+  CASE_PRIORITY_OPTIONS,
+  CASE_TYPE_OPTIONS,
+  convertInstructionDraft,
+  draftStepsFromCaseSteps,
+  emptyAuthoringDraftStep,
+  instructionKindFromTemplateFields,
+  textStepsFromPersistedSteps,
+  type CaseAuthoringDraftStep
+} from "../utils/caseAuthoringInstructions";
+import type { CasePriority, CaseStep, CaseType } from "../types";
 
 import { CustomFieldValueInput } from "../../../shared/customFields/CustomFieldValueInput";
 import { Button } from "../../../shared/ui/Button";
+import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 import { FormField } from "../../../shared/ui/FormField";
 import {
   validateCustomFieldDraft,
@@ -27,21 +40,23 @@ export type CaseAuthoringTemplateDefinition = Pick<
 type CaseAuthoringFormProps = {
   projectId?: string;
   valueKey: string;
+  sectionPath?: string | null;
   initialTitle: string;
   initialPreconditions: string;
   initialEstimate?: string;
   initialReferences?: string;
   initialExpectedResult?: string;
+  initialCaseType?: CaseType;
+  initialPriority?: CasePriority;
+  initialSteps?: CaseStep[];
   initialCaseTemplateId?: string | null;
   initialCustomValues: Record<string, ScalarCustomValue>;
   customFields: CaseAuthoringCustomFieldDefinition[];
   templates?: CaseAuthoringTemplateDefinition[];
-  onTemplateChange?: (info: { templateId: string; usesSteps: boolean }) => void;
   submitLabel: string;
   cancelLabel?: string;
   isSubmitting?: boolean;
   submitError?: string | null;
-  stepsSection?: ReactNode;
   onDirtyChange?: (dirty: boolean) => void;
   onSubmit: (input: {
     title: string;
@@ -49,6 +64,11 @@ type CaseAuthoringFormProps = {
     estimate: string;
     references: string;
     expectedResult: string;
+    stepsText: string;
+    draftSteps: CaseAuthoringDraftStep[];
+    instructionKind: ReturnType<typeof instructionKindFromTemplateFields>;
+    caseType: CaseType;
+    priority: CasePriority;
     mission: string;
     goals: string;
     aiInput: string;
@@ -73,10 +93,6 @@ const BUILTIN_TEMPLATE_FIELD_LABELS: Record<string, string> = {
   ai_latency_ms: "Latency (ms)",
   ai_traces: "Traces"
 };
-
-function templateUsesSteps(fields: string[]) {
-  return fields.some((field) => normalizeTemplateFieldKey(field) === "steps");
-}
 
 function templateUsesExpectedResult(fields: string[]) {
   return fields.some((field) => normalizeTemplateFieldKey(field) === "expectedresult");
@@ -135,21 +151,23 @@ function inputClassName(hasError: boolean) {
 export function CaseAuthoringForm({
   projectId = "",
   valueKey,
+  sectionPath = null,
   initialTitle,
   initialPreconditions,
   initialEstimate = "",
   initialReferences = "",
   initialExpectedResult = "",
+  initialCaseType = "Functional",
+  initialPriority = "Medium",
+  initialSteps = [],
   initialCaseTemplateId = null,
   initialCustomValues,
   customFields,
   templates = [],
-  onTemplateChange,
   submitLabel,
   cancelLabel = "Cancel",
   isSubmitting = false,
   submitError = null,
-  stepsSection,
   onDirtyChange,
   onSubmit,
   onCancel
@@ -179,10 +197,16 @@ export function CaseAuthoringForm({
   const [estimate, setEstimate] = useState(initialEstimate);
   const [references, setReferences] = useState(initialReferences);
   const [expectedResult, setExpectedResult] = useState(initialExpectedResult);
+  const [stepsText, setStepsText] = useState(() => textStepsFromPersistedSteps(initialSteps));
+  const [draftSteps, setDraftSteps] = useState<CaseAuthoringDraftStep[]>(() => draftStepsFromCaseSteps(initialSteps));
+  const [caseType, setCaseType] = useState<CaseType>(initialCaseType);
+  const [priority, setPriority] = useState<CasePriority>(initialPriority);
   const [customValues, setCustomValues] = useState<Record<string, ScalarCustomValue>>(initialCustomValues);
   const [selectedTemplateId, setSelectedTemplateId] = useState(() =>
     preferredTemplateId(activeTemplates, initialCaseTemplateId)
   );
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
+  const [templateChangeWarning, setTemplateChangeWarning] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -194,17 +218,27 @@ export function CaseAuthoringForm({
         estimate: initialEstimate,
         references: initialReferences,
         expectedResult: initialExpectedResult,
+        stepsText: textStepsFromPersistedSteps(initialSteps),
+        draftSteps: draftStepsFromCaseSteps(initialSteps).map(({ description, expected }) => ({
+          description,
+          expected
+        })),
+        caseType: initialCaseType,
+        priority: initialPriority,
         templateId: preferredTemplateId(activeTemplates, initialCaseTemplateId),
         customValues: initialCustomValues
       }),
     [
       activeTemplates,
       initialCaseTemplateId,
+      initialCaseType,
       initialCustomValues,
       initialEstimate,
       initialExpectedResult,
       initialPreconditions,
+      initialPriority,
       initialReferences,
+      initialSteps,
       initialTitle
     ]
   );
@@ -217,8 +251,18 @@ export function CaseAuthoringForm({
     setEstimate(initialDraft.estimate);
     setReferences(initialDraft.references);
     setExpectedResult(initialDraft.expectedResult);
+    setStepsText(initialDraft.stepsText);
+    setDraftSteps(
+      initialDraft.draftSteps.length > 0
+        ? initialDraft.draftSteps.map((step) => ({ ...emptyAuthoringDraftStep(), ...step }))
+        : [emptyAuthoringDraftStep()]
+    );
+    setCaseType((initialDraft.caseType as CaseType) || "Functional");
+    setPriority((initialDraft.priority as CasePriority) || "Medium");
     setCustomValues(initialDraft.customValues);
     setSelectedTemplateId(initialDraft.templateId);
+    setPendingTemplateId(null);
+    setTemplateChangeWarning(null);
     setBaselineSnapshot(initialDraftSnapshot);
     setFieldErrors({});
   }, [valueKey, initialDraftSnapshot]);
@@ -235,8 +279,55 @@ export function CaseAuthoringForm({
 
   const selectedTemplate = activeTemplates.find((template) => template.id === selectedTemplateId) ?? null;
   const selectedTemplateFields = selectedTemplate?.fields ?? [];
-  const templateShowsSteps = templateUsesSteps(selectedTemplateFields);
-  const templateShowsExpectedResult = templateUsesExpectedResult(selectedTemplateFields);
+  const instructionKind = instructionKindFromTemplateFields(selectedTemplateFields);
+  const templateShowsSteps = instructionKind === "steps";
+  const templateShowsExpectedResult =
+    instructionKind === "text" || instructionKind === "steps" || templateUsesExpectedResult(selectedTemplateFields);
+
+  function applyTemplateId(nextTemplateId: string) {
+    const nextTemplate = activeTemplates.find((template) => template.id === nextTemplateId) ?? null;
+    const nextKind = instructionKindFromTemplateFields(nextTemplate?.fields);
+    const converted = convertInstructionDraft({
+      from: instructionKind,
+      to: nextKind,
+      stepsText,
+      draftSteps,
+      expectedResult
+    });
+    setStepsText(converted.stepsText);
+    setDraftSteps(converted.draftSteps);
+    setExpectedResult(converted.expectedResult);
+    setSelectedTemplateId(nextTemplateId);
+    setPendingTemplateId(null);
+    setTemplateChangeWarning(null);
+  }
+
+  function requestTemplateChange(nextTemplateId: string) {
+    if (nextTemplateId === selectedTemplateId) return;
+    const nextTemplate = activeTemplates.find((template) => template.id === nextTemplateId) ?? null;
+    const nextKind = instructionKindFromTemplateFields(nextTemplate?.fields);
+    if (nextKind === instructionKind) {
+      setSelectedTemplateId(nextTemplateId);
+      return;
+    }
+    const converted = convertInstructionDraft({
+      from: instructionKind,
+      to: nextKind,
+      stepsText,
+      draftSteps,
+      expectedResult
+    });
+    const hasInstructions =
+      stepsText.trim().length > 0 ||
+      expectedResult.trim().length > 0 ||
+      draftSteps.some((step) => step.description.trim() || step.expected.trim());
+    if (!hasInstructions || !converted.warning) {
+      applyTemplateId(nextTemplateId);
+      return;
+    }
+    setPendingTemplateId(nextTemplateId);
+    setTemplateChangeWarning(converted.warning);
+  }
 
   const currentDraftSnapshot = useMemo(
     () =>
@@ -246,21 +337,20 @@ export function CaseAuthoringForm({
         estimate,
         references,
         expectedResult,
+        stepsText,
+        draftSteps: draftSteps.map(({ description, expected }) => ({ description, expected })),
+        caseType,
+        priority,
         templateId: selectedTemplateId,
         customValues
       }),
-    [customValues, estimate, expectedResult, preconditions, references, selectedTemplateId, title]
+    [caseType, customValues, draftSteps, estimate, expectedResult, preconditions, priority, references, selectedTemplateId, stepsText, title]
   );
   const isDirty = currentDraftSnapshot !== baselineSnapshot;
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
-
-  useEffect(() => {
-    if (!selectedTemplateId) return;
-    onTemplateChange?.({ templateId: selectedTemplateId, usesSteps: templateShowsSteps });
-  }, [onTemplateChange, selectedTemplateId, templateShowsSteps]);
 
   function setCustomValue(systemName: string, value: ScalarCustomValue) {
     setCustomValues((current) => {
@@ -393,7 +483,23 @@ export function CaseAuthoringForm({
       </FormField>
     );
 
-    const stepsNode = stepsSection && templateShowsSteps ? <div className="grid gap-2">{stepsSection}</div> : null;
+    const stepsNode = templateShowsSteps ? (
+      <CaseStepsEditor steps={draftSteps} disabled={isSubmitting} onChange={setDraftSteps} />
+    ) : null;
+
+    const textStepsNode =
+      instructionKind === "text" ? (
+        <FormField label="Steps" controlId="case-steps-text">
+          {(controlProps) => (
+            <textarea
+              {...controlProps}
+              value={stepsText}
+              onChange={(event) => setStepsText(event.target.value)}
+              className="min-h-[96px] rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            />
+          )}
+        </FormField>
+      ) : null;
 
     const expectedResultNode = templateShowsExpectedResult ? (
       <FormField label={builtinTemplateFieldLabel("expectedResult")} controlId="case-expected-result">
@@ -476,6 +582,7 @@ export function CaseAuthoringForm({
       }
       if (normalized === "steps") {
         if (stepsNode) pushBlock("steps", stepsNode);
+        if (textStepsNode) pushBlock("stepsText", textStepsNode);
         continue;
       }
       if (normalized === "expectedresult") {
@@ -492,12 +599,42 @@ export function CaseAuthoringForm({
       }
     }
 
+    if ((selectedTemplate?.fields ?? []).length > 0) {
+      if (textStepsNode && !seen.has("stepsText")) {
+        const preconditionsIndex = blocks.findIndex((block) => block.key === "preconditions");
+        const expectedIndex = blocks.findIndex((block) => block.key === "expectedResult");
+        const textBlock = { key: "stepsText", node: textStepsNode };
+        if (preconditionsIndex >= 0) {
+          blocks.splice(preconditionsIndex + 1, 0, textBlock);
+        } else if (expectedIndex >= 0) {
+          blocks.splice(expectedIndex, 0, textBlock);
+        } else {
+          blocks.push(textBlock);
+        }
+        seen.add("stepsText");
+      }
+      if (expectedResultNode && !seen.has("expectedResult")) {
+        const stepsIndex = blocks.findIndex((block) => block.key === "steps" || block.key === "stepsText");
+        const preconditionsIndex = blocks.findIndex((block) => block.key === "preconditions");
+        const expectedBlock = { key: "expectedResult", node: expectedResultNode };
+        if (stepsIndex >= 0) {
+          blocks.splice(stepsIndex + 1, 0, expectedBlock);
+        } else if (preconditionsIndex >= 0) {
+          blocks.splice(preconditionsIndex + 1, 0, expectedBlock);
+        } else {
+          blocks.push(expectedBlock);
+        }
+        seen.add("expectedResult");
+      }
+    }
+
     if ((selectedTemplate?.fields ?? []).length === 0) {
       pushBlock("title", titleNode);
       pushBlock("preconditions", preconditionsNode);
       pushBlock("estimate", estimateNode);
       pushBlock("references", referencesNode);
       if (expectedResultNode) pushBlock("expectedResult", expectedResultNode);
+      if (textStepsNode) pushBlock("stepsText", textStepsNode);
       if (stepsNode) pushBlock("steps", stepsNode);
       for (const field of activeCustomFields) {
         pushBlock(`custom:${field.systemName}`, renderCustomField(field));
@@ -508,13 +645,16 @@ export function CaseAuthoringForm({
     activeCustomFields,
     customFieldMap,
     customValues,
+    draftSteps,
     expectedResult,
     estimate,
     fieldErrors,
+    instructionKind,
+    isSubmitting,
     preconditions,
     references,
     selectedTemplate?.fields,
-    stepsSection,
+    stepsText,
     templateShowsExpectedResult,
     templateShowsSteps,
     title
@@ -566,6 +706,11 @@ export function CaseAuthoringForm({
         estimate: estimate.trim(),
         references: references.trim(),
         expectedResult: expectedResult.trim(),
+        stepsText: stepsText.trim(),
+        draftSteps,
+        instructionKind,
+        caseType,
+        priority,
         mission,
         goals,
         aiInput,
@@ -579,6 +724,9 @@ export function CaseAuthoringForm({
     }
   }
 
+  const titleBlock = orderedBlocks.find((block) => block.key === "title");
+  const bodyBlocks = orderedBlocks.filter((block) => block.key !== "title");
+
   return (
     <form
       ref={formRef}
@@ -588,19 +736,23 @@ export function CaseAuthoringForm({
         void handleSubmit();
       }}
     >
-      {activeTemplates.length > 0 ? (
-        <div className="rounded-md border border-slate-200 bg-white p-3">
-          <FormField
-            label="Template"
-            controlId="case-template"
-            helpText={selectedTemplate?.description || undefined}
-          >
+      {titleBlock ? <div>{titleBlock.node}</div> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {sectionPath ? (
+          <p className="sm:col-span-2 lg:col-span-4 text-sm text-slate-600">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Section</span>{" "}
+            {sectionPath}
+          </p>
+        ) : null}
+        {activeTemplates.length > 0 ? (
+          <FormField label="Template" controlId="case-template">
             {(controlProps) => (
               <select
                 {...controlProps}
                 value={selectedTemplateId}
-                onChange={(event) => setSelectedTemplateId(event.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+                onChange={(event) => requestTemplateChange(event.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
               >
                 {activeTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
@@ -611,14 +763,43 @@ export function CaseAuthoringForm({
               </select>
             )}
           </FormField>
-          {templateShowsSteps && !stepsSection ? (
-            <p className="mt-2 text-xs text-amber-700">This template expects steps. Add them after creating the case.</p>
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
+        <FormField label="Type" controlId="case-type">
+          {(controlProps) => (
+            <select
+              {...controlProps}
+              value={caseType}
+              onChange={(event) => setCaseType(event.target.value as CaseType)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {CASE_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+        <FormField label="Priority" controlId="case-priority">
+          {(controlProps) => (
+            <select
+              {...controlProps}
+              value={priority}
+              onChange={(event) => setPriority(event.target.value as CasePriority)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {CASE_PRIORITY_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+      </div>
 
-      <div className="grid gap-3 rounded-md border border-slate-200 bg-white p-3">
-        {orderedBlocks.map((block) => (
+      <div className="grid gap-3">
+        {bodyBlocks.map((block) => (
           <div key={block.key}>{block.node}</div>
         ))}
       </div>
@@ -638,14 +819,26 @@ export function CaseAuthoringForm({
           <Button type="button" variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button
-          type="submit"
-          disabled={isSubmitting}
-        >
-          {submitLabel}
+          <Button type="submit" disabled={isSubmitting}>
+            {submitLabel}
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingTemplateId != null}
+        title="Change template?"
+        description={templateChangeWarning}
+        confirmLabel="Change template"
+        cancelLabel="Keep current template"
+        onConfirm={() => {
+          if (pendingTemplateId) applyTemplateId(pendingTemplateId);
+        }}
+        onCancel={() => {
+          setPendingTemplateId(null);
+          setTemplateChangeWarning(null);
+        }}
+      />
     </form>
   );
 }

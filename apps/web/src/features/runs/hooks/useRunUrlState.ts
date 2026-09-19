@@ -98,21 +98,10 @@ export function useRunUrlState(input: Input) {
     if (caseChangedFilter !== nextCaseChanged) setCaseChangedFilter(nextCaseChanged);
     if (sortBy !== nextSortBy) setSortBy(nextSortBy);
     if (sortDir !== nextSortDir) setSortDir(nextSortDir);
-  }, [
-    assigneeFilter,
-    caseChangedFilter,
-    caseTypeFilter,
-    display,
-    groupBy,
-    instancePage,
-    priorityFilter,
-    searchParams,
-    searchText,
-    sectionId,
-    sortBy,
-    sortDir,
-    statusFilter
-  ]);
+    // Sync from the URL only. Depending on local filter state here races legend/list
+    // updates and writes the previous URL back before the outbound effect runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams is the source of truth for inbound sync
+  }, [searchParams]);
 
   useEffect(() => {
     setSearchParams(

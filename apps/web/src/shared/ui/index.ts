@@ -2,6 +2,7 @@ export { Button, type ButtonProps } from "./Button";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Panel } from "./Panel";
 export { Drawer } from "./Drawer";
+export { Dialog } from "./Dialog";
 export { DataTable, type DataTableColumn } from "./DataTable";
 export { buttonClassName, type ButtonVariant, type ButtonSize } from "./buttonStyles";
 export { ToastProvider, useToast, type ToastVariant } from "./toast/ToastProvider";
@@ -10,6 +11,7 @@ export { EntityContextMenuProvider, useEntityContextMenu } from "./EntityContext
 export {
   OverflowMenu,
   type OverflowMenuGroup,
+  type OverflowMenuHandle,
   type OverflowMenuItem
 } from "./OverflowMenu";
 export { WorkbenchPage, WorkbenchPageHeader, WorkbenchToolbar } from "./WorkbenchPage";

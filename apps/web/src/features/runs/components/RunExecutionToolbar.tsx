@@ -83,7 +83,7 @@ export function RunExecutionToolbar({
 
   if (variant === "inline") {
     return (
-      <div className="flex flex-wrap gap-1 border-t border-slate-100 p-2" aria-label="Test execution navigation">
+      <div className="flex flex-wrap gap-1 border-b border-slate-200 pb-2" aria-label="Test execution navigation">
         {buttons}
       </div>
     );

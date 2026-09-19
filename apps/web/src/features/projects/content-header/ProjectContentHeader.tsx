@@ -162,7 +162,7 @@ export function CaseRepositoryContentHeader({
   return (
     <WorkbenchPageHeader
       title="Test Cases"
-      description="Organize cases by section, then open one to review or edit."
+      compact
       primaryAction={
         <Button
           size="md"

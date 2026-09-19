@@ -26,6 +26,7 @@ type RunCompositionCaseTableProps = {
   includedScopedCaseIds: Set<string>;
   onSelectedCaseIdsChange: (ids: string[]) => void;
   onExcludedCaseIdsChange: (ids: string[]) => void;
+  showFilterActions?: boolean;
 };
 
 export function RunCompositionCaseTable({
@@ -40,7 +41,8 @@ export function RunCompositionCaseTable({
   includedSectionIds,
   includedScopedCaseIds,
   onSelectedCaseIdsChange,
-  onExcludedCaseIdsChange
+  onExcludedCaseIdsChange,
+  showFilterActions = false
 }: RunCompositionCaseTableProps) {
   const selectedSet = useMemo(() => new Set(selectedCaseIds), [selectedCaseIds]);
   const visibleRows = useMemo(
@@ -102,7 +104,7 @@ export function RunCompositionCaseTable({
             {includeAll ? ` · ${excludedCaseIds.length} excluded` : ""}
           </p>
         </div>
-        {compositionMode === "static" && !includeAll ? (
+        {showFilterActions && compositionMode === "static" && !includeAll ? (
           <div className="flex flex-wrap gap-1">
             <button
               type="button"

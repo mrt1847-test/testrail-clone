@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/context/AuthContext";
@@ -12,11 +12,14 @@ import { ErrorState } from "../../../shared/ui/ErrorState";
 import { CollapsibleSection } from "../../../shared/ui/CollapsibleSection";
 import { KeyboardShortcutsDialog } from "../../../shared/ui/KeyboardShortcutsDialog";
 import { LoadingState } from "../../../shared/ui/LoadingState";
+import { Button, SaveFeedback } from "../../../shared/ui";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
-import { fetchAllRunInstances, fetchRuns, associateResultAttachment } from "../api/runApi";
+import { Drawer } from "../../../shared/ui/Drawer";
+import { fetchAllRunInstances, fetchRunInstancesGrouped, fetchRuns, associateResultAttachment } from "../api/runApi";
 import type { TestInstanceRow } from "../types";
 import { useRunBulkActions } from "../hooks/useRunBulkActions";
 import { flattenGroupedInstances, mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
+import { buildMatchingInstancesFetchPlan, visibleMatchingTotal } from "../utils/runBulkSelectionScope";
 import { shouldExpandRunSchedulePanel } from "../utils/runExecutionDensity";
 import {
   readJumpToNextAfterResult,
@@ -34,20 +37,17 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
 import { useRunColumnPreferences } from "../hooks/useRunColumnPreferences";
 import { defaultRunInstanceListFilters } from "../utils/runInstanceListParams";
-import { nextVisibleTestId, resolveVisibleSelectedRunTest } from "../utils/runSelectedTestState";
-import { createdResultId, stagedAttachmentsFromPayload, type StagedComposerUploadPatch } from "../utils/resultComposerModel";
+import { nextUnwrappedVisibleTestId, nextVisibleTestId, resolveVisibleSelectedRunTest } from "../utils/runSelectedTestState";
 import type { ResultStatus } from "./resultEntryTypes";
 import {
   RESULT_SAVE_CLEARED_MS,
   RESULT_SAVE_UNDO_MS,
-  canUndoResultSave,
   overlayInstanceStatus,
   pruneMatchedStatusOverrides,
-  resultSaveErrorMessage,
   type ResultSaveAdvanceOptions,
-  type ResultSaveFeedback,
   type ResultSaveRetryPayload
 } from "../utils/resultSaveFeedback";
+import { createResultSaveLifecycle } from "../utils/resultSaveLifecycle";
 import {
   useAddResultAttachmentMutation,
   useAddResultDefectMutation,
@@ -75,13 +75,14 @@ import {
 import type { RunCompositionInfo } from "../types";
 import { CloseRunDialog } from "./CloseRunDialog";
 import { RunPlanBreadcrumb } from "./RunPlanBreadcrumb";
-import { RunDetailSidebar } from "./RunDetailSidebar";
 import { RunExecutionToolbar } from "./RunExecutionToolbar";
 import { RunExecutionHeader } from "./RunExecutionHeader";
+import { RunStatusOverview } from "./RunStatusOverview";
+import { RunActivityPanel } from "./RunActivityPanel";
 import { RunInstancesSection } from "./RunInstancesSection";
 import { RUN_DETAIL_SHORTCUTS, useRunKeyboardShortcuts } from "../hooks/useRunKeyboardShortcuts";
 import { useRunTestNavigation } from "../hooks/useRunTestNavigation";
-import { ResultEntryPanel } from "./ResultEntryPanel";
+import { ResultEntryDialog, type ResultDialogTarget } from "./ResultEntryDialog";
 import { ResultHistoryList } from "./ResultHistoryList";
 import { RunQPanePanel } from "./RunQPanePanel";
 import { CaseCrossRunHistoryList } from "./CaseCrossRunHistoryList";
@@ -94,7 +95,6 @@ import { DuplicateRunDialog } from "./DuplicateRunDialog";
 import { RunCompareWithRunDialog } from "./RunCompareWithRunDialog";
 import { RunCaseContextPanel } from "./RunCaseContextPanel";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
-import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { buildRunComparisonPath } from "../utils/runComparisonUrl";
@@ -109,10 +109,15 @@ export function RunDetailPage() {
   const [runUiDensity, setRunUiDensity] = useUiDensity(projectId, "run-execution", user?.id);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState<TestInstanceRow | null>(null);
-  const [composerStatus, setComposerStatus] = useState<ResultStatus | null>(null);
-  const [isAssociatingAttachments, setIsAssociatingAttachments] = useState(false);
+  const [resultDialog, setResultDialog] = useState<{
+    target: ResultDialogTarget;
+    initialStatus: ResultStatus | null;
+  } | null>(null);
+  const resultDialogOpenRef = useRef(false);
+  resultDialogOpenRef.current = resultDialog != null;
   const pendingSelectedTestIdRef = useRef<string | null>(null);
   const selectedRef = useRef<TestInstanceRow | null>(null);
+  const sectionIdRef = useRef<number | null>(null);
   selectedRef.current = selected;
   const writeSelectedTestId = useCallback(
     (testId: string | null) => {
@@ -122,6 +127,9 @@ export function RunDetailPage() {
           const next = new URLSearchParams(prev);
           if (testId) next.set("testId", testId);
           else next.delete("testId");
+          const sectionId = sectionIdRef.current;
+          if (sectionId != null) next.set("sectionId", String(sectionId));
+          else next.delete("sectionId");
           return next;
         },
         { replace: true }
@@ -130,23 +138,22 @@ export function RunDetailPage() {
     [setSearchParams]
   );
   const selectInstance = useCallback(
-    (instance: TestInstanceRow, options?: { composerStatus?: ResultStatus | null }) => {
-      setComposerStatus(options?.composerStatus ?? null);
+    (instance: TestInstanceRow, options?: { force?: boolean }) => {
+      if (resultDialogOpenRef.current && !options?.force) return;
       setSelected(instance);
       writeSelectedTestId(instance.id);
     },
     [writeSelectedTestId]
   );
+  const clearSelectedTest = useCallback(() => {
+    if (resultDialogOpenRef.current) return;
+    setSelected(null);
+    writeSelectedTestId(null);
+  }, [writeSelectedTestId]);
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
-  const [saveFeedback, setSaveFeedback] = useState<ResultSaveFeedback | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
-  const [stagedUploadById, setStagedUploadById] = useState<Record<string, StagedComposerUploadPatch>>({});
   const saveTimersRef = useRef<{ undo: number | null; clear: number | null }>({ undo: null, clear: null });
   const lastCommittedStatusRef = useRef<Record<string, ResultStatus>>({});
-  const saveFeedbackRef = useRef<ResultSaveFeedback | null>(null);
-  saveFeedbackRef.current = saveFeedback;
-  const stagedUploadByIdRef = useRef(stagedUploadById);
-  stagedUploadByIdRef.current = stagedUploadById;
   const [assigneeInput, setAssigneeInput] = useState("");
   const [closeRunDialogOpen, setCloseRunDialogOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
@@ -161,6 +168,7 @@ export function RunDetailPage() {
   const [duplicateCopyEnvironment, setDuplicateCopyEnvironment] = useState(true);
   const [compareDialogOpen, setCompareDialogOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [pushDefectDialogOpen, setPushDefectDialogOpen] = useState(false);
   const [pushDefectResultId, setPushDefectResultId] = useState<string | null>(null);
   const [rerunSelectedStatuses, setRerunSelectedStatuses] = useState<Array<"failed" | "blocked" | "retest">>(["failed"]);
@@ -196,6 +204,7 @@ export function RunDetailPage() {
     sortDir,
     setSortDir
   } = urlState;
+  sectionIdRef.current = sectionId;
   const { effectiveColumns, persistColumns } = useRunColumnPreferences(projectId, runId);
   const [listColumns, setListColumns] = useState(effectiveColumns);
   useEffect(() => {
@@ -273,6 +282,43 @@ export function RunDetailPage() {
     );
   }, [caseTemplatesQuery.data, selectedCaseDetail.data?.caseTemplateId]);
   const filteredInstanceTotal = runInstancesQuery.data?.total ?? 0;
+  const suiteId = runDetailQuery.data?.run.suiteId ?? "";
+  const listQueryInput = {
+    status: statusFilter,
+    assignee: assigneeFilter,
+    search: searchText,
+    priority: priorityFilter,
+    caseType: caseTypeFilter,
+    caseChanged: caseChangedFilter,
+    sortBy,
+    sortDir
+  };
+  const sectionCountsQuery = useRunInstancesGroupedQuery({
+    projectId,
+    runId,
+    groupBy: "section_id",
+    sectionId: null,
+    ...listQueryInput,
+    enabled: useGroupedExecution && Boolean(suiteId)
+  });
+  const groupedTableQuery = useRunInstancesGroupedQuery({
+    projectId,
+    runId,
+    groupBy,
+    sectionId: sectionId != null ? String(sectionId) : null,
+    ...listQueryInput,
+    enabled: useGroupedExecution && Boolean(suiteId)
+  });
+  const executionInstances = useMemo(() => {
+    if (useGroupedExecution) return flattenGroupedInstances(groupedTableQuery.data?.groups ?? []);
+    return pagedInstances;
+  }, [groupedTableQuery.data?.groups, pagedInstances, useGroupedExecution]);
+  const groupedTotal = groupedTableQuery.data?.total ?? filteredInstanceTotal;
+  const visibleTotal = visibleMatchingTotal({
+    grouped: useGroupedExecution,
+    groupedTotal,
+    pagedTotal: filteredInstanceTotal
+  });
   const [instanceLookup, setInstanceLookup] = useState<Map<string, TestInstanceRow>>(() => new Map());
   const [selectAllFilteredBusy, setSelectAllFilteredBusy] = useState(false);
   const [assigningTestId, setAssigningTestId] = useState<string | null>(null);
@@ -280,9 +326,9 @@ export function RunDetailPage() {
   const bulkActions = useRunBulkActions({
     projectId,
     runId,
-    pagedInstances,
+    displayedInstances: executionInstances,
     instanceLookup,
-    filteredTotal: filteredInstanceTotal
+    filteredTotal: visibleTotal
   });
   const {
     selectedTestIds,
@@ -294,6 +340,9 @@ export function RunDetailPage() {
     bulkResultMutation,
     bulkFeedback,
     setBulkFeedback,
+    dismissBulkFeedback,
+    retryFailedBulkResults,
+    canRetryFailedBulk,
     allPageSelected,
     allFilteredSelected,
     canBulkSubmit,
@@ -301,8 +350,8 @@ export function RunDetailPage() {
   } = bulkActions;
 
   useEffect(() => {
-    setInstanceLookup((current) => mergeInstanceLookup(current, pagedInstances));
-  }, [pagedInstances]);
+    setInstanceLookup((current) => mergeInstanceLookup(current, executionInstances));
+  }, [executionInstances]);
 
   useEffect(() => {
     setSelectedTestIds([]);
@@ -317,26 +366,63 @@ export function RunDetailPage() {
     caseChangedFilter,
     sortBy,
     sortDir,
+    sectionId,
+    groupBy,
     setSelectedTestIds
   ]);
 
   const selectAllMatchingFilter = async () => {
-    if (filteredInstanceTotal === 0 || selectAllFilteredBusy) return;
+    if (visibleTotal === 0 || selectAllFilteredBusy) return;
     setSelectAllFilteredBusy(true);
     try {
-      const instances = await fetchAllRunInstances({
-        projectId,
-        runId,
-        status: statusFilter,
-        assignee: assigneeFilter,
-        search: searchText,
-        priority: priorityFilter || undefined,
-        caseType: caseTypeFilter || undefined,
-        caseChanged: caseChangedFilter || undefined,
-        sortBy,
-        sortDir
+      const plan = buildMatchingInstancesFetchPlan({
+        groupBy,
+        sectionId: sectionId != null ? String(sectionId) : null,
+        filters: {
+          status: statusFilter,
+          assignee: assigneeFilter,
+          search: searchText,
+          priority: priorityFilter || undefined,
+          caseType: caseTypeFilter || undefined,
+          caseChanged: caseChangedFilter || undefined,
+          sortBy,
+          sortDir
+        }
       });
-      const rows = mapApiInstancesToRows(instances);
+      const rows =
+        plan.kind === "grouped"
+          ? flattenGroupedInstances(
+              (
+                await fetchRunInstancesGrouped({
+                  projectId,
+                  runId,
+                  groupBy: plan.groupBy,
+                  sectionId: plan.sectionId,
+                  status: plan.filters.status,
+                  assignee: plan.filters.assignee,
+                  search: plan.filters.search,
+                  priority: plan.filters.priority,
+                  caseType: plan.filters.caseType,
+                  caseChanged: plan.filters.caseChanged,
+                  sortBy: plan.filters.sortBy,
+                  sortDir: plan.filters.sortDir
+                })
+              ).groups
+            )
+          : mapApiInstancesToRows(
+              await fetchAllRunInstances({
+                projectId,
+                runId,
+                status: plan.filters.status,
+                assignee: plan.filters.assignee,
+                search: plan.filters.search,
+                priority: plan.filters.priority,
+                caseType: plan.filters.caseType,
+                caseChanged: plan.filters.caseChanged,
+                sortBy: plan.filters.sortBy,
+                sortDir: plan.filters.sortDir
+              })
+            );
       setInstanceLookup(mergeInstanceLookup(new Map(), rows));
       setSelectedTestIds(rows.map((row) => row.id));
     } catch (error) {
@@ -382,34 +468,7 @@ export function RunDetailPage() {
     projectId,
     run ? { kind: "run", id: runId, title: run.name, subtitle: `Status: ${run.status}` } : null
   );
-  const suiteId = run?.suiteId ?? "";
   const sectionsQuery = useSections(projectId, suiteId || undefined);
-  const listQueryInput = {
-    status: statusFilter,
-    assignee: assigneeFilter,
-    search: searchText,
-    priority: priorityFilter,
-    caseType: caseTypeFilter,
-    caseChanged: caseChangedFilter,
-    sortBy,
-    sortDir
-  };
-  const sectionCountsQuery = useRunInstancesGroupedQuery({
-    projectId,
-    runId,
-    groupBy: "section_id",
-    sectionId: null,
-    ...listQueryInput,
-    enabled: useGroupedExecution && Boolean(suiteId)
-  });
-  const groupedTableQuery = useRunInstancesGroupedQuery({
-    projectId,
-    runId,
-    groupBy,
-    sectionId: sectionId != null ? String(sectionId) : null,
-    ...listQueryInput,
-    enabled: useGroupedExecution && Boolean(suiteId)
-  });
   const resetListPage = () => setInstancePage(1);
   const clearRunListFilters = () => {
     setStatusFilter(defaultRunInstanceListFilters.status);
@@ -436,10 +495,6 @@ export function RunDetailPage() {
       instances: mapApiInstancesToRows(group.instances)
     }));
   }, [groupedTableQuery.data?.groups]);
-  const executionInstances = useMemo(() => {
-    if (useGroupedExecution) return flattenGroupedInstances(groupedTableQuery.data?.groups ?? []);
-    return pagedInstances;
-  }, [groupedTableQuery.data?.groups, pagedInstances, useGroupedExecution]);
   const displayedExecutionInstances = useMemo(
     () => overlayInstanceStatus(executionInstances, statusOverrides),
     [executionInstances, statusOverrides]
@@ -452,15 +507,14 @@ export function RunDetailPage() {
       })),
     [tableGroups, statusOverrides]
   );
-  const groupedTotal = groupedTableQuery.data?.total ?? filteredInstanceTotal;
   const hasSectionTree = useGroupedExecution && Boolean(suiteId && sectionsQuery.data?.sections);
   const workbenchGridClass = selected
     ? hasSectionTree
-      ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_var(--run-qpane-width)]"
-      : "lg:grid-cols-[auto_minmax(0,1fr)_var(--run-qpane-width)]"
+      ? "lg:grid-cols-[auto_minmax(0,1fr)_var(--run-qpane-width)]"
+      : "lg:grid-cols-[minmax(0,1fr)_var(--run-qpane-width)]"
     : hasSectionTree
-      ? "lg:grid-cols-[auto_auto_minmax(0,1fr)]"
-      : "lg:grid-cols-[auto_minmax(0,1fr)]";
+      ? "lg:grid-cols-[auto_minmax(0,1fr)]"
+      : "lg:grid-cols-1";
   const testNavigation = useRunTestNavigation({
     projectId,
     runId,
@@ -498,58 +552,74 @@ export function RunDetailPage() {
     return "untested";
   }, [executionInstances]);
 
+  const resultSaveDepsRef = useRef({
+    createResult: (input: { testId: string } & Omit<ResultSaveRetryPayload, "attachments" | "stagedAttachments" | "assignedTo">) =>
+      addResultMutation.mutateAsync(input),
+    associateAttachment: associateResultAttachment,
+    invalidateAttachments: (resultId: string) =>
+      queryClient.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) }),
+    resolvePreviousStatus,
+    resolveAssignedTo: (testId: string) =>
+      selectedRef.current?.id === testId ? selectedRef.current.assignedTo ?? null : null,
+    assignTest: async (testId: string, assignedTo: string | null) => {
+      await testAssigneeMutation.mutateAsync({ testId, assignedTo });
+      if (selectedRef.current?.id === testId) {
+        selectedRef.current = { ...selectedRef.current, assignedTo };
+      }
+    }
+  });
+  resultSaveDepsRef.current = {
+    createResult: (input) => addResultMutation.mutateAsync(input),
+    associateAttachment: associateResultAttachment,
+    invalidateAttachments: (resultId) =>
+      queryClient.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) }),
+    resolvePreviousStatus,
+    resolveAssignedTo: (testId) =>
+      selectedRef.current?.id === testId
+        ? selectedRef.current.assignedTo ?? null
+        : executionInstances.find((row) => row.id === testId)?.assignedTo ?? null,
+    assignTest: async (testId, assignedTo) => {
+      await testAssigneeMutation.mutateAsync({ testId, assignedTo });
+      setSelected((prev) => (prev?.id === testId ? { ...prev, assignedTo } : prev));
+    }
+  };
+
+  const resultSaveLifecycle = useMemo(
+    () =>
+      createResultSaveLifecycle({
+        createResult: (input) => resultSaveDepsRef.current.createResult(input),
+        associateAttachment: (resultId, file, onProgress) =>
+          resultSaveDepsRef.current.associateAttachment(resultId, file, onProgress),
+        invalidateAttachments: (resultId) => resultSaveDepsRef.current.invalidateAttachments(resultId),
+        resolvePreviousStatus: (testId) => resultSaveDepsRef.current.resolvePreviousStatus(testId),
+        resolveAssignedTo: (testId) => resultSaveDepsRef.current.resolveAssignedTo(testId),
+        assignTest: (testId, assignedTo) => resultSaveDepsRef.current.assignTest(testId, assignedTo)
+      }),
+    []
+  );
+  const resultSaveSnapshot = useSyncExternalStore(
+    resultSaveLifecycle.subscribe,
+    resultSaveLifecycle.getSnapshot,
+    resultSaveLifecycle.getSnapshot
+  );
+
   const scheduleSavedClear = useCallback(
     (testId: string, canUndo: boolean) => {
       clearSaveTimers();
       if (canUndo) {
         saveTimersRef.current.undo = window.setTimeout(() => {
-          setSaveFeedback((current) =>
-            current?.testId === testId && current.status === "saved" ? { ...current, canUndo: false } : current
-          );
+          resultSaveLifecycle.expireSaved(testId, { canUndo: false });
         }, RESULT_SAVE_UNDO_MS);
         saveTimersRef.current.clear = window.setTimeout(() => {
-          setSaveFeedback((current) => (current?.testId === testId && current.status === "saved" ? null : current));
+          resultSaveLifecycle.expireSaved(testId, { clear: true });
         }, RESULT_SAVE_UNDO_MS);
       } else {
         saveTimersRef.current.clear = window.setTimeout(() => {
-          setSaveFeedback((current) => (current?.testId === testId && current.status === "saved" ? null : current));
+          resultSaveLifecycle.expireSaved(testId, { clear: true });
         }, RESULT_SAVE_CLEARED_MS);
       }
     },
-    [clearSaveTimers]
-  );
-
-  const patchStagedUpload = useCallback((id: string, patch: StagedComposerUploadPatch) => {
-    setStagedUploadById((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
-  }, []);
-
-  const associateStagedAttachments = useCallback(
-    async (resultId: string, items: Array<{ id: string; file: File }>) => {
-      if (items.length === 0) return;
-      setIsAssociatingAttachments(true);
-      const failures: string[] = [];
-      try {
-        for (const item of items) {
-          if (stagedUploadByIdRef.current[item.id]?.status === "uploaded") continue;
-          patchStagedUpload(item.id, { status: "uploading", progress: 0 });
-          try {
-            await associateResultAttachment(resultId, item.file, (progress) => {
-              patchStagedUpload(item.id, { status: "uploading", progress });
-            });
-            patchStagedUpload(item.id, { status: "uploaded", progress: 100 });
-          } catch (error) {
-            patchStagedUpload(item.id, { status: "failed", message: resultSaveErrorMessage(error) });
-            failures.push(item.file.name);
-          }
-        }
-        await queryClient.invalidateQueries({ queryKey: runKeys.resultAttachments(resultId) });
-        if (failures.length === 1) throw new Error(`Couldn't attach ${failures[0]}`);
-        if (failures.length > 1) throw new Error(`Couldn't attach ${failures.length} files`);
-      } finally {
-        setIsAssociatingAttachments(false);
-      }
-    },
-    [patchStagedUpload, queryClient]
+    [clearSaveTimers, resultSaveLifecycle]
   );
 
   const submitRunResult = async (
@@ -558,177 +628,98 @@ export function RunDetailPage() {
     options?: ResultSaveAdvanceOptions
   ) => {
     if (runClosed) return;
-    if (saveFeedbackRef.current?.status === "saving") return;
-    const stagedItems = stagedAttachmentsFromPayload(payload);
-    if (saveFeedbackRef.current?.status === "failed" && saveFeedbackRef.current.createdResultId && stagedItems.length > 0) {
-      const existingId = saveFeedbackRef.current.createdResultId;
-      clearSaveTimers();
-      setSaveFeedback({
-        ...saveFeedbackRef.current,
-        status: "saving",
-        message: "Saving…",
-        canUndo: false,
-        retryPayload: payload,
-        retryAdvance: options
-      });
-      try {
-        await associateStagedAttachments(existingId, stagedItems);
-        const canUndo = canUndoResultSave(saveFeedbackRef.current.previousStatus);
-        setSaveFeedback({
-          testId,
-          status: "saved",
-          message: "Saved",
-          previousStatus: saveFeedbackRef.current.previousStatus,
-          canUndo,
-          retryPayload: payload,
-          retryAdvance: options,
-          createdResultId: existingId
-        });
-        scheduleSavedClear(testId, canUndo);
-        return;
-      } catch (error) {
-        setSaveFeedback({
-          testId,
-          status: "failed",
-          message: resultSaveErrorMessage(error),
-          previousStatus: saveFeedbackRef.current.previousStatus,
-          canUndo: false,
-          retryPayload: payload,
-          retryAdvance: options,
-          createdResultId: existingId
-        });
-        throw error;
-      }
-    }
-
-    const previousStatus = resolvePreviousStatus(testId);
-    const { attachments: _attachments, stagedAttachments: _stagedAttachments, ...resultPayload } = payload;
     clearSaveTimers();
     setStatusOverrides((current) => ({ ...current, [testId]: payload.status }));
-    setSaveFeedback({
-      testId,
-      status: "saving",
-      message: "Saving…",
-      previousStatus,
-      canUndo: false,
-      retryPayload: payload,
-      retryAdvance: options
-    });
-
-    let createdId: string | null = null;
     try {
-      const created = await addResultMutation.mutateAsync({ testId, ...resultPayload });
-      createdId = createdResultId(created);
-      if (createdId) setSelectedResultId(createdId);
-      lastCommittedStatusRef.current[testId] = payload.status;
-      if (createdId) {
-        await associateStagedAttachments(createdId, stagedAttachmentsFromPayload(payload));
+      const result = await resultSaveLifecycle.submit(testId, payload, options);
+      const feedback = resultSaveLifecycle.feedbackFor(testId);
+      if (feedback?.createdResultId) {
+        lastCommittedStatusRef.current[testId] = payload.status;
+        setSelectedResultId(feedback.createdResultId);
       }
-      const canUndo = canUndoResultSave(previousStatus);
-      setSaveFeedback({
-        testId,
-        status: "saved",
-        message: "Saved",
-        previousStatus,
-        canUndo,
-        retryPayload: payload,
-        retryAdvance: options,
-        createdResultId: createdId
-      });
-      scheduleSavedClear(testId, canUndo);
+      if (feedback?.status === "saved") scheduleSavedClear(testId, feedback.canUndo);
       const nextId =
-        options?.advanceToTestId ??
-        (options?.advanceOnPass && payload.status === "passed" && jumpToNext
-          ? nextVisibleTestId(testId, executionInstances)
-          : null);
+        result?.mode === "create-result" && result.advanced
+          ? (options?.advanceToTestId ??
+            (options?.advanceOnPass && payload.status === "passed" && jumpToNext
+              ? nextVisibleTestId(testId, executionInstances)
+              : null))
+          : null;
       if (nextId && nextId !== testId) {
         const nextRow = displayedExecutionInstances.find((row) => row.id === nextId);
         if (nextRow) selectInstance(nextRow);
         else writeSelectedTestId(nextId);
       }
     } catch (error) {
-      if (!createdId) {
+      const feedback = resultSaveLifecycle.feedbackFor(testId);
+      if (feedback?.createdResultId) {
+        lastCommittedStatusRef.current[testId] = payload.status;
+        setSelectedResultId(feedback.createdResultId);
+      } else {
         setStatusOverrides((current) => {
           const next = { ...current };
           delete next[testId];
           return next;
         });
       }
-      setSaveFeedback({
-        testId,
-        status: "failed",
-        message: resultSaveErrorMessage(error),
-        previousStatus,
-        canUndo: false,
-        retryPayload: payload,
-        retryAdvance: options,
-        createdResultId: createdId
-      });
       throw error;
     }
   };
 
-  const retryResultSave = () => {
-    const current = saveFeedbackRef.current;
+  const retryResultSave = (testId?: string) => {
+    const targetId = testId ?? selectedRef.current?.id;
+    if (!targetId) return;
+    const current = resultSaveLifecycle.feedbackFor(targetId);
     if (!current || current.status !== "failed") return;
-    void submitRunResult(current.testId, current.retryPayload, current.retryAdvance);
+    void submitRunResult(targetId, current.retryPayload, current.retryAdvance);
   };
 
-  const retryStagedAttachment = (id: string) => {
-    const current = saveFeedbackRef.current;
-    const resultId = current?.createdResultId;
-    if (!current || !resultId) return;
-    const item = stagedAttachmentsFromPayload(current.retryPayload).find((row) => row.id === id);
-    if (!item) return;
+  const retryStagedAttachment = (id: string, testId = resultDialog?.target.id ?? selectedRef.current?.id) => {
+    if (!testId) return;
     void (async () => {
-      try {
-        setSaveFeedback({ ...current, status: "saving", message: "Saving…", canUndo: false });
-        await associateStagedAttachments(resultId, [item]);
-        const unfinished = stagedAttachmentsFromPayload(current.retryPayload).some(
-          (row) => stagedUploadByIdRef.current[row.id]?.status !== "uploaded"
-        );
-        if (unfinished) {
-          setSaveFeedback({
-            ...current,
-            status: "failed",
-            message: "Couldn't attach one or more files",
-            canUndo: false
-          });
-          return;
-        }
-        const canUndo = canUndoResultSave(current.previousStatus);
-        setSaveFeedback({
-          ...current,
-          status: "saved",
-          message: "Saved",
-          canUndo
-        });
-        scheduleSavedClear(current.testId, canUndo);
-      } catch (error) {
-        setSaveFeedback({
-          ...current,
-          status: "failed",
-          message: resultSaveErrorMessage(error),
-          canUndo: false
-        });
-      }
+      await resultSaveLifecycle.retryAttachment(testId, id);
+      const feedback = resultSaveLifecycle.feedbackFor(testId);
+      if (feedback?.status === "saved") scheduleSavedClear(testId, feedback.canUndo);
     })();
   };
 
-  const undoResultSave = () => {
-    const current = saveFeedbackRef.current;
+  const undoResultSave = (testId?: string) => {
+    const targetId = testId ?? selectedRef.current?.id;
+    if (!targetId) return;
+    const current = resultSaveLifecycle.feedbackFor(targetId);
     if (!current || current.status !== "saved" || !current.canUndo) return;
-    void submitRunResult(current.testId, { status: current.previousStatus });
+    void submitRunResult(targetId, { status: current.previousStatus });
   };
 
   const handlePassAndNext = () => {
-    if (!selected || runClosed || addResultMutation.isPending) return;
+    if (!selected || runClosed || resultSaveLifecycle.isSaving(selected.id) || resultDialogOpenRef.current) return;
     const nextId = nextVisibleTestId(selected.id, executionInstances);
     void submitRunResult(selected.id, { status: "passed" }, { advanceToTestId: nextId });
   };
 
+  const openResultDialog = (instance: TestInstanceRow, status: ResultStatus | null = null) => {
+    if (runClosed || resultSaveLifecycle.isSaving(instance.id) || resultDialogOpenRef.current) return;
+    selectInstance(instance, { force: true });
+    setResultDialog({
+      target: {
+        id: instance.id,
+        caseId: instance.caseId,
+        caseCode: instance.caseCode,
+        title: instance.title,
+        assignedTo: instance.assignedTo ?? null
+      },
+      initialStatus: status
+    });
+  };
+
+  const closeResultDialog = (discard = false) => {
+    const testId = resultDialog?.target.id;
+    if (discard && testId) resultSaveLifecycle.cancel(testId);
+    setResultDialog(null);
+  };
+
   useRunKeyboardShortcuts({
-    enabled: runLoaded && !shortcutsOpen && !runClosed,
+    enabled: runLoaded && !shortcutsOpen && !activityDrawerOpen && !runClosed && resultDialog == null,
     onShowHelp: () => setShortcutsOpen(true),
     onNextTest: testNavigation.goNextTest,
     onPrevTest: testNavigation.goPrevTest,
@@ -795,7 +786,6 @@ export function RunDetailPage() {
   useEffect(() => {
     setSelectedResultId(null);
     setHistoryPage(1);
-    setStagedUploadById({});
   }, [selected?.id]);
 
   useEffect(() => {
@@ -1005,6 +995,7 @@ export function RunDetailPage() {
           setDuplicateCopyEnvironment(true);
           setDuplicateDialogOpen(true);
         }}
+        onOpenActivity={() => setActivityDrawerOpen(true)}
         isDuplicatePending={duplicateMutation.isPending}
         onOpenCompare={() => setCompareDialogOpen(true)}
         onOpenRerun={() => setRerunDialogOpen(true)}
@@ -1016,51 +1007,76 @@ export function RunDetailPage() {
         onPushDefect={canPushDefectForSelected ? openPushDefectDialog : undefined}
       />
 
+      <RunStatusOverview
+        counts={counts}
+        activeStatus={statusFilter}
+        onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
+        visibleCount={
+          (useGroupedExecution ? groupedTableQuery.isFetching : runInstancesQuery.isFetching)
+            ? undefined
+            : useGroupedExecution
+              ? groupedTableQuery.data?.total
+              : runInstancesQuery.data?.total
+        }
+      />
+
       <div
         data-run-workbench=""
-        className={`mt-2 grid min-h-0 grid-cols-1 gap-3 lg:max-h-[calc(100dvh-17.5rem)] ${workbenchGridClass}`}
+        data-run-pane={selected ? "open" : "closed"}
+        data-run-tree={hasSectionTree ? "open" : "closed"}
+        className={`mt-2 grid min-h-0 grid-cols-1 gap-3 lg:h-[calc(100dvh-20.5rem)] lg:max-h-[calc(100dvh-20.5rem)] lg:overflow-hidden ${workbenchGridClass}`}
         style={{ ["--run-qpane-width" as string]: `${qpaneWidth}px` }}
       >
-        <RunDetailSidebar
-          projectId={projectId}
-          runId={runId}
-          counts={counts}
-          activeStatus={statusFilter}
-          onStatusSelect={(status) => testNavigation.jumpToStatus(status)}
-          statusFooter={
-            <RunExecutionToolbar
-              variant="inline"
-              isNavigating={testNavigation.isNavigating}
-              onNextFailed={testNavigation.goNextFailed}
-              onNextBlocked={testNavigation.goNextBlocked}
-              onNextUntested={testNavigation.goNextUntested}
-              onPassAndNext={runClosed ? undefined : handlePassAndNext}
-              isSavingResult={addResultMutation.isPending}
-              jumpToNext={jumpToNext}
-              onJumpToNextChange={(enabled) => {
-                setJumpToNext(enabled);
-                writeJumpToNextAfterResult(enabled);
-              }}
-              onPrevTest={testNavigation.goPrevTest}
-              onNextTest={testNavigation.goNextTest}
-              onShowShortcuts={() => setShortcutsOpen(true)}
-            />
-          }
-        />
         {hasSectionTree && sectionsQuery.data?.sections ? (
+          <div className={selected ? "hidden min-h-0 lg:block" : "min-h-0"}>
           <RunSectionTree
             sections={sectionsQuery.data.sections}
             sectionCounts={sectionCounts}
             selectedSectionId={sectionId}
             onSelectSection={(value) => {
+              sectionIdRef.current = value;
+              setSelectedTestIds([]);
+              setInstanceLookup(new Map());
               setSectionId(value);
               resetListPage();
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (value != null) next.set("sectionId", String(value));
+                  else next.delete("sectionId");
+                  next.delete("testId");
+                  next.delete("page");
+                  return next;
+                },
+                { replace: true }
+              );
             }}
             display={display}
             onDisplayChange={setDisplay}
           />
+          </div>
         ) : null}
-        <div id="run-tests-section" className="flex min-h-0 min-w-0 flex-col lg:h-full lg:overflow-hidden">
+        <div
+          id="run-tests-section"
+          className={`${selected ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col lg:h-full lg:overflow-hidden`}
+        >
+          <RunExecutionToolbar
+            variant="inline"
+            isNavigating={testNavigation.isNavigating}
+            onNextFailed={testNavigation.goNextFailed}
+            onNextBlocked={testNavigation.goNextBlocked}
+            onNextUntested={testNavigation.goNextUntested}
+            onPassAndNext={runClosed ? undefined : handlePassAndNext}
+            isSavingResult={Boolean(selected && resultSaveLifecycle.isSaving(selected.id))}
+            jumpToNext={jumpToNext}
+            onJumpToNextChange={(enabled) => {
+              setJumpToNext(enabled);
+              writeJumpToNextAfterResult(enabled);
+            }}
+            onPrevTest={testNavigation.goPrevTest}
+            onNextTest={testNavigation.goNextTest}
+            onShowShortcuts={() => setShortcutsOpen(true)}
+          />
           {groupedTableQuery.data?.truncated ? (
             <p className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
               Showing first 5,000 tests. Narrow filters to see more.
@@ -1114,8 +1130,13 @@ export function RunDetailPage() {
           }}
           groupBy={groupBy}
           onGroupByChange={(value) => {
+            setSelectedTestIds([]);
+            setInstanceLookup(new Map());
             setGroupBy(value);
-            if (value === "none") setSectionId(null);
+            if (value === "none") {
+              sectionIdRef.current = null;
+              setSectionId(null);
+            }
             resetListPage();
           }}
           listColumns={listColumns}
@@ -1134,9 +1155,11 @@ export function RunDetailPage() {
           canBulkSubmit={!runClosed && canBulkSubmit}
           isBulkPending={bulkResultMutation.isPending}
           bulkFeedback={bulkFeedback}
-          onDismissBulkFeedback={() => setBulkFeedback(null)}
+          onDismissBulkFeedback={dismissBulkFeedback}
+          onRetryFailedBulk={retryFailedBulkResults}
+          canRetryFailedBulk={canRetryFailedBulk}
           onBulkSubmit={() => {
-            if (!runClosed) void bulkResultMutation.mutateAsync();
+            if (!runClosed) void bulkResultMutation.mutateAsync(undefined);
           }}
           onAssignSelected={(assignedTo) => void assignSelectedTests(assignedTo)}
           allPageSelected={allPageSelected}
@@ -1153,13 +1176,11 @@ export function RunDetailPage() {
             })
           }
           onComposeResult={(instance, status) => {
-            selectInstance(instance, { composerStatus: status });
-            window.requestAnimationFrame(() => {
-              document.getElementById("run-result-composer")?.scrollIntoView({ block: "nearest" });
-            });
+            openResultDialog(instance, status);
           }}
-          isSavingQuickResult={addResultMutation.isPending || isAssociatingAttachments}
-          saveFeedback={saveFeedback}
+          isSavingQuickResult={Boolean(selected && resultSaveLifecycle.isSaving(selected.id))}
+          saveFeedback={selected ? resultSaveSnapshot.feedbackByTestId[selected.id] ?? null : null}
+          saveFeedbackByTestId={resultSaveSnapshot.feedbackByTestId}
           onRetrySave={retryResultSave}
           onUndoSave={undoResultSave}
           groups={useGroupedExecution ? displayedTableGroups : undefined}
@@ -1190,7 +1211,7 @@ export function RunDetailPage() {
           <aside
             id="run-result-composer"
             aria-live="polite"
-            className="relative min-h-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:h-full lg:overflow-y-auto"
+            className="relative flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:h-full lg:overflow-hidden"
             style={{ width: "100%", maxWidth: "100%" }}
           >
             <div
@@ -1218,41 +1239,22 @@ export function RunDetailPage() {
                 window.addEventListener("mouseup", onUp);
               }}
             />
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <RunCaseContextPanel
               projectId={projectId}
               caseId={selected.caseId}
               caseCode={selected.caseCode}
               title={selected.title}
+              status={selected.status}
               data={selectedCaseDetail.data}
               scenarios={selectedCaseScenariosQuery.data}
               isLoading={selectedCaseDetail.isLoading}
               isError={selectedCaseDetail.isError}
+              onBackToList={clearSelectedTest}
+              onPrevTest={testNavigation.goPrevTest}
+              onNextTest={testNavigation.goNextTest}
+              isNavigating={testNavigation.isNavigating}
             />
-            <div className="mt-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5">
-              <p className="text-[11px] font-medium text-slate-500">Assignee</p>
-              <p className="text-sm text-slate-800">{memberLabelForUserId(selected.assignedTo, members)}</p>
-              {!runClosed ? (
-                <div className="mt-1">
-                  <TestAssigneeQuickActions
-                    assignedTo={selected.assignedTo}
-                    currentUserId={user?.id ?? null}
-                    disabled={assigningTestId != null && assigningTestId !== selected.id}
-                    pending={assigningTestId === selected.id}
-                    onAssignToMe={() => void assignTest(selected.id, user?.id ?? null)}
-                    onClearAssignee={() => void assignTest(selected.id, null)}
-                  />
-                </div>
-              ) : null}
-            </div>
-            {canPushDefectForSelected ? (
-              <button
-                type="button"
-                className="mt-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-900 hover:bg-indigo-100"
-                onClick={openPushDefectDialog}
-              >
-                Push defect…
-              </button>
-            ) : null}
             <RunQPanePanel
               key={selected.id}
               results={
@@ -1261,68 +1263,32 @@ export function RunDetailPage() {
                     This run is closed. Result entry is read-only; reopen the run to add results.
                   </div>
                 ) : (
-                  <ResultEntryPanel
-                    key={`${selected.id}:${composerStatus ?? "default"}`}
-                    projectId={projectId}
-                    instance={{
-                      id: selected.id,
-                      caseId: selected.caseId,
-                      caseCode: selected.caseCode,
-                      title: selected.title
-                    }}
-                    initialStatus={composerStatus}
-                    caseSteps={selectedCaseDetail.data?.steps ?? []}
-                    caseScenarios={selectedCaseScenariosQuery.data ?? []}
-                    isCaseStepsLoading={selectedCaseDetail.isLoading}
-                    isSubmitting={addResultMutation.isPending || isAssociatingAttachments}
-                    disableUntested={(historyQuery.data?.total ?? 0) > 0 || selected.status !== "untested"}
-                    hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
-                    aiEvaluation={
-                      isAiEvaluationCase
-                        ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
-                        : undefined
-                    }
-                    showInstanceHeader={false}
-                    saveFeedback={
-                      saveFeedback?.testId === selected.id
-                        ? {
-                            status: saveFeedback.status,
-                            message: saveFeedback.message,
-                            canUndo: saveFeedback.canUndo
-                          }
-                        : null
-                    }
-                    onRetrySave={retryResultSave}
-                    onUndoSave={undoResultSave}
-                    attachmentUploadById={stagedUploadById}
-                    onRetryStagedAttachment={retryStagedAttachment}
-                    onCancel={() => {
-                      setComposerStatus(null);
-                      setStagedUploadById({});
-                    }}
-                    onSubmit={(payload) =>
-                      submitRunResult(
-                        selected.id,
-                        {
-                          status: payload.status,
-                          comment: payload.comment,
-                          elapsed: payload.elapsed,
-                          version: payload.version,
-                          defects: payload.defects,
-                          customValues: payload.customValues,
-                          stepResults: payload.stepResults,
-                          scenarioResults: payload.scenarioResults,
-                          aiActualOutput: payload.aiActualOutput,
-                          aiQualityRating: payload.aiQualityRating,
-                          aiLatencyMs: payload.aiLatencyMs,
-                          aiTraces: payload.aiTraces,
-                          attachments: payload.attachments,
-                          stagedAttachments: payload.stagedAttachments
-                        },
-                        { advanceOnPass: true }
-                      )
-                    }
-                  />
+                  <div className="space-y-3">
+                    {historyQuery.data?.items?.[0] ? (
+                      <p className="text-sm text-slate-700">
+                        Latest: {historyQuery.data.items[0].status}
+                        {historyQuery.data.items[0].comment ? ` · ${historyQuery.data.items[0].comment}` : ""}
+                      </p>
+                    ) : null}
+                    {resultSaveSnapshot.feedbackByTestId[selected.id] &&
+                    resultSaveSnapshot.feedbackByTestId[selected.id]!.status !== "idle" ? (
+                      <SaveFeedback
+                        status={resultSaveSnapshot.feedbackByTestId[selected.id]!.status}
+                        message={resultSaveSnapshot.feedbackByTestId[selected.id]!.message}
+                        onRetry={
+                          resultSaveSnapshot.feedbackByTestId[selected.id]!.status === "failed"
+                            ? () => retryResultSave(selected.id)
+                            : undefined
+                        }
+                        onUndo={
+                          resultSaveSnapshot.feedbackByTestId[selected.id]!.status === "saved" &&
+                          resultSaveSnapshot.feedbackByTestId[selected.id]!.canUndo
+                            ? () => undoResultSave(selected.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
+                  </div>
                 )
               }
               history={
@@ -1394,6 +1360,33 @@ export function RunDetailPage() {
                 />
               }
             />
+            </div>
+            {!runClosed ? (
+              <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-200 bg-white pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-3">
+                <Button type="button" onClick={() => openResultDialog(selected)}>
+                  Add result
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={testNavigation.isNavigating || resultSaveLifecycle.isSaving(selected.id)}
+                  title="Pass current test and go to next (P)"
+                  onClick={handlePassAndNext}
+                >
+                  Pass & Next
+                </Button>
+                <TestAssigneeQuickActions
+                  compact
+                  assignedTo={selected.assignedTo}
+                  currentUserId={user?.id ?? null}
+                  disabled={assigningTestId != null && assigningTestId !== selected.id}
+                  pending={assigningTestId === selected.id}
+                  onAssignToMe={() => void assignTest(selected.id, user?.id ?? null)}
+                  onClearAssignee={() => void assignTest(selected.id, null)}
+                />
+              </div>
+            ) : null}
           </aside>
         ) : null}
       </div>
@@ -1591,6 +1584,101 @@ export function RunDetailPage() {
           />
         </CollapsibleSection>
       </div>
+
+      <Drawer
+        open={activityDrawerOpen}
+        title="Activity"
+        subtitle="Recent events for this run"
+        onClose={() => setActivityDrawerOpen(false)}
+        widthClassName="max-w-md"
+      >
+        <RunActivityPanel projectId={projectId} runId={runId} />
+      </Drawer>
+      <ResultEntryDialog
+        open={resultDialog != null}
+        projectId={projectId}
+        target={resultDialog?.target ?? null}
+        initialStatus={resultDialog?.initialStatus ?? null}
+        caseSteps={selectedCaseDetail.data?.steps ?? []}
+        caseScenarios={selectedCaseScenariosQuery.data ?? []}
+        isCaseStepsLoading={selectedCaseDetail.isLoading}
+        isSubmitting={resultDialog ? resultSaveLifecycle.isSaving(resultDialog.target.id) : false}
+        disableUntested={
+          resultDialog
+            ? (historyQuery.data?.total ?? 0) > 0 || selected?.status !== "untested"
+            : false
+        }
+        hasResultHistory={(historyQuery.data?.total ?? 0) > 0}
+        aiEvaluation={
+          isAiEvaluationCase
+            ? { expectedOutput: selectedCaseDetail.data?.aiExpectedOutput || undefined }
+            : undefined
+        }
+        saveFeedback={
+          resultDialog && resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]
+            ? {
+                status: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.status,
+                message: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.message,
+                canUndo: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.canUndo
+              }
+            : null
+        }
+        attachmentUploadById={resultSaveSnapshot.uploadByFileId}
+        initialStagedAttachments={
+          resultDialog ? resultSaveLifecycle.composerRecoveryFiles(resultDialog.target.id) : []
+        }
+        recoveryResultId={
+          resultDialog
+            ? resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]?.createdResultId ?? null
+            : null
+        }
+        assigneeMembers={members}
+        currentUser={user}
+        onRetrySave={() => resultDialog && retryResultSave(resultDialog.target.id)}
+        onUndoSave={() => resultDialog && undoResultSave(resultDialog.target.id)}
+        onRetryStagedAttachment={retryStagedAttachment}
+        onDiscardStagedAttachment={(id) =>
+          resultDialog ? resultSaveLifecycle.discardStagedFile(resultDialog.target.id, id) : undefined
+        }
+        onClose={() => closeResultDialog(true)}
+        onSubmit={async (payload, options) => {
+          if (!resultDialog) return;
+          const testId = resultDialog.target.id;
+          const advanceTo = options?.advance ? nextUnwrappedVisibleTestId(testId, executionInstances) : null;
+          try {
+            await submitRunResult(
+              testId,
+              {
+                status: payload.status,
+                comment: payload.comment,
+                elapsed: payload.elapsed,
+                version: payload.version,
+                defects: payload.defects,
+                customValues: payload.customValues,
+                stepResults: payload.stepResults,
+                scenarioResults: payload.scenarioResults,
+                aiActualOutput: payload.aiActualOutput,
+                aiQualityRating: payload.aiQualityRating,
+                aiLatencyMs: payload.aiLatencyMs,
+                aiTraces: payload.aiTraces,
+                attachments: payload.attachments,
+                stagedAttachments: payload.stagedAttachments,
+                assignedTo: payload.assignedTo
+              },
+              options?.advance ? { advanceToTestId: advanceTo } : undefined
+            );
+            const feedback = resultSaveLifecycle.feedbackFor(testId);
+            if (feedback?.status === "saved") closeResultDialog(false);
+          } catch (error) {
+            throw error;
+          }
+        }}
+      />
+      <KeyboardShortcutsDialog
+        open={shortcutsOpen}
+        shortcuts={RUN_DETAIL_SHORTCUTS}
+        onClose={() => setShortcutsOpen(false)}
+      />
 
     </div>
   );

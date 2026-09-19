@@ -371,9 +371,54 @@ export class RunsService {
 
   async syncRunComposition(runId: bigint) {
     const sync = this.compositionSync;
-    if (!sync) {
-      throw new AppError("NOT_IMPLEMENTED", "run composition sync requires prisma mode", 501);
+    if (sync) return sync.syncRun(runId);
+
+    const run = await this.repo.getRun(runId);
+    if (!run) return { runId, skipped: true, added: 0, removed: 0, reason: "not_found" };
+    if (run.status === "closed") return { runId, skipped: true, added: 0, removed: 0, reason: "closed" };
+    const meta = run.composition ?? null;
+    if (!meta || !compositionNeedsLiveSync(meta)) {
+      return { runId, skipped: true, added: 0, removed: 0, reason: "static" };
     }
-    return sync.syncRun(runId);
+
+    const excludedCaseIds = (meta.excludedCaseIds ?? []).map((id) => BigInt(id));
+    const includedSectionIds = (meta.includedSectionIds ?? []).map((id) => BigInt(id));
+    const excludedSectionIds = (meta.excludedSectionIds ?? []).map((id) => BigInt(id));
+    const desired = await this.repo.transaction((tx) =>
+      tx.getCasesForRun({
+        projectId: run.projectId,
+        suiteId: run.suiteId,
+        includeAll: meta.compositionMode === "include_all_live",
+        excludedCaseIds: excludedCaseIds.length ? excludedCaseIds : undefined,
+        includedSectionIds: includedSectionIds.length ? includedSectionIds : undefined,
+        excludedSectionIds: excludedSectionIds.length ? excludedSectionIds : undefined,
+        compositionMode: meta.compositionMode,
+        filterDefinition: meta.filterDefinition
+      })
+    );
+    const instances = await this.repo.listInstancesForRun(runId);
+    const desiredSet = new Set(desired.map((row) => row.id.toString()));
+    const currentByCase = new Map(instances.map((row) => [row.caseId.toString(), row]));
+    const toAdd = desired.filter((row) => !currentByCase.has(row.id.toString())).map((row) => row.id);
+    let added = 0;
+    if (toAdd.length > 0) {
+      const result = await this.addCasesToOpenRun(runId, toAdd);
+      added = result.added.length;
+    }
+    let removed = 0;
+    for (const inst of instances) {
+      if (desiredSet.has(inst.caseId.toString())) continue;
+      const results = await this.repo.listResultsForTestInstance(inst.id);
+      if (results.length > 0) continue;
+      await this.removeTestFromOpenRun(runId, inst.id, true);
+      removed += 1;
+    }
+    await this.repo.updateRunComposition(runId, {
+      ...meta,
+      lastSyncedAt: new Date().toISOString(),
+      lastSyncAdded: added,
+      lastSyncRemoved: removed
+    });
+    return { runId, skipped: false, added, removed };
   }
 }

@@ -1,7 +1,13 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { parseCaseDisplayMode, type CaseDisplayMode } from "../caseRepositoryView";
+import {
+  parseCaseDisplayMode,
+  parseCaseQueryScope,
+  writeCaseQueryScope,
+  type CaseDisplayMode,
+  type CaseQueryScope
+} from "../caseRepositoryView";
 import { parseCaseGroupBy, type CaseGroupBy } from "../utils/caseRepositoryGrouping";
 import type {
   CaseFilterAutomation,
@@ -19,9 +25,10 @@ export type CaseRepositoryViewState = {
   columns?: CaseListColumn[];
   display?: CaseDisplayMode;
   groupBy?: CaseGroupBy;
+  scope?: CaseQueryScope;
 };
 
-export const defaultCaseListColumns: CaseListColumn[] = ["type", "priority", "automation", "estimate"];
+export const defaultCaseListColumns: CaseListColumn[] = ["type", "priority"];
 const allowedCaseListColumns = new Set<CaseListColumn>([
   "type",
   "priority",
@@ -109,6 +116,8 @@ function writeRepositoryView(next: URLSearchParams, view: CaseRepositoryViewStat
   if (view.display && view.display !== "subtree") next.set("display", view.display);
   else if (view.display) next.delete("display");
 
+  if (view.scope) writeCaseQueryScope(next, view.scope);
+
   if (view.groupBy && view.groupBy !== "section_id") next.set("groupBy", view.groupBy);
   else if (view.groupBy) next.delete("groupBy");
 
@@ -146,6 +155,10 @@ export function useExpandedCase() {
   }, [searchParams]);
 
   const caseDisplay = useMemo(() => parseCaseDisplayMode(searchParams.get("display")), [searchParams]);
+  const caseQueryScope = useMemo(
+    () => parseCaseQueryScope(searchParams.get("scope"), searchParams.get("display")),
+    [searchParams]
+  );
   const caseGroupBy = useMemo(() => parseCaseGroupBy(searchParams.get("groupBy")), [searchParams]);
   const hasCaseColumnsParam = searchParams.has("columns");
   const hasRepositoryViewParams = useMemo(
@@ -158,6 +171,7 @@ export function useExpandedCase() {
         "panelMode",
         "focusCaseId",
         "display",
+        "scope",
         "groupBy",
         "q",
         "priority",
@@ -309,8 +323,17 @@ export function useExpandedCase() {
 
   const setCaseDisplay = useCallback((mode: CaseDisplayMode) => {
     const next = new URLSearchParams(searchParams);
+    if (!next.has("scope")) {
+      writeCaseQueryScope(next, parseCaseQueryScope(null, next.get("display")));
+    }
     if (mode === "subtree") next.delete("display");
     else next.set("display", mode);
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  const setCaseQueryScope = useCallback((scope: CaseQueryScope) => {
+    const next = new URLSearchParams(searchParams);
+    writeCaseQueryScope(next, scope);
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
@@ -329,7 +352,7 @@ export function useExpandedCase() {
   }, [searchParams, setSearchParams]);
 
   const applySavedView = useCallback(
-    (view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[] }) => {
+    (view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[]; scope?: CaseQueryScope }) => {
       applyRepositoryView(view);
     },
     [applyRepositoryView]
@@ -341,6 +364,7 @@ export function useExpandedCase() {
     focusCaseId,
     selectedSectionId,
     caseDisplay,
+    caseQueryScope,
     caseGroupBy,
     caseFilters,
     caseColumns,
@@ -353,6 +377,7 @@ export function useExpandedCase() {
     setTreeFocusSection,
     clearTreeFocusSection,
     setCaseDisplay,
+    setCaseQueryScope,
     setCaseGroupBy,
     setCaseFilters,
     setCaseColumns,

@@ -10,6 +10,8 @@ type Props = {
   onStatusClick?: (status: string) => void;
   size?: number;
   className?: string;
+  showLegend?: boolean;
+  centerLabel?: "passed" | "total";
 };
 
 type Slice = {
@@ -26,11 +28,14 @@ export function RunProgressChart({
   activeStatus = "all",
   onStatusClick,
   size = 128,
-  className = ""
+  className = "",
+  showLegend,
+  centerLabel = "passed"
 }: Props) {
   const total = runStatusTotal(counts);
   const passedPct = runPassedPercent(counts);
   const interactive = Boolean(onStatusClick);
+  const legendVisible = showLegend ?? interactive;
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size / 2 - 2;
@@ -97,11 +102,20 @@ export function RunProgressChart({
           className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center"
           aria-hidden
         >
-          <span className="text-2xl font-semibold tabular-nums text-slate-900">{passedPct}%</span>
-          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">passed</span>
+          {centerLabel === "total" ? (
+            <>
+              <span className="text-xl font-semibold tabular-nums text-slate-900">{total}</span>
+              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">tests</span>
+            </>
+          ) : (
+            <>
+              <span className="text-2xl font-semibold tabular-nums text-slate-900">{passedPct}%</span>
+              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">passed</span>
+            </>
+          )}
         </div>
       </div>
-      {interactive ? (
+      {legendVisible ? (
         <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600 sm:grid-cols-1">
           {RUN_STATUS_SEGMENTS.map((segment) => {
             const count = counts[segment.key];

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AppError } from "../../common/errors/appError.js";
 import { getAuthenticatedUser, requireProjectMutationRole } from "../../common/middlewares/authorization.js";
 import { paginationQuerySchema } from "../../common/types/pagination.js";
-import { ok } from "../../common/utils/http.js";
+import { ok, paged } from "../../common/utils/http.js";
 import { toJsonSafe } from "../../common/utils/serialize.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
@@ -53,7 +53,7 @@ const updateSavedReportSchema = z.object({
   filters: savedReportFiltersSchema.optional()
 });
 
-function mapSavedReport(row: {
+type SavedReportRow = {
   id: bigint;
   projectId: bigint;
   name: string;
@@ -62,7 +62,13 @@ function mapSavedReport(row: {
   createdAt: Date;
   updatedAt: Date;
   createdBy: bigint | null;
-}) {
+  deletedAt: Date | null;
+};
+
+const memorySavedReports: SavedReportRow[] = [];
+let nextMemorySavedReportId = 1n;
+
+function mapSavedReport(row: SavedReportRow) {
   return {
     id: row.id,
     projectId: row.projectId,
@@ -75,6 +81,10 @@ function mapSavedReport(row: {
   };
 }
 
+function memorySavedReportsForProject(projectId: bigint) {
+  return memorySavedReports.filter((row) => row.projectId === projectId && row.deletedAt == null);
+}
+
 export async function registerSavedReportsRoutes(
   app: FastifyInstance,
   deps: { prisma?: PrismaClient; authService: AuthService }
@@ -83,7 +93,8 @@ export async function registerSavedReportsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { page, pageSize } = paginationQuerySchema.parse(req.query ?? {});
     if (!deps.prisma) {
-      return reply.send(toJsonSafe({ data: [], page, pageSize, total: 0, totalPages: 1 }));
+      const rows = memorySavedReportsForProject(projectId);
+      return reply.send(toJsonSafe(paged(rows.map(mapSavedReport), page, pageSize)));
     }
     const where = { projectId, deletedAt: null };
     const [rows, total] = await deps.prisma.$transaction([
@@ -111,7 +122,22 @@ export async function registerSavedReportsRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const body = createSavedReportSchema.parse(req.body ?? {});
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "saved reports require prisma mode", 501);
+    if (!deps.prisma) {
+      const now = new Date();
+      const created: SavedReportRow = {
+        id: nextMemorySavedReportId++,
+        projectId,
+        name: body.name,
+        reportType: body.reportType,
+        filters: (body.filters ?? {}) as Prisma.JsonValue,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: user.id,
+        deletedAt: null
+      };
+      memorySavedReports.push(created);
+      return reply.status(201).send(toJsonSafe(ok(mapSavedReport(created))));
+    }
 
     const created = await deps.prisma.savedReport.create({
       data: {
@@ -159,7 +185,16 @@ export async function registerSavedReportsRoutes(
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { savedReportId } = savedReportIdParamSchema.parse(req.params);
     const body = updateSavedReportSchema.parse(req.body ?? {});
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "saved reports require prisma mode", 501);
+    if (!deps.prisma) {
+      const existing = memorySavedReports.find(
+        (row) => row.id === savedReportId && row.projectId === projectId && row.deletedAt == null
+      );
+      if (!existing) throw new AppError("NOT_FOUND", `saved report ${savedReportId.toString()} not found`, 404);
+      if (body.name !== undefined) existing.name = body.name;
+      if (body.filters !== undefined) existing.filters = body.filters as Prisma.JsonValue;
+      existing.updatedAt = new Date();
+      return reply.send(toJsonSafe(ok(mapSavedReport(existing))));
+    }
 
     const existing = await deps.prisma.savedReport.findFirst({
       where: { id: savedReportId, projectId, deletedAt: null }
@@ -209,7 +244,14 @@ export async function registerSavedReportsRoutes(
     const user = await getAuthenticatedUser(req, deps);
     const { projectId } = projectIdParamSchema.parse(req.params);
     const { savedReportId } = savedReportIdParamSchema.parse(req.params);
-    if (!deps.prisma) throw new AppError("NOT_IMPLEMENTED", "saved reports require prisma mode", 501);
+    if (!deps.prisma) {
+      const existing = memorySavedReports.find(
+        (row) => row.id === savedReportId && row.projectId === projectId && row.deletedAt == null
+      );
+      if (!existing) throw new AppError("NOT_FOUND", `saved report ${savedReportId.toString()} not found`, 404);
+      existing.deletedAt = new Date();
+      return reply.status(204).send();
+    }
 
     const existing = await deps.prisma.savedReport.findFirst({
       where: { id: savedReportId, projectId, deletedAt: null }

@@ -12,6 +12,13 @@ export function nextVisibleTestId(currentId: string | null, instances: Array<{ i
   return instances[index + 1]?.id ?? instances[0]?.id ?? null;
 }
 
+export function nextUnwrappedVisibleTestId(currentId: string | null, instances: Array<{ id: string }>): string | null {
+  if (instances.length === 0) return null;
+  const index = currentId ? instances.findIndex((row) => row.id === currentId) : -1;
+  if (index < 0) return instances[0]?.id ?? null;
+  return instances[index + 1]?.id ?? null;
+}
+
 export function resolveSelectedRunTest(
   urlTestId: string | null,
   instances: TestInstanceRow[]

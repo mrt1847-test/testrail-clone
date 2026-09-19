@@ -1,7 +1,7 @@
 import { buildReportPageHref } from "../../projects/reports/reportRoutes";
 
 export type RunExecutionHeaderMenuItem = {
-  id: "duplicate" | "compare" | "rerun" | "run-summary" | "results-explorer" | "defect-summary" | "traceability" | "print" | "export-tests" | "export-results" | "export-suite";
+  id: "activity" | "duplicate" | "compare" | "rerun" | "run-summary" | "results-explorer" | "defect-summary" | "traceability" | "print" | "export-tests" | "export-results" | "export-suite";
   label: string;
   description?: string;
   to?: string;
@@ -55,6 +55,11 @@ export function runExecutionHeaderMenuGroups(
       id: "management",
       label: "Run management",
       items: [
+        {
+          id: "activity",
+          label: "Activity",
+          description: "Recent events for this run"
+        },
         { id: "duplicate", label: "Duplicate run" },
         { id: "compare", label: "Compare runs" },
         { id: "rerun", label: "Create rerun" }

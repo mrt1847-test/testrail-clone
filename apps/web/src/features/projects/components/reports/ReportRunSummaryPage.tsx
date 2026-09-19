@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -55,15 +55,17 @@ function formatSeconds(totalSeconds: number) {
 export function ReportRunSummaryPage() {
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
-  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "all");
+  const search = searchParams.get("search") ?? searchParams.get("q") ?? "";
+  const statusFilter = searchParams.get("status") ?? "all";
 
-  useEffect(() => {
+  function commitFilters(nextSearch: string, nextStatus: string) {
     const next = new URLSearchParams();
-    if (search.trim().length > 0) next.set("search", search.trim());
-    if (statusFilter !== "all") next.set("status", statusFilter);
-    setSearchParams(next, { replace: true });
-  }, [search, setSearchParams, statusFilter]);
+    if (nextSearch.trim().length > 0) next.set("search", nextSearch.trim());
+    if (nextStatus !== "all") next.set("status", nextStatus);
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }
 
   const q = useQuery({
     queryKey: reportKeys.runSummary(projectId),
@@ -145,7 +147,7 @@ export function ReportRunSummaryPage() {
             id: "q",
             label: "Search",
             value: search,
-            onChange: setSearch,
+            onChange: (value) => commitFilters(value, statusFilter),
             placeholder: "Run name..."
           },
           {
@@ -153,7 +155,7 @@ export function ReportRunSummaryPage() {
             id: "status",
             label: "Status",
             value: statusFilter,
-            onChange: setStatusFilter,
+            onChange: (value) => commitFilters(search, value),
             options: [
               { value: "all", label: "All statuses" },
               { value: "open", label: "Open" },

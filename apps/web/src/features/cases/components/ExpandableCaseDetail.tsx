@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -17,7 +17,6 @@ import {
 } from "../api/catalogApi";
 import { caseDeleteCopy } from "../caseDeleteCopy";
 import { extractApiErrorMessage } from "../caseErrors";
-import { sectionKeys } from "../hooks/useSections";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { DuplicateCaseDialog, type DuplicateCaseOptionsInput } from "./DuplicateCaseDialog";
 import type { CaseAttachmentItem, CaseStep, CaseVersion, TestCase } from "../types";
@@ -28,11 +27,21 @@ import {
 } from "./CaseAuthoringForm";
 import { CaseRefTokens } from "./CaseRefTokens";
 import { BddScenarioEditor } from "./BddScenarioEditor";
-import { CaseMetadataQuickEdit } from "./CaseMetadataQuickEdit";
+import { CaseInstructionReadView } from "./CaseInstructionReadView";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
 import { caseKeys } from "../hooks/useCases";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { SharedStepAttachSelect } from "./SharedStepAttachSelect";
+import { fetchCaseScenarios } from "../api/bddApi";
+import { sectionKeys, useSections } from "../hooks/useSections";
+import { sectionPathLabel } from "../utils/sectionTreeModel";
+import {
+  apiCasePriorityValue,
+  apiCaseTypeValue,
+  draftStepsForTextPersist,
+  instructionKindFromTemplateFields
+} from "../utils/caseAuthoringInstructions";
+import { syncCaseInstructionSteps } from "../utils/syncCaseInstructionSteps";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -54,6 +63,8 @@ type ExpandableCaseDetailProps = {
     aiExpectedOutput: string;
     templateId: string | null;
     customValues: Record<string, string | number | boolean | string[] | null>;
+    caseType?: string;
+    priority?: string;
   }) => Promise<void>;
   onDelete: () => Promise<void>;
   onSetArchived?: (archived: boolean) => Promise<void>;
@@ -74,6 +85,8 @@ type ExpandableCaseDetailProps = {
   isStepsBusy?: boolean;
   layout?: "embedded" | "page";
   showHeading?: boolean;
+  showPrimaryEdit?: boolean;
+  hideShareActions?: boolean;
   onDuplicated?: (copiedCaseId: number) => void;
   onDirtyChange?: (dirty: boolean) => void;
 };
@@ -661,11 +674,14 @@ export function ExpandableCaseDetail({
   isStepsBusy = false,
   layout = "embedded",
   showHeading = true,
+  showPrimaryEdit = true,
+  hideShareActions = false,
   onDuplicated,
   onDirtyChange
 }: ExpandableCaseDetailProps) {
   const { projectId = "" } = useParams();
   const qc = useQueryClient();
+  const { data: sectionsBundle } = useSections(projectId || undefined);
   const [title, setTitle] = useState(data.title);
   const [preconditions, setPreconditions] = useState(data.preconditions);
   const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | string[] | null>>(
@@ -708,11 +724,19 @@ export function ExpandableCaseDetail({
   const selectedChangeCount = selectedChangedDiffs.length + selectedChangedStepDiffs.length;
   const activeCaseTemplate =
     caseTemplates.find((template) => template.id === String(data.caseTemplateId ?? "")) ?? null;
-  const editShowsSteps =
-    activeCaseTemplate?.fields.some((field) => field.trim().toLowerCase() === "steps") || data.steps.length > 0;
+  const instructionKind = instructionKindFromTemplateFields(activeCaseTemplate?.fields);
+  const editShowsSteps = instructionKind === "steps";
   const editShowsBdd =
     activeCaseTemplate?.fields.some((field) => field.trim().toLowerCase() === "scenario") ||
     activeCaseTemplate?.name.toLowerCase().includes("behaviour");
+  const sectionPath = sectionsBundle?.sections?.length
+    ? sectionPathLabel(sectionsBundle.sections, data.sectionId)
+    : null;
+  const { data: scenarios = [] } = useQuery({
+    queryKey: ["case-scenarios", data.id],
+    queryFn: () => fetchCaseScenarios(String(data.id)),
+    enabled: mode === "view"
+  });
 
   useEffect(() => {
     setTitle(data.title);
@@ -791,6 +815,10 @@ export function ExpandableCaseDetail({
             initialEstimate={data.estimate === "-" ? "" : data.estimate}
             initialReferences={data.references}
             initialExpectedResult={data.expectedResult}
+            initialCaseType={data.type}
+            initialPriority={data.priority}
+            initialSteps={data.steps}
+            sectionPath={sectionPath}
             initialCaseTemplateId={data.caseTemplateId != null ? String(data.caseTemplateId) : null}
             initialCustomValues={{
               ...customValues,
@@ -805,108 +833,6 @@ export function ExpandableCaseDetail({
             isSubmitting={isSaving}
             submitError={submitError}
             onDirtyChange={setFormDirty}
-            stepsSection={editShowsSteps ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-800">Steps</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {projectId && onLinkSharedStep ? (
-                      <SharedStepAttachSelect
-                        projectId={projectId}
-                        disabled={isStepsBusy}
-                        onAttach={(sharedStepId) => void onLinkSharedStep(sharedStepId)}
-                      />
-                    ) : null}
-                    {onCreateStep ? (
-                      <button
-                        type="button"
-                        disabled={isStepsBusy}
-                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                        onClick={() => void onCreateStep({ content: "New step", expected: "" })}
-                      >
-                        {isStepsBusy ? "Saving..." : "Add step"}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                {localSteps.length === 0 ? (
-                  <p className="text-xs text-slate-500">No steps yet.</p>
-                ) : (
-                  <ol className="list-decimal space-y-3 pl-5 text-sm">
-                    {localSteps.map((step, index) => (
-                      <li
-                        key={step.id ?? `local-${index}`}
-                        className="grid gap-2 rounded-md border border-slate-200 bg-white p-2"
-                      >
-                        <div className="flex flex-wrap items-center gap-1">
-                          <button
-                            type="button"
-                            disabled={isStepsBusy || step.id == null || index === 0}
-                            className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
-                            onClick={() => step.id != null && moveStep(step.id, "up")}
-                          >
-                            Up
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isStepsBusy || step.id == null || index === localSteps.length - 1}
-                            className="rounded border border-slate-200 px-1.5 py-0.5 text-xs disabled:opacity-40"
-                            onClick={() => step.id != null && moveStep(step.id, "down")}
-                          >
-                            Down
-                          </button>
-                          {step.id != null ? (
-                            <button
-                              type="button"
-                              disabled={isStepsBusy}
-                              className="ml-auto rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs text-red-800"
-                              onClick={() => setStepDeleteId(step.id!)}
-                            >
-                              Remove
-                            </button>
-                          ) : null}
-                        </div>
-
-                        <label className="grid gap-0.5 text-xs text-slate-600">
-                          Action
-                          <textarea
-                            value={step.description}
-                            disabled={isStepsBusy}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setLocalSteps((prev) =>
-                                prev.map((s, i) => (i === index ? { ...s, description: value } : s))
-                              );
-                            }}
-                            onBlur={() => persistStepIfChanged(step, index)}
-                            className="min-h-[56px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                          />
-                        </label>
-
-                        <label className="grid gap-0.5 text-xs text-slate-600">
-                          Expected
-                          <textarea
-                            value={step.expected}
-                            disabled={isStepsBusy}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setLocalSteps((prev) => prev.map((s, i) => (i === index ? { ...s, expected: value } : s)));
-                            }}
-                            onBlur={() => persistStepIfChanged(step, index)}
-                            className="min-h-[44px] rounded border border-slate-200 px-2 py-1 text-sm text-slate-900 outline-none focus:ring-1 focus:ring-slate-400"
-                          />
-                        </label>
-                        {step.id != null ? (
-                          <CaseAttachmentControls entityType="case_step" entityId={step.id} label="Images" />
-                        ) : (
-                          <p className="text-xs text-slate-500">Save the step before adding images.</p>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </>
-            ) : undefined}
             onSubmit={async (input) => {
               await onSave({
                 title: input.title,
@@ -919,8 +845,17 @@ export function ExpandableCaseDetail({
                 aiInput: input.aiInput,
                 aiExpectedOutput: input.aiExpectedOutput,
                 templateId: input.templateId,
-                customValues: input.customValues
+                customValues: input.customValues,
+                caseType: apiCaseTypeValue(input.caseType),
+                priority: apiCasePriorityValue(input.priority)
               });
+              const drafts =
+                input.instructionKind === "text"
+                  ? draftStepsForTextPersist(input.stepsText)
+                  : input.instructionKind === "steps"
+                    ? input.draftSteps
+                    : [];
+              await syncCaseInstructionSteps(data.id, data.steps, drafts);
             }}
             onCancel={onClose}
           />
@@ -1180,49 +1115,27 @@ export function ExpandableCaseDetail({
             </div>
           ) : null}
 
-          {!data.archivedAt && projectId ? (
-            <CaseMetadataQuickEdit
-              projectId={projectId}
-              caseId={data.id}
-              lockVersion={data.lockVersion}
-              references={data.references}
-              labels={data.labels}
-              customValues={data.customValues}
-              customFields={customFields}
-              onSaved={() => {
-                void qc.invalidateQueries({ queryKey: caseDetailKeys.detail(data.id) });
-                void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
-              }}
-            />
-          ) : null}
-
-          {data.steps.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">No steps registered.</p>
-          ) : (
-            <div className="mt-3">
-              <p className="text-xs font-medium text-slate-700">Steps</p>
-              <ol className="mt-2 space-y-3">
-                {data.steps.map((step, index) => (
-                  <CaseStepReadOnlyBoxes
-                    key={step.id ?? `${data.id}-s-${index}`}
-                    index={index}
-                    action={step.description}
-                    expected={step.expected}
-                    stepId={step.id}
-                  />
-                ))}
-              </ol>
-            </div>
-          )}
+          <CaseInstructionReadView
+            data={data}
+            projectId={projectId}
+            sectionPath={sectionPath}
+            templateName={activeCaseTemplate?.name ?? null}
+            templates={caseTemplates}
+            customFields={customFields}
+            scenarios={scenarios}
+          />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <EntityCopyActions
-              projectId={projectId}
-              kind="case"
-              entityId={data.id}
-              caseCode={data.caseCode}
-              compact
-            />
+            {hideShareActions ? null : (
+              <EntityCopyActions
+                projectId={projectId}
+                kind="case"
+                entityId={data.id}
+                caseCode={data.caseCode}
+                compact
+              />
+            )}
+            {showPrimaryEdit ? (
             <button
               type="button"
               onClick={onEdit}
@@ -1230,6 +1143,7 @@ export function ExpandableCaseDetail({
             >
               Edit
             </button>
+            ) : null}
             <button
               type="button"
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"

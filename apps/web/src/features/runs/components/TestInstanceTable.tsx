@@ -14,8 +14,15 @@ import { memberLabelForUserId } from "../utils/assigneeDisplay";
 import { TestAssigneeQuickActions } from "./TestAssigneeQuickActions";
 import type { RunListColumn } from "../utils/runInstanceColumns";
 import { RUN_LIST_COLUMN_LABELS } from "../utils/runInstanceColumns";
+import { OverflowMenu } from "../../../shared/ui/OverflowMenu";
 import { tableDensityClasses, type UiDensity } from "../../../shared/ui/density/uiDensity";
-import { isEvidenceRequiringStatus } from "../utils/runSelectedTestState";
+import { statusBadgeClassName } from "../../../shared/ui/statusStyles";
+import {
+  runListStatusAriaLabel,
+  runListStatusChoices,
+  runListStatusTitle,
+  shouldOpenResultDialogForListStatus
+} from "../utils/runListStatusEntry";
 import {
   runTestRowClassName,
   runTestTitleClassName,
@@ -61,8 +68,17 @@ type Props = {
     message: string;
     canUndo: boolean;
   } | null;
-  onRetrySave?: () => void;
-  onUndoSave?: () => void;
+  saveFeedbackByTestId?: Record<
+    string,
+    {
+      testId: string;
+      status: SaveFeedbackStatus;
+      message: string;
+      canUndo: boolean;
+    }
+  >;
+  onRetrySave?: (testId: string) => void;
+  onUndoSave?: (testId: string) => void;
   page: number;
   totalPages: number;
   total: number;
@@ -96,6 +112,7 @@ export function TestInstanceTable(props: Props) {
     onComposeResult,
     isSavingQuickResult,
     saveFeedback = null,
+    saveFeedbackByTestId,
     onRetrySave,
     onUndoSave,
     page,
@@ -120,7 +137,8 @@ export function TestInstanceTable(props: Props) {
   const densityClasses = tableDensityClasses(density);
   const showPriority = visibleColumns.includes("priority");
   const showType = visibleColumns.includes("type");
-  const columnCount = 6 + (showPriority ? 1 : 0) + (showType ? 1 : 0) + (onToggleSubscribe ? 1 : 0);
+  const showWatch = Boolean(onToggleSubscribe);
+  const columnCount = 6 + (showPriority ? 1 : 0) + (showType ? 1 : 0) + (showWatch ? 1 : 0);
   const statusQuery = useProjectStatuses(projectId);
   const statusOptions = statusQuery.data ?? [];
 
@@ -199,21 +217,82 @@ export function TestInstanceTable(props: Props) {
             }}
           />
         </td>
-        <td className={`${densityClasses.cell} font-mono text-slate-800`}>{row.caseCode}</td>
+        <td className={`${densityClasses.cell} font-mono text-slate-800`} data-run-col="case">
+          {row.caseCode}
+        </td>
         <td
           className={`${densityClasses.cell} ${runTestTitleClassName(selectedInstanceId === row.id)}`}
+          data-run-col="title"
           title={row.title}
         >
           {selectedInstanceId === row.id ? <span className="sr-only">Selected: </span> : null}
           {row.title}
         </td>
+        <td className={`${densityClasses.cell} min-w-[7.25rem] whitespace-nowrap`} data-run-col="status" onClick={(e) => e.stopPropagation()}>
+          <div className="space-y-0.5">
+            {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
+              <OverflowMenu
+                label={runListStatusAriaLabel(row.caseCode)}
+                title={runListStatusTitle()}
+                variant="ghost"
+                size="sm"
+                compact
+                align="right"
+                menuMark="chevron"
+                disabled={isSavingQuickResult}
+                triggerClassName={`h-7 w-full min-w-[6.5rem] justify-between gap-1 px-1.5 font-medium ${statusBadgeClassName(row.status)}`}
+                triggerContent={<span className="truncate">{statusOption.label}</span>}
+                groups={[
+                  {
+                    id: "status",
+                    label: "",
+                    items: runListStatusChoices(statusOptions, row.status).map((choice) => ({
+                      id: choice.id,
+                      label: choice.label,
+                      disabled: choice.disabled,
+                      selected: choice.isCurrent,
+                      onSelect: () => {
+                        if (!shouldOpenResultDialogForListStatus(choice)) return;
+                        if (onComposeResult) {
+                          onComposeResult(row, choice.canonicalStatus);
+                          return;
+                        }
+                        onQuickResultSave(row.id, { status: choice.canonicalStatus });
+                      }
+                    }))
+                  }
+                ]}
+              />
+            ) : runClosed ? (
+              <StatusBadge status={row.status} />
+            ) : (
+              <StatusBadge status={row.status} interactive onClick={() => onSelectInstance(row)} />
+            )}
+            {(() => {
+              const rowFeedback = saveFeedbackByTestId?.[row.id] ?? (saveFeedback?.testId === row.id ? saveFeedback : null);
+              if (!rowFeedback || rowFeedback.status === "idle") return null;
+              return (
+                <SaveFeedback
+                  status={rowFeedback.status}
+                  message={rowFeedback.message}
+                  onRetry={rowFeedback.status === "failed" ? () => onRetrySave?.(row.id) : undefined}
+                  onUndo={rowFeedback.status === "saved" && rowFeedback.canUndo ? () => onUndoSave?.(row.id) : undefined}
+                />
+              );
+            })()}
+          </div>
+        </td>
         {showPriority ? (
-          <td className={`${densityClasses.cell} text-slate-700`}>{formatCaseMeta(row.casePriority)}</td>
+          <td className={`${densityClasses.cell} text-slate-700`} data-run-col="priority">
+            {formatCaseMeta(row.casePriority)}
+          </td>
         ) : null}
         {showType ? (
-          <td className={`${densityClasses.cell} text-slate-700`}>{formatCaseMeta(row.caseType)}</td>
+          <td className={`${densityClasses.cell} text-slate-700`} data-run-col="type">
+            {formatCaseMeta(row.caseType)}
+          </td>
         ) : null}
-        <td className={densityClasses.cell}>
+        <td className={densityClasses.cell} data-run-col="updated">
           {row.caseChanged ? (
             <span
               className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
@@ -229,7 +308,7 @@ export function TestInstanceTable(props: Props) {
             <span className="text-xs text-slate-400">—</span>
           )}
         </td>
-        <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
+        <td className={densityClasses.cell} data-run-col="assignee" onClick={(e) => e.stopPropagation()}>
           <div className={showInlineAssigneeActions(density) ? "space-y-1" : undefined}>
             <p className="truncate text-slate-700" title={memberLabelForUserId(row.assignedTo, members)}>
               {memberLabelForUserId(row.assignedTo, members)}
@@ -247,50 +326,8 @@ export function TestInstanceTable(props: Props) {
             ) : null}
           </div>
         </td>
-        <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
-          <div className="space-y-0.5">
-            {inlineStatusSelect && !runClosed && statusOptions.length > 0 ? (
-              <select
-                className={`w-full max-w-[9rem] rounded border border-slate-200 bg-white px-1.5 text-xs text-slate-800 ${
-                  density === "compact" ? "h-7 py-0" : "py-1"
-                }`}
-                value={statusOption.id}
-                disabled={isSavingQuickResult}
-                aria-label={`Status for ${row.caseCode}. Failed, Blocked, and Retest open the result composer.`}
-                title="Passed saves immediately. Failed, Blocked, and Retest open the result composer."
-                onChange={(e) => {
-                  const next = statusOptions.find((option) => option.id === e.target.value);
-                  if (!next || next.isUntested) return;
-                  if (isEvidenceRequiringStatus(next.canonicalStatus) && onComposeResult) {
-                    onComposeResult(row, next.canonicalStatus);
-                    return;
-                  }
-                  onQuickResultSave(row.id, { status: next.canonicalStatus });
-                }}
-              >
-                {statusOptions.map((option) => (
-                  <option key={option.id} value={option.id} disabled={option.isUntested}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            ) : runClosed ? (
-              <StatusBadge status={row.status} />
-            ) : (
-              <StatusBadge status={row.status} interactive onClick={() => onSelectInstance(row)} />
-            )}
-            {saveFeedback?.testId === row.id && saveFeedback.status !== "idle" ? (
-              <SaveFeedback
-                status={saveFeedback.status}
-                message={saveFeedback.message}
-                onRetry={saveFeedback.status === "failed" ? onRetrySave : undefined}
-                onUndo={saveFeedback.status === "saved" && saveFeedback.canUndo ? onUndoSave : undefined}
-              />
-            ) : null}
-          </div>
-        </td>
-        {onToggleSubscribe ? (
-          <td className={densityClasses.cell} onClick={(e) => e.stopPropagation()}>
+        {showWatch ? (
+          <td className={densityClasses.cell} data-run-col="watch" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               disabled={isSubscribePending}
@@ -298,7 +335,7 @@ export function TestInstanceTable(props: Props) {
               className={`text-xs font-medium underline disabled:opacity-50 ${
                 subscribedTestIds?.has(row.id) ? "text-indigo-700" : "text-slate-600"
               }`}
-              onClick={() => onToggleSubscribe(row.id, !subscribedTestIds?.has(row.id))}
+              onClick={() => onToggleSubscribe?.(row.id, !subscribedTestIds?.has(row.id))}
             >
               {subscribedTestIds?.has(row.id) ? "Watching" : "Watch"}
             </button>
@@ -331,11 +368,11 @@ export function TestInstanceTable(props: Props) {
 
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className={`w-full min-w-[640px] text-left ${densityClasses.table}`} data-run-density={density}>
+      <div className="run-instance-table min-h-0 flex-1 overflow-auto">
+        <table className={`w-full text-left ${densityClasses.table}`} data-run-density={density}>
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 font-medium uppercase tracking-wide text-slate-600 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
-              <th className={`w-10 ${densityClasses.header}`} scope="col">
+              <th className={`w-10 ${densityClasses.header}`} scope="col" data-run-col="select">
                 <span className="sr-only">Select row for bulk actions</span>
                 <input
                   type="checkbox"
@@ -353,31 +390,36 @@ export function TestInstanceTable(props: Props) {
                   }}
                 />
               </th>
-              <th className={densityClasses.header} scope="col">
+              <th className={`w-12 ${densityClasses.header}`} scope="col" data-run-col="case">
                 Case
               </th>
-              <th className={`min-w-[8rem] ${densityClasses.header}`} scope="col">
+              <th className={`w-full max-w-0 ${densityClasses.header}`} scope="col" data-run-col="title">
                 Title
               </th>
+              <th className={`w-[7.25rem] min-w-[7.25rem] whitespace-nowrap ${densityClasses.header}`} scope="col" data-run-col="status">
+                Status
+              </th>
               {showPriority ? (
-                <th className={`w-24 ${densityClasses.header}`} scope="col">
+                <th className={`w-24 ${densityClasses.header}`} scope="col" data-run-col="priority">
                   {RUN_LIST_COLUMN_LABELS.priority}
                 </th>
               ) : null}
               {showType ? (
-                <th className={`w-24 ${densityClasses.header}`} scope="col">
+                <th className={`w-24 ${densityClasses.header}`} scope="col" data-run-col="type">
                   {RUN_LIST_COLUMN_LABELS.type}
                 </th>
               ) : null}
-              <th className={`w-28 ${densityClasses.header}`} scope="col">
+              <th className={`w-28 ${densityClasses.header}`} scope="col" data-run-col="updated">
                 Updated
               </th>
-              <th className={`min-w-[9rem] ${densityClasses.header}`} scope="col">
+              <th className={`w-36 ${densityClasses.header}`} scope="col" data-run-col="assignee">
                 Assignee
               </th>
-              <th className={`w-36 ${densityClasses.header}`} scope="col">
-                Status
-              </th>
+              {showWatch ? (
+                <th className={`w-20 ${densityClasses.header}`} scope="col" data-run-col="watch">
+                  Watch
+                </th>
+              ) : null}
             </tr>
           </thead>
           {tableBody}

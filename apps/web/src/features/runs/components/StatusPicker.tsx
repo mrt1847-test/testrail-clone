@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { ProjectStatusOption } from "../utils/projectStatuses";
 
 type Props = {
@@ -7,6 +8,9 @@ type Props = {
   disableUntested?: boolean;
   disabled?: boolean;
   columns?: 2 | 3;
+  variant?: "tiles" | "select";
+  controlId?: string;
+  firstFieldRef?: Ref<HTMLElement>;
 };
 
 function textColorForBackground(hex: string) {
@@ -19,18 +23,53 @@ function textColorForBackground(hex: string) {
   return luminance > 0.62 ? "#0f172a" : "#ffffff";
 }
 
-export function StatusPicker({ options, selectedId, onSelect, disableUntested = false, disabled = false, columns = 2 }: Props) {
+export function StatusPicker({
+  options,
+  selectedId,
+  onSelect,
+  disableUntested = false,
+  disabled = false,
+  columns = 2,
+  variant = "tiles",
+  controlId,
+  firstFieldRef
+}: Props) {
+  if (variant === "select") {
+    return (
+      <select
+        ref={firstFieldRef as Ref<HTMLSelectElement>}
+        id={controlId}
+        aria-label="Status"
+        disabled={disabled}
+        value={selectedId}
+        className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-400 disabled:bg-slate-50"
+        onChange={(event) => {
+          const next = options.find((option) => option.id === event.target.value);
+          if (next) onSelect(next);
+        }}
+      >
+        {options.map((option) => (
+          <option key={option.id} value={option.id} disabled={disableUntested && option.isUntested}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   const gridClass = columns === 3 ? "grid grid-cols-3 gap-1.5" : "grid grid-cols-2 gap-1.5";
 
   return (
     <div className={gridClass}>
-      {options.map((option) => {
+      {options.map((option, index) => {
         const selected = selectedId === option.id;
         const optionDisabled = disabled || (disableUntested && option.isUntested);
         const color = textColorForBackground(option.color);
+        const isFirstEnabled = options.findIndex((item) => !(disableUntested && item.isUntested)) === index;
         return (
           <button
             key={option.id}
+            ref={isFirstEnabled ? (firstFieldRef as Ref<HTMLButtonElement>) : undefined}
             type="button"
             title={
               disabled

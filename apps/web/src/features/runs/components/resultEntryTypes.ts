@@ -18,6 +18,7 @@ export type ResultSubmitPayload = {
   actualResult?: string;
   attachments?: File[];
   stagedAttachments?: Array<{ id: string; file: File }>;
+  assignedTo?: string | null;
 };
 
 export type StepResultDraft = {

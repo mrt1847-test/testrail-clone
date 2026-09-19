@@ -28,6 +28,8 @@ type Props = {
   isBulkPending: boolean;
   bulkFeedback?: BulkResultFeedback | null;
   onDismissBulkFeedback?: () => void;
+  onRetryFailedBulk?: () => void;
+  canRetryFailedBulk?: boolean;
   onBulkSubmit: () => void;
   onClearSelection: () => void;
   onSelectAllMatching: () => void;
@@ -49,14 +51,23 @@ function bulkFeedbackClass(type: BulkResultFeedback["type"]) {
 
 function BulkResultStatus({
   feedback,
-  onDismiss
+  onDismiss,
+  onRetry,
+  canRetry
 }: {
   feedback: BulkResultFeedback;
   onDismiss?: () => void;
+  onRetry?: () => void;
+  canRetry?: boolean;
 }) {
   const failures = "failures" in feedback ? feedback.failures ?? [] : [];
+  const live = feedback.type === "success" ? "polite" : "assertive";
   return (
-    <div className={`flex items-start justify-between gap-2 rounded px-2 py-1.5 text-xs ${bulkFeedbackClass(feedback.type)}`} role="status">
+    <div
+      className={`flex items-start justify-between gap-2 rounded px-2 py-1.5 text-xs ${bulkFeedbackClass(feedback.type)}`}
+      role={feedback.type === "success" ? "status" : "alert"}
+      aria-live={live}
+    >
       <div className="min-w-0">
         <p>{feedback.message}</p>
         {failures.length > 0 ? (
@@ -71,11 +82,25 @@ function BulkResultStatus({
           </ul>
         ) : null}
       </div>
-      {onDismiss ? (
-        <Button variant="link" size="sm" className="shrink-0 text-current" onClick={onDismiss}>
-          Dismiss
-        </Button>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-1">
+        {onRetry && failures.length > 0 ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="text-current"
+            disabled={!canRetry}
+            onClick={onRetry}
+            aria-label="Retry failed bulk results"
+          >
+            Retry
+          </Button>
+        ) : null}
+        {onDismiss ? (
+          <Button variant="link" size="sm" className="text-current" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -95,6 +120,8 @@ export function RunSelectionActionBar({
   isBulkPending,
   bulkFeedback = null,
   onDismissBulkFeedback,
+  onRetryFailedBulk,
+  canRetryFailedBulk = false,
   onBulkSubmit,
   onClearSelection,
   onSelectAllMatching,
@@ -169,7 +196,12 @@ export function RunSelectionActionBar({
   ]);
 
   const feedback = bulkFeedback ? (
-    <BulkResultStatus feedback={bulkFeedback} onDismiss={onDismissBulkFeedback} />
+    <BulkResultStatus
+      feedback={bulkFeedback}
+      onDismiss={onDismissBulkFeedback}
+      onRetry={onRetryFailedBulk}
+      canRetry={canRetryFailedBulk}
+    />
   ) : null;
 
   if (!model) {

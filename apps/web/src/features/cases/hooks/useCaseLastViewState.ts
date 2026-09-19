@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { parseCaseDisplayMode } from "../caseRepositoryView";
+import { parseCaseDisplayMode, parseCaseQueryScope } from "../caseRepositoryView";
 import type { CaseRepositoryViewState } from "./useExpandedCase";
 import { defaultCaseListColumns } from "./useExpandedCase";
 import { parseCaseGroupBy } from "../utils/caseRepositoryGrouping";
@@ -57,6 +57,10 @@ function normalizeLastView(value: unknown, validSectionIds: ReadonlySet<number>)
   return {
     sectionId,
     display: parseCaseDisplayMode(typeof row.display === "string" ? row.display : null),
+    scope: parseCaseQueryScope(
+      typeof row.scope === "string" ? row.scope : null,
+      typeof row.display === "string" ? row.display : null
+    ),
     groupBy: parseCaseGroupBy(typeof row.groupBy === "string" ? row.groupBy : null),
     columns: normalizeColumns(row.columns),
     filters: {

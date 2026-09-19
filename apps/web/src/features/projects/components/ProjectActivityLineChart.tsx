@@ -61,9 +61,7 @@ export function ProjectActivityLineChart({
       <div className={`flex flex-wrap items-start justify-between gap-3 ${density.panelHeader}`}>
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Activity</h2>
-          <p className="text-sm text-slate-500">
-            Passed and failed results over the last {days} days. Click a day or legend to drill down.
-          </p>
+          <p className="text-sm text-slate-500">Passed and failed results. Click a day to open matching runs.</p>
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {timeframes.map((option) => (
@@ -110,7 +108,7 @@ export function ProjectActivityLineChart({
           </button>
         </div>
         <div className="overflow-hidden rounded border border-slate-200 bg-slate-50 p-3">
-          <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" role="img" aria-label="Project activity line chart">
+          <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full" role="img" aria-label="Project activity line chart">
             <line x1="0" y1={height} x2={width} y2={height} stroke="#cbd5e1" strokeWidth="1" />
             <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#e2e8f0" strokeWidth="1" />
             <path d={passedPath} fill="none" stroke="#3cb850" strokeWidth="3" strokeLinecap="round" pointerEvents="none" />

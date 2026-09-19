@@ -81,7 +81,7 @@ export function TestCaseWorkspace() {
     selectedSectionId,
     panelCaseId,
     panelMode,
-    caseDisplay,
+    caseQueryScope,
     setSelectedSection,
     setTreeFocusSection,
     clearTreeFocusSection,
@@ -199,13 +199,13 @@ export function TestCaseWorkspace() {
       !Number.isNaN(selectedSectionId) &&
       sections.some((s) => s.id === selectedSectionId);
     if (valid) return;
-    if (caseDisplay === "tree") {
+    if (caseQueryScope !== "all") {
       setSelectedSection(sections[0]!.id);
     } else if (selectedSectionId != null) {
       clearTreeFocusSection();
     }
   }, [
-    caseDisplay,
+    caseQueryScope,
     clearTreeFocusSection,
     sectionsLoading,
     sections,
@@ -230,7 +230,7 @@ export function TestCaseWorkspace() {
   }
 
   if (
-    caseDisplay === "tree" &&
+    caseQueryScope !== "all" &&
     (selectedSectionId == null || !sections.some((s) => s.id === selectedSectionId))
   ) {
     return <LoadingState message="Preparing the case repository..." />;
@@ -294,7 +294,7 @@ export function TestCaseWorkspace() {
       suiteId={selectedSectionSuiteId}
       sections={sections}
       selectedSectionId={selectedSectionId}
-      onSelectSection={setTreeFocusSection}
+      onSelectSection={caseQueryScope === "all" ? setTreeFocusSection : setSelectedSection}
       onClearExpand={() => setPanelCase(null)}
       editDescriptionRequest={editDescriptionRequest}
       treeSide={treeSide}

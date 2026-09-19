@@ -22,12 +22,15 @@ export type ResultSaveRetryPayload = {
   aiTraces?: string;
   attachments?: File[];
   stagedAttachments?: Array<{ id: string; file: File }>;
+  assignedTo?: string | null;
 };
 
 export type ResultSaveAdvanceOptions = {
   advanceOnPass?: boolean;
   advanceToTestId?: string | null;
 };
+
+export type ResultSaveOperationKind = "create-result" | "attach-only" | "assign-only";
 
 export type ResultSaveFeedback = {
   testId: string;
@@ -38,6 +41,9 @@ export type ResultSaveFeedback = {
   retryPayload: ResultSaveRetryPayload;
   retryAdvance?: ResultSaveAdvanceOptions;
   createdResultId?: string | null;
+  pendingAssignment?: string | null;
+  operationId: string;
+  kind?: ResultSaveOperationKind;
 };
 
 export const RESULT_SAVE_UNDO_MS = 8000;
@@ -59,6 +65,30 @@ export function overlayInstanceStatus<T extends { id: string; status: string }>(
   });
 }
 
+export function resultPartialAttachmentFailureMessage(failedFileNames: string[]): string {
+  if (failedFileNames.length === 1) {
+    return `Result saved. Couldn't attach ${failedFileNames[0]}.`;
+  }
+  if (failedFileNames.length > 1) {
+    return `Result saved. Couldn't attach ${failedFileNames.length} files.`;
+  }
+  return "Result saved.";
+}
+
+export function resultPartialAssignmentFailureMessage() {
+  return "Result saved. Couldn't change assignee.";
+}
+
+export function resultPartialAttachmentAndAssignmentFailureMessage(failedFileNames: string[]) {
+  return `${resultPartialAttachmentFailureMessage(failedFileNames)} Couldn't change assignee.`;
+}
+
+export function attachmentRetryFailureMessage(failedFileNames: string[]) {
+  if (failedFileNames.length === 1) return `Couldn't attach ${failedFileNames[0]}`;
+  if (failedFileNames.length > 1) return `Couldn't attach ${failedFileNames.length} files`;
+  return "Couldn't attach files";
+}
+
 export function resultSaveErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     const trimmed = error.message.trim();
@@ -72,6 +102,9 @@ export function resultSaveErrorMessage(error: unknown): string {
       const code = parsed.code ?? nested?.code;
       if (code === "UNTESTED_NOT_ALLOWED") {
         return "Untested cannot be set after a result exists for this test.";
+      }
+      if (code === "STORAGE_UNAVAILABLE") {
+        return "Couldn't store the file. Attachment storage isn't available.";
       }
       if (nested?.message) return nested.message;
       if (typeof parsed.error === "string" && parsed.error) return parsed.error;

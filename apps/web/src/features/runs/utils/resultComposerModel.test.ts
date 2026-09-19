@@ -4,7 +4,9 @@ import {
   applyCaseActualResult,
   applyStagedComposerUploadPatch,
   canRemoveStagedComposerFile,
+  classifyResultAttachmentError,
   createdResultId,
+  isAttachmentStorageUnavailable,
   isResultAttachmentPresignUnavailable,
   mergeStagedComposerFiles,
   pendingStagedComposerFiles,
@@ -60,11 +62,24 @@ describe("createdResultId", () => {
   });
 });
 
-describe("isResultAttachmentPresignUnavailable", () => {
-  it("detects in-memory presign 404 payloads", () => {
-    expect(isResultAttachmentPresignUnavailable(new Error('{"code":"NOT_FOUND","message":"result not found"}'))).toBe(
-      true
-    );
+describe("classifyResultAttachmentError", () => {
+  it("treats memory-mode STORAGE_UNAVAILABLE as unsupported storage, not a missing result", () => {
+    const storage = new Error('{"error":{"code":"STORAGE_UNAVAILABLE","message":"attachment storage is not available"}}');
+    expect(classifyResultAttachmentError(storage)).toBe("storage-unavailable");
+    expect(isAttachmentStorageUnavailable(storage)).toBe(true);
+    expect(isResultAttachmentPresignUnavailable(storage)).toBe(true);
+  });
+
+  it("does not convert result-not-found 404 into a metadata-only success path", () => {
+    const missing = new Error('{"error":{"code":"NOT_FOUND","message":"result not found"}}');
+    expect(classifyResultAttachmentError(missing)).toBe("result-not-found");
+    expect(isAttachmentStorageUnavailable(missing)).toBe(false);
+    expect(isResultAttachmentPresignUnavailable(missing)).toBe(false);
+  });
+
+  it("keeps upload and association failures distinct from storage-unavailable", () => {
+    expect(classifyResultAttachmentError(new Error("attachment upload failed"))).toBe("upload-failed");
+    expect(classifyResultAttachmentError(new Error("register attachment failed"))).toBe("association-failed");
     expect(isResultAttachmentPresignUnavailable(new Error("Not Found"))).toBe(false);
   });
 });

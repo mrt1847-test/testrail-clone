@@ -3,8 +3,8 @@ import { useState, type ReactNode } from "react";
 export type RunQPaneTab = "results" | "history" | "defects";
 
 const TABS: Array<{ id: RunQPaneTab; label: string }> = [
-  { id: "results", label: "Results" },
-  { id: "history", label: "History" },
+  { id: "results", label: "Results & comments" },
+  { id: "history", label: "History & context" },
   { id: "defects", label: "Defects" }
 ];
 
@@ -20,7 +20,7 @@ export function RunQPanePanel({ results, history, defects, defaultTab = "results
 
   return (
     <div className="mt-2">
-      <div className="flex gap-0 border-b border-slate-200" role="tablist" aria-label="Test detail">
+      <div className="flex flex-wrap gap-0 border-b border-slate-200" role="tablist" aria-label="Result review">
         {TABS.map((item) => (
           <button
             key={item.id}

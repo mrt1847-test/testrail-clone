@@ -72,6 +72,7 @@ export const projectSuiteParamsSchema = z.object({
 export const listSuiteCasesQuerySchema = z.object({
   sectionId: z.coerce.bigint().optional(),
   display: z.enum(["tree", "subtree", "compact"]).default("subtree"),
+  sectionScope: sectionScopeSchema.optional(),
   groupBy: z.enum(["section_id", "priority", "type", "none"]).default("section_id"),
   q: z.string().optional(),
   priority: z.string().optional(),

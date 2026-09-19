@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { reconcileSavedViews, sectionIdsSignature } from "../../../shared/sections/sectionCompatibility";
+import { parseCaseQueryScope, type CaseQueryScope } from "../caseRepositoryView";
 import { defaultCaseListColumns } from "./useExpandedCase";
 import type { CaseListColumn, CaseListFilters, SavedCaseView } from "../types";
 
@@ -8,6 +9,7 @@ type CurrentCaseView = {
   sectionId: number | null;
   filters: CaseListFilters;
   columns: CaseListColumn[];
+  scope: CaseQueryScope;
 };
 
 const allowedColumns = new Set<CaseListColumn>([
@@ -66,7 +68,8 @@ function normalizeSavedView(value: unknown): SavedCaseView | null {
       estimate: isPresence(filterRow.estimate) ? filterRow.estimate : "",
       state: isState(filterRow.state) ? filterRow.state : "active"
     },
-    columns: normalizeColumns(row.columns)
+    columns: normalizeColumns(row.columns),
+    scope: parseCaseQueryScope(typeof row.scope === "string" ? row.scope : null)
   };
 }
 
@@ -81,7 +84,8 @@ function sameView(left: CurrentCaseView, right: CurrentCaseView) {
     left.filters.labels === right.filters.labels &&
     left.filters.estimate === right.filters.estimate &&
     left.filters.state === right.filters.state &&
-    left.columns.join(",") === right.columns.join(",")
+    left.columns.join(",") === right.columns.join(",") &&
+    left.scope === right.scope
   );
 }
 
@@ -154,7 +158,8 @@ export function useCaseSavedViews(
           {
             sectionId: view.sectionId,
             filters: view.filters,
-            columns: view.columns
+            columns: view.columns,
+            scope: view.scope ?? "subtree"
           }
         )
       ) ?? null,
@@ -171,7 +176,8 @@ export function useCaseSavedViews(
         name: normalizedName,
         sectionId: currentView.sectionId,
         filters: currentView.filters,
-        columns: currentView.columns
+        columns: currentView.columns,
+        scope: currentView.scope
       };
       setSavedViews((current) => {
         const others = current.filter((view) => view.id !== nextView.id);

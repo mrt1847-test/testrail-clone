@@ -53,6 +53,8 @@ export function useCaseEditorActions(projectId: string) {
       aiExpectedOutput: string;
       templateId: string | null;
       customValues: Record<string, string | number | boolean | string[] | null>;
+      caseType?: string;
+      priority?: string;
       expectedVersion?: number;
     }) =>
       updateCase(input.caseId, {
@@ -66,6 +68,8 @@ export function useCaseEditorActions(projectId: string) {
         aiInput: input.aiInput.trim().length > 0 ? input.aiInput.trim() : null,
         aiExpectedOutput: input.aiExpectedOutput.trim().length > 0 ? input.aiExpectedOutput.trim() : null,
         caseTemplateId: input.templateId ? Number(input.templateId) : null,
+        caseType: input.caseType,
+        priority: input.priority,
         customValues: input.customValues,
         expectedVersion: input.expectedVersion
       }),

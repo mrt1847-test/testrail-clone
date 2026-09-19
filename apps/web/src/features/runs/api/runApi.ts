@@ -1,7 +1,6 @@
 import type { AssignmentAgingLevel } from "@testrail-clone/shared";
 
 import { apiFetch } from "../../../shared/api/http";
-import { uploadFileToPresignedUrl } from "../../../shared/api/upload";
 import type { Ok, Paged } from "../../../shared/api/types";
 import type {
   ResultAttachmentItem,
@@ -13,7 +12,9 @@ import type {
   TestResultStepItem
 } from "../types";
 import { appendRunInstanceListParams, type RunInstanceListFilters } from "../utils/runInstanceListParams";
-import { isResultAttachmentPresignUnavailable } from "../utils/resultComposerModel";
+import { associateResultAttachment, uploadResultAttachmentViaPresign } from "./resultAttachmentUpload";
+
+export { associateResultAttachment, uploadResultAttachmentViaPresign };
 
 type ApiRun = {
   id: string;
@@ -243,7 +244,12 @@ export async function fetchAllRunInstances(
         pageSize,
         status: input.status,
         assignee: input.assignee,
-        search: input.search
+        search: input.search,
+        priority: input.priority,
+        caseType: input.caseType,
+        caseChanged: input.caseChanged,
+        sortBy: input.sortBy,
+        sortDir: input.sortDir
       })}`,
     100
   );
@@ -749,65 +755,6 @@ export async function addResultAttachment(
       fileSize: input.fileSize
     }
   });
-}
-
-type PresignAttachmentResponse = {
-  data: {
-    storagePath: string;
-    uploadUrl: string;
-    method: "PUT" | "POST";
-    headers?: Record<string, string>;
-    expiresAt: string;
-  };
-};
-
-export async function uploadResultAttachmentViaPresign(
-  resultId: string,
-  file: File,
-  onProgress?: (progress: number) => void
-) {
-  const presign = await apiFetch<PresignAttachmentResponse>(`/api/results/${resultId}/attachments/presign`, {
-    method: "POST",
-    body: {
-      fileName: file.name,
-      contentType: file.type || "application/octet-stream",
-      fileSize: String(file.size)
-    }
-  });
-  await uploadFileToPresignedUrl(file, presign.data, {
-    contentType: file.type || "application/octet-stream",
-    onProgress
-  });
-
-  return apiFetch(`/api/attachments`, {
-    method: "POST",
-    body: {
-      resultId,
-      fileName: file.name,
-      contentType: file.type || "application/octet-stream",
-      storagePath: presign.data.storagePath,
-      fileSize: String(file.size)
-    }
-  });
-}
-
-export async function associateResultAttachment(
-  resultId: string,
-  file: File,
-  onProgress?: (progress: number) => void
-) {
-  try {
-    return await uploadResultAttachmentViaPresign(resultId, file, onProgress);
-  } catch (error) {
-    if (!isResultAttachmentPresignUnavailable(error)) throw error;
-    onProgress?.(100);
-    return addResultAttachment(resultId, {
-      fileName: file.name,
-      contentType: file.type || "application/octet-stream",
-      storagePath: `local://results/${resultId}/${file.name}`,
-      fileSize: String(file.size)
-    });
-  }
 }
 
 type AttachmentDownloadUrlResponse = {

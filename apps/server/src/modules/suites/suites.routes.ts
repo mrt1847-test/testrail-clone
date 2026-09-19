@@ -121,6 +121,7 @@ export async function registerSuitesRoutes(
       suiteId,
       sectionId: query.sectionId,
       display: query.display,
+      sectionScope: query.sectionScope,
       groupBy: query.groupBy,
       q: query.q,
       priority: query.priority,

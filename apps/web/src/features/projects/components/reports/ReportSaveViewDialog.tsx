@@ -42,6 +42,11 @@ export function ReportSaveViewDialog({
             className="mr-auto"
             status={saveStatus === "idle" && saving ? "saving" : saveStatus}
             message={saveStatus === "failed" ? saveError ?? "Could not save view." : undefined}
+            onRetry={
+              saveStatus === "failed" && name.trim()
+                ? () => onSubmit(name.trim())
+                : undefined
+            }
           />
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel

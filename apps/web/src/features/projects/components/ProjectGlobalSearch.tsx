@@ -7,9 +7,15 @@ import { ENTITY_LABELS, groupHitsByEntityType } from "../utils/globalSearchGroup
 
 type ProjectGlobalSearchProps = {
   projectId: string;
+  inputId?: string;
+  autoFocus?: boolean;
 };
 
-export function ProjectGlobalSearch({ projectId }: ProjectGlobalSearchProps) {
+export function ProjectGlobalSearch({
+  projectId,
+  inputId = "project-global-search",
+  autoFocus = false
+}: ProjectGlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
@@ -41,11 +47,11 @@ export function ProjectGlobalSearch({ projectId }: ProjectGlobalSearchProps) {
 
   return (
     <div ref={rootRef} className="relative min-w-[12rem] flex-1 max-w-md">
-      <label className="sr-only" htmlFor="project-global-search">
+      <label className="sr-only" htmlFor={inputId}>
         Search project
       </label>
       <input
-        id="project-global-search"
+        id={inputId}
         type="search"
         placeholder="Search cases, runs, plans… (C12, R5)"
         className="w-full rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
@@ -56,6 +62,7 @@ export function ProjectGlobalSearch({ projectId }: ProjectGlobalSearchProps) {
         }}
         onFocus={() => setOpen(true)}
         autoComplete="off"
+        autoFocus={autoFocus}
       />
       {showPanel ? (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[24rem] overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">

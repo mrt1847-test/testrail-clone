@@ -6,6 +6,10 @@ export type CaseAuthoringDraft = {
   estimate: string;
   references: string;
   expectedResult: string;
+  stepsText: string;
+  draftSteps: Array<{ description: string; expected: string }>;
+  caseType: string;
+  priority: string;
   templateId: string;
   customValues: Record<string, CustomFieldScalar>;
 };

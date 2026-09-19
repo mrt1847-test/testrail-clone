@@ -18,6 +18,7 @@ type Props = {
   onClose: () => void;
   onDeleted: () => void;
   onDuplicated: (copiedCaseId: number) => void;
+  showHeading?: boolean;
 };
 
 export function CaseDetailBody({
@@ -26,7 +27,8 @@ export function CaseDetailBody({
   layout,
   onClose,
   onDeleted,
-  onDuplicated
+  onDuplicated,
+  showHeading
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const isEditMode =
@@ -125,7 +127,9 @@ export function CaseDetailBody({
         caseTemplates={caseTemplates}
         mode="view"
         layout={detailLayout}
-        showHeading={layout === "panel"}
+        showHeading={showHeading ?? layout === "panel"}
+        showPrimaryEdit={false}
+        hideShareActions
         onEdit={openEdit}
         onClose={onClose}
         onSave={async () => undefined}

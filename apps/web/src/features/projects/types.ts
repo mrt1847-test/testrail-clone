@@ -33,5 +33,5 @@ export type ProjectOverviewDto = {
   };
   recentRuns: Array<{ id: string; name: string; status: string; progress: number; total: number; passed: number; failed: number; createdAt: string }>;
   recentFailures: Array<{ caseCode: string; title: string; runName: string; runId: string; at: string }>;
-  recentResults: Array<{ caseCode: string; status: string; source: string; at: string }>;
+  recentResults: Array<{ caseCode: string; status: string; source: string; at: string; runId?: string; title?: string }>;
 };

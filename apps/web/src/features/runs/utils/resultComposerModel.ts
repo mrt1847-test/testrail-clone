@@ -94,7 +94,57 @@ export function createdResultId(response: unknown): string | null {
   return String(id);
 }
 
+export type ResultAttachmentErrorKind =
+  | "storage-unavailable"
+  | "result-not-found"
+  | "upload-failed"
+  | "association-failed"
+  | "other";
+
+function parseApiErrorPayload(error: unknown): { code?: string; message: string } {
+  const raw = error instanceof Error ? error.message : String(error);
+  try {
+    const parsed = JSON.parse(raw) as {
+      message?: string;
+      code?: string;
+      error?: string | { message?: string; code?: string };
+    };
+    const nested = typeof parsed.error === "object" ? parsed.error : undefined;
+    return {
+      code: parsed.code ?? nested?.code,
+      message: nested?.message ?? (typeof parsed.error === "string" ? parsed.error : parsed.message) ?? raw
+    };
+  } catch {
+    return { message: raw };
+  }
+}
+
+export function classifyResultAttachmentError(error: unknown): ResultAttachmentErrorKind {
+  const parsed = parseApiErrorPayload(error);
+  if (parsed.code === "STORAGE_UNAVAILABLE" || /attachment storage is not available/i.test(parsed.message)) {
+    return "storage-unavailable";
+  }
+  if (parsed.code === "NOT_FOUND" || /result not found/i.test(parsed.message)) {
+    return "result-not-found";
+  }
+  if (/attachment upload failed/i.test(parsed.message)) {
+    return "upload-failed";
+  }
+  if (/association|register attachment/i.test(parsed.message)) {
+    return "association-failed";
+  }
+  return "other";
+}
+
+export function isAttachmentStorageUnavailable(error: unknown): boolean {
+  return classifyResultAttachmentError(error) === "storage-unavailable";
+}
+
+/** @deprecated Use isAttachmentStorageUnavailable. Generic 404 is not storage-unavailable. */
 export function isResultAttachmentPresignUnavailable(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /NOT_FOUND|result not found|"statusCode"\s*:\s*404|\b404\b/i.test(message);
+  return isAttachmentStorageUnavailable(error);
+}
+
+export function attachmentStorageUnavailableMessage() {
+  return "Couldn't store the file. Attachment storage isn't available.";
 }

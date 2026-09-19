@@ -54,4 +54,16 @@ describe("listViewDeepLink", () => {
     expect(params.get("page")).toBe("3");
     expect(params.get("sortBy")).toBe("title");
   });
+
+  it("keeps hub scope and completed disclosure when sharing a run-list view", () => {
+    const params = captureListStateFromSearch(
+      "?scope=plans&mine=1&completed=1&orderBy=name&unknown=drop",
+      "run-list"
+    );
+    expect(params.get("scope")).toBe("plans");
+    expect(params.get("mine")).toBe("1");
+    expect(params.get("completed")).toBe("1");
+    expect(params.get("orderBy")).toBe("name");
+    expect(params.has("unknown")).toBe(false);
+  });
 });

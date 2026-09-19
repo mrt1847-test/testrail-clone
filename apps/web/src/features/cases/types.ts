@@ -107,5 +107,6 @@ export type SavedCaseView = {
   sectionId: number | null;
   filters: CaseListFilters;
   columns: CaseListColumn[];
+  scope?: import("./caseRepositoryView").CaseQueryScope;
 };
 

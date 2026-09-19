@@ -27,6 +27,8 @@ describe("runExecutionDensity", () => {
   it("distinguishes the active row by weight and a neutral edge, not color alone", () => {
     expect(runTestTitleClassName(true)).toContain("font-semibold");
     expect(runTestTitleClassName(false)).toContain("font-normal");
+    expect(runTestTitleClassName(true)).toContain("max-w-0");
+    expect(runTestTitleClassName(true)).not.toContain("max-w-[24rem]");
     expect(runTestRowClassName(true)).toContain("border-l-slate-900");
     expect(runTestRowClassName(false)).toContain("border-l-transparent");
   });

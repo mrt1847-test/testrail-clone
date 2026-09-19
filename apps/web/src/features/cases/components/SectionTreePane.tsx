@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
+import { OverflowMenu, type OverflowMenuHandle } from "../../../shared/ui/OverflowMenu";
 import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
@@ -26,6 +27,7 @@ import { normalizeQuickAddCaseTitle } from "../utils/sectionTreeQuickAdd";
 import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
 import { SectionTreeQuickAddCase } from "./SectionTreeQuickAddCase";
 import { sectionMoveDestinations, sectionPathLabel } from "../utils/sectionTreeModel";
+import { resolveSectionTreeKey, sectionCreateFieldId } from "../utils/sectionTreeKeyboard";
 
 const SECTION_DRAG_MIME = "application/x-testrail-section-id";
 type SectionDropIntent = "before" | "after" | "inside";
@@ -132,8 +134,10 @@ export function SectionTreePane({
   const [sectionCreateParentId, setSectionCreateParentId] = useState<number | null | undefined>(undefined);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
-  const [actionMenuId, setActionMenuId] = useState<number | null>(null);
   const [suiteMenuOpen, setSuiteMenuOpen] = useState(false);
+  const suiteMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const treeItemRefs = useRef(new Map<number, HTMLLIElement>());
+  const actionMenuRefs = useRef(new Map<number, OverflowMenuHandle>());
   const [relocateSourceId, setRelocateSourceId] = useState<number | null>(null);
   const [relocateTargetParentId, setRelocateTargetParentId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SectionNode | null>(null);
@@ -327,7 +331,6 @@ export function SectionTreePane({
       setSectionActionMessage(
         `Copied ${result.sectionIdMap.length} section${result.sectionIdMap.length === 1 ? "" : "s"} and ${result.caseIdMap.length} case${result.caseIdMap.length === 1 ? "" : "s"}.`
       );
-      setActionMenuId(null);
       setPendingSectionMoveCopy(null);
       setSectionPendingAction(null);
       setRelocateSourceId(null);
@@ -383,17 +386,16 @@ export function SectionTreePane({
   }, [selectedSectionId]);
 
   useEffect(() => {
-    if (actionMenuId == null && !suiteMenuOpen) return;
+    if (!suiteMenuOpen) return;
     const closeMenus = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest("[data-section-tree-menu]")) return;
-      setActionMenuId(null);
       setSuiteMenuOpen(false);
     };
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setActionMenuId(null);
       setSuiteMenuOpen(false);
+      window.requestAnimationFrame(() => suiteMenuButtonRef.current?.focus());
     };
     document.addEventListener("pointerdown", closeMenus);
     document.addEventListener("keydown", closeOnEscape);
@@ -401,7 +403,23 @@ export function SectionTreePane({
       document.removeEventListener("pointerdown", closeMenus);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [actionMenuId, suiteMenuOpen]);
+  }, [suiteMenuOpen]);
+
+  const focusTreeItem = (sectionId: number) => {
+    window.requestAnimationFrame(() => treeItemRefs.current.get(sectionId)?.focus());
+  };
+
+  const cancelSectionCreate = (parentSectionId: number | null) => {
+    setNewName("");
+    setSectionCreateParentId(undefined);
+    window.requestAnimationFrame(() => {
+      if (parentSectionId != null) {
+        treeItemRefs.current.get(parentSectionId)?.focus();
+        return;
+      }
+      document.getElementById("case-repository-new-section")?.focus();
+    });
+  };
 
   const toggleCollapsed = (sectionId: number) => {
     setCollapsedSectionIds((current) => {
@@ -417,7 +435,6 @@ export function SectionTreePane({
     setQuickAddFeedback(null);
     setQuickAddFocusRequest((current) => current + 1);
     setQuickAddSectionId(section.id);
-    setActionMenuId(null);
     onClearExpand();
     onSelectSection(section.id);
     const ancestors = collectAncestorIds(section.id);
@@ -563,9 +580,49 @@ export function SectionTreePane({
     relocateDestinations.find((destination) => destination.id === relocateTargetParentId)?.label ?? "Root level";
   const relocateTargetIsCurrent = relocateSource?.parentSectionId === relocateTargetParentId;
 
+  const handleTreeKeyDown = (event: KeyboardEvent<HTMLLIElement>, section: SectionNode) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("input, textarea, [role='menu']")) return;
+    const result = resolveSectionTreeKey({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      currentId: section.id,
+      sections,
+      collapsedIds: collapsedSectionIds
+    });
+    if (result.type === "none") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (result.type === "select") {
+      onClearExpand();
+      onSelectSection(result.sectionId);
+      setQuickAddSectionId(null);
+      focusTreeItem(result.sectionId);
+      return;
+    }
+    if (result.type === "expand") {
+      setCollapsedSectionIds((current) => {
+        const next = new Set(current);
+        next.delete(result.sectionId);
+        return next;
+      });
+      return;
+    }
+    if (result.type === "collapse") {
+      setCollapsedSectionIds((current) => {
+        const next = new Set(current);
+        next.add(result.sectionId);
+        return next;
+      });
+      return;
+    }
+    actionMenuRefs.current.get(section.id)?.open();
+  };
+
   const renderSectionCreate = (parentSectionId: number | null) => {
     if (sectionCreateParentId !== parentSectionId) return null;
     const parentName = parentSectionId == null ? null : sectionById.get(parentSectionId)?.name ?? "section";
+    const fieldId = sectionCreateFieldId(parentSectionId);
     return (
       <form
         className="flex min-w-0 items-center gap-1 py-1 pl-6 pr-1"
@@ -578,11 +635,11 @@ export function SectionTreePane({
         <span aria-hidden className="w-4 shrink-0 text-center text-slate-400">
           +
         </span>
-        <label className="sr-only" htmlFor={`new-section-${parentSectionId ?? "root"}`}>
+        <label className="sr-only" htmlFor={fieldId}>
           {parentName ? `New subsection in ${parentName}` : "New root section"}
         </label>
         <input
-          id={parentSectionId == null ? "case-repository-new-section" : `new-section-${parentSectionId}`}
+          id={fieldId}
           autoFocus
           className="min-w-0 flex-1 rounded px-2 py-1.5 text-xs text-slate-900 outline-none ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
           placeholder={parentName ? `Subsection in ${parentName}…` : "Root section name…"}
@@ -590,8 +647,9 @@ export function SectionTreePane({
           onChange={(event) => setNewName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
-            setNewName("");
-            setSectionCreateParentId(undefined);
+            event.preventDefault();
+            event.stopPropagation();
+            cancelSectionCreate(parentSectionId);
           }}
         />
         <button
@@ -605,10 +663,7 @@ export function SectionTreePane({
           type="button"
           aria-label="Cancel section creation"
           className="rounded px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-          onClick={() => {
-            setNewName("");
-            setSectionCreateParentId(undefined);
-          }}
+          onClick={() => cancelSectionCreate(parentSectionId)}
         >
           Cancel
         </button>
@@ -634,6 +689,7 @@ export function SectionTreePane({
           </p>
         </div>
         <button
+          ref={suiteMenuButtonRef}
           type="button"
           aria-label="Suite options"
           aria-haspopup="menu"
@@ -715,19 +771,38 @@ export function SectionTreePane({
       ) : null}
 
       <ul role="tree" aria-label="Sections" className="mt-1">
-        {(sectionByParent.get(null) ?? []).map((root) => {
-          const walk = (section: SectionNode, depth: number): ReactNode => {
+        {(() => {
+          const roots = sectionByParent.get(null) ?? [];
+          const treeTabId = selectedSectionId ?? roots[0]?.id ?? null;
+          return roots.map((root) => {
+            const walk = (section: SectionNode, depth: number): ReactNode => {
             const selected = selectedSectionId != null && section.id === selectedSectionId;
             const isEditing = editingId === section.id;
             const children = sectionByParent.get(section.id) ?? [];
             const collapsed = collapsedSectionIds.has(section.id);
+            const pathLabel = sectionPathLabel(sections, section.id);
             return (
               <li
                 key={section.id}
+                ref={(element) => {
+                  if (element) treeItemRefs.current.set(section.id, element);
+                  else treeItemRefs.current.delete(section.id);
+                }}
                 role="treeitem"
+                tabIndex={section.id === treeTabId ? 0 : -1}
+                aria-label={pathLabel}
                 aria-level={depth + 1}
                 aria-selected={selected}
                 aria-expanded={children.length > 0 ? !collapsed : undefined}
+                onKeyDown={(event) => handleTreeKeyDown(event, section)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (isEditing) return;
+                  onClearExpand();
+                  onSelectSection(section.id);
+                  setQuickAddSectionId(null);
+                }}
+                className="rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-blue-600"
               >
                 {isEditing ? (
                   <div className="flex items-center gap-1 py-1 pl-6 pr-1">
@@ -758,6 +833,7 @@ export function SectionTreePane({
                       onClick={() => {
                         setEditingId(null);
                         setEditName("");
+                        focusTreeItem(section.id);
                       }}
                     >
                       Cancel
@@ -774,6 +850,7 @@ export function SectionTreePane({
                   >
                     <button
                       type="button"
+                      tabIndex={-1}
                       aria-label={children.length > 0 ? `${collapsed ? "Expand" : "Collapse"} ${section.name}` : ""}
                       disabled={children.length === 0}
                       className="flex h-7 w-5 shrink-0 items-center justify-center text-slate-500 hover:text-slate-900 disabled:invisible"
@@ -811,6 +888,7 @@ export function SectionTreePane({
                       return (
                         <button
                           type="button"
+                          tabIndex={-1}
                           draggable={!isEditing && !reorderMutation.isPending}
                           onDragStart={(event) => handleSectionDragStart(event, section)}
                           onDragEnd={clearSectionDrag}
@@ -818,7 +896,7 @@ export function SectionTreePane({
                             onClearExpand();
                             onSelectSection(section.id);
                             setQuickAddSectionId(null);
-                            setActionMenuId(null);
+                            focusTreeItem(section.id);
                           }}
                           className={baseClass + caseDropClass + sectionDropClass}
                           onDragOver={(event) => {
@@ -844,7 +922,7 @@ export function SectionTreePane({
                               ? `Drop section ${sectionDropIntent} ${section.name}`
                               : isDropEligible
                               ? `Drop ${dnd?.draggingCount ?? 0} case${(dnd?.draggingCount ?? 0) === 1 ? "" : "s"} on ${section.name}`
-                              : section.name
+                              : undefined
                           }
                         >
                           <span className={selected ? "text-blue-700" : "text-slate-500"}>
@@ -857,6 +935,7 @@ export function SectionTreePane({
                     {selected ? (
                       <button
                         type="button"
+                        tabIndex={-1}
                         aria-label={`Add case to ${section.name}`}
                         className="shrink-0 rounded px-2 py-1 text-sm font-medium text-blue-700 hover:bg-white"
                         onClick={() => openQuickAddCase(section)}
@@ -864,86 +943,70 @@ export function SectionTreePane({
                         +
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      aria-label={`${section.name} actions`}
-                      aria-haspopup="menu"
-                      aria-expanded={actionMenuId === section.id}
-                      className={`shrink-0 rounded px-2 py-1 text-xs text-slate-500 hover:bg-white hover:text-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${
-                        selected || actionMenuId === section.id ? "sm:opacity-100" : ""
+                    <OverflowMenu
+                      ref={(handle) => {
+                        if (handle) actionMenuRefs.current.set(section.id, handle);
+                        else actionMenuRefs.current.delete(section.id);
+                      }}
+                      iconOnly
+                      compact
+                      variant="ghost"
+                      size="sm"
+                      align="right"
+                      label={`${section.name} actions`}
+                      triggerTabIndex={-1}
+                      triggerClassName={`h-7 min-w-7 px-2 py-1 text-xs text-slate-500 hover:bg-white hover:text-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${
+                        selected ? "sm:opacity-100" : ""
                       }`}
-                      onClick={() => setActionMenuId((current) => (current === section.id ? null : section.id))}
-                    >
-                      •••
-                    </button>
-                    {actionMenuId === section.id ? (
-                      <div
-                        role="menu"
-                        aria-label={`${section.name} actions`}
-                        className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-slate-200 bg-white p-1 shadow-lg"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="block w-full rounded px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-100"
-                          onClick={() => openQuickAddCase(section)}
-                        >
-                          Add case to {section.name}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="block w-full rounded px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-100"
-                          onClick={() => {
-                            setNewName("");
-                            setSectionCreateParentId(section.id);
-                            setActionMenuId(null);
-                            setCollapsedSectionIds((current) => {
-                              const next = new Set(current);
-                              next.delete(section.id);
-                              return next;
-                            });
-                          }}
-                        >
-                          Add subsection to {section.name}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="block w-full rounded px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-100"
-                          onClick={() => {
-                            setEditingId(section.id);
-                            setEditName(section.name);
-                            setActionMenuId(null);
-                          }}
-                        >
-                          Rename section
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="block w-full rounded px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-100"
-                          onClick={() => {
-                            setRelocateSourceId(section.id);
-                            setRelocateTargetParentId(section.parentSectionId ?? null);
-                            setActionMenuId(null);
-                          }}
-                        >
-                          Move or copy…
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="mt-1 block w-full border-t border-slate-100 px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
-                          onClick={() => {
-                            setDeleteTarget(section);
-                            setActionMenuId(null);
-                          }}
-                        >
-                          Delete section
-                        </button>
-                      </div>
-                    ) : null}
+                      groups={[
+                        {
+                          id: "actions",
+                          label: "",
+                          items: [
+                            {
+                              id: "add-case",
+                              label: `Add case to ${section.name}`,
+                              onSelect: () => openQuickAddCase(section)
+                            },
+                            {
+                              id: "add-subsection",
+                              label: `Add subsection to ${section.name}`,
+                              onSelect: () => {
+                                setNewName("");
+                                setSectionCreateParentId(section.id);
+                                setCollapsedSectionIds((current) => {
+                                  const next = new Set(current);
+                                  next.delete(section.id);
+                                  return next;
+                                });
+                              }
+                            },
+                            {
+                              id: "rename",
+                              label: "Rename section",
+                              onSelect: () => {
+                                setEditingId(section.id);
+                                setEditName(section.name);
+                              }
+                            },
+                            {
+                              id: "move",
+                              label: "Move or copy…",
+                              onSelect: () => {
+                                setRelocateSourceId(section.id);
+                                setRelocateTargetParentId(section.parentSectionId ?? null);
+                              }
+                            },
+                            {
+                              id: "delete",
+                              label: "Delete section",
+                              tone: "danger",
+                              onSelect: () => setDeleteTarget(section)
+                            }
+                          ]
+                        }
+                      ]}
+                    />
                   </div>
                 )}
                 {quickAddSectionId === section.id ? (
@@ -970,7 +1033,8 @@ export function SectionTreePane({
             );
           };
           return walk(root, 0);
-        })}
+        });
+        })()}
       </ul>
 
       {suiteId ? (

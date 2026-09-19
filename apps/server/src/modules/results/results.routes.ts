@@ -19,6 +19,7 @@ import {
   createSignedDownloadTarget,
   createSignedUploadTarget
 } from "../../domain/attachmentStorage.js";
+import { resultAttachmentPresignBlockReason } from "../../domain/resultAttachmentPresign.js";
 import { normalizeDefectProvider } from "../../domain/defectIntegrationValidation.js";
 import { appendCustomFieldsToDescription } from "../../domain/defectPushFields.js";
 import { syncProviderIssueStatus } from "../../domain/defectProviderApi.js";
@@ -466,13 +467,24 @@ export async function registerResultsRoutes(
     await requireProjectMutationRole(req, deps, { permission: "results.write" });
     const params = resultIdParamSchema.parse(req.params);
     const body = attachmentPresignBodySchema.parse(req.body ?? {});
+    const memoryBlock = resultAttachmentPresignBlockReason({
+      hasPersistentStorage: Boolean(deps.prisma),
+      resultFound: false
+    });
     if (!deps.prisma) {
-      throw new AppError("NOT_FOUND", "result not found", 404);
+      throw memoryBlock ?? new AppError("STORAGE_UNAVAILABLE", "attachment storage is not available", 501);
     }
     const result = await deps.prisma.testResult.findUnique({
       where: { id: params.resultId },
       select: { instance: { select: { run: { select: { projectId: true } } } } }
     });
+    const missing = resultAttachmentPresignBlockReason({
+      hasPersistentStorage: true,
+      resultFound: Boolean(result)
+    });
+    if (missing) {
+      throw missing;
+    }
     if (!result) {
       throw new AppError("NOT_FOUND", "result not found", 404);
     }

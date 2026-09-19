@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 
 export type ShortcutRow = {
-  keys: string[];
+  keys: readonly string[];
   description: string;
 };
 
 type KeyboardShortcutsDialogProps = {
   open: boolean;
   title?: string;
-  shortcuts: ShortcutRow[];
+  shortcuts: readonly ShortcutRow[];
   onClose: () => void;
 };
 

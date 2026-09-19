@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { Button, DataTable, WorkbenchPage, WorkbenchToolbar } from "../../../shared/ui";
 import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
@@ -31,6 +31,7 @@ function progressBar(progress: number) {
 
 export function PlansPage() {
   const { projectId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
@@ -106,9 +107,18 @@ export function PlansPage() {
     setDialogMode("create");
   };
 
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    openCreate();
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when arriving from Add Plan
+  }, [searchParams, setSearchParams]);
+
   const header = <PlansHeader projectId={projectId} onAddPlan={openCreate} />;
   const toolbar = (
-    <WorkbenchToolbar className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2">
+    <WorkbenchToolbar className="flex flex-wrap items-center gap-2">
       <p className="text-xs text-slate-600">
         <span className="font-medium text-slate-900">{data?.length ?? 0}</span> plans
         <span className="text-slate-300"> · </span>

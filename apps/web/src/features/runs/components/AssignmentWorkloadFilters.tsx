@@ -20,6 +20,7 @@ type Props = {
   assigneeValue?: string;
   onAssigneeChange?: (value: string) => void;
   searchPlaceholder?: string;
+  includeSearch?: boolean;
 };
 
 export function buildAssignmentWorkloadFilterFields({
@@ -31,18 +32,21 @@ export function buildAssignmentWorkloadFilterFields({
   assigneeOptions,
   assigneeValue,
   onAssigneeChange,
-  searchPlaceholder = "Search cases or runs"
+  searchPlaceholder = "Search cases or runs",
+  includeSearch = true
 }: Props): FilterField[] {
-  const fields: FilterField[] = [
-    {
-      kind: "search",
-      id: "search",
-      label: "Search",
-      value: filters.search,
-      onChange: (value) => onChange({ search: value }),
-      placeholder: searchPlaceholder
-    }
-  ];
+  const fields: FilterField[] = includeSearch
+    ? [
+        {
+          kind: "search",
+          id: "search",
+          label: "Search",
+          value: filters.search,
+          onChange: (value) => onChange({ search: value }),
+          placeholder: searchPlaceholder
+        }
+      ]
+    : [];
 
   if (showAssignee && assigneeOptions && onAssigneeChange) {
     fields.push({

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -19,23 +19,72 @@ import { FilterBar } from "../../../shared/ui/FilterBar";
 import { LoadingState } from "../../../shared/ui/LoadingState";
 import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { fetchMilestones } from "../../projects/api/planningApi";
-import { defaultAssignmentListFilters, formatRunDueOn } from "../assignmentListFilters";
+import {
+  appendAssignmentListQueryParams,
+  assignmentFiltersAreDefault,
+  countActiveAssignmentFilters,
+  defaultAssignmentListFilters,
+  describeActiveAssignmentFilters,
+  formatRunDueOn,
+  parseAssignmentListFilters,
+  type AssignmentListFilterState
+} from "../assignmentListFilters";
 import { useAssignedToMeQuery } from "../hooks/useRunsApi";
 import { AssignmentAgingBadge } from "./AssignmentAgingBadge";
-import { AssignmentWorkloadSummary } from "./AssignmentWorkloadSummary";
 import { buildAssignmentWorkloadFilterFields } from "./AssignmentWorkloadFilters";
 import { myTestsHeaderMenuGroups } from "../utils/myTestsHeaderMenu";
-import { flattenMyTestsQueue, myTestsResultPath } from "../utils/myTestsQueue";
+import {
+  MY_TESTS_ASSIGNMENT_TITLE,
+  flattenMyTestsQueue,
+  formatMyTestsDueContext,
+  formatMyTestsMatchCount,
+  formatMyTestsRunContext,
+  myTestsFiltersStorageKey,
+  myTestsResultPath,
+  setMyTestsSelection,
+  visibleMyTestsSelection
+} from "../utils/myTestsQueue";
 
-const activeStatuses = new Set(["untested", "failed", "blocked", "retest"]);
 const compactHide = "hidden sm:table-cell";
-const desktopOnly = "hidden md:table-cell";
+
+function readStoredFilters(projectId: string): AssignmentListFilterState | null {
+  try {
+    const raw = sessionStorage.getItem(myTestsFiltersStorageKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AssignmentListFilterState;
+    return { ...defaultAssignmentListFilters, ...parsed };
+  } catch {
+    return null;
+  }
+}
+
+function persistFilters(projectId: string, filters: AssignmentListFilterState) {
+  try {
+    if (assignmentFiltersAreDefault(filters)) {
+      sessionStorage.removeItem(myTestsFiltersStorageKey(projectId));
+      return;
+    }
+    sessionStorage.setItem(myTestsFiltersStorageKey(projectId), JSON.stringify(filters));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function initialMyTestsFilters(projectId: string, search: URLSearchParams) {
+  const fromUrl = parseAssignmentListFilters(search);
+  if (!assignmentFiltersAreDefault(fromUrl)) return fromUrl;
+  return readStoredFilters(projectId) ?? defaultAssignmentListFilters;
+}
 
 export function MyTestsPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
-  const [filters, setFilters] = useState(defaultAssignmentListFilters);
-  const [selectedTestIds, setSelectedTestIds] = useState<string[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters] = useState<AssignmentListFilterState>(() =>
+    initialMyTestsFilters(projectId, searchParams)
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
 
   const milestonesQuery = useQuery({
     queryKey: ["milestones", projectId, "assignment-list"],
@@ -43,71 +92,123 @@ export function MyTestsPage() {
     enabled: Boolean(projectId)
   });
 
+  const assignedCatalogQuery = useAssignedToMeQuery(projectId, defaultAssignmentListFilters);
   const assignedQuery = useAssignedToMeQuery(projectId, filters);
+  const assignedRows = assignedCatalogQuery.data ?? [];
   const data = assignedQuery.data ?? [];
   const queuedRows = useMemo(() => flattenMyTestsQueue(data), [data]);
-  const hasAging = data.some((row) => row.agingLevel !== "none");
 
   const runOptions = useMemo(
     () =>
-      Array.from(new Map(data.map((row) => [row.runId, row.runName])).entries()).sort((a, b) =>
+      Array.from(new Map(assignedRows.map((row) => [row.runId, row.runName])).entries()).sort((a, b) =>
         a[1].localeCompare(b[1])
       ),
-    [data]
+    [assignedRows]
   );
 
-  const activeCount = data.filter((row) => activeStatuses.has(row.status)).length;
+  const activeFilterCount = countActiveAssignmentFilters(filters);
+  const activeFilterLabels = describeActiveAssignmentFilters(filters, {
+    runName: runOptions.find(([id]) => id === filters.runId)?.[1],
+    milestoneName: (milestonesQuery.data ?? []).find((row) => String(row.id) === filters.milestoneId)?.name
+  });
+  const matchCount = formatMyTestsMatchCount(queuedRows.length, assignedRows.length);
+  const hasDue = queuedRows.some((row) => Boolean(row.runDueOn));
+
   const filterFields = buildAssignmentWorkloadFilterFields({
     filters,
     onChange: (patch) => setFilters((current) => ({ ...current, ...patch })),
     runOptions,
-    milestones: milestonesQuery.data ?? []
+    milestones: milestonesQuery.data ?? [],
+    includeSearch: false
   });
 
-  const selectedRows = queuedRows.filter((row) => selectedTestIds.includes(row.testId));
-  const selectedCount = selectedRows.length;
-  const resultTarget = selectedRows[0] ?? null;
-  const allSelected = queuedRows.length > 0 && selectedCount === queuedRows.length;
+  const visibleTestIds = useMemo(() => queuedRows.map((row) => row.testId), [queuedRows]);
+  const visibleSelectedId = visibleMyTestsSelection(selectedTestId, visibleTestIds);
+  const resultTarget = queuedRows.find((row) => row.testId === visibleSelectedId) ?? null;
+  const selectedCount = resultTarget ? 1 : 0;
+
+  useEffect(() => {
+    if (selectedTestId !== visibleSelectedId) setSelectedTestId(visibleSelectedId);
+  }, [selectedTestId, visibleSelectedId]);
+
+  useEffect(() => {
+    persistFilters(projectId, filters);
+    const next = new URLSearchParams();
+    appendAssignmentListQueryParams(next, filters);
+    if (searchParams.toString() !== next.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [filters, projectId, searchParams, setSearchParams]);
 
   function toggleSelected(testId: string, checked: boolean) {
-    setSelectedTestIds((current) =>
-      checked ? Array.from(new Set([...current, testId])) : current.filter((id) => id !== testId)
-    );
+    setSelectedTestId((current) => setMyTestsSelection(current, testId, checked));
   }
 
-  function togglePageSelection(checked: boolean) {
-    setSelectedTestIds(checked ? queuedRows.map((row) => row.testId) : []);
+  function clearFilters() {
+    setFilters(defaultAssignmentListFilters);
   }
 
   const header = (
     <WorkbenchPageHeader
-      title="My Tests"
-      description={`${activeCount} active of ${data.length} assigned tests. Record results in the run workbench.`}
+      title={MY_TESTS_ASSIGNMENT_TITLE}
       utilityAction={<OverflowMenu groups={myTestsHeaderMenuGroups(projectId)} />}
     />
   );
 
   const toolbar = (
-    <WorkbenchToolbar className="border border-slate-300 bg-white">
-      <FilterBar fields={filterFields} ariaLabel="Filter assigned tests" variant="toolbar" />
-      {filters.dueFilter === "due_by" ? (
-        <div className="border-t border-slate-200 px-3 py-2">
-          <FormField label="Due on or before" className="max-w-xs">
-            {(control) => (
-              <input
-                {...control}
-                type="date"
-                value={filters.dueBy}
-                onChange={(event) => setFilters((current) => ({ ...current, dueBy: event.target.value }))}
-                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
-              />
-            )}
-          </FormField>
-        </div>
+    <WorkbenchToolbar>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <label className="min-w-[10rem] flex-1 sm:max-w-md">
+          <span className="sr-only">Search assigned tests</span>
+          <input
+            type="search"
+            aria-label="Search assigned tests"
+            placeholder="Search cases or runs"
+            value={filters.search}
+            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+            className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+          />
+        </label>
+        <Button
+          variant={filtersOpen || activeFilterCount > 0 ? "secondary" : "ghost"}
+          size="sm"
+          aria-expanded={filtersOpen}
+          aria-controls="myTestsFilters"
+          aria-label={activeFilterCount > 0 ? `Filter, ${activeFilterCount} active` : "Filter assigned tests"}
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+        </Button>
+        <p className="text-xs text-slate-500" data-my-tests-match-count="">
+          {matchCount}
+        </p>
+        {activeFilterCount > 0 ? (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        ) : null}
+      </div>
+      {activeFilterLabels.length > 0 ? (
+        <p className="w-full text-xs text-slate-600" data-my-tests-active-filters="">
+          {activeFilterLabels.join(" · ")}
+        </p>
       ) : null}
-      {hasAging ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-1.5">
-          <AssignmentWorkloadSummary levels={data.map((row) => row.agingLevel)} />
+      {filtersOpen ? (
+        <div id="myTestsFilters" className="w-full">
+          <FilterBar fields={filterFields} ariaLabel="Filter assigned tests" variant="toolbar" />
+          {filters.dueFilter === "due_by" ? (
+            <FormField label="Due on or before" className="max-w-xs px-0 py-2">
+              {(control) => (
+                <input
+                  {...control}
+                  type="date"
+                  value={filters.dueBy}
+                  onChange={(event) => setFilters((current) => ({ ...current, dueBy: event.target.value }))}
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                />
+              )}
+            </FormField>
+          ) : null}
         </div>
       ) : null}
     </WorkbenchToolbar>
@@ -116,7 +217,11 @@ export function MyTestsPage() {
   const selectionBar = (
     <SelectionActionBar selectedCount={selectedCount} aria-label="Selected test actions">
       <div className="flex flex-wrap items-center gap-2">
-        <strong className="mr-1 whitespace-nowrap text-sm text-sky-950">{selectedCount} selected</strong>
+        <strong className="mr-1 text-sm text-sky-950">
+          {resultTarget
+            ? `C${resultTarget.caseId} · ${formatMyTestsRunContext(resultTarget)}`
+            : "1 selected"}
+        </strong>
         <Button
           size="sm"
           disabled={!resultTarget}
@@ -125,13 +230,10 @@ export function MyTestsPage() {
             navigate(myTestsResultPath(projectId, resultTarget));
           }}
         >
-          Add result
+          Open selected test
         </Button>
-        {selectedCount > 1 ? (
-          <span className="text-xs text-sky-900">Opens the first selected test in Run Execution.</span>
-        ) : null}
         <div className="ml-auto">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedTestIds([])}>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedTestId(null)}>
             Clear selection
           </Button>
         </div>
@@ -139,7 +241,7 @@ export function MyTestsPage() {
     </SelectionActionBar>
   );
 
-  if (assignedQuery.isLoading || milestonesQuery.isLoading) {
+  if (assignedQuery.isLoading || assignedCatalogQuery.isLoading || milestonesQuery.isLoading) {
     return (
       <WorkbenchPage data-my-tests-workbench="">
         {header}
@@ -163,116 +265,109 @@ export function MyTestsPage() {
       {selectionBar}
       {queuedRows.length === 0 ? (
         <EmptyState
-          title="No matching tests"
-          description="Adjust filters or wait for new assignments on runs with due dates or milestones."
+          title={assignedRows.length === 0 ? "No assigned tests" : "No matching tests"}
+          description={
+            assignedRows.length === 0
+              ? "Tests assigned to you on a run appear here."
+              : "Clear filters to see every assigned test, including completed or blocked work."
+          }
+          action={
+            assignedRows.length > 0 ? (
+              <Button variant="secondary" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null
+          }
         />
       ) : (
-        <section className="overflow-hidden border border-slate-300 bg-white">
-          <DataTable
-            dense
-            className="rounded-none border-0"
-            rowKey={(row) => row.testId}
-            rows={queuedRows}
-            columns={[
-              {
-                key: "select",
-                header: (
-                  <input
-                    type="checkbox"
-                    aria-label="Select all assigned tests"
-                    checked={allSelected}
-                    ref={(element) => {
-                      if (element) element.indeterminate = selectedCount > 0 && !allSelected;
-                    }}
-                    onChange={(event) => togglePageSelection(event.target.checked)}
-                  />
-                ),
-                cell: (row) => (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${row.title}`}
-                    checked={selectedTestIds.includes(row.testId)}
-                    onChange={(event) => toggleSelected(row.testId, event.target.checked)}
-                  />
-                )
-              },
-              {
-                key: "queue",
-                header: "Queue",
-                headerClassName: compactHide,
-                cellClassName: compactHide,
-                cell: (row) => row.queueLabel
-              },
-              {
-                key: "case",
-                header: "Case",
-                cell: (row) => (
-                  <div>
-                    <Link
-                      to={myTestsResultPath(projectId, row)}
-                      className="font-medium text-slate-900 underline-offset-2 hover:underline"
-                    >
-                      C{row.caseId}
-                    </Link>
-                    <p className="text-slate-600">{row.title}</p>
-                  </div>
-                )
-              },
-              {
-                key: "run",
-                header: "Run",
-                headerClassName: compactHide,
-                cellClassName: compactHide,
-                cell: (row) => (
+        <DataTable
+          dense
+          className="rounded-none"
+          rowKey={(row) => row.testId}
+          rows={queuedRows}
+          columns={[
+            {
+              key: "select",
+              header: <span className="sr-only">Select</span>,
+              cell: (row) => (
+                <input
+                  type="checkbox"
+                  aria-label={`Select C${row.caseId} ${row.title} in ${formatMyTestsRunContext(row)}`}
+                  checked={visibleSelectedId === row.testId}
+                  onChange={(event) => toggleSelected(row.testId, event.target.checked)}
+                />
+              )
+            },
+            {
+              key: "case",
+              header: "Test",
+              cell: (row) => (
+                <div data-my-tests-row={row.testId} data-my-tests-run={row.runId}>
                   <Link
                     to={myTestsResultPath(projectId, row)}
-                    className="text-slate-700 underline-offset-2 hover:underline"
+                    className="font-medium text-slate-900 underline-offset-2 hover:underline"
                   >
-                    {row.runName}
+                    C{row.caseId} {row.title}
                   </Link>
-                )
-              },
-              {
-                key: "milestone",
-                header: "Milestone",
-                headerClassName: desktopOnly,
-                cellClassName: desktopOnly,
-                cell: (row) => row.milestoneName ?? "—"
-              },
-              {
-                key: "due",
-                header: "Due",
-                headerClassName: desktopOnly,
-                cellClassName: desktopOnly,
-                cell: (row) => formatRunDueOn(row.runDueOn)
-              },
-              {
-                key: "aging",
-                header: "Aging",
-                headerClassName: desktopOnly,
-                cellClassName: desktopOnly,
-                cell: (row) => <AssignmentAgingBadge level={row.agingLevel} />
-              },
-              {
-                key: "status",
-                header: "Status",
-                cell: (row) => <StatusBadge status={row.status} />
-              },
-              {
-                key: "action",
-                header: "Action",
-                align: "right",
-                headerClassName: "whitespace-nowrap",
-                cellClassName: "whitespace-nowrap",
-                cell: (row) => (
-                  <Link className={buttonClassName({ size: "sm" })} to={myTestsResultPath(projectId, row)}>
-                    Add result
-                  </Link>
-                )
-              }
-            ]}
-          />
-        </section>
+                  <p className="text-xs text-slate-500 sm:hidden" data-my-tests-run-context="">
+                    {formatMyTestsRunContext(row)}
+                  </p>
+                  {formatMyTestsDueContext(row) ? (
+                    <p className="text-xs text-slate-500 sm:hidden">{formatMyTestsDueContext(row)}</p>
+                  ) : null}
+                </div>
+              )
+            },
+            {
+              key: "run",
+              header: "Run",
+              headerClassName: compactHide,
+              cellClassName: compactHide,
+              cell: (row) => (
+                <Link
+                  to={myTestsResultPath(projectId, row)}
+                  className="text-slate-700 underline-offset-2 hover:underline"
+                >
+                  {formatMyTestsRunContext(row)}
+                </Link>
+              )
+            },
+            {
+              key: "due",
+              header: "Due",
+              headerClassName: hasDue ? compactHide : "hidden",
+              cellClassName: hasDue ? compactHide : "hidden",
+              cell: (row) => (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span>{formatRunDueOn(row.runDueOn)}</span>
+                  <AssignmentAgingBadge level={row.agingLevel} />
+                </div>
+              )
+            },
+            {
+              key: "status",
+              header: "Status",
+              cell: (row) => <StatusBadge status={row.status} />
+            },
+            {
+              key: "action",
+              header: <span className="sr-only">Open</span>,
+              align: "right",
+              headerClassName: "whitespace-nowrap",
+              cellClassName: "whitespace-nowrap",
+              cell: (row) => (
+                <Link
+                  className={buttonClassName({ variant: "link", size: "sm" })}
+                  to={myTestsResultPath(projectId, row)}
+                  aria-label={`Open C${row.caseId} ${row.title} in ${formatMyTestsRunContext(row)}`}
+                  data-my-tests-open-test=""
+                >
+                  Open test
+                </Link>
+              )
+            }
+          ]}
+        />
       )}
     </WorkbenchPage>
   );

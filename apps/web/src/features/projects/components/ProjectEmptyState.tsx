@@ -1,7 +1,8 @@
+import { Button } from "../../../shared/ui";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 
 type ProjectEmptyStateProps = {
-  onCreateClick: () => void;
+  onCreateClick?: () => void;
 };
 
 export function ProjectEmptyState({ onCreateClick }: ProjectEmptyStateProps) {
@@ -10,13 +11,11 @@ export function ProjectEmptyState({ onCreateClick }: ProjectEmptyStateProps) {
       title="No projects yet"
       description="Create a project to start organizing suites, cases, and runs."
       action={
-        <button
-          type="button"
-          onClick={onCreateClick}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          New project
-        </button>
+        onCreateClick ? (
+          <Button size="sm" onClick={onCreateClick}>
+            Add project
+          </Button>
+        ) : undefined
       }
     />
   );

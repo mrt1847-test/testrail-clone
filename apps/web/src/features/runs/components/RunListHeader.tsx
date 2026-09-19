@@ -8,9 +8,10 @@ import { runListHeaderMenuGroups } from "../utils/runListHeaderMenu";
 type Props = {
   projectId: string;
   onAddRun: () => void;
+  onAddPlan: () => void;
 };
 
-export function RunListHeader({ projectId, onAddRun }: Props) {
+export function RunListHeader({ projectId, onAddRun, onAddPlan }: Props) {
   const isProjectArchived = useProjectArchived();
   const defectItems = useDefectDropdownItems({ projectId });
   const groups = useMemo<OverflowMenuGroup[]>(() => {
@@ -40,16 +41,26 @@ export function RunListHeader({ projectId, onAddRun }: Props) {
   return (
     <WorkbenchPageHeader
       title="Test Runs & Results"
-      description="Open a run to record results, or start a new run from a suite."
       primaryAction={
-        <Button
-          size="md"
-          disabled={isProjectArchived}
-          title={isProjectArchived ? "Archived projects are read-only" : "Create a test run"}
-          onClick={onAddRun}
-        >
-          Add Run
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isProjectArchived}
+            title={isProjectArchived ? "Archived projects are read-only" : "Create a test plan"}
+            onClick={onAddPlan}
+          >
+            Add Plan
+          </Button>
+          <Button
+            size="md"
+            disabled={isProjectArchived}
+            title={isProjectArchived ? "Archived projects are read-only" : "Create a test run"}
+            onClick={onAddRun}
+          >
+            Add Run
+          </Button>
+        </div>
       }
       utilityAction={<OverflowMenu groups={groups} />}
     />

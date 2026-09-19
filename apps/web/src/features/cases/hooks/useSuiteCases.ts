@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchSuiteGroupedCases } from "../api/catalogApi";
-import type { CaseDisplayMode } from "../caseRepositoryView";
+import type { CaseDisplayMode, CaseQueryScope } from "../caseRepositoryView";
 import type { CaseListFilters } from "../types";
 import type { CaseGroupBy } from "../utils/caseRepositoryGrouping";
 import { caseKeys } from "./useCases";
@@ -12,14 +12,17 @@ export function useSuiteCases(
   sectionId: number | null,
   filters: CaseListFilters,
   display: CaseDisplayMode,
-  groupBy: CaseGroupBy
+  groupBy: CaseGroupBy,
+  queryScope: CaseQueryScope
 ) {
+  const hasSection = sectionId != null && !Number.isNaN(sectionId);
   return useQuery({
     queryKey: [
       ...caseKeys.all(projectId ?? ""),
       "suite-grouped",
       suiteId ?? "",
       sectionId ?? -1,
+      queryScope,
       display,
       groupBy,
       filters.q,
@@ -33,11 +36,7 @@ export function useSuiteCases(
       filters.state
     ],
     queryFn: () => fetchSuiteGroupedCases(projectId!, suiteId!, sectionId, filters, display, groupBy),
-    enabled: Boolean(
-      projectId &&
-        suiteId &&
-        (display !== "tree" || (sectionId != null && !Number.isNaN(sectionId)))
-    ),
+    enabled: Boolean(projectId && suiteId && (queryScope === "all" || hasSection)),
     refetchInterval: false,
     refetchIntervalInBackground: false
   });

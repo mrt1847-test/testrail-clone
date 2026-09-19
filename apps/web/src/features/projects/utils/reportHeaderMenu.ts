@@ -1,5 +1,11 @@
 import type { OverflowMenuGroup } from "../../../shared/ui";
 
+/** Header overflow: catalog navigation, not actions on the open report. */
+export const REPORT_NAVIGATION_MENU_LABEL = "Reports";
+
+/** Result overflow: save, print, and export for the report on screen. */
+export const REPORT_ACTIONS_MENU_LABEL = "This report";
+
 /**
  * Catalog utilities stay out of Add report so opening a template remains
  * the dominant reports-index action.
@@ -56,7 +62,7 @@ export function reportResultMenuGroups(input: {
   onQueueExport: () => void;
 }): OverflowMenuGroup[] {
   const outputItems: OverflowMenuGroup["items"] = [];
-  if (input.printPath) {
+  if (input.printPath && !input.disabled) {
     outputItems.push({
       id: "print",
       label: "Print view",

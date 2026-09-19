@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attachmentRetryFailureMessage,
   canUndoResultSave,
   overlayInstanceStatus,
   pruneMatchedStatusOverrides,
+  resultPartialAttachmentFailureMessage,
   resultSaveErrorMessage
 } from "./resultSaveFeedback";
 
@@ -45,13 +47,28 @@ describe("resultSaveErrorMessage", () => {
     expect(resultSaveErrorMessage(new Error('{"message":"run is closed"}'))).toBe("run is closed");
   });
 
-  it("maps untested-not-allowed to a recovery message", () => {
-    expect(resultSaveErrorMessage(new Error('{"code":"UNTESTED_NOT_ALLOWED"}'))).toBe(
-      "Untested cannot be set after a result exists for this test."
-    );
+  it("maps storage-unavailable to a local recovery message", () => {
+    expect(
+      resultSaveErrorMessage(
+        new Error('{"error":{"code":"STORAGE_UNAVAILABLE","message":"attachment storage is not available"}}')
+      )
+    ).toBe("Couldn't store the file. Attachment storage isn't available.");
   });
 
   it("falls back to a short local message", () => {
     expect(resultSaveErrorMessage("nope")).toBe("Couldn't save result");
+  });
+});
+
+describe("resultPartialAttachmentFailureMessage", () => {
+  it("names the saved result and the failed file", () => {
+    expect(resultPartialAttachmentFailureMessage(["a.png"])).toBe("Result saved. Couldn't attach a.png.");
+    expect(resultPartialAttachmentFailureMessage(["a.png", "b.log"])).toBe("Result saved. Couldn't attach 2 files.");
+  });
+});
+
+describe("attachmentRetryFailureMessage", () => {
+  it("keeps retry copy local to the failed files", () => {
+    expect(attachmentRetryFailureMessage(["a.png"])).toBe("Couldn't attach a.png");
   });
 });

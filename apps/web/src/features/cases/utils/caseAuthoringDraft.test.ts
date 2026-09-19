@@ -8,6 +8,10 @@ const baseDraft = {
   estimate: "5m",
   references: "REQ-1",
   expectedResult: "Dashboard opens",
+  stepsText: "Open the sign-in form",
+  draftSteps: [{ description: "Submit", expected: "Home opens" }],
+  caseType: "Functional",
+  priority: "High",
   templateId: "template-1",
   customValues: { priority: "high", automated: false }
 };

@@ -19,13 +19,13 @@ export type FilterField =
 type FilterBarProps = {
   fields: FilterField[];
   ariaLabel?: string;
-  /** `toolbar` matches run/test list filter strips; `card` matches report pages. */
+  /** `toolbar` is the shared page-chrome strip; `card` is only for nested content filters. */
   variant?: "toolbar" | "card";
   className?: string;
 };
 
 const variantClass: Record<NonNullable<FilterBarProps["variant"]>, string> = {
-  toolbar: "border-b border-slate-200 bg-slate-50 px-3 py-2 shadow-none rounded-none",
+  toolbar: "border-b border-slate-200 bg-transparent px-0 py-2 shadow-none rounded-none",
   card: "rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm"
 };
 
