@@ -1,23 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
 
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchCaseVersions } from "../api/catalogApi";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
-import { CaseEditDrawer } from "./CaseEditDrawer";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
-import { ConfirmDialog } from "../../../shared/ui/ConfirmDialog";
 
 type Props = {
   projectId: string;
   caseId: number;
   layout: "page" | "panel";
+  mode?: "view" | "edit";
   onClose: () => void;
   onDeleted: () => void;
   onDuplicated: (copiedCaseId: number) => void;
+  onEdit?: () => void;
+  onCancelEdit?: () => void;
   showHeading?: boolean;
 };
 
@@ -25,14 +25,14 @@ export function CaseDetailBody({
   projectId,
   caseId,
   layout,
+  mode = "view",
   onClose,
   onDeleted,
   onDuplicated,
+  onEdit,
+  onCancelEdit,
   showHeading
 }: Props) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const isEditMode =
-    searchParams.get("panelMode") === "edit" || searchParams.get("mode") === "edit";
   const { data, isLoading, isError, refetch } = useCaseDetail(caseId);
   useRecordRecentlyViewed(
     projectId,
@@ -40,8 +40,6 @@ export function CaseDetailBody({
   );
   const editor = useCaseEditorActions(projectId);
   const detailLayout = layout === "panel" ? "embedded" : "page";
-  const [editDirty, setEditDirty] = useState(false);
-  const [discardEditOpen, setDiscardEditOpen] = useState(false);
 
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId, data?.caseTemplateId ?? null],
@@ -68,38 +66,7 @@ export function CaseDetailBody({
 
   useEffect(() => {
     clearEditErrors();
-    setEditDirty(false);
-    setDiscardEditOpen(false);
-  }, [caseId, isEditMode, clearEditErrors]);
-
-  const openEdit = () => {
-    const next = new URLSearchParams(searchParams);
-    if (layout === "panel") {
-      next.set("panelMode", "edit");
-      next.delete("mode");
-    } else {
-      next.set("mode", "edit");
-      next.delete("panelMode");
-    }
-    setSearchParams(next);
-  };
-
-  const closeEdit = () => {
-    setEditDirty(false);
-    setDiscardEditOpen(false);
-    const next = new URLSearchParams(searchParams);
-    next.delete("mode");
-    next.delete("panelMode");
-    setSearchParams(next, { replace: true });
-  };
-
-  const requestCloseEdit = () => {
-    if (editDirty) {
-      setDiscardEditOpen(true);
-      return;
-    }
-    closeEdit();
-  };
+  }, [caseId, clearEditErrors]);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-slate-500">Loading test case…</p>;
@@ -116,109 +83,62 @@ export function CaseDetailBody({
     );
   }
 
-  const headerTitle = `${data.caseCode} ${data.title}`;
-
   return (
-    <>
-      <ExpandableCaseDetail
-        data={data}
-        versions={caseVersionsQuery.data ?? []}
-        customFields={customFields}
-        caseTemplates={caseTemplates}
-        mode="view"
-        layout={detailLayout}
-        showHeading={showHeading ?? layout === "panel"}
-        showPrimaryEdit={false}
-        hideShareActions
-        onEdit={openEdit}
-        onClose={onClose}
-        onSave={async () => undefined}
-        onDelete={async () => {
-          await editor.deleteCaseMutation.mutateAsync(data.id);
-          onDeleted();
-        }}
-        onSetArchived={async (archived) => {
-          await editor.setCaseArchivedMutation.mutateAsync({ caseId: data.id, archived });
-          if (archived) onDeleted();
-          else await refetch();
-        }}
-        onRestoreVersion={async (versionId) => {
-          await editor.restoreVersionMutation.mutateAsync({
-            caseId: data.id,
-            versionId,
-            expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
-          });
-        }}
-        isDeleting={editor.deleteCaseMutation.isPending}
-        isArchiving={editor.setCaseArchivedMutation.isPending}
-        isRestoring={editor.restoreVersionMutation.isPending}
-        restoreError={editor.restoreFormError}
-        onDuplicated={onDuplicated}
-      />
-
-      <CaseEditDrawer open={isEditMode} title={headerTitle} onClose={requestCloseEdit}>
-        <ExpandableCaseDetail
-          data={data}
-          versions={caseVersionsQuery.data ?? []}
-          customFields={customFields}
-          caseTemplates={caseTemplates}
-          mode="edit"
-          layout={detailLayout}
-          showHeading={false}
-          onEdit={openEdit}
-          onClose={requestCloseEdit}
-          onDirtyChange={setEditDirty}
-          onSave={async (patch) => {
-            await editor.updateCaseMutation.mutateAsync({
-              caseId: data.id,
-              ...patch,
-              expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
-            });
-            setEditDirty(false);
-            closeEdit();
-          }}
-          onDelete={async () => {
-            await editor.deleteCaseMutation.mutateAsync(data.id);
-            onDeleted();
-          }}
-          onSetArchived={async (archived) => {
-            await editor.setCaseArchivedMutation.mutateAsync({ caseId: data.id, archived });
-            if (archived) {
-              closeEdit();
-              onDeleted();
-            } else {
-              await refetch();
-            }
-          }}
-          isDeleting={editor.deleteCaseMutation.isPending}
-          isArchiving={editor.setCaseArchivedMutation.isPending}
-          isSaving={editor.updateCaseMutation.isPending}
-          submitError={editor.editFormError}
-          onCreateStep={async (input) => {
-            await editor.createStepMutation.mutateAsync({ caseId: data.id, ...input });
-          }}
-          onUpdateStep={async (stepId, patch) => {
-            await editor.updateStepMutation.mutateAsync({ caseId: data.id, stepId, patch });
-          }}
-          onDeleteStep={async (stepId) => {
-            await editor.deleteStepMutation.mutateAsync({ caseId: data.id, stepId });
-          }}
-          onLinkSharedStep={async (sharedStepId) => {
-            await editor.linkSharedStepMutation.mutateAsync({ caseId: data.id, sharedStepId });
-          }}
-          isStepsBusy={editor.stepsBusy}
-        />
-      </CaseEditDrawer>
-      <ConfirmDialog
-        open={discardEditOpen}
-        title="Discard unsaved changes?"
-        description="Your unsaved test case changes will be lost."
-        cancelLabel="Keep editing"
-        confirmLabel="Discard changes"
-        variant="danger"
-        onCancel={() => setDiscardEditOpen(false)}
-        onConfirm={closeEdit}
-      />
-    </>
+    <ExpandableCaseDetail
+      data={data}
+      versions={caseVersionsQuery.data ?? []}
+      customFields={customFields}
+      caseTemplates={caseTemplates}
+      mode={mode}
+      layout={detailLayout}
+      showHeading={showHeading ?? layout === "panel"}
+      showPrimaryEdit={false}
+      hideShareActions
+      onEdit={onEdit ?? (() => undefined)}
+      onClose={mode === "edit" ? (onCancelEdit ?? onClose) : onClose}
+      onSave={async (patch) => {
+        await editor.updateCaseMutation.mutateAsync({
+          caseId: data.id,
+          ...patch,
+          expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
+        });
+      }}
+      isSaving={editor.updateCaseMutation.isPending}
+      submitError={editor.editFormError}
+      onCreateStep={async (input) => {
+        await editor.createStepMutation.mutateAsync({ caseId: data.id, ...input });
+      }}
+      onUpdateStep={async (stepId, patch) => {
+        await editor.updateStepMutation.mutateAsync({ caseId: data.id, stepId, patch });
+      }}
+      onDeleteStep={async (stepId) => {
+        await editor.deleteStepMutation.mutateAsync({ caseId: data.id, stepId });
+      }}
+      onLinkSharedStep={async (sharedStepId) => {
+        await editor.linkSharedStepMutation.mutateAsync({ caseId: data.id, sharedStepId });
+      }}
+      isStepsBusy={editor.stepsBusy}
+      onDelete={async () => {
+        await editor.deleteCaseMutation.mutateAsync(data.id);
+        onDeleted();
+      }}
+      onSetArchived={async (archived) => {
+        await editor.setCaseArchivedMutation.mutateAsync({ caseId: data.id, archived });
+        if (archived) onDeleted();
+        else await refetch();
+      }}
+      onRestoreVersion={async (versionId) => {
+        await editor.restoreVersionMutation.mutateAsync({
+          caseId: data.id,
+          versionId,
+          expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
+        });
+      }}
+      isDeleting={editor.deleteCaseMutation.isPending}
+      isArchiving={editor.setCaseArchivedMutation.isPending}
+      isRestoring={editor.restoreVersionMutation.isPending}
+      restoreError={editor.restoreFormError}
+      onDuplicated={onDuplicated}
+    />
   );
 }

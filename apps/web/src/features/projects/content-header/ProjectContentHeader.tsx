@@ -64,6 +64,7 @@ type CaseRepositoryHeaderProps = {
   projectId: string;
   suiteId: string;
   onAddCase: () => void;
+  addTestCaseHref?: string;
   onCopyMoveCases?: () => void;
 };
 
@@ -71,6 +72,7 @@ export function CaseRepositoryContentHeader({
   projectId,
   suiteId,
   onAddCase,
+  addTestCaseHref,
   onCopyMoveCases
 }: CaseRepositoryHeaderProps) {
   const isProjectArchived = useProjectArchived();
@@ -81,6 +83,16 @@ export function CaseRepositoryContentHeader({
       id: "workflow",
       label: "Workflow",
       items: [
+        ...(addTestCaseHref
+          ? [
+              {
+                id: "add-test-case",
+                label: "Add Test Case",
+                description: "Open the full test case form",
+                to: addTestCaseHref
+              }
+            ]
+          : []),
         {
           id: "run-test",
           label: "Run this suite",
@@ -167,7 +179,7 @@ export function CaseRepositoryContentHeader({
         <Button
           size="md"
           disabled={isProjectArchived}
-          title={isProjectArchived ? "Archived projects are read-only" : "Add a case to the selected section"}
+          title={isProjectArchived ? "Archived projects are read-only" : "Add a title-only case to the selected section"}
           onClick={onAddCase}
         >
           Add Case

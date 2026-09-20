@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "./features/auth/components/LoginPage";
 import { RequireAuth } from "./features/auth/components/RequireAuth";
+import { AddCasePage, EditCasePage } from "./features/cases/components/AddCasePage";
 import { CaseDetailPage } from "./features/cases/components/CaseDetailPage";
 import { SharedStepsPage } from "./features/cases/components/SharedStepsPage";
 import { TestCaseWorkspacePage } from "./features/cases/components/TestCaseWorkspacePage";
@@ -83,6 +84,8 @@ export function App() {
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<ProjectLandingPage />} />
           <Route path="cases" element={<TestCaseWorkspacePage />} />
+          <Route path="cases/new" element={<AddCasePage />} />
+          <Route path="cases/:caseId/edit" element={<EditCasePage />} />
           <Route path="cases/:caseId" element={<CaseDetailPage />} />
           <Route path="shared-steps" element={<SharedStepsPage />} />
           <Route path="runs" element={<RunListPage />} />

@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { applyCasePreviewSearchParams } from "../caseRoute";
 import {
   parseCaseDisplayMode,
   parseCaseQueryScope,
@@ -218,12 +219,21 @@ export function useExpandedCase() {
       next.delete("panelMode");
     } else {
       next.set("panelCaseId", String(nextCaseId));
+      next.set("focusCaseId", String(nextCaseId));
       if (nextMode === "edit") next.set("panelMode", "edit");
       else next.delete("panelMode");
     }
 
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
+
+  const revealCasePreview = useCallback(
+    (caseId: number, options?: { sectionId?: number | null }) => {
+      const next = applyCasePreviewSearchParams(new URLSearchParams(searchParams), caseId, options);
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams]
+  );
 
   const togglePanelCase = useCallback(
     (caseId: number) => {
@@ -371,6 +381,7 @@ export function useExpandedCase() {
     hasCaseColumnsParam,
     hasRepositoryViewParams,
     setPanelCase,
+    revealCasePreview,
     setFocusCaseId,
     togglePanelCase,
     setSelectedSection,

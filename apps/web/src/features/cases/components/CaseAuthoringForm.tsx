@@ -38,10 +38,35 @@ export type CaseAuthoringTemplateDefinition = Pick<
   "id" | "name" | "description" | "fields" | "isDefault" | "isActive" | "displayOrder"
 >;
 
+export type CaseAuthoringSubmitIntent = "primary" | "next";
+
+export type CaseAuthoringSubmitInput = {
+  title: string;
+  preconditions: string;
+  estimate: string;
+  references: string;
+  expectedResult: string;
+  stepsText: string;
+  draftSteps: CaseAuthoringDraftStep[];
+  instructionKind: ReturnType<typeof instructionKindFromTemplateFields>;
+  caseType: CaseType;
+  priority: CasePriority;
+  mission: string;
+  goals: string;
+  aiInput: string;
+  aiExpectedOutput: string;
+  customValues: Record<string, ScalarCustomValue>;
+  templateId: string | null;
+  intent: CaseAuthoringSubmitIntent;
+};
+
 type CaseAuthoringFormProps = {
   projectId?: string;
   valueKey: string;
   sectionPath?: string | null;
+  sectionOptions?: Array<{ id: number; label: string }>;
+  selectedSectionId?: number | null;
+  onSectionIdChange?: (sectionId: number) => void;
   initialTitle: string;
   initialPreconditions: string;
   initialEstimate?: string;
@@ -55,28 +80,12 @@ type CaseAuthoringFormProps = {
   customFields: CaseAuthoringCustomFieldDefinition[];
   templates?: CaseAuthoringTemplateDefinition[];
   submitLabel: string;
+  nextSubmitLabel?: string | null;
   cancelLabel?: string;
   isSubmitting?: boolean;
   submitError?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
-  onSubmit: (input: {
-    title: string;
-    preconditions: string;
-    estimate: string;
-    references: string;
-    expectedResult: string;
-    stepsText: string;
-    draftSteps: CaseAuthoringDraftStep[];
-    instructionKind: ReturnType<typeof instructionKindFromTemplateFields>;
-    caseType: CaseType;
-    priority: CasePriority;
-    mission: string;
-    goals: string;
-    aiInput: string;
-    aiExpectedOutput: string;
-    customValues: Record<string, ScalarCustomValue>;
-    templateId: string | null;
-  }) => Promise<void> | void;
+  onSubmit: (input: CaseAuthoringSubmitInput) => Promise<void> | void;
   onCancel: () => void;
 };
 
@@ -153,6 +162,9 @@ export function CaseAuthoringForm({
   projectId = "",
   valueKey,
   sectionPath = null,
+  sectionOptions,
+  selectedSectionId = null,
+  onSectionIdChange,
   initialTitle,
   initialPreconditions,
   initialEstimate = "",
@@ -166,6 +178,7 @@ export function CaseAuthoringForm({
   customFields,
   templates = [],
   submitLabel,
+  nextSubmitLabel = null,
   cancelLabel = "Cancel",
   isSubmitting = false,
   submitError = null,
@@ -211,6 +224,7 @@ export function CaseAuthoringForm({
   const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const [templateChangeWarning, setTemplateChangeWarning] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [submitIntent, setSubmitIntent] = useState<CaseAuthoringSubmitIntent>("primary");
   const formRef = useRef<HTMLFormElement>(null);
 
   const initialDraftSnapshot = useMemo(
@@ -434,7 +448,7 @@ export function CaseAuthoringForm({
                   return next;
                 });
               }}
-              className={inputClassName(Boolean(fieldErrors.title))}
+              className={`${inputClassName(Boolean(fieldErrors.title))} text-base`}
             />
           )}
         </FormField>
@@ -659,6 +673,8 @@ export function CaseAuthoringForm({
         pushBlock(`custom:${field.systemName}`, renderCustomField(field));
       }
     }
+    if (!seen.has("estimate")) pushBlock("estimate", estimateNode);
+    if (!seen.has("references")) pushBlock("references", referencesNode);
     return blocks;
   }, [
     activeCustomFields,
@@ -739,7 +755,8 @@ export function CaseAuthoringForm({
         aiInput,
         aiExpectedOutput,
         customValues: exploratoryCustomValues,
-        templateId: selectedTemplateId || null
+        templateId: selectedTemplateId || null,
+        intent: submitIntent
       });
       setBaselineSnapshot(
         serializeCaseAuthoringDraft({
@@ -762,12 +779,16 @@ export function CaseAuthoringForm({
   }
 
   const titleBlock = orderedBlocks.find((block) => block.key === "title");
-  const bodyBlocks = orderedBlocks.filter((block) => block.key !== "title");
+  const estimateBlock = orderedBlocks.find((block) => block.key === "estimate");
+  const referencesBlock = orderedBlocks.find((block) => block.key === "references");
+  const bodyBlocks = orderedBlocks.filter(
+    (block) => block.key !== "title" && block.key !== "estimate" && block.key !== "references"
+  );
 
   return (
     <form
       ref={formRef}
-      className="grid gap-3"
+      className="grid gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         void handleSubmit();
@@ -775,9 +796,26 @@ export function CaseAuthoringForm({
     >
       {titleBlock ? <div>{titleBlock.node}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {sectionPath ? (
-          <p className="sm:col-span-2 lg:col-span-4 text-sm text-slate-600">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {sectionOptions && sectionOptions.length > 0 ? (
+          <FormField label="Section" controlId="case-section" required>
+            {(controlProps) => (
+              <select
+                {...controlProps}
+                value={selectedSectionId ?? ""}
+                onChange={(event) => onSectionIdChange?.(Number(event.target.value))}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                {sectionOptions.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
+        ) : sectionPath ? (
+          <p className="sm:col-span-2 text-sm text-slate-600">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Section</span>{" "}
             {sectionPath}
           </p>
@@ -833,6 +871,8 @@ export function CaseAuthoringForm({
             </select>
           )}
         </FormField>
+        {estimateBlock ? <div>{estimateBlock.node}</div> : null}
+        {referencesBlock ? <div>{referencesBlock.node}</div> : null}
       </div>
 
       <div className="grid gap-3">
@@ -856,8 +896,22 @@ export function CaseAuthoringForm({
           <Button type="button" variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {submitLabel}
+          {nextSubmitLabel ? (
+            <Button
+              type="submit"
+              variant="secondary"
+              disabled={isSubmitting}
+              onClick={() => setSubmitIntent("next")}
+            >
+              {isSubmitting && submitIntent === "next" ? "Adding..." : nextSubmitLabel}
+            </Button>
+          ) : null}
+          <Button type="submit" disabled={isSubmitting} onClick={() => setSubmitIntent("primary")}>
+            {isSubmitting && submitIntent === "primary"
+              ? nextSubmitLabel
+                ? "Adding..."
+                : submitLabel
+              : submitLabel}
           </Button>
         </div>
       </div>

@@ -8,7 +8,6 @@ import { projectKeys } from "../../projects/hooks/useProjectsApi";
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   copySectionSubtree,
-  createCase,
   createSection,
   deleteSection,
   fetchSuiteSummary,
@@ -23,9 +22,7 @@ import { caseKeys } from "../hooks/useCases";
 import { sectionKeys } from "../hooks/useSections";
 import type { SectionNode } from "../types";
 import { readCollapsedSectionIds, writeCollapsedSectionIds } from "../sectionTreeCollapse";
-import { normalizeQuickAddCaseTitle } from "../utils/sectionTreeQuickAdd";
 import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
-import { SectionTreeQuickAddCase } from "./SectionTreeQuickAddCase";
 import { sectionMoveDestinations, sectionPathLabel } from "../utils/sectionTreeModel";
 import { resolveSectionTreeKey, sectionCreateFieldId } from "../utils/sectionTreeKeyboard";
 
@@ -75,7 +72,7 @@ type SectionTreePaneProps = {
   selectedSectionId: number | null;
   onSelectSection: (id: number) => void;
   onClearExpand: () => void;
-  onQuickAddCaseCreated?: (input: { sectionId: number; caseId: number }) => void;
+  onAddCaseToSection?: (sectionId: number) => void;
   onAddTestCase?: () => void;
   editDescriptionRequest?: number;
   treeSide?: CaseRepositoryTreeSide;
@@ -116,7 +113,7 @@ export function SectionTreePane({
   selectedSectionId,
   onSelectSection,
   onClearExpand,
-  onQuickAddCaseCreated,
+  onAddCaseToSection,
   onAddTestCase,
   editDescriptionRequest = 0,
   treeSide = "right",
@@ -151,13 +148,6 @@ export function SectionTreePane({
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<number>>(() =>
     readCollapsedSectionIds(projectId, suiteId)
   );
-  const [quickAddTitle, setQuickAddTitle] = useState("");
-  const [quickAddSectionId, setQuickAddSectionId] = useState<number | null>(null);
-  const [quickAddFeedback, setQuickAddFeedback] = useState<{
-    tone: "success" | "error";
-    message: string;
-  } | null>(null);
-  const [quickAddFocusRequest, setQuickAddFocusRequest] = useState(0);
   const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const updateSuiteDescriptionMutation = useMutation({
@@ -206,26 +196,6 @@ export function SectionTreePane({
       invalidate();
       setNewName("");
       setSectionCreateParentId(undefined);
-    }
-  });
-
-  const quickAddCaseMutation = useMutation({
-    mutationFn: ({ sectionId, title }: { sectionId: number; title: string }) => createCase(sectionId, { title }),
-    onSuccess: (created, variables) => {
-      invalidate();
-      setQuickAddTitle("");
-      setQuickAddFeedback({
-        tone: "success",
-        message: `${created.caseCode} saved. Ready for another title.`
-      });
-      onSelectSection(variables.sectionId);
-      onQuickAddCaseCreated?.({ sectionId: variables.sectionId, caseId: created.id });
-    },
-    onError: (error) => {
-      setQuickAddFeedback({
-        tone: "error",
-        message: `${extractApiErrorMessage(error, "Could not create the case.")} Your title is still here.`
-      });
     }
   });
 
@@ -382,11 +352,6 @@ export function SectionTreePane({
   }, [projectId, suiteId, collapsedSectionIds]);
 
   useEffect(() => {
-    setQuickAddTitle("");
-    setQuickAddFeedback(null);
-  }, [selectedSectionId]);
-
-  useEffect(() => {
     if (!suiteMenuOpen) return;
     const closeMenus = (event: PointerEvent) => {
       const target = event.target;
@@ -429,33 +394,6 @@ export function SectionTreePane({
       else next.add(sectionId);
       return next;
     });
-  };
-
-  const openQuickAddCase = (section: SectionNode) => {
-    setQuickAddTitle("");
-    setQuickAddFeedback(null);
-    setQuickAddFocusRequest((current) => current + 1);
-    setQuickAddSectionId(section.id);
-    onClearExpand();
-    onSelectSection(section.id);
-    const ancestors = collectAncestorIds(section.id);
-    setCollapsedSectionIds((current) => {
-      const next = new Set(current);
-      for (const id of ancestors) next.delete(id);
-      next.delete(section.id);
-      return next;
-    });
-  };
-
-  const submitQuickAddCase = () => {
-    if (selectedSectionId == null || quickAddCaseMutation.isPending) return;
-    const title = normalizeQuickAddCaseTitle(quickAddTitle);
-    if (title == null) {
-      setQuickAddFeedback({ tone: "error", message: "Enter a case title before saving." });
-      return;
-    }
-    setQuickAddFeedback(null);
-    quickAddCaseMutation.mutate({ sectionId: selectedSectionId, title });
   };
 
   const queueSectionMoveCopy = (sourceSectionId: number, targetParentSectionId: number | null) => {
@@ -597,7 +535,6 @@ export function SectionTreePane({
     if (result.type === "select") {
       onClearExpand();
       onSelectSection(result.sectionId);
-      setQuickAddSectionId(null);
       focusTreeItem(result.sectionId);
       return;
     }
@@ -801,7 +738,6 @@ export function SectionTreePane({
                   if (isEditing) return;
                   onClearExpand();
                   onSelectSection(section.id);
-                  setQuickAddSectionId(null);
                 }}
                 className="rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-blue-600"
               >
@@ -896,7 +832,6 @@ export function SectionTreePane({
                           onClick={() => {
                             onClearExpand();
                             onSelectSection(section.id);
-                            setQuickAddSectionId(null);
                             focusTreeItem(section.id);
                           }}
                           className={baseClass + caseDropClass + sectionDropClass}
@@ -933,7 +868,7 @@ export function SectionTreePane({
                         </button>
                       );
                     })()}
-                    {selected ? (
+                    {selected && onAddCaseToSection ? (
                       <button
                         type="button"
                         tabIndex={-1}
@@ -941,7 +876,7 @@ export function SectionTreePane({
                         className="shrink-0 rounded px-2 py-1 text-sm font-medium text-blue-700 hover:bg-white"
                         onClick={(event) => {
                           event.stopPropagation();
-                          openQuickAddCase(section);
+                          onAddCaseToSection(section.id);
                         }}
                       >
                         +
@@ -967,11 +902,15 @@ export function SectionTreePane({
                           id: "actions",
                           label: "",
                           items: [
-                            {
-                              id: "add-case",
-                              label: `Add case to ${section.name}`,
-                              onSelect: () => openQuickAddCase(section)
-                            },
+                            ...(onAddCaseToSection
+                              ? [
+                                  {
+                                    id: "add-case",
+                                    label: `Add case to ${section.name}`,
+                                    onSelect: () => onAddCaseToSection(section.id)
+                                  }
+                                ]
+                              : []),
                             {
                               id: "add-subsection",
                               label: `Add subsection to ${section.name}`,
@@ -1013,20 +952,6 @@ export function SectionTreePane({
                     />
                   </div>
                 )}
-                {quickAddSectionId === section.id ? (
-                  <SectionTreeQuickAddCase
-                    sectionName={section.name}
-                    title={quickAddTitle}
-                    onTitleChange={(value) => {
-                      setQuickAddTitle(value);
-                      setQuickAddFeedback(null);
-                    }}
-                    feedback={quickAddFeedback}
-                    isPending={quickAddCaseMutation.isPending}
-                    focusRequest={quickAddFocusRequest}
-                    onSubmit={submitQuickAddCase}
-                  />
-                ) : null}
                 {renderSectionCreate(section.id)}
                 {children.length > 0 && !collapsed ? (
                   <ul role="group" className="ml-[11px] border-l border-slate-200 pl-1">

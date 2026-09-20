@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -7,7 +7,7 @@ import { EntityCopyActions } from "../../../shared/ui/EntityCopyActions";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
-import { buildCaseDetailPath, buildCaseListPath } from "../caseRoute";
+import { buildCaseDetailPath, buildCaseListPath, buildEditCasePath } from "../caseRoute";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { CaseDetailBody } from "./CaseDetailBody";
@@ -20,11 +20,11 @@ function parseSectionId(value: string | null): number | null {
 
 export function CaseDetailPage() {
   const { projectId = "", caseId: caseIdParam = "" } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const caseId = Number(caseIdParam);
   const sectionId = parseSectionId(searchParams.get("sectionId"));
-  const isEditing = searchParams.get("mode") === "edit";
+  const suiteId = searchParams.get("suiteId");
   const listPath = buildCaseListPath(projectId, { sectionId });
   const { data, isLoading, isError, refetch } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
 
@@ -35,6 +35,19 @@ export function CaseDetailPage() {
 
   if (Number.isNaN(caseId)) {
     return <ErrorState title="Invalid case link" onRetry={() => navigate(listPath)} />;
+  }
+
+  if (searchParams.get("mode") === "edit") {
+    return (
+      <Navigate
+        to={buildEditCasePath(projectId, caseId, {
+          suiteId,
+          sectionId,
+          from: "page"
+        })}
+        replace
+      />
+    );
   }
 
   if (isError) {
@@ -67,15 +80,19 @@ export function CaseDetailPage() {
         description={data.archivedAt ? `Archived on ${new Date(data.archivedAt).toLocaleString()}` : undefined}
         actions={
           <>
-            {!data.archivedAt && !isEditing ? (
+            {!data.archivedAt ? (
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  const next = new URLSearchParams(searchParams);
-                  next.set("mode", "edit");
-                  setSearchParams(next);
-                }}
+                onClick={() =>
+                  navigate(
+                    buildEditCasePath(projectId, caseId, {
+                      suiteId,
+                      sectionId,
+                      from: "page"
+                    })
+                  )
+                }
               >
                 Edit
               </Button>

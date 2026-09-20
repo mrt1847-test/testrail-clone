@@ -9,6 +9,7 @@ import { useCaseRepositoryTreeSide } from "../hooks/useCaseRepositoryTreeSide";
 import { useDefectAddUrl } from "../hooks/useDefectAddUrl";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
+import { buildAddCasePath } from "../caseRoute";
 import { CaseDetailSidePanel } from "./CaseDetailSidePanel";
 import { CaseListPane } from "./CaseListPane";
 import { SectionTreePane } from "./SectionTreePane";
@@ -19,7 +20,7 @@ import { useAuth } from "../../auth/context/AuthContext";
 import { SuiteSwitcherBar } from "./SuiteSwitcherBar";
 import { WorkbenchPage } from "../../../shared/ui";
 
-const WIDE_SPLIT_QUERY = "(min-width: 1536px)";
+const SIDE_SPLIT_QUERY = "(min-width: 1024px)";
 const DETAIL_PANE_MIN_WIDTH = 360;
 const DETAIL_PANE_MAX_WIDTH = 560;
 const DETAIL_PANE_DEFAULT_WIDTH = 440;
@@ -38,13 +39,13 @@ function readDetailPaneWidth(key: string) {
   return Number.isFinite(parsed) ? clampDetailPaneWidth(parsed) : DETAIL_PANE_DEFAULT_WIDTH;
 }
 
-function useWideSplitLayout() {
+function useSideSplitLayout() {
   const [wide, setWide] = useState(() =>
-    typeof window === "undefined" ? false : window.matchMedia(WIDE_SPLIT_QUERY).matches
+    typeof window === "undefined" ? false : window.matchMedia(SIDE_SPLIT_QUERY).matches
   );
 
   useEffect(() => {
-    const media = window.matchMedia(WIDE_SPLIT_QUERY);
+    const media = window.matchMedia(SIDE_SPLIT_QUERY);
     const update = () => setWide(media.matches);
     update();
     media.addEventListener("change", update);
@@ -96,12 +97,12 @@ export function TestCaseWorkspace() {
       ? String(sections.find((section) => section.id === selectedSectionId)?.suiteId ?? activeSuiteId)
       : activeSuiteId;
   const panelOpen = panelCaseId != null;
-  const wideSplitLayout = useWideSplitLayout();
+  const sideSplitLayout = useSideSplitLayout();
   const detailPaneKey = detailPaneStorageKey(projectId, user?.id);
   const [detailPaneWidth, setDetailPaneWidth] = useState(() => readDetailPaneWidth(detailPaneKey));
-  const [addCaseRequest, setAddCaseRequest] = useState(0);
   const [editDescriptionRequest, setEditDescriptionRequest] = useState(0);
   const [copyMoveRequest, setCopyMoveRequest] = useState(0);
+  const [outlineRequest, setOutlineRequest] = useState<{ sectionId: number; nonce: number } | null>(null);
 
   useEffect(() => {
     setDetailPaneWidth(readDetailPaneWidth(detailPaneKey));
@@ -150,16 +151,34 @@ export function TestCaseWorkspace() {
     persistDetailPaneWidth(detailPaneWidth + (event.key === "ArrowLeft" ? 16 : -16));
   };
 
+  const openCaseOutline = useCallback(
+    (sectionId?: number | null) => {
+      const target = sectionId ?? selectedSectionId ?? sections[0]?.id;
+      if (target == null) return;
+      if (caseQueryScope === "all") setTreeFocusSection(target);
+      else setSelectedSection(target);
+      setOutlineRequest((current) => ({ sectionId: target, nonce: (current?.nonce ?? 0) + 1 }));
+    },
+    [caseQueryScope, sections, selectedSectionId, setSelectedSection, setTreeFocusSection]
+  );
+
   useCaseRepositoryKeyboard({
     enabled: !sectionsLoading && sections.length > 0,
-    onAddCase: () => setAddCaseRequest((value) => value + 1),
+    onAddCase: () => openCaseOutline(),
+    onEditCase: () => {
+      const target = panelCaseId;
+      if (target == null) {
+        setEditDescriptionRequest((value) => value + 1);
+        return;
+      }
+      setPanelCase(target, "edit");
+    },
     onFocusNewSection: () => {
       document.getElementById("case-repository-new-section")?.focus();
     },
     onRunTest: () => {
       if (activeSuiteId) navigate(`/projects/${projectId}/runs/new?suiteId=${activeSuiteId}`);
     },
-    onEditSuiteDescription: () => setEditDescriptionRequest((value) => value + 1),
     onAddDefect: defectAddUrl
       ? () => {
           window.open(defectAddUrl, "_blank", "noopener,noreferrer");
@@ -239,7 +258,7 @@ export function TestCaseWorkspace() {
   const gridCols = treeSide === "right"
     ? "xl:grid-cols-[minmax(0,1fr)_260px]"
     : "xl:grid-cols-[260px_minmax(0,1fr)]";
-  const wideGridStyle: CSSProperties | undefined = wideSplitLayout
+  const sideGridStyle: CSSProperties | undefined = sideSplitLayout
     ? {
         gridTemplateColumns: panelOpen
           ? treeSide === "right"
@@ -256,8 +275,8 @@ export function TestCaseWorkspace() {
       projectId={projectId}
       suiteId={activeSuiteId}
       sections={sections}
-      addCaseRequest={addCaseRequest}
       copyMoveRequest={copyMoveRequest}
+      outlineRequest={outlineRequest}
       dnd={dnd}
       pendingMoveCopy={pendingMoveCopy}
       onPendingMoveCopyChange={setPendingMoveCopy}
@@ -272,19 +291,7 @@ export function TestCaseWorkspace() {
       mode={panelMode}
       onClose={closeDetail}
       onEdit={() => setPanelCase(panelCaseId, "edit")}
-      onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
-    />
-  ) : null;
-
-  const detailDrawer = panelOpen && !wideSplitLayout ? (
-    <CaseDetailSidePanel
-      projectId={projectId}
-      caseId={panelCaseId}
-      sectionId={selectedSectionId ?? sections[0]?.id ?? 0}
-      mode={panelMode}
-      presentation="drawer"
-      onClose={closeDetail}
-      onEdit={() => setPanelCase(panelCaseId, "edit")}
+      onCancelEdit={() => setPanelCase(panelCaseId, "view")}
       onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
     />
   ) : null;
@@ -296,6 +303,7 @@ export function TestCaseWorkspace() {
       selectedSectionId={selectedSectionId}
       onSelectSection={caseQueryScope === "all" ? setTreeFocusSection : setSelectedSection}
       onClearExpand={() => setPanelCase(null)}
+      onAddCaseToSection={(sectionId) => openCaseOutline(sectionId)}
       editDescriptionRequest={editDescriptionRequest}
       treeSide={treeSide}
       onToggleTreeSide={toggleTreeSide}
@@ -321,7 +329,11 @@ export function TestCaseWorkspace() {
       <CaseRepositoryContentHeader
         projectId={projectId}
         suiteId={activeSuiteId}
-        onAddCase={() => setAddCaseRequest((value) => value + 1)}
+        onAddCase={() => openCaseOutline()}
+        addTestCaseHref={buildAddCasePath(projectId, {
+          suiteId: activeSuiteId || undefined,
+          sectionId: selectedSectionId ?? sections[0]?.id ?? undefined
+        })}
         onCopyMoveCases={() => setCopyMoveRequest((value) => value + 1)}
       />
       <SuiteSwitcherBar
@@ -340,10 +352,13 @@ export function TestCaseWorkspace() {
           setSearchParams(next);
         }}
       />
-      <div className={["grid items-start gap-3", gridCols].join(" ")} style={wideGridStyle}>
+      <div className={["grid items-start gap-3", gridCols].join(" ")} style={sideGridStyle}>
         {treeSide === "left" ? sectionTree : null}
-        <div className="min-w-0">{caseList}</div>
-        {panelOpen && wideSplitLayout ? (
+        <div className="min-w-0">
+          {caseList}
+          {panelOpen && !sideSplitLayout ? <div className="mt-3">{detailPanel}</div> : null}
+        </div>
+        {panelOpen && sideSplitLayout ? (
           <div className="relative min-w-0">
             <div
               role="separator"
@@ -364,7 +379,6 @@ export function TestCaseWorkspace() {
         ) : null}
         {treeSide === "right" ? sectionTree : null}
       </div>
-      {detailDrawer}
     </WorkbenchPage>
   );
 }

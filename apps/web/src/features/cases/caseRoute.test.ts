@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCaseListPath, buildCaseRepositoryPath } from "./caseRoute";
+import {
+  applyCasePreviewSearchParams,
+  buildAddCasePath,
+  buildCaseListPath,
+  buildCaseRepositoryPath,
+  buildEditCasePath
+} from "./caseRoute";
 
 describe("buildCaseListPath", () => {
   it("builds list path with section and case", () => {
@@ -18,5 +24,40 @@ describe("buildCaseRepositoryPath", () => {
   it("serializes full repository query state", () => {
     const params = new URLSearchParams("q=login&focusCaseId=5&panelCaseId=5");
     expect(buildCaseRepositoryPath("p1", params)).toBe("/projects/p1/cases?q=login&focusCaseId=5&panelCaseId=5");
+  });
+});
+
+describe("buildAddCasePath", () => {
+  it("builds the dedicated add-case page with suite and section", () => {
+    expect(buildAddCasePath("p1", { suiteId: "9", sectionId: 4 })).toBe(
+      "/projects/p1/cases/new?suiteId=9&sectionId=4"
+    );
+  });
+});
+
+describe("buildEditCasePath", () => {
+  it("builds the dedicated edit-case page with suite and section", () => {
+    expect(buildEditCasePath("p1", 12, { suiteId: "9", sectionId: 4 })).toBe(
+      "/projects/p1/cases/12/edit?suiteId=9&sectionId=4"
+    );
+  });
+
+  it("keeps a return-to-page hint when editing from the full case page", () => {
+    expect(buildEditCasePath("p1", 12, { from: "page" })).toBe("/projects/p1/cases/12/edit?from=page");
+  });
+});
+
+describe("applyCasePreviewSearchParams", () => {
+  it("opens the side preview without dropping the section or clearing other list params", () => {
+    const params = applyCasePreviewSearchParams(
+      new URLSearchParams("sectionId=1&suiteId=1&q=login"),
+      44,
+      { sectionId: 1 }
+    );
+    expect(params.get("panelCaseId")).toBe("44");
+    expect(params.get("focusCaseId")).toBe("44");
+    expect(params.get("sectionId")).toBe("1");
+    expect(params.get("q")).toBe("login");
+    expect(params.get("panelMode")).toBeNull();
   });
 });

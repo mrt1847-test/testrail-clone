@@ -1,13 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentProps
-} from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { buildCasesPrintPath } from "../../print/api/printApi";
 
 import {
@@ -25,8 +17,7 @@ import { projectKeys, useProjectsQuery } from "../../projects/hooks/useProjectsA
 import { reportKeys } from "../../projects/hooks/reportKeys";
 import {
   apiCasePriorityValue,
-  apiCaseTypeValue,
-  draftStepsForTextPersist
+  apiCaseTypeValue
 } from "../utils/caseAuthoringInstructions";
 import {
   bulkArchiveCases,
@@ -34,9 +25,8 @@ import {
   bulkDeleteCases,
   bulkMoveCases,
   bulkUpdateCases,
-  updateCase,
   createCase,
-  createCaseStep,
+  updateCase,
   fetchSectionsForProject,
   positionCases
 } from "../api/catalogApi";
@@ -59,8 +49,8 @@ import { useSuiteCases } from "../hooks/useSuiteCases";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { sectionKeys } from "../hooks/useSections";
 import type { SectionNode, TestCase } from "../types";
-import { CaseAuthoringForm } from "./CaseAuthoringForm";
 import { CaseBulkRelocationDialog } from "./CaseBulkRelocationDialog";
+import { CaseListOutlineAdd } from "./CaseListOutlineAdd";
 import { CaseRepositoryToolbar } from "./CaseRepositoryToolbar";
 import { CaseQueryScopeControl } from "./CaseQueryScopeControl";
 import { CaseRow } from "./CaseRow";
@@ -80,41 +70,24 @@ import {
 import { sortSectionIdsDepthFirst } from "../utils/sectionTreeOrder";
 import { sectionDestinationOptions, sectionPathLabel } from "../utils/sectionTreeModel";
 import { sectionBlockAddCaseLabel } from "../utils/caseListRowPresentation";
+import { normalizeCaseOutlineTitle } from "../utils/caseOutlineTitle";
 
 type CaseListPaneProps = {
   projectId: string;
   suiteId: string;
-  addCaseRequest?: number;
   copyMoveRequest?: number;
+  outlineRequest?: { sectionId: number; nonce: number } | null;
   sections: SectionNode[];
   dnd?: CaseListDnD;
   pendingMoveCopy?: PendingMoveCopy | null;
   onPendingMoveCopyChange?: (pending: PendingMoveCopy | null) => void;
 };
 
-async function persistCreateDraftSteps(
-  caseId: number,
-  drafts: Array<{ description: string; expected: string }>
-): Promise<void> {
-  for (const row of drafts) {
-    const content = row.description.trim();
-    const expected = row.expected.trim();
-    if (content.length > 0) {
-      await createCaseStep(caseId, {
-        content,
-        expectedResult: expected.length > 0 ? expected : null
-      });
-    } else if (expected.length > 0) {
-      await createCaseStep(caseId, { content: "-", expectedResult: expected });
-    }
-  }
-}
-
 export function CaseListPane({
   projectId,
   suiteId,
-  addCaseRequest = 0,
   copyMoveRequest = 0,
+  outlineRequest = null,
   sections,
   dnd,
   pendingMoveCopy = null,
@@ -130,7 +103,6 @@ export function CaseListPane({
   const {
     selectedSectionId,
     panelCaseId,
-    panelMode,
     focusCaseId,
     setFocusCaseId,
     caseDisplay,
@@ -149,6 +121,7 @@ export function CaseListPane({
     applyRepositoryView,
     togglePanelCase,
     setPanelCase,
+    revealCasePreview,
     setSelectedSection,
     setTreeFocusSection
   } = useExpandedCase();
@@ -187,20 +160,15 @@ export function CaseListPane({
     queryFn: () => fetchCaseTemplates(projectId),
     enabled: Boolean(projectId)
   });
-  const [showAdd, setShowAdd] = useState(false);
-  const [createSectionOverride, setCreateSectionOverride] = useState<number | null>(null);
-  const effectiveCreateSectionId = createSectionOverride ?? createTargetSectionId;
-  const createSectionPath =
-    effectiveCreateSectionId != null ? sectionPathLabel(sections, effectiveCreateSectionId) : null;
-  const [createFormVersion, setCreateFormVersion] = useState(0);
-  const [createFormError, setCreateFormError] = useState<string | null>(null);
-  const [createFormDirty, setCreateFormDirty] = useState(false);
-  const [discardCreateOpen, setDiscardCreateOpen] = useState(false);
-  const createEditorRef = useRef<HTMLDivElement>(null);
-  const createReturnScrollRef = useRef<number | null>(null);
   const [searchDraft, setSearchDraft] = useState(caseFilters.q);
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(() => new Set());
+  const [outlineSectionId, setOutlineSectionId] = useState<number | null>(null);
+  const [outlineTitle, setOutlineTitle] = useState("");
+  const [outlineFeedback, setOutlineFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(
+    null
+  );
+  const [outlineFocusRequest, setOutlineFocusRequest] = useState(0);
   const selectionAnchorIndexRef = useRef<number | null>(null);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkOperationIds, setBulkOperationIds] = useState<number[] | null>(null);
@@ -416,21 +384,6 @@ export function CaseListPane({
   }, [caseFilters.q]);
 
   useEffect(() => {
-    if (!showAdd && createFormError != null) {
-      setCreateFormError(null);
-    }
-  }, [createFormError, showAdd]);
-
-  useEffect(() => {
-    if (addCaseRequest <= 0) return;
-    setBulkFeedback(null);
-    setCreateFormError(null);
-    setCreateSectionOverride(null);
-    setShowAdd(true);
-    setCreateFormVersion((value) => value + 1);
-  }, [addCaseRequest]);
-
-  useEffect(() => {
     if (copyMoveRequest <= 0) return;
     setBulkFeedback(null);
     if (selectedCaseIds.size === 0) {
@@ -478,15 +431,6 @@ export function CaseListPane({
   });
 
   useEffect(() => {
-    if (!showAdd) return;
-    if (createReturnScrollRef.current == null) createReturnScrollRef.current = window.scrollY;
-    const frame = window.requestAnimationFrame(() =>
-      createEditorRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })
-    );
-    return () => window.cancelAnimationFrame(frame);
-  }, [showAdd, createFormVersion]);
-
-  useEffect(() => {
     const normalized = deferredSearch.trim();
     if (normalized !== caseFilters.q) {
       setCaseFilters({ q: normalized });
@@ -502,7 +446,7 @@ export function CaseListPane({
   }, [projectId, suiteId]);
 
   useEffect(() => {
-    if (isLoading || !suiteCaseData) return;
+    if (isLoading || isFetching || !suiteCaseData) return;
     const visibleIds = new Set(cases.map((row) => row.id));
     if (selectedCaseIds.size > 0) {
       const kept = [...selectedCaseIds].filter((id) => visibleIds.has(id));
@@ -517,7 +461,7 @@ export function CaseListPane({
       setPanelCase(null);
       setScopeNotice((current) => current ?? "Closed the case detail because it is outside this scope.");
     }
-  }, [cases, isLoading, panelCaseId, selectedCaseIds, setPanelCase, suiteCaseData]);
+  }, [cases, isFetching, isLoading, panelCaseId, selectedCaseIds, setPanelCase, suiteCaseData]);
 
   useEffect(() => {
     if (panelCaseId != null) setFocusCaseId(panelCaseId);
@@ -554,10 +498,6 @@ export function CaseListPane({
       togglePanelCase(caseId);
     },
     onClosePanel: () => {
-      if (panelCaseId != null && panelMode === "edit") {
-        setPanelCase(panelCaseId, "view");
-        return;
-      }
       setPanelCase(null);
     }
   });
@@ -577,97 +517,66 @@ export function CaseListPane({
     void qc.invalidateQueries({ queryKey: reportKeys.all(targetProjectId) });
   };
 
-  const createEditorDirty = createFormDirty;
-
-  const closeCreateEditor = () => {
-    const returnScroll = createReturnScrollRef.current;
-    createReturnScrollRef.current = null;
-    setShowAdd(false);
-    setCreateSectionOverride(null);
-    setCreateFormError(null);
-    setCreateFormDirty(false);
-    setDiscardCreateOpen(false);
-    setCreateFormVersion((current) => current + 1);
-    if (returnScroll != null) {
-      window.requestAnimationFrame(() => window.scrollTo({ top: returnScroll, behavior: "auto" }));
+  const outlineCaseMutation = useMutation({
+    mutationFn: ({ sectionId, title }: { sectionId: number; title: string }) => createCase(sectionId, { title }),
+    onSuccess: (created, variables) => {
+      invalidateCases();
+      setOutlineTitle("");
+      setOutlineFeedback({
+        tone: "success",
+        message: `${created.caseCode} saved. Ready for another title.`
+      });
+      setOutlineFocusRequest((current) => current + 1);
+      revealCasePreview(created.id, { sectionId: variables.sectionId });
+    },
+    onError: (error) => {
+      setOutlineFeedback({
+        tone: "error",
+        message: `${extractApiErrorMessage(error, "Could not create the case.")} Your title is still here.`
+      });
     }
-  };
+  });
 
   const openAddCaseForSection = (sectionId: number) => {
     if (isProjectArchived) return;
-    setBulkFeedback(null);
-    setCreateFormError(null);
-    setCreateSectionOverride(sectionId);
-    setShowAdd(true);
-    setCreateFormVersion((value) => value + 1);
+    setOutlineTitle("");
+    setOutlineFeedback(null);
+    setOutlineSectionId(sectionId);
+    setOutlineFocusRequest((current) => current + 1);
+    setCollapsedGroupKeys((current) => {
+      const next = new Set(current);
+      next.delete(`section-${sectionId}`);
+      return next;
+    });
+    if (caseQueryScope === "all") setTreeFocusSection(sectionId);
+    else setSelectedSection(sectionId);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`case-outline-${sectionId}`)?.scrollIntoView({ block: "nearest" });
+    });
   };
 
-  const createCaseMutation = useMutation({
-    mutationFn: async (input: {
-      title: string;
-      preconditions: string;
-      estimate: string;
-      references: string;
-      expectedResult: string;
-      stepsText: string;
-      draftSteps: Array<{ description: string; expected: string }>;
-      instructionKind: "text" | "steps" | "other";
-      caseType: "Functional" | "Integration" | "Regression";
-      priority: "High" | "Medium" | "Low";
-      mission: string;
-      goals: string;
-      aiInput: string;
-      aiExpectedOutput: string;
-      templateId: string | null;
-      customValues: Record<string, string | number | boolean | string[] | null>;
-    }) => {
-      if (effectiveCreateSectionId == null) {
-        throw new Error("Select a section before adding a test case.");
-      }
-      const created = await createCase(effectiveCreateSectionId, {
-        title: input.title,
-        preconditions: input.preconditions,
-        estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
-        expectedResult: input.expectedResult.trim().length > 0 ? input.expectedResult.trim() : null,
-        mission: input.mission.trim().length > 0 ? input.mission.trim() : null,
-        goals: input.goals.trim().length > 0 ? input.goals.trim() : null,
-        aiInput: input.aiInput.trim().length > 0 ? input.aiInput.trim() : null,
-        aiExpectedOutput: input.aiExpectedOutput.trim().length > 0 ? input.aiExpectedOutput.trim() : null,
-        caseTemplateId: input.templateId ? Number(input.templateId) : null,
-        caseType: apiCaseTypeValue(input.caseType),
-        priority: apiCasePriorityValue(input.priority),
-        refs: input.references.trim().length > 0 ? input.references.trim() : null,
-        customValues: input.customValues
-      });
-      const stepsToPersist =
-        input.instructionKind === "text"
-          ? draftStepsForTextPersist(input.stepsText).map(({ description, expected }) => ({ description, expected }))
-          : input.instructionKind === "steps"
-            ? input.draftSteps
-            : [];
-      let stepsWarning: string | null = null;
-      try {
-        await persistCreateDraftSteps(created.id, stepsToPersist);
-      } catch (error) {
-        stepsWarning = extractApiErrorMessage(error, "Could not save steps.");
-      }
-      return { created, stepsWarning };
-    },
-    onSuccess: ({ created, stepsWarning }) => {
-      invalidateCases();
-      closeCreateEditor();
-      setPanelCase(created.id, "view");
-      if (stepsWarning) {
-        setBulkFeedback({
-          tone: "partial",
-          message: `Case was created, but saving one or more steps failed (${stepsWarning}). Open the case and add steps from edit mode.`
-        });
-      }
-    },
-    onError: (error) => {
-      setCreateFormError(extractApiErrorMessage(error, "Could not create case."));
+  const closeOutline = () => {
+    if (outlineCaseMutation.isPending) return;
+    setOutlineSectionId(null);
+    setOutlineTitle("");
+    setOutlineFeedback(null);
+  };
+
+  const submitOutlineCase = () => {
+    if (outlineSectionId == null || outlineCaseMutation.isPending) return;
+    const title = normalizeCaseOutlineTitle(outlineTitle);
+    if (title == null) {
+      setOutlineFeedback({ tone: "error", message: "Enter a case title before saving." });
+      return;
     }
-  });
+    setOutlineFeedback(null);
+    outlineCaseMutation.mutate({ sectionId: outlineSectionId, title });
+  };
+
+  useEffect(() => {
+    if (outlineRequest == null) return;
+    openAddCaseForSection(outlineRequest.sectionId);
+  }, [outlineRequest?.nonce, outlineRequest?.sectionId]);
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (caseIds: number[]) => bulkDeleteCases(projectId, caseIds),
@@ -750,9 +659,9 @@ export function CaseListPane({
       return;
     }
     if (selectedCaseIdList.length === 1) {
-      setShowAdd(false);
-      setFocusCaseId(selectedCaseIdList[0]!);
-      setPanelCase(selectedCaseIdList[0]!, "edit");
+      const caseId = selectedCaseIdList[0]!;
+      setFocusCaseId(caseId);
+      setPanelCase(caseId, "edit");
       return;
     }
     setBulkOperationIds(selectedCaseIdList);
@@ -1083,6 +992,40 @@ export function CaseListPane({
     clearCaseFilters();
   };
 
+  const renderSectionOutline = (sectionId: number, sectionName: string) => {
+    if (isProjectArchived || caseFilters.state === "archived") return null;
+    if (outlineSectionId === sectionId) {
+      return (
+        <CaseListOutlineAdd
+          sectionId={sectionId}
+          sectionName={sectionName}
+          title={outlineTitle}
+          onTitleChange={(value) => {
+            setOutlineTitle(value);
+            setOutlineFeedback(null);
+          }}
+          feedback={outlineFeedback}
+          isPending={outlineCaseMutation.isPending}
+          focusRequest={outlineFocusRequest}
+          onSubmit={submitOutlineCase}
+          onCancel={closeOutline}
+        />
+      );
+    }
+    return (
+      <div className="px-3 pb-2 pt-1">
+        <button
+          type="button"
+          className="inline-flex min-h-8 items-center rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          aria-label={sectionBlockAddCaseLabel(sectionName)}
+          onClick={() => openAddCaseForSection(sectionId)}
+        >
+          Add Case
+        </button>
+      </div>
+    );
+  };
+
   const renderCaseRow = (item: TestCase) => {
     const isDraggingThis = dnd?.draggingCaseIds?.includes(item.id) ?? false;
     const dropIndicator = dnd?.hoveredRow?.caseId === item.id ? dnd.hoveredRow.position : null;
@@ -1131,7 +1074,6 @@ export function CaseListPane({
           });
         }}
         onOpenCase={() => {
-          setShowAdd(false);
           setFocusCaseId(item.id);
           setPanelCase(item.id, "view");
         }}
@@ -1148,12 +1090,10 @@ export function CaseListPane({
         }
         isRenamingTitle={renameCaseMutation.isPending && renameCaseMutation.variables?.caseId === item.id}
         onTogglePanel={() => {
-          setShowAdd(false);
           setFocusCaseId(item.id);
           togglePanelCase(item.id);
         }}
         onEdit={() => {
-          setShowAdd(false);
           setFocusCaseId(item.id);
           setPanelCase(item.id, "edit");
         }}
@@ -1230,54 +1170,6 @@ export function CaseListPane({
           </div>
           <CaseRepositoryToolbar {...toolbarProps} />
 
-          {showAdd ? (
-            <div ref={createEditorRef} className="scroll-mt-3 border-b border-slate-200 bg-slate-50 p-4">
-              <h3 className="mb-1 text-lg font-semibold text-slate-900">New test case</h3>
-              <CaseAuthoringForm
-                projectId={projectId}
-                valueKey={`create:${selectedSectionId ?? "none"}:${createFormVersion}`}
-                sectionPath={createSectionPath}
-                initialTitle=""
-                initialPreconditions=""
-                initialCustomValues={{}}
-                customFields={customFields}
-                templates={caseTemplates}
-                submitLabel={createCaseMutation.isPending ? "Creating..." : "Create"}
-                isSubmitting={createCaseMutation.isPending}
-                submitError={createFormError}
-                onDirtyChange={setCreateFormDirty}
-                onSubmit={async (input) => {
-                  setCreateFormError(null);
-                  await createCaseMutation.mutateAsync({
-                    title: input.title,
-                    preconditions: input.preconditions,
-                    estimate: input.estimate,
-                    references: input.references,
-                    expectedResult: input.expectedResult,
-                    stepsText: input.stepsText,
-                    draftSteps: input.draftSteps.map(({ description, expected }) => ({ description, expected })),
-                    instructionKind: input.instructionKind,
-                    caseType: input.caseType,
-                    priority: input.priority,
-                    mission: input.mission,
-                    goals: input.goals,
-                    aiInput: input.aiInput,
-                    aiExpectedOutput: input.aiExpectedOutput,
-                    templateId: input.templateId,
-                    customValues: input.customValues
-                  });
-                }}
-                onCancel={() => {
-                  if (createEditorDirty) {
-                    setDiscardCreateOpen(true);
-                    return;
-                  }
-                  closeCreateEditor();
-                }}
-              />
-            </div>
-          ) : null}
-
           <CaseSelectionActionBar
             selectedCount={selectedCaseIds.size}
             loadedCount={visibleCaseIds.length}
@@ -1303,7 +1195,7 @@ export function CaseListPane({
             onDismissFeedback={() => setBulkFeedback(null)}
           />
 
-          {cases.length === 0 && !showAdd ? (
+          {cases.length === 0 ? (
             <div className="px-3 py-4 text-sm text-slate-600">
               <p>
                 {activeFilterCount > 0
@@ -1315,7 +1207,7 @@ export function CaseListPane({
                   ? "Clear filters or choose another section."
                   : caseFilters.state === "archived"
                     ? "Archive cases from the active list or switch sections."
-                    : "Use Add Case above, or pick another section."}
+                    : "Type a title below to add a case, then Edit it from the preview."}
               </p>
               {activeFilterCount > 0 ? (
                 <button
@@ -1325,6 +1217,11 @@ export function CaseListPane({
                 >
                   Clear filters
                 </button>
+              ) : createTargetSectionId != null ? (
+                renderSectionOutline(
+                  createTargetSectionId,
+                  sectionPathLabel(sections, createTargetSectionId) || "this section"
+                )
               ) : null}
             </div>
           ) : showGroupHeaders ? (
@@ -1374,7 +1271,6 @@ export function CaseListPane({
                               onClick={() => {
                                 if (caseQueryScope === "all") setTreeFocusSection(group.sectionId!);
                                 else setSelectedSection(group.sectionId!);
-                                setShowAdd(false);
                               }}
                             >
                               {group.label}
@@ -1391,18 +1287,9 @@ export function CaseListPane({
                     ) : null}
                     <div id={blockId} hidden={collapsed}>
                       {group.cases.map((item) => renderCaseRow(item))}
-                      {isSectionGroup && group.sectionId != null && !isProjectArchived && caseFilters.state !== "archived" ? (
-                        <div className="px-3 pb-2 pt-1">
-                          <button
-                            type="button"
-                            className="inline-flex min-h-8 items-center rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                            aria-label={sectionBlockAddCaseLabel(group.label)}
-                            onClick={() => openAddCaseForSection(group.sectionId!)}
-                          >
-                            Add Case
-                          </button>
-                        </div>
-                      ) : null}
+                      {isSectionGroup && group.sectionId != null
+                        ? renderSectionOutline(group.sectionId, group.label)
+                        : null}
                       {dnd?.isDragging && isSectionGroup && group.sectionId != null ? (
                         <div
                           className={[
@@ -1431,10 +1318,23 @@ export function CaseListPane({
                   </div>
                 );
               })}
+              {outlineSectionId != null &&
+              !repositoryGroups.some((group) => group.sectionId === outlineSectionId)
+                ? renderSectionOutline(
+                    outlineSectionId,
+                    sectionPathLabel(sections, outlineSectionId) || "this section"
+                  )
+                : null}
             </div>
           ) : (
             <div>
               {flatCases.map((item) => renderCaseRow(item))}
+              {createTargetSectionId != null
+                ? renderSectionOutline(
+                    createTargetSectionId,
+                    sectionPathLabel(sections, createTargetSectionId) || "this section"
+                  )
+                : null}
               {dnd?.isDragging && createTargetSectionId != null ? (
                 <div
                   className={[
@@ -1464,17 +1364,6 @@ export function CaseListPane({
         </section>
 
       </div>
-
-      <ConfirmDialog
-        open={discardCreateOpen}
-        title="Discard unsaved case?"
-        description="Your changes to this new test case will be lost."
-        cancelLabel="Keep editing"
-        confirmLabel="Discard changes"
-        variant="danger"
-        onCancel={() => setDiscardCreateOpen(false)}
-        onConfirm={closeCreateEditor}
-      />
 
       <ConfirmDialog
         open={bulkUpdateOpen}

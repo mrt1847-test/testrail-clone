@@ -1,21 +1,24 @@
 import { useEffect, useId, useRef, type FormEvent } from "react";
 
-type QuickAddFeedback = {
+type OutlineFeedback = {
   tone: "success" | "error";
   message: string;
 } | null;
 
 type Props = {
+  sectionId: number;
   sectionName: string;
   title: string;
   onTitleChange: (value: string) => void;
-  feedback: QuickAddFeedback;
+  feedback: OutlineFeedback;
   isPending: boolean;
   focusRequest: number;
   onSubmit: () => void;
+  onCancel?: () => void;
 };
 
-export function SectionTreeQuickAddCase({
+export function CaseListOutlineAdd({
+  sectionId,
   sectionName,
   title,
   onTitleChange,
@@ -23,13 +26,14 @@ export function SectionTreeQuickAddCase({
   isPending,
   focusRequest,
   onSubmit,
+  onCancel
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const statusId = useId();
 
   useEffect(() => {
     if (!isPending) inputRef.current?.focus();
-  }, [focusRequest]);
+  }, [focusRequest, isPending]);
 
   useEffect(() => {
     if (!isPending && feedback) inputRef.current?.focus();
@@ -42,19 +46,15 @@ export function SectionTreeQuickAddCase({
 
   return (
     <form
-      className="grid gap-1 py-1 pl-6 pr-1"
+      id={`case-outline-${sectionId}`}
+      className="border-t border-slate-200 bg-white px-3 py-2"
       onSubmit={handleSubmit}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
       aria-busy={isPending}
     >
       <label className="sr-only" htmlFor={`${statusId}-title`}>
         Add case to {sectionName}
       </label>
-      <div className="flex min-w-0 items-center gap-1">
-        <span aria-hidden className="w-4 shrink-0 text-center text-slate-400">
-          +
-        </span>
+      <div className="flex min-w-0 items-center gap-2">
         <input
           ref={inputRef}
           id={`${statusId}-title`}
@@ -62,14 +62,20 @@ export function SectionTreeQuickAddCase({
           value={title}
           disabled={isPending}
           aria-describedby={statusId}
-          placeholder={`Add case to ${sectionName}…`}
-          className="min-w-0 flex-1 rounded px-2 py-1.5 text-xs text-slate-900 outline-none ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 disabled:cursor-wait disabled:bg-slate-100"
+          placeholder="Case title — press Enter"
+          className="min-w-0 flex-1 rounded border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:bg-slate-100"
           onChange={(event) => onTitleChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCancel?.();
+            }
+          }}
         />
         <button
           type="submit"
           disabled={isPending || title.trim().length === 0}
-          className="shrink-0 rounded bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isPending ? "Saving…" : "Add"}
         </button>
@@ -78,7 +84,7 @@ export function SectionTreeQuickAddCase({
         id={statusId}
         role={feedback?.tone === "error" ? "alert" : "status"}
         aria-live="polite"
-        className={`flex items-center justify-between gap-2 pl-5 text-[11px] ${
+        className={`mt-1 flex items-center justify-between gap-2 text-[11px] ${
           feedback?.tone === "error"
             ? "text-red-700"
             : feedback?.tone === "success"
@@ -86,9 +92,7 @@ export function SectionTreeQuickAddCase({
               : "text-slate-500"
         }`}
       >
-        <span>
-          {isPending ? "Saving case…" : feedback?.message ?? ""}
-        </span>
+        <span>{isPending ? "Saving case…" : feedback?.message ?? "Title-only case. Edit later to add steps."}</span>
         {feedback?.tone === "error" && !isPending ? (
           <button
             type="submit"

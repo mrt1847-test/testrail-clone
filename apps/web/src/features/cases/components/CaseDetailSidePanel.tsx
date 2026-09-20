@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "../../../shared/ui/Button";
-import { Drawer } from "../../../shared/ui/Drawer";
 import { OverflowMenu } from "../../../shared/ui/OverflowMenu";
 import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { useToast } from "../../../shared/ui/toast/ToastProvider";
@@ -17,32 +16,31 @@ type Props = {
   projectId: string;
   caseId: number;
   sectionId: number | null;
-  mode: "view" | "edit";
+  mode?: "view" | "edit";
   onClose: () => void;
   onEdit: () => void;
+  onCancelEdit: () => void;
   onDuplicated: (copiedCaseId: number) => void;
-  presentation?: "inline" | "drawer";
 };
 
 export function CaseDetailSidePanel({
   projectId,
   caseId,
   sectionId,
-  mode,
+  mode = "view",
   onClose,
   onEdit,
-  onDuplicated,
-  presentation = "inline"
+  onCancelEdit,
+  onDuplicated
 }: Props) {
   const navigate = useNavigate();
-  const isEditing = mode === "edit";
   const { data: casePreview } = useCaseDetail(caseId);
   const { openEntityContextMenu } = useEntityContextMenu();
   const { showToast } = useToast();
   const heading = caseDetailPanelTitle(casePreview?.caseCode, casePreview?.title);
 
   const utilityGroups = useMemo(() => {
-    const groups = caseDetailUtilityMenuGroups({ projectId, caseId, sectionId, isEditing });
+    const groups = caseDetailUtilityMenuGroups({ projectId, caseId, sectionId, isEditing: mode === "edit" });
     const idText = formatEntityDisplayId("case", caseId, { caseCode: casePreview?.caseCode });
     const shareUrl = buildAbsoluteShareUrl(
       buildEntitySharePath(projectId, "case", caseId, { sectionId })
@@ -73,15 +71,15 @@ export function CaseDetailSidePanel({
         return item;
       })
     }));
-  }, [caseId, casePreview?.caseCode, isEditing, projectId, sectionId, showToast]);
+  }, [caseId, casePreview?.caseCode, mode, projectId, sectionId, showToast]);
 
   const primaryActions = (
     <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
-      {!isEditing ? (
+      {casePreview?.archivedAt || mode === "edit" ? null : (
         <Button variant="secondary" size="sm" onClick={onEdit}>
           Edit
         </Button>
-      ) : null}
+      )}
       <OverflowMenu label="Case utilities" size="sm" compact groups={utilityGroups} />
     </div>
   );
@@ -91,32 +89,20 @@ export function CaseDetailSidePanel({
       projectId={projectId}
       caseId={caseId}
       layout="panel"
+      mode={mode}
       showHeading={false}
       onClose={onClose}
+      onEdit={onEdit}
+      onCancelEdit={onCancelEdit}
       onDeleted={() => navigate(buildCaseListPath(projectId, { sectionId }))}
       onDuplicated={onDuplicated}
     />
   );
 
-  if (presentation === "drawer") {
-    return (
-      <Drawer
-        open
-        title={heading}
-        onClose={onClose}
-        widthClassName="max-w-2xl"
-        footer={null}
-      >
-        <div className="mb-3 flex flex-nowrap items-center justify-end gap-1.5">{primaryActions}</div>
-        {body}
-      </Drawer>
-    );
-  }
-
   return (
     <aside
       className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:max-h-[calc(100vh-8rem)]"
-      aria-label="Test case preview"
+      aria-label={mode === "edit" ? "Edit test case" : "Test case preview"}
       onContextMenu={(event) =>
         openEntityContextMenu(event, {
           projectId,

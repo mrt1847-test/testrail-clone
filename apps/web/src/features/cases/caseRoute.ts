@@ -39,3 +39,42 @@ export function buildCaseDetailPath(
   const query = params.toString();
   return `/projects/${projectId}/cases/${caseId}${query ? `?${query}` : ""}`;
 }
+
+export function buildAddCasePath(
+  projectId: string,
+  options?: { suiteId?: string | null; sectionId?: number | null }
+) {
+  const params = new URLSearchParams();
+  if (options?.suiteId) params.set("suiteId", options.suiteId);
+  if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
+  const query = params.toString();
+  return `/projects/${projectId}/cases/new${query ? `?${query}` : ""}`;
+}
+
+export function buildEditCasePath(
+  projectId: string,
+  caseId: number,
+  options?: { suiteId?: string | null; sectionId?: number | null; from?: "page" | "list" }
+) {
+  const params = new URLSearchParams();
+  if (options?.suiteId) params.set("suiteId", options.suiteId);
+  if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
+  if (options?.from === "page") params.set("from", "page");
+  const query = params.toString();
+  return `/projects/${projectId}/cases/${caseId}/edit${query ? `?${query}` : ""}`;
+}
+
+/** Open the list QPane for a case without dropping the current section or other list params. */
+export function applyCasePreviewSearchParams(
+  params: URLSearchParams,
+  caseId: number,
+  options?: { sectionId?: number | null }
+) {
+  params.delete("caseId");
+  params.delete("mode");
+  params.delete("panelMode");
+  params.set("panelCaseId", String(caseId));
+  params.set("focusCaseId", String(caseId));
+  if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
+  return params;
+}

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 type Input = {
   enabled: boolean;
   onAddCase?: () => void;
+  onEditCase?: () => void;
   onFocusNewSection?: () => void;
   onRunTest?: () => void;
   onEditSuiteDescription?: () => void;
@@ -18,6 +19,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function useCaseRepositoryKeyboard({
   enabled,
   onAddCase,
+  onEditCase,
   onFocusNewSection,
   onRunTest,
   onEditSuiteDescription,
@@ -46,9 +48,16 @@ export function useCaseRepositoryKeyboard({
         onRunTest();
         return;
       }
-      if (key === "e" && onEditSuiteDescription) {
-        event.preventDefault();
-        onEditSuiteDescription();
+      if (key === "e") {
+        if (onEditCase) {
+          event.preventDefault();
+          onEditCase();
+          return;
+        }
+        if (onEditSuiteDescription) {
+          event.preventDefault();
+          onEditSuiteDescription();
+        }
         return;
       }
       if (key === "d" && onAddDefect) {
@@ -59,5 +68,5 @@ export function useCaseRepositoryKeyboard({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, onAddCase, onAddDefect, onEditSuiteDescription, onFocusNewSection, onRunTest]);
+  }, [enabled, onAddCase, onAddDefect, onEditCase, onEditSuiteDescription, onFocusNewSection, onRunTest]);
 }
