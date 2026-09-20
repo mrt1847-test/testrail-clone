@@ -55,28 +55,100 @@ export function resolveMenuTrigger(
 }
 
 let pendingMenuTrigger: HTMLElement | null = null;
+let pendingMenuTriggerSelector: string | null = null;
+/** Survives React Strict Mode double-invoke of useModalFocus take/clear. */
+let lastMenuTriggerSelector: string | null = null;
+
+export function rememberModalRestoreTarget(element: HTMLElement | null) {
+  if (!element?.isConnected) {
+    pendingMenuTrigger = null;
+    pendingMenuTriggerSelector = null;
+    return;
+  }
+  pendingMenuTrigger = element;
+  const aria = element.getAttribute("aria-label");
+  pendingMenuTriggerSelector = aria
+    ? `button[aria-label="${aria.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`
+    : null;
+  if (pendingMenuTriggerSelector) {
+    lastMenuTriggerSelector = pendingMenuTriggerSelector;
+  }
+}
 
 function rememberMenuTrigger(event: Event) {
   const target = event.target;
   if (!(target instanceof Element)) return;
-  const item = target.closest("[role='menuitem']");
+  const item = target.closest("[role='menuitem'], [role='menuitemcheckbox']");
   if (!item) return;
   const trigger = resolveMenuTrigger(item);
-  if (trigger) pendingMenuTrigger = trigger;
+  if (trigger) rememberModalRestoreTarget(trigger);
 }
 
 if (typeof document !== "undefined") {
   document.addEventListener("click", rememberMenuTrigger, true);
 }
 
+function resolvePendingMenuTrigger(): HTMLElement | null {
+  if (pendingMenuTrigger?.isConnected) return pendingMenuTrigger;
+  const selector = pendingMenuTriggerSelector ?? lastMenuTriggerSelector;
+  if (selector && typeof document !== "undefined") {
+    const found = document.querySelector(selector);
+    if (found instanceof HTMLElement) return found;
+  }
+  return null;
+}
+
 function takeRestoreTarget(): HTMLElement | null {
-  const remembered = pendingMenuTrigger?.isConnected ? pendingMenuTrigger : null;
+  const remembered = resolvePendingMenuTrigger();
   pendingMenuTrigger = null;
+  pendingMenuTriggerSelector = null;
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  if (active && active.isConnected && active !== document.body && active.getAttribute("role") !== "menuitem") {
+  const activeRole = active?.getAttribute("role");
+  const activeIsMenuItem = activeRole === "menuitem" || activeRole === "menuitemcheckbox";
+  if (active && active.isConnected && active !== document.body && !activeIsMenuItem) {
+    // Prefer a remembered menu trigger over transient dialog/menu focus during Strict Mode remounts.
+    if (remembered && active.closest("[data-shared-dialog], [role='menu']")) {
+      return remembered;
+    }
     return active;
   }
-  return remembered ?? (active?.isConnected ? active : null);
+  return remembered;
+}
+
+function selectorForFocusTarget(element: HTMLElement | null): string | null {
+  if (element) {
+    const aria = element.getAttribute("aria-label");
+    if (aria) {
+      return `button[aria-label="${aria.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+    }
+    if (element.id) return `[id="${element.id.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+  }
+  return lastMenuTriggerSelector;
+}
+
+function restoreFocusTarget(element: HTMLElement | null, selector: string | null) {
+  const tryFocus = () => {
+    const connected = element?.isConnected ? element : null;
+    const bySelector =
+      selector && typeof document !== "undefined" ? document.querySelector(selector) : null;
+    const target =
+      connected ?? (bySelector instanceof HTMLElement ? bySelector : null);
+    if (!target) return false;
+    target.focus();
+    return document.activeElement === target;
+  };
+  // Wait until #root inert is cleared (Dialog effect cleanup), then retry briefly.
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (tryFocus()) return;
+      window.setTimeout(() => {
+        if (tryFocus()) return;
+        window.setTimeout(() => {
+          tryFocus();
+        }, 50);
+      }, 0);
+    });
+  });
 }
 
 type UseModalFocusInput = {
@@ -102,6 +174,7 @@ export function useModalFocus({
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = takeRestoreTarget();
+    const restoreSelector = selectorForFocusTarget(previouslyFocused);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusFrame = window.requestAnimationFrame(() => {
@@ -118,9 +191,7 @@ export function useModalFocus({
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = previousOverflow;
-      window.requestAnimationFrame(() => {
-        if (previouslyFocused?.isConnected) previouslyFocused.focus();
-      });
+      restoreFocusTarget(previouslyFocused, restoreSelector);
     };
   }, [containerRef, initialFocusRef, open]);
 }

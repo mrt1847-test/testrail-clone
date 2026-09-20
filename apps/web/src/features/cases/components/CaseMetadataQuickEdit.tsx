@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CustomFieldValueInput } from "../../../shared/customFields/CustomFieldValueInput";
 import {
@@ -8,9 +8,10 @@ import {
 import { updateCase } from "../api/catalogApi";
 import { extractApiErrorMessage } from "../caseErrors";
 import { joinCaseLabels, parseCaseLabels } from "../utils/caseLabels";
+import { mergeCaseRefs } from "../utils/caseRefs";
 import type { CaseAuthoringCustomFieldDefinition } from "./CaseAuthoringForm";
 import { LabelsInput } from "./LabelsInput";
-import { ReferencesInput } from "./ReferencesInput";
+import { ReferencesInput, type ReferencesInputHandle } from "./ReferencesInput";
 
 type CaseMetadataQuickEditProps = {
   projectId: string;
@@ -35,6 +36,8 @@ export function CaseMetadataQuickEdit({
 }: CaseMetadataQuickEditProps) {
   const activeFields = useMemo(() => customFields.filter((field) => field.isActive), [customFields]);
   const [refsDraft, setRefsDraft] = useState(references);
+  const [refsInputDraft, setRefsInputDraft] = useState("");
+  const referencesInputRef = useRef<ReferencesInputHandle | null>(null);
   const [labelsDraft, setLabelsDraft] = useState(joinCaseLabels(labels));
   const [valuesDraft, setValuesDraft] = useState<Record<string, CustomFieldScalar>>(customValues);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -43,6 +46,7 @@ export function CaseMetadataQuickEdit({
 
   useEffect(() => {
     setRefsDraft(references);
+    setRefsInputDraft("");
     setLabelsDraft(joinCaseLabels(labels));
     setValuesDraft(customValues);
     setFieldErrors({});
@@ -64,8 +68,11 @@ export function CaseMetadataQuickEdit({
     setIsSaving(true);
     setSaveError(null);
     try {
+      const submittedRefs =
+        referencesInputRef.current?.flush() ?? mergeCaseRefs(refsDraft, refsInputDraft);
+      setRefsInputDraft("");
       await updateCase(caseId, {
-        refs: refsDraft.trim().length > 0 ? refsDraft.trim() : null,
+        refs: submittedRefs.trim().length > 0 ? submittedRefs.trim() : null,
         labels: parseCaseLabels(labelsDraft),
         customValues: valuesDraft,
         expectedVersion: lockVersion
@@ -97,7 +104,14 @@ export function CaseMetadataQuickEdit({
       <div className="mt-3 grid gap-4">
         <label className="grid gap-1 text-sm text-slate-700">
           <span className="text-xs font-medium text-slate-600">References</span>
-          <ReferencesInput projectId={projectId} value={refsDraft} onChange={setRefsDraft} disabled={isSaving} />
+          <ReferencesInput
+            ref={referencesInputRef}
+            projectId={projectId}
+            value={refsDraft}
+            onChange={setRefsDraft}
+            onDraftChange={setRefsInputDraft}
+            disabled={isSaving}
+          />
         </label>
         <label className="grid gap-1 text-sm text-slate-700">
           <span className="text-xs font-medium text-slate-600">Labels</span>

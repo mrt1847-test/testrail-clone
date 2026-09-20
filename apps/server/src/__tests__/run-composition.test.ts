@@ -222,3 +222,197 @@ describe.skipIf(!integrationEnabled)("run composition API (prisma)", () => {
     }
   });
 });
+
+describe("run composition membership (in-memory)", () => {
+  it("All includes new cases on create; Dynamic follows priority; Selected stays fixed", async () => {
+    process.env.USE_IN_MEMORY_REPOSITORY = "true";
+    const { buildApp } = await import("../app.js");
+    const app = buildApp();
+    await app.ready();
+    try {
+      const loginRes = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "admin@example.com", password: "password" }
+      });
+      expect(loginRes.statusCode).toBe(200);
+      const { token } = loginRes.json() as { token: string };
+      const headers = { authorization: `Bearer ${token}` };
+
+      const projectRes = await app.inject({
+        method: "POST",
+        url: "/api/projects",
+        headers,
+        payload: { name: `UI-058 membership ${Date.now()}` }
+      });
+      const projectId = (projectRes.json() as { data: { id: string } }).data.id;
+
+      const suitesRes = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/suites`,
+        headers
+      });
+      const suiteId = (suitesRes.json() as { data: Array<{ id: string; isMaster?: boolean }> }).data.find(
+        (suite) => suite.isMaster
+      )?.id;
+      expect(suiteId).toBeTruthy();
+
+      const sectionRes = await app.inject({
+        method: "POST",
+        url: `/api/suites/${suiteId}/sections`,
+        headers,
+        payload: { name: "S1" }
+      });
+      const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+
+      const caseHighRes = await app.inject({
+        method: "POST",
+        url: `/api/sections/${sectionId}/cases`,
+        headers,
+        payload: { title: "C-high", priority: "high" }
+      });
+      const caseHighId = (caseHighRes.json() as { data: { id: string } }).data.id;
+
+      const caseMedRes = await app.inject({
+        method: "POST",
+        url: `/api/sections/${sectionId}/cases`,
+        headers,
+        payload: { title: "C-med", priority: "medium" }
+      });
+      const caseMedId = (caseMedRes.json() as { data: { id: string } }).data.id;
+
+      const allRunRes = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/runs`,
+        headers,
+        payload: {
+          suiteId,
+          name: "All live",
+          includeAll: true,
+          compositionMode: "include_all_live"
+        }
+      });
+      expect(allRunRes.statusCode).toBe(200);
+      const allRunId = (allRunRes.json() as { run: { id: string } }).run.id;
+
+      const dynamicRunRes = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/runs`,
+        headers,
+        payload: {
+          suiteId,
+          name: "Dynamic high",
+          includeAll: false,
+          compositionMode: "dynamic_filter",
+          filterDefinition: { priority: "high", state: "active" }
+        }
+      });
+      expect(dynamicRunRes.statusCode).toBe(200);
+      const dynamicRunId = (dynamicRunRes.json() as { run: { id: string } }).run.id;
+
+      const selectedRunRes = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/runs`,
+        headers,
+        payload: {
+          suiteId,
+          name: "Selected fixed",
+          includeAll: false,
+          caseIds: [caseHighId],
+          compositionMode: "static"
+        }
+      });
+      expect(selectedRunRes.statusCode).toBe(200);
+      const selectedRunId = (selectedRunRes.json() as { run: { id: string } }).run.id;
+
+      const caseNewAllRes = await app.inject({
+        method: "POST",
+        url: `/api/sections/${sectionId}/cases`,
+        headers,
+        payload: { title: "C-new-all", priority: "low" }
+      });
+      expect(caseNewAllRes.statusCode).toBe(200);
+      const caseNewAllId = (caseNewAllRes.json() as { data: { id: string } }).data.id;
+
+      const caseNewHighRes = await app.inject({
+        method: "POST",
+        url: `/api/sections/${sectionId}/cases`,
+        headers,
+        payload: { title: "C-new-high", priority: "high" }
+      });
+      expect(caseNewHighRes.statusCode).toBe(200);
+      const caseNewHighId = (caseNewHighRes.json() as { data: { id: string } }).data.id;
+
+      const caseNewLowRes = await app.inject({
+        method: "POST",
+        url: `/api/sections/${sectionId}/cases`,
+        headers,
+        payload: { title: "C-new-low", priority: "low" }
+      });
+      expect(caseNewLowRes.statusCode).toBe(200);
+      const caseNewLowId = (caseNewLowRes.json() as { data: { id: string } }).data.id;
+
+      async function instanceCaseIds(runId: string) {
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/runs/${runId}/instances?page=1&pageSize=100`,
+          headers
+        });
+        expect(res.statusCode).toBe(200);
+        const items = (res.json() as { data: Array<{ caseId: string }> }).data;
+        return items.map((row) => row.caseId).sort();
+      }
+
+      const allIds = await instanceCaseIds(allRunId);
+      expect(allIds).toEqual(
+        [caseHighId, caseMedId, caseNewAllId, caseNewHighId, caseNewLowId].sort()
+      );
+
+      const dynamicIds = await instanceCaseIds(dynamicRunId);
+      expect(dynamicIds).toEqual([caseHighId, caseNewHighId].sort());
+      expect(dynamicIds).not.toContain(caseNewLowId);
+      expect(dynamicIds).not.toContain(caseMedId);
+
+      const selectedIds = await instanceCaseIds(selectedRunId);
+      expect(selectedIds).toEqual([caseHighId]);
+
+      const selectedInstancesRes = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/runs/${selectedRunId}/instances?page=1&pageSize=10`,
+        headers
+      });
+      const selectedTestId = (selectedInstancesRes.json() as { data: Array<{ id: string }> }).data[0]!.id;
+
+      const resultRes = await app.inject({
+        method: "POST",
+        url: `/api/tests/${selectedTestId}/results`,
+        headers,
+        payload: { status: "passed", comment: "keep me" }
+      });
+      expect(resultRes.statusCode).toBe(200);
+
+      const syncSelected = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/runs/${selectedRunId}/sync-composition`,
+        headers
+      });
+      expect(syncSelected.statusCode).toBe(200);
+      const syncSelectedBody = (syncSelected.json() as { data: { skipped: boolean; reason?: string } }).data;
+      expect(syncSelectedBody.skipped).toBe(true);
+      expect(syncSelectedBody.reason).toBe("static");
+      expect(await instanceCaseIds(selectedRunId)).toEqual([caseHighId]);
+
+      const history = await app.inject({
+        method: "GET",
+        url: `/api/tests/${selectedTestId}/results`,
+        headers
+      });
+      expect(history.statusCode).toBe(200);
+      const historyBody = history.json() as { data: { total?: number; items?: unknown[] } };
+      const historyCount = historyBody.data.total ?? historyBody.data.items?.length ?? 0;
+      expect(historyCount).toBeGreaterThanOrEqual(1);
+    } finally {
+      await app.close();
+    }
+  });
+});

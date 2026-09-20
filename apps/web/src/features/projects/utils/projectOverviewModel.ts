@@ -11,10 +11,22 @@ export type OverviewWorkRow = {
   summary: string;
 };
 
-export function formatOverviewExecution(execution: ProjectOverviewDto["execution"]) {
-  const remaining = execution.remaining;
-  const remainingLabel = remaining === 1 ? "1 remaining" : `${remaining} remaining`;
-  return `${execution.passed} passed · ${execution.failed} failed · ${remainingLabel}`;
+export function formatOverviewExecution(
+  execution: ProjectOverviewDto["execution"],
+  options?: { totalCases?: number }
+) {
+  const remaining =
+    execution.remaining === 1 ? "1 test remaining" : `${execution.remaining} tests remaining`;
+  const casesPart =
+    options?.totalCases == null
+      ? ""
+      : `${options.totalCases} ${options.totalCases === 1 ? "case" : "cases"} · `;
+  return `${casesPart}${execution.passed} passed · ${execution.failed} failed · ${remaining} across open runs`;
+}
+
+export function formatOverviewMilestoneRuns(openRunCount: number) {
+  if (openRunCount <= 0) return "No linked active runs";
+  return openRunCount === 1 ? "1 linked active run" : `${openRunCount} linked active runs`;
 }
 
 export function formatOverviewRunSummary(run: ProjectOverviewDto["recentRuns"][number], overview?: RunPlanOverviewItem) {

@@ -1,10 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, type Ref } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { CommentComposer } from "../../comments/CommentComposer";
 import { fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { Button, FormField, SaveFeedback } from "../../../shared/ui";
-import { DefectKeyInput } from "./DefectKeyInput";
+import { DefectKeyInput, type DefectKeyInputHandle } from "./DefectKeyInput";
 import { ElapsedTimerField } from "./ElapsedTimerField";
 import {
   ResultCustomFields,
@@ -31,6 +31,7 @@ import {
   createStepDraftsFromCaseSteps,
   formatElapsed,
   isBlankDefaultStepDrafts,
+  mergeDefectKeys,
   normalizeElapsedInput,
   runningElapsedSeconds
 } from "./resultEntryUtils";
@@ -83,6 +84,16 @@ export type ResultEntryPanelProps = {
   initialStagedAttachments?: Array<{ id: string; file: File }>;
   onDiscardStagedAttachment?: (id: string) => void;
   recoveryResultId?: string | null;
+  /** Rehydrate fields after Leave/reopen while keeping the same saved result. */
+  recoveryDraft?: {
+    comment?: string;
+    version?: string;
+    elapsed?: string;
+    defects?: string[];
+    assignedTo?: string | null;
+    customValues?: Record<string, string>;
+    missingFileNames?: string[];
+  } | null;
 };
 
 export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPanelProps>(function ResultEntryPanel(
@@ -114,7 +125,8 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
     onRetryStagedAttachment,
     initialStagedAttachments = [],
     onDiscardStagedAttachment,
-    recoveryResultId = null
+    recoveryResultId = null,
+    recoveryDraft = null
   },
   ref
 ) {
@@ -122,25 +134,31 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
   const statusOptions = statusQuery.data ?? [];
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatusOption | null>(null);
   const activeStatus = selectedStatus ?? pickDefaultStatusOption(statusOptions, initialStatus ?? "passed");
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(() => recoveryDraft?.comment ?? "");
   const [actualResult, setActualResult] = useState("");
   const [stagedFiles, setStagedFiles] = useState<StagedComposerFile[]>(() =>
     initialStagedAttachments.map((row) => ({ id: row.id, file: row.file, status: "queued" as const }))
   );
-  const [elapsed, setElapsed] = useState("");
+  const [elapsed, setElapsed] = useState(() => recoveryDraft?.elapsed ?? "");
   const [elapsedError, setElapsedError] = useState("");
   const [elapsedBaseSeconds, setElapsedBaseSeconds] = useState(0);
   const [elapsedStartedAt, setElapsedStartedAt] = useState<number | null>(null);
-  const [version, setVersion] = useState("");
-  const [defects, setDefects] = useState<string[]>([]);
-  const [draftAssignedTo, setDraftAssignedTo] = useState<string | null>(initialAssignedTo);
+  const [version, setVersion] = useState(() => recoveryDraft?.version ?? "");
+  const [defects, setDefects] = useState<string[]>(() => recoveryDraft?.defects ?? []);
+  const [defectDraft, setDefectDraft] = useState("");
+  const defectKeysRef = useRef<DefectKeyInputHandle | null>(null);
+  const [draftAssignedTo, setDraftAssignedTo] = useState<string | null>(
+    () => recoveryDraft?.assignedTo ?? initialAssignedTo
+  );
   const [customValueErrors, setCustomValueErrors] = useState<Record<string, string>>({});
   const [stepResults, setStepResults] = useState<StepResultDraft[]>(() => createStepDraftsFromCaseSteps(caseSteps));
   const [scenarioResults, setScenarioResults] = useState<ScenarioResultDraft[]>(() =>
     createScenarioResultDrafts(caseScenarios)
   );
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [showDetails, setShowDetails] = useState(false);
+  const [customValues, setCustomValues] = useState<Record<string, string>>(() => recoveryDraft?.customValues ?? {});
+  const [showDetails, setShowDetails] = useState(() =>
+    Boolean(recoveryDraft?.elapsed || recoveryDraft?.version || (recoveryDraft?.customValues && Object.keys(recoveryDraft.customValues).length > 0))
+  );
   const [showExtraResultInfo, setShowExtraResultInfo] = useState(false);
   const [aiActualOutput, setAiActualOutput] = useState("");
   const [aiQualityRating, setAiQualityRating] = useState("");
@@ -232,6 +250,8 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
     const parsedQuality = aiQualityRating.trim() ? Number(aiQualityRating) : undefined;
     const parsedLatency = aiLatencyMs.trim() ? Number(aiLatencyMs) : undefined;
     const trimmedActual = actualResult.trim();
+    // Flush still-typed defect text before building the payload (blur+setState races drop CART-21).
+    const submittedDefects = defectKeysRef.current?.flush() ?? mergeDefectKeys(defects, defectDraft);
 
     try {
       await onSubmit(
@@ -240,7 +260,7 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
           comment: comment.trim() || undefined,
           elapsed: normalizedElapsed.value,
           version: version.trim() || undefined,
-          defects,
+          defects: submittedDefects,
           customValues: submittedCustomValues,
           actualResult: trimmedActual || undefined,
           attachments: stagedFiles.map((row) => row.file),
@@ -292,6 +312,7 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
     setElapsedStartedAt(null);
     setVersion("");
     setDefects([]);
+    setDefectDraft("");
     setDraftAssignedTo(initialAssignedTo);
     setStepResults(createStepDraftsFromCaseSteps(caseSteps));
     setScenarioResults(createScenarioResultDrafts(caseScenarios));
@@ -331,7 +352,11 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
   const evidenceRequired = isEvidenceRequiringStatus(activeStatus.canonicalStatus);
   const showEvidenceFields = isDialog
     ? evidenceRequired || showExtraResultInfo || Boolean(actualResult.trim())
-    : evidenceRequired || showExtraResultInfo || Boolean(actualResult.trim()) || defects.length > 0;
+    : evidenceRequired ||
+      showExtraResultInfo ||
+      Boolean(actualResult.trim()) ||
+      defects.length > 0 ||
+      Boolean(defectDraft.trim());
   const assigneeOptions = resultAssigneeOptions({ members: assigneeMembers, currentUser });
   const stepResultsDirty = useMemo(() => {
     const baseline = createStepDraftsFromCaseSteps(caseSteps);
@@ -353,7 +378,7 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
     stagedFileCount: stagedFiles.length,
     elapsed,
     version,
-    defects,
+    defects: mergeDefectKeys(defects, defectDraft),
     customValues,
     stepResultsDirty,
     scenarioResultsDirty: scenarioResults.some((row) => row.comment.trim() || row.status !== "passed"),
@@ -392,6 +417,15 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
         data-result-recovery={recoveryResultId && saveFeedback?.status === "failed" ? "attachment" : undefined}
         data-result-recovery-id={recoveryResultId ?? undefined}
       >
+        {recoveryDraft?.missingFileNames &&
+        recoveryDraft.missingFileNames.length > 0 &&
+        stagedFiles.length === 0 ? (
+          <p className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900" role="status">
+            {recoveryDraft.missingFileNames.length === 1
+              ? `Select ${recoveryDraft.missingFileNames[0]} again to finish attaching. The saved result is kept.`
+              : `Select ${recoveryDraft.missingFileNames.length} files again to finish attaching. The saved result is kept.`}
+          </p>
+        ) : null}
         {isDialog ? (
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="grid gap-3 sm:col-span-2">
@@ -571,7 +605,14 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
               />
               <FormField label="Defects">
                 {(control) => (
-                  <DefectKeyInput id={control.id} projectId={projectId} defects={defects} onChange={setDefects} />
+                  <DefectKeyInput
+                    ref={defectKeysRef}
+                    id={control.id}
+                    projectId={projectId}
+                    defects={defects}
+                    onChange={setDefects}
+                    onDraftChange={setDefectDraft}
+                  />
                 )}
               </FormField>
             </div>
@@ -626,7 +667,14 @@ export const ResultEntryPanel = forwardRef<ResultEntryPanelHandle, ResultEntryPa
 
             <FormField label="Defects" helpText="Issue keys are saved with this result.">
               {(control) => (
-                <DefectKeyInput id={control.id} projectId={projectId} defects={defects} onChange={setDefects} />
+                <DefectKeyInput
+                  ref={defectKeysRef}
+                  id={control.id}
+                  projectId={projectId}
+                  defects={defects}
+                  onChange={setDefects}
+                  onDraftChange={setDefectDraft}
+                />
               )}
             </FormField>
           </>

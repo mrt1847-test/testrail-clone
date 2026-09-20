@@ -92,6 +92,11 @@ export function splitDefectKeys(value: string): string[] {
     .filter(Boolean);
 }
 
+/** Include still-typed defect text so Save does not drop a visible key. */
+export function mergeDefectKeys(committed: readonly string[], draftInput: string): string[] {
+  return Array.from(new Set([...committed, ...splitDefectKeys(draftInput)]));
+}
+
 export function createStepDraft(stepOrder: number): StepResultDraft {
   return {
     id: crypto.randomUUID(),

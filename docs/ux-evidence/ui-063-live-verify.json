@@ -1,0 +1,63 @@
+{
+  "overviewTotalCases": 3,
+  "overviewActiveRuns": 2,
+  "milestoneOpenRuns": 1,
+  "milestoneRunCount": 2,
+  "milestoneTotalInstances": 6,
+  "milestoneLinkedRunNames": [
+    "Alpha linked",
+    "Closed linked"
+  ],
+  "apiOk": true,
+  "ui": {
+    "hasCases": true,
+    "hasRemaining": true,
+    "hasPassedFailed": true,
+    "hasLinkedLabel": true,
+    "overflow1280": false,
+    "overflow390": false,
+    "casesFocused": true,
+    "milestoneShowsAlpha": true,
+    "milestoneShowsClosed": true,
+    "milestoneHidesBeta": true,
+    "navigatedToRun": true,
+    "overviewSnippet": [
+      "Test Cases",
+      "3 cases \u00b7 1 passed \u00b7 1 failed \u00b7 4 tests remaining across open runs",
+      "Cases",
+      "Passed and failed results. Click a day to open matching runs.",
+      "1 passed (50%)",
+      "1 failed",
+      "Passed",
+      "Failed",
+      "Beta unlinked",
+      "Alpha linked",
+      "3 tests \u00b7 2 untested \u00b7 33% passed",
+      "Sprint 63",
+      "1 linked active run \u00b7 17% passed",
+      "Beta unlinked"
+    ],
+    "milestoneSnippet": [
+      "Test Cases",
+      "Test Runs & Results",
+      "My Tests",
+      "Open",
+      "Untested work",
+      "All linked runs",
+      "LINKED RUNS",
+      "OPEN RUNS",
+      "REMAINING",
+      "TEST EXECUTION",
+      "Result counts are test instances in linked runs, not unique cases.",
+      "TOTAL TESTS",
+      "REMAINING TESTS",
+      "LINKED RUNS",
+      "Closed linked\tclosed\t",
+      "Untested",
+      "Alpha linked\topen\t",
+      "Untested"
+    ]
+  },
+  "uiOk": true,
+  "allOk": true
+}

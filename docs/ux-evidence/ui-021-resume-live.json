@@ -1,0 +1,62 @@
+{
+  "scope": "J04/J05/J08 subset; not full gate",
+  "checks": {},
+  "screenshots": [
+    "ui-021-resume-error.png"
+  ],
+  "fixture": {
+    "projectId": "1",
+    "runId": "1",
+    "caseIds": [
+      "1",
+      "2",
+      "3"
+    ],
+    "instances": [
+      {
+        "id": "1",
+        "status": "untested",
+        "runId": "1",
+        "caseId": "1",
+        "assignedTo": null,
+        "titleSnapshot": "Valid tester can sign in",
+        "prioritySnapshot": "high",
+        "typeSnapshot": null,
+        "estimateSnapshot": null,
+        "automationKeySnapshot": null,
+        "externalIdSnapshot": null,
+        "caseLockVersionAtRun": 1
+      },
+      {
+        "id": "2",
+        "status": "untested",
+        "runId": "1",
+        "caseId": "2",
+        "assignedTo": null,
+        "titleSnapshot": "Invalid password remains on login",
+        "prioritySnapshot": "high",
+        "typeSnapshot": null,
+        "estimateSnapshot": null,
+        "automationKeySnapshot": null,
+        "externalIdSnapshot": null,
+        "caseLockVersionAtRun": 1
+      },
+      {
+        "id": "3",
+        "status": "untested",
+        "runId": "1",
+        "caseId": "3",
+        "assignedTo": null,
+        "titleSnapshot": "Sign out removes session",
+        "prioritySnapshot": "high",
+        "typeSnapshot": null,
+        "estimateSnapshot": null,
+        "automationKeySnapshot": null,
+        "externalIdSnapshot": null,
+        "caseLockVersionAtRun": 1
+      }
+    ]
+  },
+  "error": "Page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/login\nCall log:\n  - navigating to \"http://localhost:5173/login\", waiting until \"networkidle\"\n",
+  "pageTextAtError": ""
+}

@@ -1,0 +1,76 @@
+{
+  "fixture": {
+    "projectId": "4",
+    "runId": "7",
+    "closedRunId": "8"
+  },
+  "results": {
+    "selectAll": {
+      "count": 1,
+      "ok": true,
+      "badOnCount": 0
+    },
+    "testDiscussion": {
+      "count": 1,
+      "ok": true
+    },
+    "runDiscussion": {
+      "count": 1,
+      "ok": true
+    },
+    "keyboard": {
+      "menuOpen": true,
+      "dialogOpen": true,
+      "focusedInDialog": true,
+      "afterTab": {
+        "tag": "TEXTAREA",
+        "role": null,
+        "aria": "Comment",
+        "name": null,
+        "id": "field-rt",
+        "text": "",
+        "type": null
+      },
+      "dialogClosed": true,
+      "restored": {
+        "tag": "BUTTON",
+        "role": null,
+        "aria": "Status for C7. Opens the result dialog with the chosen status.",
+        "name": null,
+        "id": "",
+        "text": "Untested \u25be",
+        "type": "button"
+      },
+      "restoredOk": true,
+      "focusDebug": {
+        "activeTag": "BUTTON",
+        "activeAria": "Status for C7. Opens the result dialog with the chosen status.",
+        "matchFound": true,
+        "matchConnected": true,
+        "rootInert": false,
+        "rootAriaHidden": null
+      },
+      "expectedStatusLabel": "Status for C7. Opens the result dialog with the chosen status.",
+      "ok": true,
+      "path": "playwright-chromium-real-key-events"
+    },
+    "filter": {
+      "ok": true,
+      "note": "selectedBefore=1;selectedAfter=;visibleRows=0"
+    },
+    "required": {
+      "ok": true,
+      "note": "saved-no-required-fields-na"
+    },
+    "closedRun": {
+      "statusMenus": 0,
+      "ok": true
+    },
+    "narrow": {
+      "overflowX": false,
+      "selectAll": 1,
+      "ok": true
+    }
+  },
+  "allOk": true
+}

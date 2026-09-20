@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  type KeyboardEvent
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { searchIntegrationIssues } from "../../projects/api/integrationsApi";
 import { fetchDefectIntegrationSettings } from "../../projects/api/settingsApi";
-import { parseCaseRefs } from "../utils/caseRefs";
+import { mergeCaseRefs, parseCaseRefs } from "../utils/caseRefs";
 
 type ReferencesInputProps = {
   projectId: string;
   value: string;
   onChange: (value: string) => void;
+  onDraftChange?: (draft: string) => void;
   disabled?: boolean;
   className?: string;
   inputId?: string;
@@ -16,20 +24,29 @@ type ReferencesInputProps = {
   invalid?: boolean;
 };
 
+export type ReferencesInputHandle = {
+  /** Commit any still-typed text and return the refs string that should be saved. */
+  flush: () => string;
+};
+
 function joinRefs(tokens: string[]) {
   return tokens.join(", ");
 }
 
-export function ReferencesInput({
-  projectId,
-  value,
-  onChange,
-  disabled = false,
-  className,
-  inputId,
-  describedBy,
-  invalid
-}: ReferencesInputProps) {
+export const ReferencesInput = forwardRef<ReferencesInputHandle, ReferencesInputProps>(function ReferencesInput(
+  {
+    projectId,
+    value,
+    onChange,
+    onDraftChange,
+    disabled = false,
+    className,
+    inputId,
+    describedBy,
+    invalid
+  },
+  ref
+) {
   const tokens = useMemo(() => parseCaseRefs(value), [value]);
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
@@ -54,6 +71,11 @@ export function ReferencesInput({
     if (!open) setDraft("");
   }, [open]);
 
+  function setDraftValue(next: string) {
+    setDraft(next);
+    onDraftChange?.(next);
+  }
+
   function commitTokens(next: string[]) {
     onChange(joinRefs(next));
   }
@@ -62,9 +84,25 @@ export function ReferencesInput({
     const parts = parseCaseRefs(raw);
     if (parts.length === 0) return;
     commitTokens([...tokens, ...parts.filter((part) => !tokens.includes(part))]);
-    setDraft("");
+    setDraftValue("");
     setOpen(false);
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flush: () => {
+        const merged = mergeCaseRefs(value, draft);
+        if (parseCaseRefs(draft).length > 0) {
+          onChange(merged);
+          setDraftValue("");
+          setOpen(false);
+        }
+        return merged;
+      }
+    }),
+    [draft, onChange, onDraftChange, value]
+  );
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter" || event.key === "," || event.key === "Tab") {
@@ -103,6 +141,7 @@ export function ReferencesInput({
           ))}
           <input
             id={inputId}
+            aria-label={inputId ? undefined : "References"}
             aria-describedby={describedBy}
             aria-invalid={invalid || undefined}
             type="text"
@@ -116,7 +155,7 @@ export function ReferencesInput({
               if (draft.trim()) addToken(draft);
             }}
             onChange={(event) => {
-              setDraft(event.target.value);
+              setDraftValue(event.target.value);
               setOpen(true);
             }}
             onKeyDown={handleKeyDown}
@@ -152,4 +191,4 @@ export function ReferencesInput({
       </span>
     </div>
   );
-}
+});

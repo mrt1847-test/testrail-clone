@@ -12,6 +12,8 @@ Last updated: 2026-09-20
 - A checked UI unit records a delivery at its evidence date, not approval of every later design requirement. Preserve that history; record supersession and outstanding validation explicitly. New policy does not silently reopen or re-certify an old checkbox.
 - Read the applicable state rule, exact unit, linked design and verification tier before work. Only the Current unit may be implemented; future target states are not permission to complete later units early.
 
+
+
 ## 1. Purpose
 
 This document resets the UI/UX evaluation standard for the product.
@@ -132,16 +134,18 @@ The repository already contains shared primitives such as `Button`, `Panel`, `Pa
 
 A rough static scan of `apps/web/src/features/**/*.tsx` found:
 
-| Pattern | Count |
-| --- | ---: |
-| Feature TSX files | 200 |
-| Raw HTML `<button>` elements | 381 |
-| Uppercase `<Button>` component uses | 11 |
-| Raw HTML `<table>` elements | 49 |
-| `<DataTable>` uses | 2 |
-| Files with hand-built `fixed inset-0` overlays | 16 |
-| Files using shared `<Drawer>` | 2 |
-| Files using shared `<PageHeader>` | 4 |
+
+| Pattern                                        | Count |
+| ---------------------------------------------- | ----- |
+| Feature TSX files                              | 200   |
+| Raw HTML `<button>` elements                   | 381   |
+| Uppercase `<Button>` component uses            | 11    |
+| Raw HTML `<table>` elements                    | 49    |
+| `<DataTable>` uses                             | 2     |
+| Files with hand-built `fixed inset-0` overlays | 16    |
+| Files using shared `<Drawer>`                  | 2     |
+| Files using shared `<PageHeader>`              | 4     |
+
 
 These numbers are not a quality score and some specialized controls should remain custom. They do show that shared primitives are optional helpers rather than an enforced product grammar.
 
@@ -152,6 +156,8 @@ Consequences:
 - Tables differ in header density, selection behavior, empty states, scrolling, and responsive behavior.
 - Route headers and panels use different spacing and hierarchy.
 - Fixing visual noise requires editing many feature components instead of changing one system component.
+
+
 
 ### 3.4 Density is being spent on chrome instead of work
 
@@ -168,13 +174,15 @@ Operational density should mean more visible tests and cases, not more simultane
 
 Every action in a given screen state must have one clear role. The same action may have a different emphasis in another state; creating a case, reading it, selecting several cases and recording a result are not the same state.
 
-| Level | Meaning | Display rule |
-| --- | --- | --- |
-| Primary | The reason the user opened the current work surface | Discoverable in the active state; one dominant action or workflow, not necessarily a filled button |
-| Secondary | Frequently used to support the primary task | Compact toolbar or adjacent control |
-| Contextual | Only valid after selecting a row, result, or section | Appears only when that context exists |
-| Utility | Import, export, print, reports, subscription, layout settings | Overflow or clearly separated utility menu |
-| Administrative | Configuration and destructive maintenance | Settings or explicit management dialog |
+
+| Level          | Meaning                                                       | Display rule                                                                                       |
+| -------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Primary        | The reason the user opened the current work surface           | Discoverable in the active state; one dominant action or workflow, not necessarily a filled button |
+| Secondary      | Frequently used to support the primary task                   | Compact toolbar or adjacent control                                                                |
+| Contextual     | Only valid after selecting a row, result, or section          | Appears only when that context exists                                                              |
+| Utility        | Import, export, print, reports, subscription, layout settings | Overflow or clearly separated utility menu                                                         |
+| Administrative | Configuration and destructive maintenance                     | Settings or explicit management dialog                                                             |
+
 
 Additional rules:
 
@@ -185,30 +193,38 @@ Additional rules:
 - Do not add another bordered panel when a divider, tab, row, or menu is sufficient.
 - Do not add a new route-level feature until the action hierarchy states where it belongs.
 
+
+
 ## 5. Required surface reduction
+
+
 
 ### 5.1 Test Cases — state-specific target
 
-| State | Visible reading/context | Action hierarchy / disclosure |
-| --- | --- | --- |
-| Desktop list, no selection | Suite/section path and scope, quiet folder tree, section-owned blocks, case ID/title; compact metadata | One Add Case primary entry; search, Filter and View secondary. Quick outline is a lightweight section-native input, not another prominent CTA. |
-| Rows selected | Same list plus explicit target count/scope | One contextual edit/copy/move/delete bar. Run Test is a secondary transition with an explicit included-case scope, not a second permanent primary CTA. |
-| Case detail read mode | Identity → preconditions → ordered steps/expected results; metadata/history secondary | One Edit entry; copy/print/destructive utilities in the named menu. No permanent metadata edit form before instructions. |
-| Case editor | Existing content, required fields and local validation | Save/Create is primary with Cancel; preserve dirty-close confirmation and section context. |
-| 390px list / detail | List shows section path/scope and readable rows; selected detail can replace the list with a clear return path | Tree is reached through a named Sections control rather than forced beside the list. Filters/view settings are disclosed; return preserves scope, selection and position. |
+
+| State                      | Visible reading/context                                                                                        | Action hierarchy / disclosure                                                                                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop list, no selection | Suite/section path and scope, quiet folder tree, section-owned blocks, case ID/title; compact metadata         | One Add Case primary entry; search, Filter and View secondary. Quick outline is a lightweight section-native input, not another prominent CTA.                            |
+| Rows selected              | Same list plus explicit target count/scope                                                                     | One contextual edit/copy/move/delete bar. Run Test is a secondary transition with an explicit included-case scope, not a second permanent primary CTA.                    |
+| Case detail read mode      | Identity → preconditions → ordered steps/expected results; metadata/history secondary                          | One Edit entry; copy/print/destructive utilities in the named menu. No permanent metadata edit form before instructions.                                                  |
+| Case editor                | Existing content, required fields and local validation                                                         | Save/Create is primary with Cancel; preserve dirty-close confirmation and section context.                                                                                |
+| 390px list / detail        | List shows section path/scope and readable rows; selected detail can replace the list with a clear return path | Tree is reached through a named Sections control rather than forced beside the list. Filters/view settings are disclosed; return preserves scope, selection and position. |
+
 
 Grouping, sorting, saved-view selection, columns, density, deleted visibility and tree-side preference belong in View; the active saved view/scope may be summarized without duplicating controls. Reports, Defects, Shared Steps, Print, Export, Import and repository-level relocation belong in named utilities. Contextual relocation uses the selection scope instead. Suite description editing, unavailable forecasts and full shortcut help are not permanent daily-work chrome.
 
 ### 5.2 Run Execution — state-specific target
 
-| State | Visible reading/context | Action hierarchy / disclosure |
-| --- | --- | --- |
-| Desktop list | Run identity/open state, low top status summary, search/filter/section scope, title and full Status labels | Statistics above, never a permanent fourth column. Assignee is secondary and may move to detail/column settings before titles become cramped. Summary filters never record results. |
-| Test selected | Correct test identity, preconditions, ordered instructions and expected results; results/history secondary | Add result opens the shared dialog. Explicit Pass & Next is a secondary quick-success action; assignment and next-by-status navigation are compact secondary controls. No permanent result form. |
-| Result dialog open | Fixed target; left Status dropdown/Comment/attachments, right Assign To/Version/Elapsed/Defects; required fields and applicable guidance | UI-051: Add Result primary, Cancel text action, Save & Next in the primary button's small secondary menu. Ordinary list Status choices, including Passed, only prefill this same dialog. Pass & Next requires the dialog too when mandatory additional input/evidence is needed. |
-| Bulk selection | Explicit selected target set/count next to the tests | Contextual bulk result/assignment actions. Do not replace or redesign their contract under a single-test dialog task. |
-| 390px list / detail | Initial list has compact top summary and readable title/Status. Opening detail prioritizes full instructions with a return-to-list control | Tree/optional metadata via named disclosure. Pass & Next and other secondary commands may be in a named menu; Add result remains easy to find. Do not force table, tree and detail simultaneously into the viewport. |
-| Closed Run / no write permission | Instructions, persisted results and clear read-only reason | No actionable save/pass/bulk-write controls. Preserve access to reading and appropriate navigation. |
+
+| State                            | Visible reading/context                                                                                                                    | Action hierarchy / disclosure                                                                                                                                                                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop list                     | Run identity/open state, low top status summary, search/filter/section scope, title and full Status labels                                 | Statistics above, never a permanent fourth column. Assignee is secondary and may move to detail/column settings before titles become cramped. Summary filters never record results.                                                                                              |
+| Test selected                    | Correct test identity, preconditions, ordered instructions and expected results; results/history secondary                                 | Add result opens the shared dialog. Explicit Pass & Next is a secondary quick-success action; assignment and next-by-status navigation are compact secondary controls. No permanent result form.                                                                                 |
+| Result dialog open               | Fixed target; left Status dropdown/Comment/attachments, right Assign To/Version/Elapsed/Defects; required fields and applicable guidance   | UI-051: Add Result primary, Cancel text action, Save & Next in the primary button's small secondary menu. Ordinary list Status choices, including Passed, only prefill this same dialog. Pass & Next requires the dialog too when mandatory additional input/evidence is needed. |
+| Bulk selection                   | Explicit selected target set/count next to the tests                                                                                       | Contextual bulk result/assignment actions. Do not replace or redesign their contract under a single-test dialog task.                                                                                                                                                            |
+| 390px list / detail              | Initial list has compact top summary and readable title/Status. Opening detail prioritizes full instructions with a return-to-list control | Tree/optional metadata via named disclosure. Pass & Next and other secondary commands may be in a named menu; Add result remains easy to find. Do not force table, tree and detail simultaneously into the viewport.                                                             |
+| Closed Run / no write permission | Instructions, persisted results and clear read-only reason                                                                                 | No actionable save/pass/bulk-write controls. Preserve access to reading and appropriate navigation.                                                                                                                                                                              |
+
 
 Files and defect references can be **staged before a result exists** inside the shared dialog; only association/upload requires the successfully created result. Review, later additions and correction actions belong to existing result history. Partial success distinguishes saved result from failed attachment and does not silently advance.
 
@@ -228,19 +244,23 @@ Do not solve the inconsistency by adding another parallel component set. Consoli
 
 ### Required shared components
 
-| Component | Responsibility |
-| --- | --- |
-| `WorkbenchPage` | Compact title/context row, primary action, optional utility menu |
-| `WorkbenchToolbar` | Search, filter count, view menu, contextual slot |
-| `OverflowMenu` | Secondary and utility actions with grouping and destructive separation |
-| `SelectionActionBar` | Sticky selected-count and valid bulk actions |
-| `SplitPane` | Responsive list/detail sizing, collapse rules, persisted width |
-| `DataTable` / `DataGrid` | Selection, density, sticky header, empty/loading/error states, title priority |
-| `Button` / `IconButton` | Shared variants, sizes, loading, disabled, danger semantics |
-| `FormField` | Label, hint, error, required state for input/select/textarea |
-| `Dialog` / `Drawer` | Shared header, body, sticky footer, focus and close behavior |
-| `SaveFeedback` | Saving, saved, failed, retry, and optional undo behavior |
-| `ResultEntryDialog` | One result form and lifecycle contract for panel Add result and Run-list Status entry, composed from shared controls and the shared dialog foundation; validate the UI-051 composition through UX-031/032/033/042 |
+
+| Component                | Responsibility                                                                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WorkbenchPage`          | Compact title/context row, primary action, optional utility menu                                                                                                                                                  |
+| `WorkbenchToolbar`       | Search, filter count, view menu, contextual slot                                                                                                                                                                  |
+| `OverflowMenu`           | Secondary and utility actions with grouping and destructive separation                                                                                                                                            |
+| `SelectionActionBar`     | Sticky selected-count and valid bulk actions                                                                                                                                                                      |
+| `SplitPane`              | Responsive list/detail sizing, collapse rules, persisted width                                                                                                                                                    |
+| `DataTable` / `DataGrid` | Selection, density, sticky header, empty/loading/error states, title priority                                                                                                                                     |
+| `Button` / `IconButton`  | Shared variants, sizes, loading, disabled, danger semantics                                                                                                                                                       |
+| `FormField`              | Label, hint, error, required state for input/select/textarea                                                                                                                                                      |
+| `Dialog` / `Drawer`      | Shared header, body, sticky footer, focus and close behavior                                                                                                                                                      |
+| `SaveFeedback`           | Saving, saved, failed, retry, and optional undo behavior                                                                                                                                                          |
+| `ResultEntryDialog`      | One result form and lifecycle contract for panel Add result and Run-list Status entry, composed from shared controls and the shared dialog foundation; validate the UI-051 composition through UX-031/032/033/042 |
+
+
+
 
 ### Enforcement
 
@@ -248,6 +268,8 @@ Do not solve the inconsistency by adding another parallel component set. Consoli
 - Shared components must support workbench density; they must not force large card layouts.
 - Component variants must describe meaning (`primary`, `secondary`, `quiet`, `danger`), not one-off colors.
 - Route-specific composition is allowed; route-specific control styling is not.
+
+
 
 ## 7. Task backlog
 
@@ -257,43 +279,49 @@ Phase groups classify outcomes, not the live execution sequence. Follow NEXT_ACT
 
 #### Outcome ownership and closure
 
-UI-021 is the final verification owner for **all** UX gates below. The contributing units provide focused evidence, not automatic outcome completion. During UI-021, verify each gate against the integrated build, record pass/fail/blocked with dated evidence in `docs/ux-evidence/UI-021.md`, and check only the UX gates actually verified. UI-021 itself stays unchecked until every applicable gate and section 8 requirement passes. Failed checks do not authorize unrelated API refactoring: record the defect and request an explicit repair unit/queue decision. No gate may disappear merely because the UI queue is otherwise exhausted.
+UI-021 is the final verification owner for **all** UX gates below. The contributing units provide focused evidence, not automatic outcome completion. During UI-021, verify each gate against the integrated build, record pass/fail/blocked with dated evidence in `docs/ux-evidence/UI-021.md`, and check only the UX gates actually verified. UI-021 itself stays unchecked until every applicable gate and section 8 requirement passes. Confirmed existing-contract defects follow NEXT_ACTIONS's user-authorized automatic repair loop; unrelated API refactoring, new features/policies and external authority still require a separate decision. No gate may disappear merely because the UI queue is otherwise exhausted.
 
-2026-09-20 queue decision: the user has now requested repair scheduling. UI-052–063 below are that explicit decision for the existing UI-021 findings; UI-021 is deferred until their acceptance evidence and NEXT_ACTIONS E01–E04 readiness. Their scoped existing-contract fixes are authorized when each becomes Current. Do not keep repeating the full failed gate or invent additional repairs beyond this queue. Earlier prose about a verification-only Current describes UI-021's scope, not a ban on these newly scheduled units.
+2026-09-20 queue decisions: UI-052–063 are the initial scheduled repairs. The user's subsequent request also authorizes the NEXT_ACTIONS **UI-021 이슈 → 자동 수정 → 재검증** loop for new confirmed violations of existing UX contracts. Record/deduplicate the issue, define a scoped unchecked UI unit here, put it before UI-021 and promote the first repair to Current without marking UI-021 complete. End that verification run after scheduling; implement one repair on each subsequent run. Preserve historical checks and require acceptance evidence plus applicable E01–E04 readiness before final closure. Verification-only means no product fix inside the UI-021 run, not a prohibition on this explicit repair handoff.
 
-| UX 결과 | 근거를 제공하는 UI 작업 | UI-021의 통합 판정 초점 |
-| --- | --- | --- |
-| UX-001 | UI-045/049/039/044 | 의도한 케이스 구성·실제 지침·Run별 결과 분리, J03/J04 |
-| UX-002 | UI-010/030/037–039/051 | 읽는 대상/저장 대상/URL 일치, 저장 유지와 명시적 다음, J04–J06 |
-| UX-003 | UI-022/023/032/038/051 | 필터·범위·접기·선택·상세의 설명 가능한 관계, J01/J05/J07 |
-| UX-010 | UI-001/002/008/024/028/041/046–048/051 | 현재 업무의 진입점 발견, 의도적인 두 결과 진입점 유지, J01/J04/J07 |
-| UX-011 | UI-001/008/024/042/043/044/046/051 | 화면 간 읽기/선택/편집/기록 의미와 공통 제어 일관성, J01/J04/J08 |
-| UX-012 | UI-006/025/026/035/037/042/051 | 필수 입력·초안·취소·모달 포커스·부분 저장 설명, J02/J05/J06 |
-| UX-013 | UI-003/023/026/033/039/040/042/044/051 | 폴더 트리·소속 블록·읽기 문서·작은 결과창의 계층, J01/J04 |
-| UX-020 | UI-003/004/023/029/043/044 | 제목으로 탐색하고 상세에서 읽은 뒤 문맥 복귀, J01/J02 |
-| UX-021 | UI-005/006/044/049/039 | quick outline과 실제 Text/Steps 지침 작성·영속화, J02–J04 |
-| UX-022 | UI-001/002/022–024/028/043 | 섹션 범위·필터·보기의 서로 다른 의미와 대상 집합, J01/J07 |
-| UX-023 | UI-007/022/023/025/026 | 부모/자식·소속·생성/이동 대상 이해, J01/J07 |
-| UX-030 | UI-009/032/038 | bulk의 정확한 대상과 성공/실패별 재시도, J07 |
-| UX-031 | UI-010/030/037–039/051 | 두 진입점의 동일한 작은 폼, 저장 전 무변경, 지침으로 복귀, J04/J05 |
-| UX-032 | UI-012/030/032/037/038/051 | 결과/첨부/담당자 부분 성공 구분과 중복 없는 복구, J06/J07 |
-| UX-033 | UI-013/030/031/037/051 | 실제 저장소의 업로드→재열기→원본 다운로드 및 이력/결함 재조회, J05/J06 |
-| UX-034 | UI-008/014/033/039–042/044/051 | 상단 통계 아래 실제 지침으로 수행, 다음 지침 및 누락/실패 구분, J04/J08 |
-| UX-040 | UI-015–020/034–036/041/042/046–048/050 | 프로젝트/허브/My Tests/Plan에서 남은 실행 대상으로 진입, J08 |
-| UX-041 | UI-021 및 UI-022/039/044/045/049/050/051 | 실제 테스터의 작성→수행→기록→복구→재개 관찰, J01–J08 |
-| UX-042 | 모든 변경 화면, 특히 UI-051; UI-021이 취합 | 참고 배치·실제 키보드·반응형·오류/권한 상태별 작업 가능성, J01–J08 |
+
+| UX 결과  | 근거를 제공하는 UI 작업                          | UI-021의 통합 판정 초점                                |
+| ------ | --------------------------------------- | ----------------------------------------------- |
+| UX-001 | UI-045/049/039/044                      | 의도한 케이스 구성·실제 지침·Run별 결과 분리, J03/J04            |
+| UX-002 | UI-010/030/037–039/051                  | 읽는 대상/저장 대상/URL 일치, 저장 유지와 명시적 다음, J04–J06      |
+| UX-003 | UI-022/023/032/038/051                  | 필터·범위·접기·선택·상세의 설명 가능한 관계, J01/J05/J07          |
+| UX-010 | UI-001/002/008/024/028/041/046–048/051  | 현재 업무의 진입점 발견, 의도적인 두 결과 진입점 유지, J01/J04/J07    |
+| UX-011 | UI-001/008/024/042/043/044/046/051      | 화면 간 읽기/선택/편집/기록 의미와 공통 제어 일관성, J01/J04/J08     |
+| UX-012 | UI-006/025/026/035/037/042/051          | 필수 입력·초안·취소·모달 포커스·부분 저장 설명, J02/J05/J06        |
+| UX-013 | UI-003/023/026/033/039/040/042/044/051  | 폴더 트리·소속 블록·읽기 문서·작은 결과창의 계층, J01/J04           |
+| UX-020 | UI-003/004/023/029/043/044              | 제목으로 탐색하고 상세에서 읽은 뒤 문맥 복귀, J01/J02              |
+| UX-021 | UI-005/006/044/049/039                  | quick outline과 실제 Text/Steps 지침 작성·영속화, J02–J04 |
+| UX-022 | UI-001/002/022–024/028/043              | 섹션 범위·필터·보기의 서로 다른 의미와 대상 집합, J01/J07           |
+| UX-023 | UI-007/022/023/025/026                  | 부모/자식·소속·생성/이동 대상 이해, J01/J07                   |
+| UX-030 | UI-009/032/038                          | bulk의 정확한 대상과 성공/실패별 재시도, J07                   |
+| UX-031 | UI-010/030/037–039/051                  | 두 진입점의 동일한 작은 폼, 저장 전 무변경, 지침으로 복귀, J04/J05     |
+| UX-032 | UI-012/030/032/037/038/051              | 결과/첨부/담당자 부분 성공 구분과 중복 없는 복구, J06/J07           |
+| UX-033 | UI-013/030/031/037/051                  | 실제 저장소의 업로드→재열기→원본 다운로드 및 이력/결함 재조회, J05/J06    |
+| UX-034 | UI-008/014/033/039–042/044/051          | 상단 통계 아래 실제 지침으로 수행, 다음 지침 및 누락/실패 구분, J04/J08  |
+| UX-040 | UI-015–020/034–036/041/042/046–048/050  | 프로젝트/허브/My Tests/Plan에서 남은 실행 대상으로 진입, J08      |
+| UX-041 | UI-021 및 UI-022/039/044/045/049/050/051 | 실제 테스터의 작성→수행→기록→복구→재개 관찰, J01–J08              |
+| UX-042 | 모든 변경 화면, 특히 UI-051; UI-021이 취합         | 참고 배치·실제 키보드·반응형·오류/권한 상태별 작업 가능성, J01–J08      |
+
+
+
 
 #### Supersession register — retain history, use the current contract
 
-| Earlier wording / delivery | Current contract / follow-up |
-| --- | --- |
-| UI-001 “one visible Add Case” versus UI-005 outline | One dominant creation CTA; quiet section-native outline is an intentional alternate depth, not a forbidden duplicate. |
-| UI-008 “result recording dominant” and UI-014 density | Reading and performing the test is primary; recording supports it. UI-039/040/section 5 govern composition; density must not hide instructions. |
-| UI-010/011/013 composer / Results-tab evidence | Preserve saving, staging and recovery; UI-037/038 govern the shared modal and all ordinary status choices. Do not restore a permanent inline form. |
-| UI-037–039 dialog delivery / earlier field placement | UI-051 owns the reference-shaped form: two columns, one Status dropdown, visible right-side metadata, staged Assign To and compact footer. It supersedes hiding Version/Elapsed, excluding Assign To and three prominent footer buttons; preserve identity, required inputs and recovery. Historical checks are not visual acceptance. |
-| UI-016 selection result action | UI-034/046 govern single-target navigation and Run identity; do not imply unsupported multi-run bulk recording. |
-| UI-027/029 header-only improvements | UI-041/044 govern the remaining global chrome/detail body. Header evidence does not certify the whole reading surface. |
-| UI-015–020 shared rollout / UI-036 Plan disclosure | UI-042 and UI-046–048 refine visual/action hierarchy, preserving the delivered feedback and contextual behavior. |
+
+| Earlier wording / delivery                            | Current contract / follow-up                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UI-001 “one visible Add Case” versus UI-005 outline   | One dominant creation CTA; quiet section-native outline is an intentional alternate depth, not a forbidden duplicate.                                                                                                                                                                                                                  |
+| UI-008 “result recording dominant” and UI-014 density | Reading and performing the test is primary; recording supports it. UI-039/040/section 5 govern composition; density must not hide instructions.                                                                                                                                                                                        |
+| UI-010/011/013 composer / Results-tab evidence        | Preserve saving, staging and recovery; UI-037/038 govern the shared modal and all ordinary status choices. Do not restore a permanent inline form.                                                                                                                                                                                     |
+| UI-037–039 dialog delivery / earlier field placement  | UI-051 owns the reference-shaped form: two columns, one Status dropdown, visible right-side metadata, staged Assign To and compact footer. It supersedes hiding Version/Elapsed, excluding Assign To and three prominent footer buttons; preserve identity, required inputs and recovery. Historical checks are not visual acceptance. |
+| UI-016 selection result action                        | UI-034/046 govern single-target navigation and Run identity; do not imply unsupported multi-run bulk recording.                                                                                                                                                                                                                        |
+| UI-027/029 header-only improvements                   | UI-041/044 govern the remaining global chrome/detail body. Header evidence does not certify the whole reading surface.                                                                                                                                                                                                                 |
+| UI-015–020 shared rollout / UI-036 Plan disclosure    | UI-042 and UI-046–048 refine visual/action hierarchy, preserving the delivered feedback and contextual behavior.                                                                                                                                                                                                                       |
+
 
 Known evidence debt: UI-031's checked delivery verified safe rejection in unsupported storage. Its evidence explicitly lacks live configured-storage upload/reopen/download and complete keyboard traversal. Keep the historical check, but carry those checks into UI-021/UX-033/UX-042; do not describe attachment usability as fully verified until they pass. Section 8 defines how to report verification debt rather than treating it as success.
 
@@ -305,56 +333,60 @@ This is a review of **what each task asks the implementer to build**, not anothe
 
 The authoring, Run-selection and result-dialog official images were visually inspected during this review. Local UI-006 evidence and current CaseAuthoringForm were inspected for the authoring gap; current RunListPage already mixes runs/plans, so UI-050 must refine that existing hub, not build a duplicate one. This is not a fresh live audit of every application route. A kept task is a valid contribution, not certification that its shipped screen matches TestRail.
 
-| Unit | Disposition | Task-content finding and concrete correction/owner |
-| --- | --- | --- |
-| UI-001 | Supplement | Moving commands to overflow does not define a repository. UI-043 must specify a section-grouped case table, columns and open/select behavior (R1/R2). |
-| UI-002 | Keep + supplement | Search/Filter/View is appropriate; UI-043 must make section scope and selected count adjacent to the actual cases, not another toolbar stack. |
-| UI-003 | Keep + supplement | Title width is useful but insufficient; UI-043 defines normal text rows and metadata placement rather than relying only on a 240px threshold. |
-| UI-004 | Keep | Responsive list/detail and return context support the three-pane workflow (R2). Do not redesign solely to fit more panels. |
-| UI-005 | Keep | Section-native quick outline directly matches the documented creation path (R1); it is not a substitute for full instructions. |
-| UI-006 | Incomplete design coverage | Sticky Save/validation/dirty-close did not specify a usable case-writing form. UI-049 adds explicit template-specific authoring and read-back into execution (R1/R3). |
-| UI-007 | Keep | Named parent/child targets support case organization; preserve text/folder hierarchy rather than management cards. |
-| UI-008 | Redirect | “Result recording dominant” is not sufficient: UI-039 makes the test's readable instructions central, with recording actions at the edge (R2/R4). |
-| UI-009 | Keep | Selection-local bulk results match batch execution needs (R4); retain exact target count. |
-| UI-010 | Keep, qualified | Explicit Pass & Next remains; ordinary Status entries use the dialog under UI-038. No inference that every pass action is instant (R4). |
-| UI-011 | Superseded presentation | Keep form fields/lifecycle; UI-037 owns the compact popup. Inline Results-tab form is no longer the layout target. |
-| UI-012 | Keep as reliability | Local feedback/retry protects results, but is not evidence of a TestRail-like screen composition. |
-| UI-013 | Keep as reliability | Staging evidence belongs to recording; verify file content as well as displayed filename under UI-021. |
-| UI-014 | Supplement | Six rows cannot prove execution usability. UI-039 must show meaningful steps/expected results beside those rows. |
-| UI-015 | Incomplete design coverage | One Add Run and overflow did not define an execution landing page. UI-050 adds status-bearing active/completed run/plan rows and direct resume (R5/R7). |
-| UI-016 | Redirect | My Tests must answer “what is assigned to me and where do I resume?”, not simply reuse table controls. UI-046 owns this. |
-| UI-017 | Keep, verify role | Milestone remains a release grouping with linked runs/progress, not a generic create/list demo. UI-021 tests opening a populated milestone into its work; absent behavior is reported, not hidden by component compliance. |
-| UI-018 | Incomplete design coverage | A cleaner Plan header is not a useful plan. UI-047 must show contained executable runs/configurations before entry-management controls (R5). |
-| UI-019 | Keep, verify role | Reports are a secondary analysis workflow. UI-035/021 retain populated filter/export checks; no new report builder or core execution dashboard is implied. |
-| UI-020 | Keep as support | Settings accessibility/save feedback are necessary administration, not evidence that the tester's main journey is finished. |
-| UI-021 | Rewrite acceptance emphasis | Compare actual repository/authoring/run-selection/execution/result screens with R1–R7 and perform a continuous tester scenario; checklist arithmetic is insufficient. |
-| UI-022 | Keep | Direct/subtree/all scope answers which cases are included; this is independent of visual density and must stay explicit. |
-| UI-023 | Keep | Section-owned blocks are the right reading structure; preserve quiet headers, ownership and no duplicate cases. |
-| UI-024 | Keep | Grouping/spacing/columns are separate view choices; do not restore an always-visible control for each option. |
-| UI-025 | Keep as reliability | Correct move/copy modal behavior protects case organization; not a separate visual redesign. |
-| UI-026 | Keep as reliability | Folder-tree keyboard semantics support the existing visual direction; do not add more row chrome. |
-| UI-027 | Superseded coverage | Header-height reduction was partial. UI-041 supplies global compaction; UI-043 still owns the repository composition beneath it. |
-| UI-028 | Keep | One contextual selection bar and one dominant empty-state action; section-native outline remains an intentional alternate path. |
-| UI-029 | Incomplete design coverage | Header-only cleanup missed the detail body. UI-044 specifies the actual case-reading document, not merely fewer icons. |
-| UI-030 | Keep as reliability | Result/test ownership is essential and survives every popup/layout change. |
-| UI-031 | Keep with debt | Safe storage rejection is necessary but not a completed evidence workflow; UI-021 verifies real byte roundtrip. |
-| UI-032 | Keep as reliability | Bulk target consistency is essential and separate from single-result visual treatment. |
-| UI-033 | Keep + supplement | Full title/Status labels are retained; UI-039/040 determine the whole execution surface, not row count alone. |
-| UI-034 | Keep | Distinguishing the same case in different runs is a tester requirement; UI-046 supplies the complete queue view. |
-| UI-035 | Keep | Named report menus and populated outputs fix a specific ambiguity; do not make reporting a permanent peer of test execution. |
-| UI-036 | Supplement | Hiding empty configuration controls is useful; UI-047 must make real generated runs easy to identify and open. |
-| UI-037 | Keep foundation + correct form | The shared dialog exists, but UI-038's captured form and current ResultEntryPanel retain large status tiles. UI-051 applies the user's actual two-column reference; modal existence/width is insufficient (R4). |
-| UI-038 | Make concrete | Specify the Status control as a compact labeled dropdown in the existing row, not a button grid or a new Status column. |
-| UI-039 | Rewrite target | Define identity/metadata/preconditions/action–expected steps/history/actions and list-to-detail selection, including an interrupted test (R2–R4). |
-| UI-040 | Keep | Top chart/legend/pass-rate matches the supplied Run reference; retain a real progress overview rather than stripping charts to achieve minimalism (R7). |
-| UI-041 | Keep + targeted follow-up | Keep compact navigation/focus improvements. UI-050 gives Runs and Plans one execution-area entry; no new global navigation rewrite. |
-| UI-042 | Keep as visual foundation | Removing borders is only groundwork; UI-043/044/047/048/050 must define content composition and meaningful progress. |
-| UI-043 | Rewrite target | Specify repository rows, section headers, column order, quick outline and detail entry; do not stop at removing selects. |
-| UI-044 | Rewrite target | Specify a readable case document and template-specific content, not just moving metadata edit into a menu (R3). |
-| UI-045 | Correct direction | Do not present fixed-all as TestRail's default all-inclusion behavior. Use explicit all/selected/dynamic choices and truthful automatic-inclusion semantics (R6). |
-| UI-046 | Rewrite target | Queue rows show Run identity, case, current status and assignee context; the default journey opens the exact assigned test to read and execute. |
-| UI-047 | Rewrite target | Plan first displays its existing executable runs grouped by entry/configuration, with progress and open links; configuration/generation is a distinct management mode (R5). |
-| UI-048 | Correct minimalism | Keep a concise project progress summary and actionable run links; do not treat useful progress charts as clutter merely because they are not buttons (R7). |
+
+| Unit   | Disposition                    | Task-content finding and concrete correction/owner                                                                                                                                                                         |
+| ------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UI-001 | Supplement                     | Moving commands to overflow does not define a repository. UI-043 must specify a section-grouped case table, columns and open/select behavior (R1/R2).                                                                      |
+| UI-002 | Keep + supplement              | Search/Filter/View is appropriate; UI-043 must make section scope and selected count adjacent to the actual cases, not another toolbar stack.                                                                              |
+| UI-003 | Keep + supplement              | Title width is useful but insufficient; UI-043 defines normal text rows and metadata placement rather than relying only on a 240px threshold.                                                                              |
+| UI-004 | Keep                           | Responsive list/detail and return context support the three-pane workflow (R2). Do not redesign solely to fit more panels.                                                                                                 |
+| UI-005 | Keep                           | Section-native quick outline directly matches the documented creation path (R1); it is not a substitute for full instructions.                                                                                             |
+| UI-006 | Incomplete design coverage     | Sticky Save/validation/dirty-close did not specify a usable case-writing form. UI-049 adds explicit template-specific authoring and read-back into execution (R1/R3).                                                      |
+| UI-007 | Keep                           | Named parent/child targets support case organization; preserve text/folder hierarchy rather than management cards.                                                                                                         |
+| UI-008 | Redirect                       | “Result recording dominant” is not sufficient: UI-039 makes the test's readable instructions central, with recording actions at the edge (R2/R4).                                                                          |
+| UI-009 | Keep                           | Selection-local bulk results match batch execution needs (R4); retain exact target count.                                                                                                                                  |
+| UI-010 | Keep, qualified                | Explicit Pass & Next remains; ordinary Status entries use the dialog under UI-038. No inference that every pass action is instant (R4).                                                                                    |
+| UI-011 | Superseded presentation        | Keep form fields/lifecycle; UI-037 owns the compact popup. Inline Results-tab form is no longer the layout target.                                                                                                         |
+| UI-012 | Keep as reliability            | Local feedback/retry protects results, but is not evidence of a TestRail-like screen composition.                                                                                                                          |
+| UI-013 | Keep as reliability            | Staging evidence belongs to recording; verify file content as well as displayed filename under UI-021.                                                                                                                     |
+| UI-014 | Supplement                     | Six rows cannot prove execution usability. UI-039 must show meaningful steps/expected results beside those rows.                                                                                                           |
+| UI-015 | Incomplete design coverage     | One Add Run and overflow did not define an execution landing page. UI-050 adds status-bearing active/completed run/plan rows and direct resume (R5/R7).                                                                    |
+| UI-016 | Redirect                       | My Tests must answer “what is assigned to me and where do I resume?”, not simply reuse table controls. UI-046 owns this.                                                                                                   |
+| UI-017 | Keep, verify role              | Milestone remains a release grouping with linked runs/progress, not a generic create/list demo. UI-021 tests opening a populated milestone into its work; absent behavior is reported, not hidden by component compliance. |
+| UI-018 | Incomplete design coverage     | A cleaner Plan header is not a useful plan. UI-047 must show contained executable runs/configurations before entry-management controls (R5).                                                                               |
+| UI-019 | Keep, verify role              | Reports are a secondary analysis workflow. UI-035/021 retain populated filter/export checks; no new report builder or core execution dashboard is implied.                                                                 |
+| UI-020 | Keep as support                | Settings accessibility/save feedback are necessary administration, not evidence that the tester's main journey is finished.                                                                                                |
+| UI-021 | Rewrite acceptance emphasis    | Compare actual repository/authoring/run-selection/execution/result screens with R1–R7 and perform a continuous tester scenario; checklist arithmetic is insufficient.                                                      |
+| UI-022 | Keep                           | Direct/subtree/all scope answers which cases are included; this is independent of visual density and must stay explicit.                                                                                                   |
+| UI-023 | Keep                           | Section-owned blocks are the right reading structure; preserve quiet headers, ownership and no duplicate cases.                                                                                                            |
+| UI-024 | Keep                           | Grouping/spacing/columns are separate view choices; do not restore an always-visible control for each option.                                                                                                              |
+| UI-025 | Keep as reliability            | Correct move/copy modal behavior protects case organization; not a separate visual redesign.                                                                                                                               |
+| UI-026 | Keep as reliability            | Folder-tree keyboard semantics support the existing visual direction; do not add more row chrome.                                                                                                                          |
+| UI-027 | Superseded coverage            | Header-height reduction was partial. UI-041 supplies global compaction; UI-043 still owns the repository composition beneath it.                                                                                           |
+| UI-028 | Keep                           | One contextual selection bar and one dominant empty-state action; section-native outline remains an intentional alternate path.                                                                                            |
+| UI-029 | Incomplete design coverage     | Header-only cleanup missed the detail body. UI-044 specifies the actual case-reading document, not merely fewer icons.                                                                                                     |
+| UI-030 | Keep as reliability            | Result/test ownership is essential and survives every popup/layout change.                                                                                                                                                 |
+| UI-031 | Keep with debt                 | Safe storage rejection is necessary but not a completed evidence workflow; UI-021 verifies real byte roundtrip.                                                                                                            |
+| UI-032 | Keep as reliability            | Bulk target consistency is essential and separate from single-result visual treatment.                                                                                                                                     |
+| UI-033 | Keep + supplement              | Full title/Status labels are retained; UI-039/040 determine the whole execution surface, not row count alone.                                                                                                              |
+| UI-034 | Keep                           | Distinguishing the same case in different runs is a tester requirement; UI-046 supplies the complete queue view.                                                                                                           |
+| UI-035 | Keep                           | Named report menus and populated outputs fix a specific ambiguity; do not make reporting a permanent peer of test execution.                                                                                               |
+| UI-036 | Supplement                     | Hiding empty configuration controls is useful; UI-047 must make real generated runs easy to identify and open.                                                                                                             |
+| UI-037 | Keep foundation + correct form | The shared dialog exists, but UI-038's captured form and current ResultEntryPanel retain large status tiles. UI-051 applies the user's actual two-column reference; modal existence/width is insufficient (R4).            |
+| UI-038 | Make concrete                  | Specify the Status control as a compact labeled dropdown in the existing row, not a button grid or a new Status column.                                                                                                    |
+| UI-039 | Rewrite target                 | Define identity/metadata/preconditions/action–expected steps/history/actions and list-to-detail selection, including an interrupted test (R2–R4).                                                                          |
+| UI-040 | Keep                           | Top chart/legend/pass-rate matches the supplied Run reference; retain a real progress overview rather than stripping charts to achieve minimalism (R7).                                                                    |
+| UI-041 | Keep + targeted follow-up      | Keep compact navigation/focus improvements. UI-050 gives Runs and Plans one execution-area entry; no new global navigation rewrite.                                                                                        |
+| UI-042 | Keep as visual foundation      | Removing borders is only groundwork; UI-043/044/047/048/050 must define content composition and meaningful progress.                                                                                                       |
+| UI-043 | Rewrite target                 | Specify repository rows, section headers, column order, quick outline and detail entry; do not stop at removing selects.                                                                                                   |
+| UI-044 | Rewrite target                 | Specify a readable case document and template-specific content, not just moving metadata edit into a menu (R3).                                                                                                            |
+| UI-045 | Correct direction              | Do not present fixed-all as TestRail's default all-inclusion behavior. Use explicit all/selected/dynamic choices and truthful automatic-inclusion semantics (R6).                                                          |
+| UI-046 | Rewrite target                 | Queue rows show Run identity, case, current status and assignee context; the default journey opens the exact assigned test to read and execute.                                                                            |
+| UI-047 | Rewrite target                 | Plan first displays its existing executable runs grouped by entry/configuration, with progress and open links; configuration/generation is a distinct management mode (R5).                                                |
+| UI-048 | Correct minimalism             | Keep a concise project progress summary and actionable run links; do not treat useful progress charts as clutter merely because they are not buttons (R7).                                                                 |
+
+
+
 
 Two uncovered deliverables are added below: **UI-049 case instruction authoring** and **UI-050 Runs & Results landing/navigation**. They close gaps in UI-006 and UI-015/041, respectively, instead of adding more generic “simplify” tickets. Existing checked units remain dated deliveries. Neither source review nor this table asserts new runtime completion.
 
@@ -362,7 +394,7 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
 
 아래 19개 항목은 기존 UX 본문을 대체한다. ID는 기존 UI 작업·증거와의 연결을 위해 유지하지만, 내용은 **테스터가 해야 할 일을 자연스럽게 끝내도록 만드는 작업 명세**로 다시 작성했다. 컴포넌트 존재, 버튼 수, API 성공, 스크린샷 개수만으로 체크하지 않는다. TestRail의 모든 기능이나 옛 색상을 복제하는 것이 아니라 사용자가 제시한 폴더 트리·섹션별 목록·지침 패널·작은 결과 입력창의 일관된 업무 구조를 따른다.
 
-각 항목의 ‘작업’은 목표 동작이고 이미 구현돼 있으면 재구현하지 않고 실제 흐름으로 검증한다. 미충족이면 재현 절차·기대 동작·영향 파일/화면·실패 증거를 기록하고 하나의 검증 가능한 수정 단위로 제안한다. **UI-021 자체는 검증 단위**이므로 그 안에서 발견한 결함을 일괄 구현하는 권한이 아니다. 현재 편성된 UI-052–063 수정은 각 단위가 NEXT_ACTIONS의 Current일 때 수행하고, UI-021은 그 뒤에 재개한다. 이 문서 개정 자체로 제품 수정이나 완료 판정을 하지 않는다.
+각 항목의 ‘작업’은 목표 동작이고 이미 구현돼 있으면 재구현하지 않고 실제 흐름으로 검증한다. 미충족이면 재현 절차·기대 동작·영향 파일/화면·실패 증거를 기록한다. 기존 명세 위반은 NEXT_ACTIONS의 자동 수정 순환에 따라 중복 확인 후 검증 가능한 UI 단위로 편성한다. **UI-021 자체에서는 검증·기록·편성까지만** 하고 종료하며, 다음 실행에서 새 Current 한 개를 수정한다. 최초 UI-052–063과 추가 편성된 수정들이 끝나면 UI-021을 재개한다. 새 기능/정책/권한/환경·필수 검토는 별도 확인 대상이다. 이 문서 개정 자체로 제품 수정이나 완료 판정을 하지 않는다.
 
 ### A. 같은 테스트를 보고 있다는 신뢰 — UX-001–003
 
@@ -386,6 +418,8 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 작업: 블록 접기는 표시만 바꾸며 조회 범위를 바꾸지 않는다. 필터 때문에 저장한 행이 사라질 때는 저장 사실과 이동 위치를 설명하고 적절한 목록 위치에 포커스를 돌린다. 모달 초안이 있는 전환은 UX-002의 보호를 따른다.
   - 검증/완료: Failed 필터의 테스트를 Passed로 기록, 선택 후 섹션/페이지 이동, 블록 접기, 범위 전환과 Back을 수행한다. 각 단계의 조회 수/선택 ID/상세/요청 대상이 일치한다.
   - 불합격: 보이지 않는 대상에 무고지 쓰기, 접기만으로 대상 변경, 목록과 다른 상세를 정상 상태처럼 표시. 관련: UI-022/023/032/038/051, J01/J05/J07.
+
+
 
 ### B. 화면을 배우지 않아도 읽히는 구성 — UX-010–013
 
@@ -417,6 +451,8 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 검증/완료: 3단계 이상 섹션, 동일 이름의 하위 섹션, 긴 제목과 20개 케이스를 넣고 1280/390px에서 부모·자식·선택·소속을 설명할 수 있는지 확인한다.
   - 불합격: 카드 안 카드, 블록마다 반복 도구막대, 들여쓰기만 늘어나 제목이 사라짐, 축소한 빈 화면만 비교. 관련: UI-003/023/026/033/039/040/042/044/051, J01/J04.
 
+
+
 ### C. 테스트케이스를 찾고 실행 가능한 내용으로 관리 — UX-020–023
 
 - [ ] **UX-020 P0 — 목록은 케이스를 찾는 공간, 상세는 지침을 읽는 공간으로 만든다.**
@@ -446,6 +482,8 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 작업: 섹션/하위 섹션 추가·이름 변경·이동/복사는 맥락 메뉴에서 제공하되 대상 경로를 확인시킨다. 드래그만 강요하지 않고 선택 메뉴로 같은 목적을 달성하게 한다. 위험 동작의 확인은 수와 대상 관계를 명시한다.
   - 검증/완료: 3단계 트리에서 자식 생성, 같은 이름의 다른 부모로 이동, 취소, 빈 부모, 접힌 선택 블록을 조작한다. 좁은 화면에서도 경로/대상을 확인하고 되돌아온다.
   - 불합격: 부모/자식 구분 불가, 표시만 옮기고 실제 소속 불일치, 접힌 블록의 선택을 무고지 숨김. 관련: UI-007/022/023/025/026, J01/J07.
+
+
 
 ### D. 지침을 읽고 테스트를 수행하고 기록 — UX-030–034
 
@@ -486,6 +524,8 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 검증/완료: 처음 보는 케이스의 사전조건 2개·3개 Action/Expected·공통 Expected를 테스터가 읽고 테스트용 대상에서 수행/비교한다. 10개 스텝과 다음 케이스의 다른 지침, 내용 없음/실패 상태도 확인한다. Cases 관리 화면으로 돌아가야 지침을 찾는다면 실패다.
   - 불합격: 제목/상태만 있는 fixture, 결과 입력만 찍은 캡처, ‘6개 행 표시’ 때문에 지침 축소/생략. 관련: UI-008/014/033/039–042/044/051, J04/J08.
 
+
+
 ### E. 작업 시작·재개와 실제 사용자 검증 — UX-040–042
 
 - [ ] **UX-040 P1 — 어디서 테스트를 시작하고 이어갈지 바로 찾는다.**
@@ -509,20 +549,24 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 검증/완료: 실제 Tab/Shift+Tab/Enter/화살표/Escape, 컨트롤 이름/현재 상태, 오류 안내와 포커스 복귀, 확대/가로 넘침/타깃 크기를 확인한다. 스크린샷은 동일 데이터/viewport로 전후를 비교하고 지침 읽기→결과창→복귀 상태를 연결한다.
   - 불합격: DOM focus 설정을 실제 Tab 검증으로 대체, 좁은 화면에서 Status/저장/다음 이동 접근 불가, 자동 검사만으로 테스터 수용 완료. 도구가 키 입력을 가로채면 blocked로 남기고 실제 브라우저/수동 검증 경로를 요청한다. 관련: 모든 변경 화면 및 UI-051, UI-021이 취합, J01–J08.
 
+
+
 #### 통합 검증 시나리오 — UI-021이 수행할 작업
 
 공통 데이터: 3단계 섹션과 서로 다른 부모의 같은 이름 섹션, 20개 이상의 의미 있는 케이스. 새로 작성한 Text와 Steps 케이스, 사전조건 2개/스텝 3개/각 Expected/공통 Expected, 10개 스텝, 지침 미작성 케이스를 포함한다. 활성 Run A/B에는 동일 케이스를 다른 상태로 포함하고 완료 Run과 구성별 Plan도 둔다. bulk/실패 주입은 테스트용 데이터에서만 수행한다. 정확한 ID·집계·API/실제 저장소 또는 mock 여부·빌드·역할을 실행 전에 기록한다.
 
-| 시나리오 | 테스터에게 제시할 업무 | 관찰/대조할 결과 |
-| --- | --- | --- |
-| J01 찾기·소속 파악 | “Authentication 아래 Login 케이스를 찾고, 그 섹션만/하위 포함/전체에서 무엇이 달라지는지 확인하세요.” | 경로와 소속 블록, 포함 ID/수, 동일 이름 구분, 필터/보기 차이, 상세 열기와 선택 분리 |
-| J02 작성·유지보수 | “5개 제목을 정리하고, 그중 Text/Steps 각 하나를 동료가 수행할 수 있게 완성한 뒤 수정하세요.” | 실제 지침 저장/재조회, 템플릿 전환·취소·오류에서 값 보존, 원래 섹션 복귀 |
-| J03 실행 범위 구성 | “의도한 5개 케이스로 Run을 만들고, 이후 추가 케이스가 포함되는 모드와 안 되는 모드를 구분하세요.” | All/Selected/Dynamic 계약, 정확한 ID와 지침, 원본/Run 및 Run A/B 결과 구분 |
-| J04 읽기·수행·다음 | “처음 보는 로그인 케이스를 지침대로 수행하고 결과를 남긴 뒤 다음 테스트를 진행하세요.” | 실제 Preconditions/Action/Expected 읽기, 일반 저장 유지/명시적 다음, 다른 지침 로딩, 조회 실패를 정상으로 오인하지 않음 |
-| J05 두 진입점·근거 | “패널과 목록에서 각각 실패를 기록해 보세요. 한 번은 취소하고, 한 번은 댓글·결함·파일 2개·담당자를 저장해 다시 확인하세요.” | 같은 작은 폼, 취소 요청 0회, 정확한 target, 메타데이터/결함/담당자 재조회, 실제 원본 첨부 다운로드 |
-| J06 실패·중단·재개 | “저장 실패를 복구하고, 첨부/담당자 일부 실패를 재시도한 뒤 업무를 중단했다가 다시 여세요.” | 실패별 상태, 초안/결과 보존, 중복 없음, 뒤로가기/새로고침/재진입 시 저장된 사실과 남은 작업 이해 |
-| J07 다중 선택·정리 | “여러 섹션의 3개 TC를 이동하고, Run에서 선택한 테스트들만 일괄 기록하세요.” | 소유 섹션/대상 수/ID, 필터·페이지·블록 접기 시 선택 범위, 일부 실패 재시도, 비선택 대상 무변경 |
-| J08 시작점·접근성 | “프로젝트/실행 목록/My Tests/Plan에서 남은 작업을 찾고, 키보드와 좁은 화면에서 지침 확인·기록·복귀하세요.” | 정확한 Run/test, 진행 요약, 필터/문맥 유지, Tab/닫기/초점 복귀, 배치 단순함과 필요한 내용의 접근성 |
+
+| 시나리오         | 테스터에게 제시할 업무                                                              | 관찰/대조할 결과                                                                           |
+| ------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| J01 찾기·소속 파악 | “Authentication 아래 Login 케이스를 찾고, 그 섹션만/하위 포함/전체에서 무엇이 달라지는지 확인하세요.”      | 경로와 소속 블록, 포함 ID/수, 동일 이름 구분, 필터/보기 차이, 상세 열기와 선택 분리                                |
+| J02 작성·유지보수  | “5개 제목을 정리하고, 그중 Text/Steps 각 하나를 동료가 수행할 수 있게 완성한 뒤 수정하세요.”              | 실제 지침 저장/재조회, 템플릿 전환·취소·오류에서 값 보존, 원래 섹션 복귀                                         |
+| J03 실행 범위 구성 | “의도한 5개 케이스로 Run을 만들고, 이후 추가 케이스가 포함되는 모드와 안 되는 모드를 구분하세요.”               | All/Selected/Dynamic 계약, 정확한 ID와 지침, 원본/Run 및 Run A/B 결과 구분                         |
+| J04 읽기·수행·다음 | “처음 보는 로그인 케이스를 지침대로 수행하고 결과를 남긴 뒤 다음 테스트를 진행하세요.”                        | 실제 Preconditions/Action/Expected 읽기, 일반 저장 유지/명시적 다음, 다른 지침 로딩, 조회 실패를 정상으로 오인하지 않음 |
+| J05 두 진입점·근거 | “패널과 목록에서 각각 실패를 기록해 보세요. 한 번은 취소하고, 한 번은 댓글·결함·파일 2개·담당자를 저장해 다시 확인하세요.” | 같은 작은 폼, 취소 요청 0회, 정확한 target, 메타데이터/결함/담당자 재조회, 실제 원본 첨부 다운로드                      |
+| J06 실패·중단·재개 | “저장 실패를 복구하고, 첨부/담당자 일부 실패를 재시도한 뒤 업무를 중단했다가 다시 여세요.”                     | 실패별 상태, 초안/결과 보존, 중복 없음, 뒤로가기/새로고침/재진입 시 저장된 사실과 남은 작업 이해                           |
+| J07 다중 선택·정리 | “여러 섹션의 3개 TC를 이동하고, Run에서 선택한 테스트들만 일괄 기록하세요.”                           | 소유 섹션/대상 수/ID, 필터·페이지·블록 접기 시 선택 범위, 일부 실패 재시도, 비선택 대상 무변경                          |
+| J08 시작점·접근성  | “프로젝트/실행 목록/My Tests/Plan에서 남은 작업을 찾고, 키보드와 좁은 화면에서 지침 확인·기록·복귀하세요.”      | 정확한 Run/test, 진행 요약, 필터/문맥 유지, Tab/닫기/초점 복귀, 배치 단순함과 필요한 내용의 접근성                    |
+
 
 결과 기록은 UX ID별로 **현재 동작/기대 동작 → 시나리오와 단계 → pass/fail/blocked/pending → 화면·요청·재조회 증거 → 자동 검사/실제 키보드/테스터 관찰 구분 → 남은 수정 범위**를 남긴다. 이 표의 통과도 모든 UX 항목을 자동 체크하지 않는다. 동일 증거를 재사용할 수는 있지만 각 항목의 완료 조건과 대응시킨다.
 
@@ -575,6 +619,8 @@ Execute only the Current batch in NEXT_ACTIONS, never top-to-bottom or by numeri
   - Done when: a first-time user can identify where a case or subsection will be created without trial and error.
   - Maps to: `UX-023`.
 
+
+
 #### Run Execution workspace
 
 - [x] **UI-008 P0 — Compress the Run Execution header into one workbench header.** ([evidence](./ux-evidence/UI-008.md): table begins ~323px at 1280×720; grouped utilities pass desktop/mobile keyboard review.)
@@ -619,6 +665,8 @@ Execute only the Current batch in NEXT_ACTIONS, never top-to-bottom or by numeri
   - Done when: at least six test rows are visible at 1280 x 720 with the result pane open.
   - Maps to: `UX-013`, `UX-034`, `UX-042`.
 
+
+
 #### Shared rollout, one route at a time
 
 - [x] **UI-015 P1 — Apply the workbench pattern to the run list.** ([evidence](./ux-evidence/UI-015.md): one Add Run; More actions held plan/compare/reports/defects; My runs and Order by in one toolbar; sidebar CTAs removed.)
@@ -653,7 +701,7 @@ Execute only the Current batch in NEXT_ACTIONS, never top-to-bottom or by numeri
   - Maps to: `UX-012`, `UX-040`, `UX-042`.
 
 - [ ] **UI-021 P1 — Add a cross-route visual and accessibility regression gate.**
-  - Scheduling prerequisite: UI-052–063 acceptance evidence and NEXT_ACTIONS E01–E04 readiness; UI-021 remains the final verification, not the active repair batch. On an unchanged blocker, perform a readiness check only, not another full fixture/capture cycle. General Add Result staying on the current test is correct; test explicit Save & Next/Pass & Next separately. Compare aggregate counts by their real scope, not against unrelated unique-case counts.
+  - Scheduling prerequisite: acceptance evidence for UI-052–063 and all subsequent scheduled repairs. Apply NEXT_ACTIONS E01–E04 readiness per verification path, not as an all-or-nothing entry gate: attachment storage blocks only real-byte attachment success; independent tester availability blocks only human acceptance. Continue available unverified UI/keyboard/persistence paths. UI-021 remains the final verification. New confirmed existing-contract defects trigger the authorized evidence → deduplicated repair unit → Current handoff → later repair → UI-021 recheck loop; leave UI-021 unchecked and do not implement that repair in the same verification run. Readiness-only runs are appropriate only when all remaining work depends on unchanged external blockers. General Add Result staying on the current test is correct; test explicit next separately and compare aggregate counts by their real scope.
   - Visible change: none; this protects the final tester journey and reference-based screens established by all preceding scheduled units, including UI-037–051, not only UI-001–020.
   - Evidence: capture Test Cases and Run Execution at 1440 x 1000, 1280 x 720, and 390 x 844; add keyboard and accessible-name checks for primary flows.
   - Done when: all rewritten UX-001–042 gates (19 entries) have explicit integrated verdicts, and J01–J08 demonstrate the tester's work under section 8.3. Duplicate dominant CTAs, hidden selection actions, clipped controls, horizontal page scroll and unnamed controls are failure checks, not a complete usability test. Missing instructions, ambiguous case/Run scope, unrecoverable drafts and result/evidence target mistakes also fail the gate.
@@ -662,6 +710,8 @@ Execute only the Current batch in NEXT_ACTIONS, never top-to-bottom or by numeri
   - Closure responsibility: assess every UX gate using the rewritten section 7 work specifications, ownership table and J01–J08, plus section 8 tiers. Carry UI-031/UI-051's configured-storage byte roundtrip, actual keyboard and pending tester/design review explicitly. Reproduce UI-051's instruction-load exception with the integrated fixture. Record automatic tests, real interactions, persistence and tester observations separately. Missing environment or reviewer prevents completion; do not create new APIs/storage infrastructure within this gate.
   - Reference-based exercise: compare the actual Case repository, Text/Steps authoring, case read view, Run selection form, execution pane/result dialog, Runs & Results hub and populated Plan to the concrete task targets and R1–R7 reference anchors. Start with newly authored instructions, not pre-seeded titles only; select their cases for a Run, execute/read/record/reopen evidence and resume from the hub. Reject a screen that passes component/row-count checks but still requires guessing what is editable, which Run to open or what procedure to follow. Document deliberate differences from TestRail rather than silently claiming fidelity.
   - Maps to: `UX-001`, `UX-041`, `UX-042`; final verification owner for all UX outcomes in the ownership table.
+
+
 
 #### Simplicity follow-ups — queued by the 2026-09-19 review
 
@@ -718,6 +768,8 @@ Detailed evidence, design rules, and scope fixtures: [simplicity review](./UI_UX
   - Done when: opening a TC immediately exposes title/content without scanning a utility button wall; utilities remain keyboard reachable, close returns focus to the case row, and 390px controls do not wrap into multiple competing toolbars.
   - Out of scope: changing case data or the full authoring form. Maps to: `UX-010`, `UX-012`, `UX-020`.
 
+
+
 Additional UX-040 review note: the live empty Projects page repeats New project twice plus Add project in Quick links. Consolidate its creation entry point and empty-state container during the project-list rollout; this observation is not a newly completed task.
 
 #### Completion-review follow-ups — one independently verifiable unit each
@@ -768,6 +820,8 @@ Evidence and confidence levels: [completion review, 2026-09-19](./UI_UX_COMPLETI
   - Done when: empty, populated-unselected and selected-entry states each have a clear next action; configuration controls name their owning entry. Switching/removing that entry cannot leave unexplained stale controls or save to the wrong entry. Verify focus, local busy/error feedback and 1280px/390px layouts.
   - Out of scope: configuration matrix semantics or run-generation API changes. Maps to: `UX-010`, `UX-012`, `UX-040`.
 
+
+
 #### Shared result dialog — queued by the whole-layout review
 
 Design and verification fixture: [RUN_RESULT_DIALOG_DESIGN_2026-09-19.md](./RUN_RESULT_DIALOG_DESIGN_2026-09-19.md). Originally documentation-only, now explicitly queued following the user's whole-layout review request. UI-011's checked evidence remains historical; its permanent Results-tab form is superseded as the target layout by this design. Existing checks do not certify the new interaction.
@@ -796,6 +850,8 @@ Design and verification fixture: [RUN_RESULT_DIALOG_DESIGN_2026-09-19.md](./RUN_
   - Dependency: UI-037/UI-038. Out of scope: case authoring/API changes and global project navigation redesign. UI-021 must include this flow in its final integration coverage.
   - Maps to: `UX-031`, `UX-034`, `UX-041`, `UX-042`.
 
+
+
 #### Top-of-run status overview — queued by the whole-layout review
 
 - [x] **UI-040 P1 — Move Run status statistics above the execution workbench.** ([evidence](./ux-evidence/UI-040.md): 73% passed vs 85% recorded; tests column 501→721px; 390 C1 in view.)
@@ -806,6 +862,8 @@ Design and verification fixture: [RUN_RESULT_DIALOG_DESIGN_2026-09-19.md](./RUN_
   - Done when: the design's 59-test fixture shows Passed 43/59 = 73%, Untested 9/59 = 15%, distinctly from 85% result-recorded. Verify empty/loading/error states, zero-count statuses, single/bulk updates, keyboard and 1440×1000/1280×720/390×844 screenshots. Measure reclaimed width with tree/detail open; preserve UI-033's six readable rows at 1280px and show the first list row in the initial 390px viewport with detail closed. No page-level horizontal overflow or lost sidebar functionality.
   - Dependencies: preserve UI-032/033 contracts; integrate with whichever UI-037–039 state exists when scheduled without implementing those units here. Out of scope: new chart library/API, result-dialog implementation and global header redesign.
   - Evidence: focused tests, web type check/build, real interaction checks and before/after screenshots in `docs/ux-evidence/UI-040.md`. Maps to: `UX-010`, `UX-013`, `UX-034`, `UX-042`.
+
+
 
 #### Whole-layout follow-ups — one independently verifiable unit each
 
@@ -889,6 +947,8 @@ Design, evidence limits, remove/merge/retain decisions and mandatory shared veri
   - Done when: before/after captures at 1440×1000, 1280×720 and 390×844 show the actual reference composition through both entry points. The basic Text result fits the desktop viewport without body scrolling; required/long forms may scroll without losing actions, and mobile uses one column without horizontal overflow. Verify native keyboard/dropdown/focus return, same-status entry, cancel without writes, state transitions without draft loss, real save/read-back including metadata/defects/assignee, two attachments, result failure and partial retry without duplicate results. Run relevant regression tests, web lint/build and record commands/results, UI observations and tester/design acceptance in `docs/ux-evidence/UI-051.md`. Pending required review or blocked persistence is not a pass.
   - Dependencies: preserve UI-030/031/037/038/039 and top statistics from UI-040. Out of scope: new APIs, bulk redesign, case authoring, instruction/whole-Run redesign. UI-021 includes this final form in the integrated tester journey. Primary UX outcomes: `UX-031`, `UX-032`, `UX-033`; shared/flow regressions: `UX-002`, `UX-003`, `UX-010`, `UX-011`, `UX-012`, `UX-013`, `UX-034`, `UX-041`, `UX-042`. A mapping is not a completed UX verdict.
 
+
+
 #### UI-021에서 발견한 결함의 수정 큐 — 2026-09-20
 
 사용자의 NEXT_ACTIONS 재편성 요청으로 아래 12개 단위를 실행 가능한 수정 작업에 추가한다. UI-021은 미완료인 채 최종 재검증으로 이동한다. 상세 순서는 NEXT_ACTIONS만 따른다. 아래 관찰은 UI-021 기록에 근거한 **재현 출발점**이며 현재 원인이 확정됐다는 뜻이 아니다.
@@ -897,92 +957,116 @@ Design, evidence limits, remove/merge/retain decisions and mandatory shared veri
 
 서버가 원인이면 명시한 기존 필드/동작의 schema→service→repository 매핑과 관련 테스트까지 좁혀 수정할 수 있다. 새 API/DB 정책/외부 서비스/광범위 리팩터링은 자동 허용하지 않는다. 기존 UI-051 배치, 지침 우선 패널, 상단 통계, 사용자 변경을 보존한다. 모든 코드 단위에 전체 통합 테스터 검토를 요구하지 않지만, 해당 변경의 필수 수용 조건을 미루고 완료할 수는 없다. 외부 준비 E01–E04와 반복 방지 규칙은 NEXT_ACTIONS를 따른다.
 
-- [ ] **UI-052 P0 — 모바일 Run 목록 복귀와 선택 복원 충돌 수정.**
+- [x] **UI-052 P0 — 모바일 Run 목록 복귀와 선택 복원 충돌 수정.**
   - 근거/재현: UI-021 J08, 390px에서 testId 없는 Run이 이전 C4로 자동 열리고 Back to tests 후 다시 C4로 돌아가 목록 행 높이가 0이 됨. 현재 fixture에서도 목록→상세→목록 전환과 재렌더를 확인한다.
   - 범위/시작 파일: `apps/web/src/features/runs/components/RunDetailPage.tsx`, `utils/runSelectedTestState.ts`와 해당 테스트. URL/복원 효과/목록·상세 모드의 충돌을 수정한다.
   - 작업: 사용자가 명시적으로 목록으로 돌아온 의도를 이전 선택 자동 복원보다 우선한다. testId 없는 모바일 경로는 실제 목록을 보여주고, 명시적 testId 딥링크는 올바른 지침을 연다. 데스크톱 선택 계약은 보존한다.
   - 완료: 390px에서 Back to tests 후 대기/재렌더에도 목록이 유지되고 행·체크박스의 실제 크기/접근성이 정상이다. 행 다시 열기, URL 직접 접근, refresh, Back/Forward, 필터 변화와 1280/1440 동작을 확인한다.
   - 제외/연결: 새 pane 구조/결과 폼/통계 재설계 제외. UX-002/020/034/042, J04/J08.
+  - 검증 근거 (2026-09-20): 390에서 no-testId/Back 후 목록 유지·행 높이 37·Select C* 접근 가능; 딥링크/행 열기/refresh/Back·Forward/1280·1440 시드 확인. 증거 [UI-052.md](./ux-evidence/UI-052.md).
 
-- [ ] **UI-053 P0 — 결과 Defects 입력을 저장과 재조회까지 보존한다.**
+- [x] **UI-053 P0 — 결과 Defects 입력을 저장과 재조회까지 보존한다.**
   - 근거/재현: UI-021 J05에서 CART-21을 입력했지만 결과 조회 `defects: []`. 입력값의 확정(Enter/blur/token 생성), submit payload, 응답, 재조회 중 어느 지점에서 빠지는지 먼저 구분한다.
   - 범위/시작 파일: `apps/web/src/features/runs/components/DefectKeyInput.tsx`, `ResultEntryPanel.tsx`, `api/runApi.ts`; 필요 시 `apps/server/src/modules/results/results.schema.ts`, `results.service.ts`, 기존 defect-link 저장 경로. 새 결함 연동 서비스는 만들지 않는다.
   - 작업: 입력창에 보이는 유효한 키가 별도 설명 없는 숨은 확정 조작 때문에 누락되지 않게 한다. 기존 지원 형식/중복 제거/검증을 일관되게 적용하고 양쪽 결과 진입점에 같은 규칙을 쓴다.
   - 완료: 패널과 목록에서 단일/복수 키를 입력해 저장하고 창 재열기/새로고침/결과 API/이력에서 같은 키를 확인한다. 마지막 값 입력 후 바로 저장, 키 제거/취소, 허용하지 않는 형식, 결과 저장 실패 후 재시도를 검증한다. 이미 저장된 결과의 첨부 재시도가 새 결함 기록/결과를 중복 생성하지 않는다.
   - 제외/연결: 외부 이슈 생성/인증 변경 제외. UX-031/032/033, J05/J06.
+  - 검증 근거 (2026-09-20): Enter 없이 CART-21/BUG-1,BUG-2/KEEP-9 저장·API·이력 일치; Cancel 무기록; 칩 제거 반영; 저장 실패 시 RETRY-1+Retry 유지. 증거 [UI-053.md](./ux-evidence/UI-053.md).
 
-- [ ] **UI-054 P0 — 케이스 References 입력을 저장과 재조회까지 보존한다.**
+- [x] **UI-054 P0 — 케이스 References 입력을 저장과 재조회까지 보존한다.**
   - 근거/재현: UI-021 J02의 JIRA-UI021이 `refs: null`로 재조회됨. 필드 확정과 create/update payload부터 기존 정규화/저장 경로를 대조한다.
   - 범위/시작 파일: `apps/web/src/features/cases/components/ReferencesInput.tsx`, `CaseAuthoringForm.tsx`; 필요 시 `apps/server/src/modules/cases/cases.schema.ts`, `cases.service.ts`, `cases.repository.ts`, `domain/caseRefs.ts`. 기존 `__tests__/case-refs.test.ts` 및 reference integration 회귀를 사용한다.
   - 작업: 작성/편집한 참조가 저장 직전의 입력과 같은 의미로 영속화되게 한다. 사용자에게 숨겨진 확정 단계로 값이 유실되지 않게 하고 기존 구분자·유효 형식을 유지한다.
   - 완료: Text/Steps 생성과 편집에서 참조 추가/제거/복수 입력/취소를 수행하고 재열기·API·Run 읽기에서 계약에 맞는 값을 확인한다. 잘못된 입력은 로컬 오류이며 조용한 null 저장은 금지한다. 원본 수정의 Run 반영 시점은 기존 snapshot/live 정책대로 검증한다.
   - 제외/연결: 참조 시스템/버전 정책 변경 제외. UX-001/021, J02/J03.
+  - 검증 근거 (2026-09-20): Enter 없이 입력해도 Save flush로 유지. C1 `JIRA-UI021`→제거 후 `KEEP-ONLY`, C2 `STEPS-REF`, Run 읽기·390 OK. `caseRefs.test` 2 passed, web lint/build passed. 증거 [UI-054.md](./ux-evidence/UI-054.md).
 
-- [ ] **UI-055 P0 — bulk 결과 후 목록·선택 상세·통계를 즉시 일치시킨다.**
+- [x] **UI-055 P0 — bulk 결과 후 목록·선택 상세·통계를 즉시 일치시킨다.**
   - 근거/재현: UI-021 J07의 3개 Blocked 적용 후 toast/통계만 변경되고 목록과 선택 상세는 reload 전까지 옛 상태.
   - 범위/시작 파일: `apps/web/src/features/runs/components/RunDetailPage.tsx`, `RunSelectionActionBar.tsx`, `TestInstanceTable.tsx`, `utils/runBulkSelectionScope.ts`, `api/runApi.ts`와 관련 query/mutation 경로.
   - 작업: 성공한 testId에 대해 목록·선택 상세·Latest/이력·집계의 query 갱신/캐시 적용을 정합적으로 처리한다. 일부 실패는 성공 대상과 분리하고 재시도 집합을 유지한다.
   - 완료: 3개 적용 직후 reload 없이 모든 읽기 표면이 저장값과 일치하고 비선택 대상은 불변이다. 상태 필터로 행이 사라짐, 페이지/섹션 변경, 부분 실패/재시도를 주입해 성공 대상 중복 기록이 없음을 확인한다.
   - 제외/연결: 다중 Run bulk 신설/일괄 입력창 재설계 제외. UX-003/030/032, J07.
+  - 검증 근거 (2026-09-20): bulk 후 `instances-grouped` 무효화로 목록/헤더 즉시 Blocked. 부분 실패 Retry·Untested 필터·390 OK. lint/build/`runBulkCacheKeys` 통과. 증거 [UI-055.md](./ux-evidence/UI-055.md).
 
-- [ ] **UI-056 P0 — 일반 저장과 명시적 다음 이동의 의미를 정리하고 검증한다.**
+- [x] **UI-056 P0 — 일반 저장과 명시적 다음 이동의 의미를 정리하고 검증한다.**
   - 근거/판정 보정: UI-021이 Jump to next 선택 후 일반 저장에서 머무른 것을 실패로 적었으나, UI-051/UX-002의 **Add Result는 현재 유지**가 우선이다. 이 관찰만으로 자동 다음을 복원하지 않는다.
   - 범위/시작 파일: `apps/web/src/features/runs/components/RunDetailPage.tsx`, `ResultEntryDialog.tsx`, `utils/resultEntryDialogModel.ts`, `utils/resultSaveLifecycle.ts` 및 Jump preference를 표시하는 기존 제어.
   - 작업: Add Result/Save & Next/Pass & Next의 명시적 의도를 end-to-end 대조한다. 일반 저장을 뒤집는 모호한 Jump 설정은 실제 적용 범위를 명명하거나 해당 문맥에서 제거한다. 기존 설정의 다른 소비자를 확인하며 몰래 의미를 바꾸지 않는다.
   - 완료: 서로 다른 지침의 5개 테스트에서 일반 저장은 유지, Save & Next와 유효한 Pass & Next는 현재 필터/정렬의 다음을 연다. 필수 입력/실패/첨부·할당 부분 성공에는 이동하지 않고 마지막에서 순환하지 않는다. URL/지침/testId/포커스가 일치한다.
   - 제외/연결: 새 자동 실행 엔진 제외. UX-002/031/032/034, J04/J06. UI-021의 잘못된 기대값은 해당 증거에 명확히 정정하되 원 관찰 이력을 지우지 않는다.
+  - 검증 근거 (2026-09-20): Jump 제거, Add Result 유지, Save & Next/Pass & Next 전진, 마지막 비순환, Save & Next force 선택 수정. lint/build/21 tests. 증거 [UI-056.md](./ux-evidence/UI-056.md).
 
-- [ ] **UI-057 P0 — 부분 성공 후 첨부·담당자 복구 상태를 잃지 않는다.**
+- [x] **UI-057 P0 — 부분 성공 후 첨부·담당자 복구 상태를 잃지 않는다.**
   - 근거/재현: UI-021 J06의 중복 staging으로 파일 4개 표시, 창을 닫고 다시 열면 Retry 소실. 의도적인 폐기와 동의 없는 손실, 브라우저 새로고침과 같은 세션 재열기를 구분한다.
   - 범위/시작 파일: `apps/web/src/features/runs/components/ResultEntryDialog.tsx`, `ResultEntryPanel.tsx`, `RunDetailPage.tsx`, `utils/resultSaveLifecycle.ts`, `api/resultAttachmentUpload.ts`와 관련 테스트.
   - 작업: resultId/testId별 성공/실패 작업을 분리하고 같은 세션의 재열기에는 실패 파일/할당 재시도를 보존한다. 동일 UI 이벤트가 이중 처리되어 staging이 복제되는지 확인한다. 사용자의 별도 파일 추가를 파일명만 같다는 이유로 삭제하지 않는다.
   - 완료: 결과 성공 뒤 첨부만 실패/할당만 실패/둘 다 실패, A 닫기→B 열기→A 재열기, 재시도에서 결과 수와 성공 파일 수가 늘지 않는다. 명시적 폐기 전 저장 사실과 잃는 초안을 알린다. refresh 후 File bytes 복원이 불가능하면 저장된 결과를 유지하고 파일 재선택을 명확히 안내한다; 재선택으로 결과를 새로 만들지 않는다.
   - 검증 범위: 제어된 업로드/할당 실패·성공을 사용하는 회귀와 실제 dialog 조작은 이 단위 필수다. 실제 외부 저장소 bytes 왕복은 E01/UI-021의 별도 성공 증거이며 mock을 그 증거로 주장하지 않는다.
   - 제외/연결: 새 파일 영구저장 서비스/자동 업로드 인프라 제외. UX-012/032/033, J06.
+  - 검증 근거 (2026-09-20): Leave 시 Retry 유지, Discard만 폐기, A↔B 재열기·resultId 유지·중복 없음, session 재선택 안내. 27 tests + lint/build. 증거 [UI-057.md](./ux-evidence/UI-057.md).
 
-- [ ] **UI-058 P0 — All/Dynamic Run의 포함 규칙을 실제 동작과 일치시킨다.**
+- [x] **UI-058 P0 — All/Dynamic Run의 포함 규칙을 실제 동작과 일치시킨다.** ([evidence](./ux-evidence/UI-058.md): create-time live sync; Dynamic high/low; Selected fixed + result kept; header Sync 1280/390.)
   - 근거/재현: UI-021 J03에서 새 C6/C7이 재열기만으로 포함되지 않고 Sync now 후 추가됨. Dynamic 갱신도 미검증, Sync가 Discussion에 가려짐. 기존 제안 7/12를 이 단위로 합친다.
   - 범위/시작 파일: `apps/web/src/features/runs/components/RunCompositionPanel.tsx`, `RunCompositionWorkbench.tsx`, `RunDetailPage.tsx`; `apps/server/src/modules/runs/runCompositionSync.service.ts`, `runComposition.ts`, 기존 run service와 `__tests__/run-composition.test.ts`.
   - 작업: UI-045의 기존 All/Dynamic/Selected 계약과 서버의 지원 갱신 시점을 확인한다. 지원된 자동 포함 연결이 누락됐다면 그 경로를 복구한다. 설명만 수동 Sync로 바꿔 자동 포함 요구를 충족했다고 하지 않는다. 자동 포함이 기존 계약상 구현 불가능하면 필요한 정확한 정책/API 변경을 별도 결정 요청한다.
   - 완료: All에는 새 케이스 포함, Dynamic high에는 새 high 포함/low 제외, Selected는 고정이라는 기존 명시 계약을 재조회로 검증한다. 목록·수·상세를 갱신하며 이미 기록된 테스트/결과는 유실되지 않는다. 유지하는 Sync 조작은 올바른 범위와 피드백을 갖고 1280/390px 및 키보드에서 가림 없이 접근된다.
   - 제외/연결: 새 스케줄러/백그라운드 인프라/정책 몰래 변경 제외. UX-001/003/040, J03/J08.
 
-- [ ] **UI-059 P1 — 이동/복사 목적지를 전체 섹션 경로로 식별한다.**
+- [x] **UI-059 P1 — 이동/복사 목적지를 전체 섹션 경로로 식별한다.** ([evidence](./ux-evidence/UI-059.md): Checkout/Login vs Authentication/Login paths; Destination summary; move+cancel 1280/390.)
   - 근거/재현: UI-021 J07에서 서로 다른 부모의 Login이 동일한 ‘— Login’으로 표시되고 Payment 계층도 잘못 읽힘.
   - 범위/시작 파일: `apps/web/src/features/cases/components/MoveCopyChooserDialog.tsx`와 기존 section option/path 생성 로직.
   - 작업: Checkout / Login과 Authentication / Login처럼 부모 경로를 표시하고 실제 parentId/tree 순서와 들여쓰기를 맞춘다. 선택한 목적지 요약을 저장 전에 확인하게 한다.
   - 완료: 중복 이름/3단계/긴 경로/빈 부모에서 정확한 대상 선택, 취소 무변경, 3개 이동/복사 후 실제 소속을 확인한다. 390px 경로 줄바꿈과 실제 키보드 선택/복귀를 검증한다.
   - 제외/연결: 드래그 기능/이동 서버 의미 변경 제외. UX-012/023, J01/J07.
 
-- [ ] **UI-060 P1 — 섹션 범위와 개수 안내를 최신 목록에 맞춘다.**
+- [x] **UI-060 P1 — 섹션 범위와 개수 안내를 최신 목록에 맞춘다.**
   - 근거/재현: UI-021 J01/UX-003의 트리 개수·‘2 cases’ live region이 현재 0/1/5 범위와 어긋난다는 기록.
   - 범위/시작 파일: `apps/web/src/features/cases/components/SectionTreePane.tsx`, `CaseListPane.tsx`, 조회 scope/summary 연결과 캐시 갱신 경로.
   - 작업: 전체/직접/하위 포함/필터 결과/현재 페이지의 수를 혼용하지 않도록 출처와 표시 의미를 맞추고 추가/이동 후 필요한 query와 live region을 갱신한다.
   - 완료: 직접/하위/전체 전환, 검색, 케이스 추가·이동·삭제 후 예상 ID 집합과 트리/블록/안내 수가 일치한다. 블록 접기와 density는 대상 수를 바꾸지 않는다. 연속 조회의 늦은 응답이 옛 조건을 발표하지 않는다.
   - 제외/연결: 새 집계 API와 전체 트리 재설계 제외; 실제 부족한 계약은 따로 보고. UX-003/022/023, J01/J07.
+  - 검증: Auth direct/subtree/all = 0/1/3; 로딩 중 Updating…; quick-add 후 summary 3→4; lint/build/live `docs/ux-evidence/UI-060.md`.
 
-- [ ] **UI-061 P1 — 긴 프로젝트 이름의 앞부분 잘림과 헤더 겹침을 수정한다.**
+- [x] **UI-061 P1 — 긴 프로젝트 이름의 앞부분 잘림과 헤더 겹침을 수정한다.**
   - 근거/재현: UI-021에서 Extremely의 앞 ‘Ex’가 잘린 프로젝트 이름. viewport와 실제 텍스트/clip/scroll 상태를 구분해 재현한다.
   - 범위/시작 파일: `apps/web/src/shared/ui/ProjectSwitcher.tsx`와 기존 공통 헤더의 크기/overflow 규칙.
   - 작업: 긴 이름은 시작을 보존한 예측 가능한 줄임을 사용하고 전체 이름을 키보드/포인터로 접근할 수 있게 한다. 제목 때문에 인접 내비게이션/메뉴를 밀어내지 않는다.
   - 완료: 긴 한글/영문/공백 없는 이름을 1440/1280/390px에서 확인한다. 앞글자 임의 잘림, 제어 겹침, 가로 넘침이 없고 전체 이름을 확인할 수 있다.
   - 제외/연결: 글로벌 헤더 전면 교체 제외. UX-010/040/042, J08.
+  - 검증: justify-start+inner truncate; 1440/1280/390 EN/KO/nospace leadingVisible; title/menu full name; lint/build/live `docs/ux-evidence/UI-061.md`.
 
-- [ ] **UI-062 P1 — Run 컨트롤 이름과 실제 키보드 작업 흐름을 보완한다.**
+- [x] **UI-062 P1 — Run 컨트롤 이름과 실제 키보드 작업 흐름을 보완한다.**
   - 근거/재현: UI-021의 전체 선택 이름 ‘on’, label 없는 Discussion textarea, 실제 Tab/Shift+Tab 미검증.
   - 범위/시작 파일: `apps/web/src/features/runs/components/TestInstanceTable.tsx`, `RunDetailPage.tsx`의 discussion 구성, 기존 결과 dialog/공통 focus 처리. 현재 사용자 여정에서 확인된 이름/초점 결함만 수정한다.
   - 작업: 전체 선택의 대상 범위를 이름에 명시하고 Discussion 입력에 의미 있는 label을 연결한다. E02 경로로 목록→상태 메뉴→결과창→저장/취소→복귀를 실제 키보드로 수행하고 발견한 초점 문제를 해당 경로 안에서 수정한다.
   - 완료: 실제 Tab/Shift+Tab/Enter/화살표/Escape로 선택·메뉴·dialog·초안 폐기·원래 트리거 복귀를 검증한다. 읽기 전용/닫힌 Run, 필수 오류, 필터로 사라진 행도 포함한다. 키 입력 가로채기로 불가능하면 DOM focus로 대체 합격하지 않고 E02 blocker를 남긴다.
   - 제외/연결: 전체 앱 접근성 재설계 제외. UX-012/042, J05/J08.
+  - 검증: select-all/Discussion labels; Playwright Chromium 실키 메뉴→dialog→Tab→Discard→트리거 복귀; closed Run·Passed 필터·390; lint/build/live `docs/ux-evidence/UI-062.md`.
 
-- [ ] **UI-063 P1 — Overview와 Milestone의 수·연결 문맥을 정확히 표시한다.**
+- [x] **UI-063 P1 — Overview와 Milestone의 수·연결 문맥을 정확히 표시한다.**
   - 근거/판정 보정: UI-021의 ‘16 remaining’ 대 ‘7 cases’, Sprint 9의 0 active runs 기록. 여러 Run의 테스트 인스턴스 수는 고유 케이스 수와 다를 수 있고, Alpha가 실제 milestone에 연결됐는지 먼저 확인한다.
   - 범위/시작 파일: `apps/web/src/features/projects/components/ProjectOverviewPage.tsx`, `MilestoneDetailPage.tsx`, `utils/projectOverviewModel.ts`; 필요 시 기존 `apps/server/src/modules/runs/runsOverview.service.ts`, `domain/milestoneRollup.ts`와 관련 회귀.
   - 작업: 집계의 단위·Run 상태·필터·페이지 범위를 식별하고 실제 포함 ID로 기대값을 만든다. 잘못된 합산/갱신/label은 최소 수정한다. fixture만 잘못됐으면 정상 연결 데이터로 검증하고 제품 결함으로 꾸미지 않는다.
   - 완료: 같은 케이스를 포함한 활성 Run A/B, 완료 Run, milestone 연결/비연결 Run으로 집계를 대조한다. 상태 변경/연결 후 갱신과 집계에서 실제 Run으로 이동을 확인한다. ‘남은 테스트’와 ‘고유 케이스’를 구분하고 계획/Run 중복 합산이 없다.
   - 제외/연결: 새 분석/지표 API/임의 milestone 자동 연결 제외. UX-001/040/042, J08.
+  - 검증: cases vs open-run remaining labels; memory totalCases+linked runs; A/B/closed fixture; lint/build/live `docs/ux-evidence/UI-063.md`.
+
+
+
+#### UI-021 실행 재개 후 확인한 수정 단위
+
+- [ ] **UI-064 P1 — 좁은 Run 화면의 상태 범례를 생략 없이 읽을 수 있게 복구한다.**
+  - 근거/재현: [UI-021 재개 검증](./ux-evidence/UI-021-RESUME-2026-09-20.md)의 `UI-021-F01`. 390×844, 배율 100%, Run 3건(Passed/Failed/Untested 각 1), 상세 닫힘에서 Passed/Blocked/Untested/All statuses 등의 이름이 말줄임된다. 접근성 이름은 존재하지만 보이는 상태명만으로 의미를 파악하기 어렵다. UI-040의 좁은 화면 범례 계약 회귀이며 기존 체크 이력은 보존한다.
+  - 원인/범위: `apps/web/src/features/runs/components/RunStatusOverview.tsx`의 고정 80px 차트 옆 `grid-cols-3`와 상태명 `truncate` 조합. 모바일 버튼 폭 73px, Passed 텍스트 폭 16px/필요 37px, Untested 16px/필요 49px. 기존 통계 컴포넌트의 반응형 배치만 수정한다.
+  - 작업: 기존 [상단 통계 설계 §5](./RUN_STATUS_OVERVIEW_DESIGN_2026-09-19.md)의 좁은 화면 줄바꿈/두 열 등 지원 배치를 적용해 상태명·건수·비율을 읽게 한다. 필요 시 범례에 차트 아래 가로 폭을 활용하되 통계를 큰 카드나 세로 상태 목록으로 늘리지 않는다. 상태를 숨기거나 글자를 과도하게 줄이거나 tooltip/aria-label만 추가해 해결한 것으로 처리하지 않는다.
+  - 완료: 같은 3건 fixture 및 UI-040의 59건 fixture에서 390×844/1280×720/1440×1000 상태명 전체·건수·비율이 잘리지 않는다. 모바일 상세 닫힘의 최초 viewport에서 첫 테스트 행이 유지된다. 페이지 가로 넘침 없음. 실제 Tab/Enter/Space 필터·All statuses 복귀 및 결과 저장 뒤 전체 Run 집계를 확인한다. 범례 조작은 결과를 생성하지 않는다.
+  - 검증: 실패하는 실제 화면 폭 회귀를 먼저 기록하고 수정 전후를 동일 데이터·배율·스크롤로 캡처한다. 통계 helper 테스트만으로 텍스트 잘림 통과를 주장하지 않는다. 관련 회귀·web lint/build·실제 화면/키보드 결과를 [UI-064](./ux-evidence/UI-064.md)에 연결한다.
+  - 제외/연결: 새 통계/API/차트 라이브러리, 결과창·지침 패널·전역 내비게이션 재설계 제외. E01 첨부/E03 사람 관찰은 이 수정의 선행 조건이 아니다. UX-010/013/034/042, J08. 수정 완료 후 UI-021-F01을 재검증한다.
 
 ## 8. Definition of done
+
+
 
 ### 8.1 Separate delivery, verification and tester acceptance
 
@@ -992,11 +1076,13 @@ Only check a new UI delivery when its in-scope acceptance checks pass. A future-
 
 ### 8.2 Verification tiers and scope boundaries
 
-| Tier | Owner and required proof | What it must not imply |
-| --- | --- | --- |
-| Unit acceptance | Current UI unit: its changed states, relevant tests/build, keyboard and before/after captures; section 5 visual review for layout changes | No requirement to implement later units to produce their final screenshot. |
-| Regression protection | Current UI unit: touched shared consumers and established identity/selection/save/recovery contracts | Preserving an old contract does not re-certify every old feature or add unrelated fixes. |
-| Integrated usability | UI-021: completed target composition, all UX gates, realistic tester rehearsal and outstanding evidence debt | A single component test, screenshot or checkbox count cannot certify the final user journey. |
+
+| Tier                  | Owner and required proof                                                                                                                  | What it must not imply                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Unit acceptance       | Current UI unit: its changed states, relevant tests/build, keyboard and before/after captures; section 5 visual review for layout changes | No requirement to implement later units to produce their final screenshot.                   |
+| Regression protection | Current UI unit: touched shared consumers and established identity/selection/save/recovery contracts                                      | Preserving an old contract does not re-certify every old feature or add unrelated fixes.     |
+| Integrated usability  | UI-021: completed target composition, all UX gates, realistic tester rehearsal and outstanding evidence debt                              | A single component test, screenshot or checkbox count cannot certify the final user journey. |
+
 
 For UI-037, show the dialog, panel entry, actual save/cancel/recovery and existing quick-pass behavior; preserve existing instructions but do not require UI-039's final reading layout. UI-038 adds every ordinary list Status entry and exact target/no-write-on-cancel verification. UI-039 owns the final instruction-first layout and reading→recording→next demonstration. UI-040 tests the top statistics against the panel version present in its batch, without requiring later dialog work.
 
@@ -1018,7 +1104,7 @@ UI-021은 §7의 재작성된 UX 19개 항목과 J01–J08을 기준으로 판�
 
 필수 증거는 한 통합 빌드에서의 **현재 동작 확인**, 자동 검사, 실제 화면/키보드 조작, 저장 후 재조회, 테스터 관찰을 분리해 기록한다. 대표 테스터에게 위치를 알려주지 않고 목적만 제시하며 망설임·잘못된 진입·도움 요청·완수 여부를 남긴다. 한 번의 관찰을 보편적인 직관성으로 일반화하지 않는다.
 
-19개 UX 항목 모두에 판정과 근거가 있어야 한다. 적용 제외는 기능이 실제 대상 밖인 근거를 명시해야 하며 핵심 케이스 관리/수행/기록/첨부/키보드/테스터 검증을 면제할 수 없다. 실패나 환경 차단, 필수 검토 pending이 남으면 해당 UX와 UI-021을 체크하지 않는다. 새 결함은 재현 가능한 수정 단위로 제안하고 NEXT_ACTIONS의 별도 결정 없이 구현 범위를 넓히지 않는다.
+19개 UX 항목 모두에 판정과 근거가 있어야 한다. 적용 제외는 기능이 실제 대상 밖인 근거를 명시해야 하며 핵심 케이스 관리/수행/기록/첨부/키보드/테스터 검증을 면제할 수 없다. 실패나 환경 차단, 필수 검토 pending이 남으면 해당 UX와 UI-021을 체크하지 않는다. 새 결함 중 기존 명세 위반은 NEXT_ACTIONS의 사용자 승인된 자동 수정 순환으로 편성·수정·재검증한다. 새로운 기능/정책/외부 권한이나 불명확한 기대 동작은 별도 결정을 요청한다. 동일 이슈의 중복 작업·같은 검증의 무의미한 반복·범위 확장은 금지한다.
 
 ## 9. Reference anchors
 
@@ -1031,11 +1117,10 @@ Reference keys for the task-content audit (reviewed 2026-09-19). These are offic
 - **R5 — [Create new test plans](https://support.testrail.com/hc/en-us/articles/30765296499604-Create-new-test-plans):** plans organize executable runs and configurations within the execution area; preserve existing backend composition contracts.
 - **R6 — [Creating new test runs](https://support.testrail.com/hc/en-us/articles/7076838639892-Creating-new-test-runs):** all-inclusion, specific selection and dynamic criteria have distinct membership behavior; inspected [selection image](https://support.testrail.com/hc/article_attachments/30765077100692). Do not confuse fixed-all with automatic inclusion.
 - **R7 — [Charts and dashboards](https://support.testrail.com/hc/en-us/articles/7101753582996-Charts-and-dashboards):** concise testing progress is useful work context; simplification does not mean removing all charts.
-
-- TestRail introduction and core workflow: https://support.testrail.com/hc/en-us/articles/7076810203028
-- Adding test cases and quick outline: https://support.testrail.com/hc/en-us/articles/14438119644692-Adding-test-cases
-- Sections and subsection management: https://support.testrail.com/hc/en-us/articles/14985199889812-Sections
-- Submitting results, Pass & Next, and bulk results: https://support.testrail.com/hc/en-us/articles/15813183376148-Submitting-test-results
+- TestRail introduction and core workflow: [https://support.testrail.com/hc/en-us/articles/7076810203028](https://support.testrail.com/hc/en-us/articles/7076810203028)
+- Adding test cases and quick outline: [https://support.testrail.com/hc/en-us/articles/14438119644692-Adding-test-cases](https://support.testrail.com/hc/en-us/articles/14438119644692-Adding-test-cases)
+- Sections and subsection management: [https://support.testrail.com/hc/en-us/articles/14985199889812-Sections](https://support.testrail.com/hc/en-us/articles/14985199889812-Sections)
+- Submitting results, Pass & Next, and bulk results: [https://support.testrail.com/hc/en-us/articles/15813183376148-Submitting-test-results](https://support.testrail.com/hc/en-us/articles/15813183376148-Submitting-test-results)
 - Existing parity analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md)
 - Existing feature-oriented backlog: [UX_BACKLOG.md](./UX_BACKLOG.md)
 - UX review gate: [UX_GATE.md](./UX_GATE.md)

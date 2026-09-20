@@ -1,0 +1,85 @@
+{
+  "fixture": {
+    "projectId": "4",
+    "runId": "3"
+  },
+  "snap": {
+    "boxes": [
+      {
+        "aria": null,
+        "title": "Select all on this page",
+        "name": null,
+        "id": "",
+        "accessible": "Select all on this page"
+      },
+      {
+        "aria": "Select C6",
+        "title": null,
+        "name": null,
+        "id": "",
+        "accessible": "Select C6"
+      },
+      {
+        "aria": "Select C7",
+        "title": null,
+        "name": null,
+        "id": "",
+        "accessible": "Select C7"
+      },
+      {
+        "aria": null,
+        "title": null,
+        "name": null,
+        "id": "",
+        "accessible": ""
+      },
+      {
+        "aria": null,
+        "title": null,
+        "name": null,
+        "id": "",
+        "accessible": ""
+      }
+    ],
+    "textareas": [
+      {
+        "aria": null,
+        "id": "",
+        "placeholder": "Add a comment. Use @email to mention teammates. Markdown: **bold**, *italic*, `code`, [link](url).",
+        "labelledBy": null,
+        "nearbyLabel": null
+      },
+      {
+        "aria": null,
+        "id": "",
+        "placeholder": "Add a comment. Use @email to mention teammates. Markdown: **bold**, *italic*, `code`, [link](url).",
+        "labelledBy": null,
+        "nearbyLabel": null
+      }
+    ],
+    "url": "http://localhost:5173/projects/4/runs/3?testId=4"
+  },
+  "discussion": [
+    {
+      "aria": null,
+      "id": "",
+      "placeholder": "Add a comment. Use @email to mention teammates. Markdown: **",
+      "labelFor": null,
+      "prevLabel": null,
+      "visible": true
+    },
+    {
+      "aria": null,
+      "id": "",
+      "placeholder": "Add a comment. Use @email to mention teammates. Markdown: **",
+      "labelFor": null,
+      "prevLabel": null,
+      "visible": true
+    }
+  ],
+  "selectAll": {
+    "aria": null,
+    "title": "Select all on this page",
+    "srOnly": "Select row for bulk actions"
+  }
+}

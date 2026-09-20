@@ -1,0 +1,103 @@
+{
+  "verify": {
+    "projectId": "3",
+    "allRunId": "7",
+    "dynRunId": "8",
+    "selRunId": "9",
+    "allAfter": [
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18"
+    ],
+    "dynAfter": [
+      "13",
+      "15",
+      "17"
+    ],
+    "selAfter": [
+      "13",
+      "14"
+    ],
+    "expectedAll": [
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18"
+    ],
+    "expectedDyn": [
+      "13",
+      "15",
+      "17"
+    ],
+    "expectedSel": [
+      "13",
+      "14"
+    ],
+    "histCount": 1,
+    "allOk": true,
+    "dynOk": true,
+    "selOk": true
+  },
+  "after1280": {
+    "file": "docs\\ux-evidence\\ui-058-after-1280x720-all-sync-header.png",
+    "syncVisible": true,
+    "membership": "Membership: All cases \u00b7 Last sync 2026. 9. 20. \uc624\uc804 3:11:38 (+1, -0)",
+    "overflowX": false,
+    "covered": {
+      "tag": "BUTTON",
+      "text": "Sync now",
+      "aria": "Sync composition"
+    },
+    "syncCount": 1
+  },
+  "after390": {
+    "file": "docs\\ux-evidence\\ui-058-after-390x844-all-sync-header.png",
+    "syncVisible": true,
+    "membership": "Membership: All cases \u00b7 Last sync 2026. 9. 20. \uc624\uc804 3:11:38 (+1, -0)",
+    "overflowX": false,
+    "covered": {
+      "tag": "BUTTON",
+      "text": "Sync now",
+      "aria": "Sync composition"
+    },
+    "syncCount": 1
+  },
+  "dyn1280": {
+    "file": "docs\\ux-evidence\\ui-058-after-1280x720-dynamic.png",
+    "syncVisible": true,
+    "membership": "Membership: Dynamic filter \u00b7 Last sync 2026. 9. 20. \uc624\uc804 3:11:38 (+0, -0)",
+    "overflowX": false,
+    "covered": {
+      "tag": "BUTTON",
+      "text": "Sync now",
+      "aria": "Sync composition"
+    },
+    "syncCount": 1
+  },
+  "sel1280": {
+    "file": "docs\\ux-evidence\\ui-058-after-1280x720-selected.png",
+    "syncVisible": false,
+    "membership": "Membership: Selected cases",
+    "overflowX": false,
+    "covered": null,
+    "syncCount": 0
+  },
+  "feedback": "Composition synced: +0 / -0 tests.\n\nDismiss",
+  "a11y": [
+    {
+      "text": "Sync now",
+      "aria": "Sync composition",
+      "disabled": false
+    },
+    {
+      "text": "Sync now",
+      "aria": null,
+      "disabled": false
+    }
+  ]
+}

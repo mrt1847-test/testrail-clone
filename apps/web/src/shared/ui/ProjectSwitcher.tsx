@@ -40,28 +40,34 @@ export function ProjectSwitcher({
   const pinnedSuiteId = pinnedSuiteFor(currentProjectId);
   const pinnedSuiteName = suites.find((suite) => suite.id === pinnedSuiteId)?.name;
   const currentName = currentProject?.name ?? "Project";
+  const switcherLabel = projectSwitcherLabel(currentName, isArchived || Boolean(currentProject?.isArchived));
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <OverflowMenu
-        label={projectSwitcherLabel(currentName, isArchived || Boolean(currentProject?.isArchived))}
-        size="sm"
-        align="left"
-        triggerClassName="max-w-[12rem] truncate"
-        groups={buildProjectSwitcherMenu({
-          currentProjectId,
-          currentProjectName: currentName,
-          pinned,
-          others,
-          isCurrentPinned: isProjectPinned(currentProjectId),
-          onTogglePin: toggleProjectPin
-        })}
-      />
+    <div className="flex min-w-0 w-full max-w-full items-center gap-1.5 sm:gap-2">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <OverflowMenu
+          label={switcherLabel}
+          title={switcherLabel}
+          size="sm"
+          align="left"
+          triggerClassName="max-w-full min-w-0 !justify-start overflow-hidden"
+          triggerContent={<span className="min-w-0 flex-1 truncate text-left">{switcherLabel}</span>}
+          groups={buildProjectSwitcherMenu({
+            currentProjectId,
+            currentProjectName: currentName,
+            pinned,
+            others,
+            isCurrentPinned: isProjectPinned(currentProjectId),
+            onTogglePin: toggleProjectPin
+          })}
+        />
+      </div>
       {currentProjectId && suites.length > 0 ? (
         <OverflowMenu
           label={projectContextMenuLabel(pinnedSuiteName)}
           size="sm"
           align="left"
+          triggerClassName="shrink-0"
           groups={buildProjectContextMenu({
             projectId: currentProjectId,
             suites,

@@ -1,23 +1,4 @@
-const JUMP_TO_NEXT_KEY = "qa-rail.jump-to-next";
 const QPANE_WIDTH_KEY = "qa-rail.run-qpane-width";
-
-export function readJumpToNextAfterResult(): boolean {
-  try {
-    const value = localStorage.getItem(JUMP_TO_NEXT_KEY);
-    if (value === "false") return false;
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
-
-export function writeJumpToNextAfterResult(enabled: boolean) {
-  try {
-    localStorage.setItem(JUMP_TO_NEXT_KEY, enabled ? "true" : "false");
-  } catch {
-    /* ignore */
-  }
-}
 
 export function readQpaneWidth(): number {
   try {

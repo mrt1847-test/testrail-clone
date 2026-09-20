@@ -421,4 +421,19 @@ export class RunsService {
     });
     return { runId, skipped: false, added, removed };
   }
+
+  /** After case catalog changes, refresh every open All/Dynamic run in the suite. */
+  async syncLiveRunsForSuite(projectId: bigint, suiteId: bigint) {
+    const sync = this.compositionSync;
+    if (sync) return sync.syncSuite(projectId, suiteId);
+
+    const runs = await this.repo.listRunsByProject(projectId);
+    const out: Array<{ runId: bigint; skipped: boolean; added: number; removed: number; reason?: string }> = [];
+    for (const run of runs) {
+      if (run.suiteId !== suiteId || run.status !== "open") continue;
+      if (!compositionNeedsLiveSync(run.composition ?? null)) continue;
+      out.push(await this.syncRunComposition(run.id));
+    }
+    return out;
+  }
 }

@@ -1,0 +1,72 @@
+{
+  "fixture": {
+    "projectId": "2",
+    "suiteId": "2",
+    "authId": "6",
+    "loginId": "7",
+    "billingId": "8",
+    "cases": {
+      "login": "4",
+      "b1": "5",
+      "b2": "6"
+    }
+  },
+  "results": {
+    "direct": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 3 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 1 case loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n1 case\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 3 cases",
+      "statusNodes": [],
+      "checkboxCount": 1,
+      "checkboxes": [
+        "Select C4"
+      ]
+    },
+    "subtree": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 3 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 1 case loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n1 case\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 3 cases",
+      "statusNodes": [],
+      "checkboxCount": 1,
+      "checkboxes": [
+        "Select C4"
+      ]
+    },
+    "all": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 3 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 3 cases loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n3 cases\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case\nBilling\n2 cases\n\u283f\nC5\nInvoice PDF\nFunctional\nMedium\n\u2039\n\u283f\nC6\nRefund path\nFunctional\nLow\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 3 cases",
+      "statusNodes": [],
+      "checkboxCount": 3,
+      "checkboxes": [
+        "Select C4",
+        "Select C5",
+        "Select C6"
+      ]
+    },
+    "rapid_direct_100ms": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 3 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 1 case loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n1 case\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 3 cases",
+      "statusNodes": [],
+      "checkboxCount": 1,
+      "checkboxes": [
+        "Select C4"
+      ]
+    },
+    "rapid_direct_stable": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 3 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 1 case loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n1 case\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 3 cases",
+      "statusNodes": [],
+      "checkboxCount": 1,
+      "checkboxes": [
+        "Select C4"
+      ]
+    },
+    "after_add_subtree": {
+      "rowText": "QA Rail\nUI-060 Counts 1789842657\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nTest Cases\nMore actions\n\u2022\u2022\u2022\nAdd Case\n\nSECTIONS\n\nMaster\n\n4 sections \u00b7 4 cases\n\n\u2022\u2022\u2022\nGeneral\n\u2022\u2022\u2022\nAuthentication\n\u2022\u2022\u2022\nLogin\n+\n\u2022\u2022\u2022\nBilling\n\u2022\u2022\u2022\n+\nAdd root section\nSelect all 1 case loaded in this list\nAuthentication / Login\n\u00b7\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n\u00b7\n1 case\nLogin\nSearch cases\nFilter\nView\n\u2022\u2022\u2022\nAuthentication / Login\n1 case\n\u283f\nC4\nGuest email unique\nFunctional\nHigh\n\u2039\nAdd Case",
+      "stats": "4 sections \u00b7 4 cases",
+      "statusNodes": [],
+      "checkboxCount": 1,
+      "checkboxes": [
+        "Select C4"
+      ]
+    }
+  }
+}

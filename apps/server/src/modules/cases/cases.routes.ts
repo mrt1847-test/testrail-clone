@@ -308,13 +308,22 @@ async function createCaseEntityAttachment(
 }
 
 async function syncRunsForCaseChange(
-  compositionSync: import("../runs/runCompositionSync.service.js").RunCompositionSyncService | undefined,
+  deps: {
+    compositionSync?: import("../runs/runCompositionSync.service.js").RunCompositionSyncService;
+    runsService?: import("../runs/runs.service.js").RunsService;
+  },
   projectId: bigint | null | undefined,
   suiteId: bigint | null | undefined
 ) {
-  if (!compositionSync || projectId == null || suiteId == null) return;
+  if (projectId == null || suiteId == null) return;
   try {
-    await compositionSync.syncSuite(projectId, suiteId);
+    if (deps.compositionSync) {
+      await deps.compositionSync.syncSuite(projectId, suiteId);
+      return;
+    }
+    if (deps.runsService) {
+      await deps.runsService.syncLiveRunsForSuite(projectId, suiteId);
+    }
   } catch {
     // composition sync is best-effort after case mutations
   }
@@ -327,6 +336,7 @@ export async function registerCasesRoutes(
     authService: AuthService;
     prisma?: PrismaClient;
     compositionSync?: import("../runs/runCompositionSync.service.js").RunCompositionSyncService;
+    runsService?: import("../runs/runs.service.js").RunsService;
   }
 ) {
   app.get("/api/projects/:projectId/cases", async (req, reply) => {
@@ -441,7 +451,7 @@ export async function registerCasesRoutes(
           payload: { caseId: created.id.toString() }
         });
       }
-      await syncRunsForCaseChange(deps.compositionSync, created.projectId, created.suiteId);
+      await syncRunsForCaseChange(deps, created.projectId, created.suiteId);
       const responseRow =
         created.projectId != null
           ? await applyCaseVisibilityRead(req, deps, created.projectId, created)
@@ -509,7 +519,7 @@ export async function registerCasesRoutes(
       }
     });
     if (copied.suiteId) {
-      await syncRunsForCaseChange(deps.compositionSync, copied.projectId, copied.suiteId);
+      await syncRunsForCaseChange(deps, copied.projectId, copied.suiteId);
     }
     const responseRow = await applyCaseVisibilityRead(req, deps, source.projectId, copied);
     return reply.send(toJsonSafe(ok(responseRow)));
@@ -895,6 +905,7 @@ export async function registerCasesRoutes(
         payload: { caseId: updated.id.toString() }
       });
     }
+    await syncRunsForCaseChange(deps, updated.projectId, updated.suiteId ?? existing.suiteId);
     const responseRow =
       updated.projectId != null
         ? await applyCaseVisibilityRead(req, deps, updated.projectId, updated)
@@ -906,7 +917,9 @@ export async function registerCasesRoutes(
     await requireProjectMutationRole(req, deps, { permission: 'cases.write' });
     const { caseId } = caseIdParamSchema.parse(req.params);
     const user = await getAuthenticatedUser(req, deps);
-    const projectId = await deps.casesService.projectIdForCase(deps.prisma, caseId);
+    const existing = await deps.casesService.getCase(caseId);
+    const projectId = existing?.projectId ?? (await deps.casesService.projectIdForCase(deps.prisma, caseId));
+    const suiteId = existing?.suiteId ?? null;
     await deps.casesService.deleteCase(caseId);
     if (projectId) {
       await recordActivityEvent(deps.prisma, {
@@ -918,6 +931,7 @@ export async function registerCasesRoutes(
         title: "Test case deleted"
       });
     }
+    await syncRunsForCaseChange(deps, projectId, suiteId);
     return reply.status(204).send();
   });
 

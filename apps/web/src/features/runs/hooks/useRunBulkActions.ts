@@ -12,6 +12,7 @@ import {
   type BulkResultFailureRow,
   type BulkSubmitSnapshot
 } from "../utils/runBulkSelectionScope";
+import { bulkResultCacheQueryKeys } from "../utils/runBulkCacheKeys";
 
 export type { BulkResultFailureRow };
 
@@ -101,9 +102,11 @@ export function useRunBulkActions(input: Input) {
       setBulkFeedback(null);
     },
     onSuccess: async (response) => {
+      // Match single-result mutations: grouped list feeds STATUS/header chips.
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["runs", projectId, "detail", runId] }),
-        qc.invalidateQueries({ queryKey: ["runs", projectId, "instances", runId] }),
+        ...bulkResultCacheQueryKeys(projectId, runId).map((queryKey) =>
+          qc.invalidateQueries({ queryKey: [...queryKey] })
+        ),
         qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) }),
         qc.invalidateQueries({ queryKey: reportKeys.all(projectId) }),
         qc.invalidateQueries({ queryKey: ["result-explorer", projectId] }),

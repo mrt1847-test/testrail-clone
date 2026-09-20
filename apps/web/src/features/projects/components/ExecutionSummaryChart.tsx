@@ -80,7 +80,9 @@ export function ExecutionSummaryChart({ projectId, execution, compact = false }:
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Test Execution</h2>
-          <p className="mt-1 text-sm text-slate-500">Current result distribution across test runs.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Result counts are test instances in linked runs, not unique cases.
+          </p>
         </div>
         <div className="text-left sm:text-right">
           <p className="text-2xl font-semibold text-slate-900">{executedPct}%</p>
@@ -92,10 +94,13 @@ export function ExecutionSummaryChart({ projectId, execution, compact = false }:
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total tests</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">{total}</p>
+          <p className="text-[11px] text-slate-500">Instances in scope</p>
         </div>
         {segments.map((segment) => (
           <div key={segment.label}>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{segment.label}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {segment.label === "Remaining" ? "Remaining tests" : segment.label}
+            </p>
             <Link to={segment.href} className={`mt-1 block text-xl font-semibold hover:underline ${segment.textClassName}`}>
               {segment.value}
             </Link>

@@ -194,6 +194,7 @@ export function SectionTreePane({
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: sectionKeys.all(projectId) });
     void qc.invalidateQueries({ queryKey: caseKeys.all(projectId) });
+    void qc.invalidateQueries({ queryKey: ["suite-summary", projectId] });
     void qc.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
     void qc.invalidateQueries({ queryKey: reportKeys.all(projectId) });
   };
@@ -938,7 +939,10 @@ export function SectionTreePane({
                         tabIndex={-1}
                         aria-label={`Add case to ${section.name}`}
                         className="shrink-0 rounded px-2 py-1 text-sm font-medium text-blue-700 hover:bg-white"
-                        onClick={() => openQuickAddCase(section)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openQuickAddCase(section);
+                        }}
                       >
                         +
                       </button>

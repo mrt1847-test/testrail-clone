@@ -42,14 +42,35 @@ export function sectionPathLabel(sections: SectionTreeItem[], sectionId: number)
   return parts.join(" / ");
 }
 
+/** Depth-first options with full parent paths so duplicate names stay distinguishable. */
+export function sectionDestinationOptions(sections: SectionTreeItem[]): Array<{ id: number; label: string }> {
+  const byParent = new Map<number | null, SectionTreeItem[]>();
+  for (const section of sections) {
+    const parent = section.parentSectionId ?? null;
+    const siblings = byParent.get(parent) ?? [];
+    siblings.push(section);
+    byParent.set(parent, siblings);
+  }
+  for (const siblings of byParent.values()) {
+    siblings.sort((left, right) => left.displayOrder - right.displayOrder || left.id - right.id);
+  }
+
+  const out: Array<{ id: number; label: string }> = [];
+  const walk = (parentId: number | null) => {
+    for (const section of byParent.get(parentId) ?? []) {
+      out.push({ id: section.id, label: sectionPathLabel(sections, section.id) });
+      walk(section.id);
+    }
+  };
+  walk(null);
+  return out;
+}
+
 export function sectionMoveDestinations(sections: SectionTreeItem[], sourceSectionId: number): SectionDestination[] {
   const blocked = collectSectionDescendantIds(sections, sourceSectionId);
   blocked.add(sourceSectionId);
   return [
     { id: null, label: "Root level" },
-    ...sections
-      .filter((section) => !blocked.has(section.id))
-      .sort((left, right) => left.displayOrder - right.displayOrder || left.id - right.id)
-      .map((section) => ({ id: section.id, label: sectionPathLabel(sections, section.id) }))
+    ...sectionDestinationOptions(sections).filter((section) => !blocked.has(section.id))
   ];
 }

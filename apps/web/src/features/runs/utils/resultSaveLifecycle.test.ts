@@ -390,4 +390,49 @@ describe("createResultSaveLifecycle", () => {
     ]);
     expect(retrying.feedbackFor("test-A")?.status).toBe("saved");
   });
+
+  it("keeps recovery files when leaving without cancel so A→B→A can retry", async () => {
+    const { lifecycle, created, associated, failFiles } = session({ failFiles: ["a.png"] });
+    await expect(
+      lifecycle.submit("test-A", payload({ status: "failed", stagedAttachments: [{ id: "fa", file: file("a.png") }] }))
+    ).rejects.toThrow();
+    expect(lifecycle.composerRecoveryFiles("test-A")).toHaveLength(1);
+
+    await lifecycle.submit("test-B", payload({ status: "passed" }));
+    expect(lifecycle.feedbackFor("test-B")?.status).toBe("saved");
+    expect(lifecycle.feedbackFor("test-A")?.status).toBe("failed");
+    expect(lifecycle.composerRecoveryFiles("test-A").map((row) => row.file.name)).toEqual(["a.png"]);
+
+    failFiles.delete("a.png");
+    await lifecycle.retry("test-A");
+    expect(created).toHaveLength(2);
+    expect(associated.filter((row) => row.resultId === "result-test-A-1")).toHaveLength(2);
+    expect(lifecycle.feedbackFor("test-A")?.status).toBe("saved");
+  });
+
+  it("restored parked recovery asks for file reselect without creating a new result", async () => {
+    const { lifecycle, created, associated } = session();
+    lifecycle.restoreParked({
+      testId: "test-A",
+      createdResultId: "result-parked",
+      previousStatus: "untested",
+      message: "Result saved. Select a.png again to finish attaching.",
+      awaitingFileReselect: true,
+      missingFileNames: ["a.png"],
+      kind: "attach-only",
+      retryPayload: { status: "failed", comment: "kept" }
+    });
+    await expect(lifecycle.retry("test-A")).rejects.toThrow(/Select a\.png again/);
+    expect(created).toHaveLength(0);
+    expect(associated).toHaveLength(0);
+    expect(lifecycle.feedbackFor("test-A")?.createdResultId).toBe("result-parked");
+
+    await lifecycle.submit(
+      "test-A",
+      payload({ status: "failed", comment: "kept", stagedAttachments: [{ id: "fa", file: file("a.png") }] })
+    );
+    expect(created).toHaveLength(0);
+    expect(associated).toEqual([{ resultId: "result-parked", fileName: "a.png" }]);
+    expect(lifecycle.feedbackFor("test-A")?.status).toBe("saved");
+  });
 });

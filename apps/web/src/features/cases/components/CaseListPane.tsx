@@ -78,7 +78,7 @@ import {
   toggleCollapsedGroupKey
 } from "../utils/caseListSectionBlocks";
 import { sortSectionIdsDepthFirst } from "../utils/sectionTreeOrder";
-import { sectionPathLabel } from "../utils/sectionTreeModel";
+import { sectionDestinationOptions, sectionPathLabel } from "../utils/sectionTreeModel";
 import { sectionBlockAddCaseLabel } from "../utils/caseListRowPresentation";
 
 type CaseListPaneProps = {
@@ -165,7 +165,7 @@ export function CaseListPane({
     caseColumns,
     hasCaseColumnsParam
   );
-  const { data: suiteCaseData, isLoading, isError, refetch } = useSuiteCases(
+  const { data: suiteCaseData, isLoading, isFetching, isError, refetch } = useSuiteCases(
     projectId,
     suiteId,
     suiteFetchSectionId,
@@ -176,6 +176,7 @@ export function CaseListPane({
   );
   const createTargetSectionId = selectedSectionId ?? sections[0]?.id ?? null;
   const cases = suiteCaseData?.cases ?? [];
+  const scopedCaseCount = isLoading || (isFetching && suiteCaseData == null) ? null : cases.length;
   const { data: customFields = [] } = useQuery({
     queryKey: ["case-custom-fields", projectId],
     queryFn: () => fetchCustomFieldsForUse(projectId, "case"),
@@ -300,27 +301,15 @@ export function CaseListPane({
     enabled: bulkRelocationOpen && Boolean(relocationProjectId && relocationSuiteId)
   });
   const relocationTargetSections = useMemo(() => {
-    const rows = [...(relocationSectionsQuery.data?.sections ?? [])].sort(
-      (left, right) => left.displayOrder - right.displayOrder || left.id - right.id
+    const rows = relocationSectionsQuery.data?.sections ?? [];
+    return sectionDestinationOptions(
+      rows.map((section) => ({
+        id: section.id,
+        name: section.name,
+        parentSectionId: section.parentSectionId ?? null,
+        displayOrder: section.displayOrder
+      }))
     );
-    const depthById = new Map<number, number>();
-    const resolveDepth = (sectionId: number): number => {
-      const cached = depthById.get(sectionId);
-      if (cached != null) return cached;
-      const section = rows.find((row) => row.id === sectionId);
-      if (!section?.parentSectionId) {
-        depthById.set(sectionId, 0);
-        return 0;
-      }
-      const depth = resolveDepth(section.parentSectionId) + 1;
-      depthById.set(sectionId, depth);
-      return depth;
-    };
-    return rows.map((section) => ({
-      id: section.id,
-      name: section.name,
-      depth: resolveDepth(section.id)
-    }));
   }, [relocationSectionsQuery.data?.sections]);
 
   useEffect(() => {
@@ -1004,7 +993,7 @@ export function CaseListPane({
 
   const targetSectionName = useMemo(() => {
     if (!pendingMoveCopy) return null;
-    return sections.find((section) => section.id === pendingMoveCopy.targetSectionId)?.name ?? null;
+    return sectionPathLabel(sections, pendingMoveCopy.targetSectionId) || null;
   }, [pendingMoveCopy, sections]);
 
   const toolbarProps = {
@@ -1178,11 +1167,21 @@ export function CaseListPane({
 
   if (isLoading) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <CaseRepositoryToolbar {...toolbarProps} />
-        <div className="p-6">
-          <LoadingState message="Loading the case repository..." />
-        </div>
+      <div>
+        <section className="overflow-hidden border border-slate-300 bg-white">
+          <div className="border-b border-slate-300 bg-[#f8f8f8] px-3 py-1.5">
+            <CaseQueryScopeControl
+              sectionPath={selectedSectionPath}
+              scope={caseQueryScope}
+              caseCount={null}
+              onScopeChange={setCaseQueryScope}
+            />
+          </div>
+          <CaseRepositoryToolbar {...toolbarProps} />
+          <div className="p-6">
+            <LoadingState message="Loading the case repository..." />
+          </div>
+        </section>
       </div>
     );
   }
@@ -1211,10 +1210,10 @@ export function CaseListPane({
             <CaseQueryScopeControl
               sectionPath={selectedSectionPath}
               scope={caseQueryScope}
-              caseCount={cases.length}
+              caseCount={scopedCaseCount}
               onScopeChange={setCaseQueryScope}
               selectAll={
-                cases.length > 0
+                scopedCaseCount != null && scopedCaseCount > 0
                   ? {
                       checked: allVisibleSelected,
                       indeterminate: selectedVisibleCaseIds.length > 0 && !allVisibleSelected,

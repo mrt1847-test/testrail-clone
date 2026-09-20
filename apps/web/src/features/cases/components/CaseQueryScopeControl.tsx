@@ -1,10 +1,11 @@
 import type { CaseQueryScope } from "../caseRepositoryView";
-import { CASE_QUERY_SCOPES } from "../caseRepositoryView";
+import { CASE_QUERY_SCOPES, caseQueryScopeLabel } from "../caseRepositoryView";
 
 type Props = {
   sectionPath: string;
   scope: CaseQueryScope;
-  caseCount: number;
+  /** Null while the scoped list is still loading so we never announce a stale or zero placeholder. */
+  caseCount: number | null;
   onScopeChange: (scope: CaseQueryScope) => void;
   selectAll?: {
     checked: boolean;
@@ -13,6 +14,20 @@ type Props = {
   };
 };
 
+export function formatCaseQueryCountLabel(caseCount: number | null): string {
+  if (caseCount == null) return "Updating…";
+  return `${caseCount} case${caseCount === 1 ? "" : "s"}`;
+}
+
+export function formatCaseQueryCountAnnouncement(
+  sectionPath: string,
+  scope: CaseQueryScope,
+  caseCount: number | null
+): string {
+  if (caseCount == null) return "Updating case count";
+  return `${sectionPath} · ${caseQueryScopeLabel(scope)} · ${formatCaseQueryCountLabel(caseCount)}`;
+}
+
 export function CaseQueryScopeControl({
   sectionPath,
   scope,
@@ -20,10 +35,11 @@ export function CaseQueryScopeControl({
   onScopeChange,
   selectAll
 }: Props) {
-  const countLabel = `${caseCount} case${caseCount === 1 ? "" : "s"}`;
+  const countLabel = formatCaseQueryCountLabel(caseCount);
+  const countReady = caseCount != null;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-700">
-      {selectAll ? (
+      {selectAll && countReady ? (
         <label className="inline-flex items-center">
           <span className="sr-only">Select all {countLabel} loaded in this list</span>
           <input
@@ -59,7 +75,10 @@ export function CaseQueryScopeControl({
       <span aria-hidden="true" className="text-slate-400">
         ·
       </span>
-      <span>{countLabel}</span>
+      <span aria-hidden="true">{countLabel}</span>
+      <span className="sr-only" role="status" aria-live="polite">
+        {formatCaseQueryCountAnnouncement(sectionPath, scope, caseCount)}
+      </span>
     </div>
   );
 }

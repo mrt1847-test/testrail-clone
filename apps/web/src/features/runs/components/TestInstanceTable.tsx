@@ -373,10 +373,10 @@ export function TestInstanceTable(props: Props) {
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 font-medium uppercase tracking-wide text-slate-600 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
               <th className={`w-10 ${densityClasses.header}`} scope="col" data-run-col="select">
-                <span className="sr-only">Select row for bulk actions</span>
                 <input
                   type="checkbox"
-                  title="Select all on this page"
+                  aria-label="Select all tests on this page"
+                  title="Select all tests on this page"
                   checked={allPageSelected}
                   onChange={(e) => {
                     if (e.target.checked) {

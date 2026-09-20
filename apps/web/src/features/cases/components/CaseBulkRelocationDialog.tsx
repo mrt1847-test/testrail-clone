@@ -1,7 +1,6 @@
 type RelocationSectionOption = {
   id: number;
-  name: string;
-  depth?: number;
+  label: string;
 };
 
 type CaseBulkRelocationDialogProps = {
@@ -23,11 +22,6 @@ type CaseBulkRelocationDialogProps = {
   onCopy: () => void;
   onCancel: () => void;
 };
-
-function sectionOptionLabel(section: RelocationSectionOption) {
-  const indent = section.depth && section.depth > 0 ? `${"—".repeat(section.depth)} ` : "";
-  return `${indent}${section.name}`;
-}
 
 export function CaseBulkRelocationDialog({
   open,
@@ -54,6 +48,8 @@ export function CaseBulkRelocationDialog({
   const copyLabel = busy && pendingAction === "copy" ? "Copying…" : "Copy";
   const disabled = busy || targetSectionId == null || sections.length === 0;
   const crossProject = targetProjectId !== sourceProjectId;
+  const selectedLabel =
+    targetSectionId == null ? null : sections.find((section) => section.id === targetSectionId)?.label ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
@@ -107,17 +103,27 @@ export function CaseBulkRelocationDialog({
           <label className="block text-xs font-medium text-slate-700">
             Target section
             <select
+              aria-label="Target section"
               value={targetSectionId ?? ""}
               onChange={(event) => onTargetSectionChange(Number(event.target.value))}
               className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
             >
-              {sections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {sectionOptionLabel(section)}
-                </option>
-              ))}
+              {sections.length === 0 ? (
+                <option value="">No sections</option>
+              ) : (
+                sections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
+                ))
+              )}
             </select>
           </label>
+          {selectedLabel ? (
+            <p className="rounded bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Destination: <span className="font-medium text-slate-800">{selectedLabel}</span>
+            </p>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
           <button

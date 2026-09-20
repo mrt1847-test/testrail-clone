@@ -7,8 +7,6 @@ type Props = {
   onNextUntested?: () => void;
   onPassAndNext?: () => void;
   isSavingResult?: boolean;
-  jumpToNext?: boolean;
-  onJumpToNextChange?: (enabled: boolean) => void;
   onPrevTest: () => void;
   onNextTest: () => void;
   onShowShortcuts?: () => void;
@@ -23,8 +21,6 @@ export function RunExecutionToolbar({
   onNextUntested,
   onPassAndNext,
   isSavingResult = false,
-  jumpToNext,
-  onJumpToNextChange,
   onPrevTest,
   onNextTest,
   onShowShortcuts,
@@ -66,17 +62,6 @@ export function RunExecutionToolbar({
         <Button type="button" size="sm" variant="secondary" onClick={onShowShortcuts} title="Keyboard shortcuts">
           ?
         </Button>
-      ) : null}
-      {onJumpToNextChange != null && jumpToNext != null ? (
-        <label className="ml-1 inline-flex items-center gap-1 text-[10px] text-slate-600">
-          <input
-            type="checkbox"
-            className="rounded border-slate-300"
-            checked={jumpToNext}
-            onChange={(e) => onJumpToNextChange(e.target.checked)}
-          />
-          Jump to next after save
-        </label>
       ) : null}
     </>
   );

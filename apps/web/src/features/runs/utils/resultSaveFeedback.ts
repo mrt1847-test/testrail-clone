@@ -42,6 +42,9 @@ export type ResultSaveFeedback = {
   retryAdvance?: ResultSaveAdvanceOptions;
   createdResultId?: string | null;
   pendingAssignment?: string | null;
+  /** True when a prior partial success lost File bytes (refresh) and needs re-selection. */
+  awaitingFileReselect?: boolean;
+  missingFileNames?: string[];
   operationId: string;
   kind?: ResultSaveOperationKind;
 };

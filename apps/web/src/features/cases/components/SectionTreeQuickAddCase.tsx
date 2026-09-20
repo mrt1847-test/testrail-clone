@@ -44,6 +44,8 @@ export function SectionTreeQuickAddCase({
     <form
       className="grid gap-1 py-1 pl-6 pr-1"
       onSubmit={handleSubmit}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
       aria-busy={isPending}
     >
       <label className="sr-only" htmlFor={`${statusId}-title`}>

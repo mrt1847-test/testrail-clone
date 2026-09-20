@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { Button } from "./Button";
 import type { ButtonSize, ButtonVariant } from "./buttonStyles";
+import { rememberModalRestoreTarget } from "./modalFocus";
 
 export type OverflowMenuItem = {
   id: string;
@@ -243,6 +244,7 @@ export const OverflowMenu = forwardRef<OverflowMenuHandle, Props>(function Overf
                     className={itemClassName(item)}
                     disabled={item.disabled}
                     onClick={() => {
+                      rememberModalRestoreTarget(triggerRef.current);
                       item.onSelect?.();
                       close();
                     }}

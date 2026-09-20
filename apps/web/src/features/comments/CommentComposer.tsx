@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchProjectMembers } from "../projects/api/settingsApi";
@@ -39,6 +39,8 @@ export function CommentComposer({
   textareaClassName
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const generatedId = useId();
+  const controlId = id ?? generatedId;
   const [cursor, setCursor] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -110,7 +112,11 @@ export function CommentComposer({
 
   return (
     <div className="space-y-2">
-      {label ? <span className="block text-xs font-medium text-slate-600">{label}</span> : null}
+      {label ? (
+        <label htmlFor={controlId} className="block text-xs font-medium text-slate-600">
+          {label}
+        </label>
+      ) : null}
       {showTemplates && projectId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <label className="flex items-center gap-1 text-slate-600">
@@ -192,11 +198,12 @@ export function CommentComposer({
       <div className="relative">
         <textarea
           ref={textareaRef}
-          id={id}
+          id={controlId}
           rows={rows}
           disabled={disabled}
           value={value}
           placeholder={placeholder}
+          aria-label={label ? undefined : "Comment"}
           className={textareaCls}
           onChange={(e) => {
             onChange(e.target.value);

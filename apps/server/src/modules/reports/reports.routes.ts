@@ -658,12 +658,25 @@ export async function registerReportsRoutes(
     if (overview) {
       return reply.send(toJsonSafe(ok(overview)));
     }
+    // In-memory / no-prisma: count unique cases from the catalog, not test instances.
+    const cases = deps.catalog
+      ? await deps.catalog.listCases({ projectId, state: "active" })
+      : [];
+    let recentFailures = 0;
+    for (const run of runs) {
+      const instances = await deps.repo.listInstancesForRun(run.id);
+      for (const instance of instances) {
+        if (instance.status === "failed") recentFailures += 1;
+      }
+    }
+    const mappedCases = cases.filter((row) => Boolean(row.automationKey)).length;
+    const totalCases = cases.length;
     return reply.send(
       ok({
-        totalCases: 0,
+        totalCases,
         activeRuns,
-        recentFailures: 0,
-        automationCoveragePct: 0
+        recentFailures,
+        automationCoveragePct: totalCases === 0 ? 0 : Math.round((mappedCases / totalCases) * 100)
       })
     );
   });

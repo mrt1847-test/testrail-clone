@@ -52,7 +52,10 @@ export function ProjectOverviewColumns({ projectId, milestones, recentRuns, plan
                     {row.name}
                   </Link>
                   <p className="text-xs text-slate-500">
-                    {row.openRunCount} active runs / {row.progress}% passed
+                    {row.openRunCount <= 0
+                      ? "No linked active runs"
+                      : `${row.openRunCount} linked active run${row.openRunCount === 1 ? "" : "s"}`}{" "}
+                    / {row.progress}% passed
                   </p>
                 </div>
               </li>

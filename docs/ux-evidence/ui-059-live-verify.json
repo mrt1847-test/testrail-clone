@@ -1,0 +1,34 @@
+{
+  "options": [
+    "General",
+    "General",
+    "Checkout",
+    "Checkout / Login",
+    "Payment",
+    "Authentication",
+    "Authentication / Login"
+  ],
+  "hasCheckoutLogin": true,
+  "hasAuthLogin": true,
+  "noAmbiguousDashLogin": true,
+  "moved": {
+    "c5": "34",
+    "c6": "34",
+    "c7": "34",
+    "keep": "34"
+  },
+  "expectedLoginAuth": "34",
+  "moveOk": true,
+  "cancelUnchanged": true,
+  "overflowX390": false,
+  "a11y": {
+    "title": "Copy or move test cases",
+    "targetAria": "Target section",
+    "destination": "Destination: General",
+    "buttons": [
+      "Cancel",
+      "Copy",
+      "Move"
+    ]
+  }
+}

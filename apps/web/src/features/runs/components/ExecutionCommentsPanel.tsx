@@ -147,7 +147,15 @@ export function ExecutionCommentsPanel({
               </button>
             </p>
           ) : null}
-          <CommentComposer projectId={projectId} value={draft} onChange={setDraft} rows={3} disabled={saveMutation.isPending} />
+          <CommentComposer
+            projectId={projectId}
+            value={draft}
+            onChange={setDraft}
+            rows={3}
+            disabled={saveMutation.isPending}
+            label={scope === "test_instance" ? "Test discussion comment" : "Run discussion comment"}
+            id={scope === "test_instance" ? "test-discussion-comment" : "run-discussion-comment"}
+          />
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <button
             type="submit"

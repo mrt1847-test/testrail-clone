@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { CaseTemplateRow, CustomFieldRow } from "../../projects/api/settingsApi";
-import { ReferencesInput } from "./ReferencesInput";
+import { ReferencesInput, type ReferencesInputHandle } from "./ReferencesInput";
 import { CaseStepsEditor } from "./CaseStepsEditor";
 import { serializeCaseAuthoringDraft, type CaseAuthoringDraft } from "../utils/caseAuthoringDraft";
+import { mergeCaseRefs } from "../utils/caseRefs";
 import {
   CASE_PRIORITY_OPTIONS,
   CASE_TYPE_OPTIONS,
@@ -196,6 +197,8 @@ export function CaseAuthoringForm({
   const [preconditions, setPreconditions] = useState(initialPreconditions);
   const [estimate, setEstimate] = useState(initialEstimate);
   const [references, setReferences] = useState(initialReferences);
+  const [referencesDraft, setReferencesDraft] = useState("");
+  const referencesInputRef = useRef<ReferencesInputHandle | null>(null);
   const [expectedResult, setExpectedResult] = useState(initialExpectedResult);
   const [stepsText, setStepsText] = useState(() => textStepsFromPersistedSteps(initialSteps));
   const [draftSteps, setDraftSteps] = useState<CaseAuthoringDraftStep[]>(() => draftStepsFromCaseSteps(initialSteps));
@@ -250,6 +253,7 @@ export function CaseAuthoringForm({
     setPreconditions(initialDraft.preconditions);
     setEstimate(initialDraft.estimate);
     setReferences(initialDraft.references);
+    setReferencesDraft("");
     setExpectedResult(initialDraft.expectedResult);
     setStepsText(initialDraft.stepsText);
     setDraftSteps(
@@ -335,7 +339,7 @@ export function CaseAuthoringForm({
         title,
         preconditions,
         estimate,
-        references,
+        references: mergeCaseRefs(references, referencesDraft),
         expectedResult,
         stepsText,
         draftSteps: draftSteps.map(({ description, expected }) => ({ description, expected })),
@@ -344,9 +348,22 @@ export function CaseAuthoringForm({
         templateId: selectedTemplateId,
         customValues
       }),
-    [caseType, customValues, draftSteps, estimate, expectedResult, preconditions, priority, references, selectedTemplateId, stepsText, title]
+    [
+      caseType,
+      customValues,
+      draftSteps,
+      estimate,
+      expectedResult,
+      preconditions,
+      priority,
+      references,
+      referencesDraft,
+      selectedTemplateId,
+      stepsText,
+      title
+    ]
   );
-  const isDirty = currentDraftSnapshot !== baselineSnapshot;
+  const isDirty = currentDraftSnapshot !== baselineSnapshot || Boolean(referencesDraft.trim());
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -446,9 +463,11 @@ export function CaseAuthoringForm({
         {(controlProps) =>
           projectId ? (
             <ReferencesInput
+              ref={referencesInputRef}
               projectId={projectId}
               value={references}
               onChange={setReferences}
+              onDraftChange={setReferencesDraft}
               disabled={isSubmitting}
               inputId={controlProps.id}
               describedBy={controlProps["aria-describedby"]}
@@ -700,11 +719,15 @@ export function CaseAuthoringForm({
     delete exploratoryCustomValues.ai_traces;
 
     try {
+      // Flush still-typed References text before building the payload (blur+setState races drop JIRA-UI021).
+      const submittedReferences =
+        referencesInputRef.current?.flush() ?? mergeCaseRefs(references, referencesDraft);
+      setReferencesDraft("");
       await onSubmit({
         title: title.trim(),
         preconditions: preconditions.trim(),
         estimate: estimate.trim(),
-        references: references.trim(),
+        references: submittedReferences.trim(),
         expectedResult: expectedResult.trim(),
         stepsText: stepsText.trim(),
         draftSteps,
@@ -718,7 +741,21 @@ export function CaseAuthoringForm({
         customValues: exploratoryCustomValues,
         templateId: selectedTemplateId || null
       });
-      setBaselineSnapshot(currentDraftSnapshot);
+      setBaselineSnapshot(
+        serializeCaseAuthoringDraft({
+          title,
+          preconditions,
+          estimate,
+          references: submittedReferences,
+          expectedResult,
+          stepsText,
+          draftSteps: draftSteps.map(({ description, expected }) => ({ description, expected })),
+          caseType,
+          priority,
+          templateId: selectedTemplateId,
+          customValues
+        })
+      );
     } catch {
       // Parent handles submit error state.
     }

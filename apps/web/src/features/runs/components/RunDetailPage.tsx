@@ -21,10 +21,14 @@ import { useRunBulkActions } from "../hooks/useRunBulkActions";
 import { flattenGroupedInstances, mapApiInstancesToRows, mergeInstanceLookup } from "../utils/runInstanceRows";
 import { buildMatchingInstancesFetchPlan, visibleMatchingTotal } from "../utils/runBulkSelectionScope";
 import { shouldExpandRunSchedulePanel } from "../utils/runExecutionDensity";
+import { resultSaveShouldAdvance } from "../utils/resultSaveAdvanceIntent";
 import {
-  readJumpToNextAfterResult,
+  clearParkedPartialRecovery,
+  readAllParkedPartialRecoveries,
+  writeParkedPartialRecovery
+} from "../utils/resultPartialRecoveryModel";
+import {
   readQpaneWidth,
-  writeJumpToNextAfterResult,
   writeQpaneWidth
 } from "../utils/runExecutionPrefs";
 import { useSections } from "../../cases/hooks/useSections";
@@ -37,7 +41,28 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useRunUrlState } from "../hooks/useRunUrlState";
 import { useRunColumnPreferences } from "../hooks/useRunColumnPreferences";
 import { defaultRunInstanceListFilters } from "../utils/runInstanceListParams";
-import { nextUnwrappedVisibleTestId, nextVisibleTestId, resolveVisibleSelectedRunTest } from "../utils/runSelectedTestState";
+import {
+  CLEAR_SELECTED_TEST_PENDING,
+  nextUnwrappedVisibleTestId,
+  resolveVisibleSelectedRunTest
+} from "../utils/runSelectedTestState";
+
+/** Matches Tailwind `lg` used for side-by-side list + detail. Below this, missing testId means list mode. */
+const RUN_SPLIT_LAYOUT_QUERY = "(min-width: 1024px)";
+
+function subscribeRunSplitLayout(onChange: () => void) {
+  const media = window.matchMedia(RUN_SPLIT_LAYOUT_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function getRunSplitLayoutSnapshot() {
+  return window.matchMedia(RUN_SPLIT_LAYOUT_QUERY).matches;
+}
+
+function getRunSplitLayoutServerSnapshot() {
+  return true;
+}
 import type { ResultStatus } from "./resultEntryTypes";
 import {
   RESULT_SAVE_CLEARED_MS,
@@ -119,9 +144,15 @@ export function RunDetailPage() {
   const selectedRef = useRef<TestInstanceRow | null>(null);
   const sectionIdRef = useRef<number | null>(null);
   selectedRef.current = selected;
+  const isSplitLayout = useSyncExternalStore(
+    subscribeRunSplitLayout,
+    getRunSplitLayoutSnapshot,
+    getRunSplitLayoutServerSnapshot
+  );
   const writeSelectedTestId = useCallback(
     (testId: string | null) => {
-      pendingSelectedTestIdRef.current = testId;
+      // null → explicit list return; keep a pending sentinel until the URL drops testId.
+      pendingSelectedTestIdRef.current = testId === null ? CLEAR_SELECTED_TEST_PENDING : testId;
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -210,7 +241,6 @@ export function RunDetailPage() {
   useEffect(() => {
     setListColumns(effectiveColumns);
   }, [effectiveColumns, runId]);
-  const [jumpToNext, setJumpToNext] = useState(readJumpToNextAfterResult);
   const [qpaneWidth, setQpaneWidth] = useState(readQpaneWidth);
   const useGroupedExecution = groupBy !== "none";
 
@@ -603,6 +633,24 @@ export function RunDetailPage() {
     resultSaveLifecycle.getSnapshot
   );
 
+  useEffect(() => {
+    if (!runId) return;
+    for (const parked of readAllParkedPartialRecoveries(runId)) {
+      resultSaveLifecycle.restoreParked(parked);
+    }
+  }, [resultSaveLifecycle, runId]);
+
+  useEffect(() => {
+    if (!runId) return;
+    for (const [testId, feedback] of Object.entries(resultSaveSnapshot.feedbackByTestId)) {
+      if (feedback.status === "failed" && feedback.createdResultId) {
+        writeParkedPartialRecovery(runId, feedback);
+      } else if (feedback.status === "saved") {
+        clearParkedPartialRecovery(runId, testId);
+      }
+    }
+  }, [resultSaveSnapshot.feedbackByTestId, runId]);
+
   const scheduleSavedClear = useCallback(
     (testId: string, canUndo: boolean) => {
       clearSaveTimers();
@@ -640,14 +688,12 @@ export function RunDetailPage() {
       if (feedback?.status === "saved") scheduleSavedClear(testId, feedback.canUndo);
       const nextId =
         result?.mode === "create-result" && result.advanced
-          ? (options?.advanceToTestId ??
-            (options?.advanceOnPass && payload.status === "passed" && jumpToNext
-              ? nextVisibleTestId(testId, executionInstances)
-              : null))
+          ? (options?.advanceToTestId ?? null)
           : null;
       if (nextId && nextId !== testId) {
         const nextRow = displayedExecutionInstances.find((row) => row.id === nextId);
-        if (nextRow) selectInstance(nextRow);
+        // Force while Add Result dialog is still open (Save & Next closes after submit).
+        if (nextRow) selectInstance(nextRow, { force: true });
         else writeSelectedTestId(nextId);
       }
     } catch (error) {
@@ -693,8 +739,12 @@ export function RunDetailPage() {
 
   const handlePassAndNext = () => {
     if (!selected || runClosed || resultSaveLifecycle.isSaving(selected.id) || resultDialogOpenRef.current) return;
-    const nextId = nextVisibleTestId(selected.id, executionInstances);
-    void submitRunResult(selected.id, { status: "passed" }, { advanceToTestId: nextId });
+    const nextId = nextUnwrappedVisibleTestId(selected.id, executionInstances);
+    void submitRunResult(
+      selected.id,
+      { status: "passed" },
+      nextId ? { advanceToTestId: nextId } : undefined
+    );
   };
 
   const openResultDialog = (instance: TestInstanceRow, status: ResultStatus | null = null) => {
@@ -714,7 +764,10 @@ export function RunDetailPage() {
 
   const closeResultDialog = (discard = false) => {
     const testId = resultDialog?.target.id;
-    if (discard && testId) resultSaveLifecycle.cancel(testId);
+    if (discard && testId) {
+      resultSaveLifecycle.cancel(testId);
+      if (runId) clearParkedPartialRecovery(runId, testId);
+    }
     setResultDialog(null);
   };
 
@@ -763,20 +816,28 @@ export function RunDetailPage() {
     const dataReady = useGroupedExecution ? !groupedTableQuery.isLoading : !runInstancesQuery.isLoading;
     if (!dataReady) return;
     const urlTestId = searchParams.get("testId");
-    if (urlTestId === pendingSelectedTestIdRef.current) {
+    if (
+      pendingSelectedTestIdRef.current === CLEAR_SELECTED_TEST_PENDING &&
+      urlTestId == null
+    ) {
+      pendingSelectedTestIdRef.current = null;
+    } else if (urlTestId === pendingSelectedTestIdRef.current) {
       pendingSelectedTestIdRef.current = null;
     }
     const resolved = resolveVisibleSelectedRunTest({
       urlTestId,
       instances: displayedExecutionInstances,
       pendingTestId: pendingSelectedTestIdRef.current,
-      current: selectedRef.current
+      current: selectedRef.current,
+      // Stacked mobile: no testId keeps the list. Desktop split keeps auto-seed.
+      seedWhenMissing: isSplitLayout
     });
     setSelected(resolved.selected);
     if (resolved.seedUrlTestId) writeSelectedTestId(resolved.seedUrlTestId);
   }, [
     displayedExecutionInstances,
     groupedTableQuery.isLoading,
+    isSplitLayout,
     runInstancesQuery.isLoading,
     searchParams,
     useGroupedExecution,
@@ -1005,7 +1066,57 @@ export function RunDetailPage() {
         onReopenRun={() => void reopenRunMutation.mutateAsync()}
         isReopenRunPending={reopenRunMutation.isPending}
         onPushDefect={canPushDefectForSelected ? openPushDefectDialog : undefined}
+        compositionMode={composition?.compositionMode}
+        compositionSummary={compositionSummary}
+        isSyncingComposition={syncCompositionMutation.isPending}
+        onSyncComposition={() => {
+          void syncCompositionMutation
+            .mutateAsync()
+            .then((res) => {
+              if (res.skipped) {
+                setCompositionFeedback({
+                  kind: "error",
+                  message: res.reason ? `Sync skipped: ${res.reason}` : "Sync skipped."
+                });
+                return;
+              }
+              setCompositionFeedback({
+                kind: "synced",
+                added: res.added,
+                removed: res.removed
+              });
+            })
+            .catch((err) => {
+              setCompositionFeedback({
+                kind: "error",
+                message: err instanceof Error ? err.message : "Could not sync composition."
+              });
+            });
+        }}
       />
+
+      {compositionFeedback &&
+      (compositionFeedback.kind === "synced" || compositionFeedback.kind === "error") ? (
+        <div
+          className={
+            compositionFeedback.kind === "error"
+              ? "mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-900"
+              : "mt-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-900"
+          }
+          role="status"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p>
+              {compositionFeedback.kind === "synced"
+                ? `Composition synced: +${compositionFeedback.added} / -${compositionFeedback.removed} tests.`
+                : compositionFeedback.message}
+            </p>
+            <button type="button" className="shrink-0 underline opacity-80" onClick={() => setCompositionFeedback(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <RunStatusOverview
         counts={counts}
@@ -1068,11 +1179,6 @@ export function RunDetailPage() {
             onNextUntested={testNavigation.goNextUntested}
             onPassAndNext={runClosed ? undefined : handlePassAndNext}
             isSavingResult={Boolean(selected && resultSaveLifecycle.isSaving(selected.id))}
-            jumpToNext={jumpToNext}
-            onJumpToNextChange={(enabled) => {
-              setJumpToNext(enabled);
-              writeJumpToNextAfterResult(enabled);
-            }}
             onPrevTest={testNavigation.goPrevTest}
             onNextTest={testNavigation.goNextTest}
             onShowShortcuts={() => setShortcutsOpen(true)}
@@ -1598,7 +1704,13 @@ export function RunDetailPage() {
         open={resultDialog != null}
         projectId={projectId}
         target={resultDialog?.target ?? null}
-        initialStatus={resultDialog?.initialStatus ?? null}
+        initialStatus={
+          resultDialog
+            ? resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]?.status === "failed"
+              ? resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.status
+              : resultDialog.initialStatus ?? null
+            : null
+        }
         caseSteps={selectedCaseDetail.data?.steps ?? []}
         caseScenarios={selectedCaseScenariosQuery.data ?? []}
         isCaseStepsLoading={selectedCaseDetail.isLoading}
@@ -1627,6 +1739,25 @@ export function RunDetailPage() {
         initialStagedAttachments={
           resultDialog ? resultSaveLifecycle.composerRecoveryFiles(resultDialog.target.id) : []
         }
+        recoveryDraft={
+          resultDialog && resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]?.status === "failed"
+            ? {
+                comment: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.comment,
+                version: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.version,
+                elapsed: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.elapsed,
+                defects: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.defects,
+                assignedTo:
+                  resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.pendingAssignment ??
+                  resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.assignedTo,
+                customValues: Object.fromEntries(
+                  Object.entries(
+                    resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.retryPayload.customValues ?? {}
+                  ).map(([key, value]) => [key, value == null ? "" : String(value)])
+                ),
+                missingFileNames: resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]!.missingFileNames
+              }
+            : null
+        }
         recoveryResultId={
           resultDialog
             ? resultSaveSnapshot.feedbackByTestId[resultDialog.target.id]?.createdResultId ?? null
@@ -1640,11 +1771,15 @@ export function RunDetailPage() {
         onDiscardStagedAttachment={(id) =>
           resultDialog ? resultSaveLifecycle.discardStagedFile(resultDialog.target.id, id) : undefined
         }
-        onClose={() => closeResultDialog(true)}
+        onClose={(options) => closeResultDialog(Boolean(options?.discard))}
         onSubmit={async (payload, options) => {
           if (!resultDialog) return;
           const testId = resultDialog.target.id;
           const advanceTo = options?.advance ? nextUnwrappedVisibleTestId(testId, executionInstances) : null;
+          const shouldAdvance = resultSaveShouldAdvance({
+            action: options?.advance ? "save-and-next" : "add-result",
+            nextTestId: advanceTo
+          });
           try {
             await submitRunResult(
               testId,
@@ -1665,7 +1800,7 @@ export function RunDetailPage() {
                 stagedAttachments: payload.stagedAttachments,
                 assignedTo: payload.assignedTo
               },
-              options?.advance ? { advanceToTestId: advanceTo } : undefined
+              shouldAdvance ? { advanceToTestId: advanceTo } : undefined
             );
             const feedback = resultSaveLifecycle.feedbackFor(testId);
             if (feedback?.status === "saved") closeResultDialog(false);

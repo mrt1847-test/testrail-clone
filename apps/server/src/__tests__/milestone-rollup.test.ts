@@ -52,6 +52,22 @@ describe("milestone summary hierarchy rollup API", () => {
     const childId = (childRes.json() as { data: { id: string } }).data.id;
     const suiteId = await getMasterSuiteId(app, projectId, headers);
 
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Core" }
+    });
+    expect(sectionRes.statusCode).toBe(200);
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+    const caseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Smoke login", priority: "high" }
+    });
+    expect(caseRes.statusCode).toBe(200);
+
     const runRes = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/runs`,
@@ -119,6 +135,15 @@ describe("milestone summary hierarchy rollup API", () => {
       hint: expect.any(String)
     });
     expect(parent?.forecast.remainingTests).toBeGreaterThanOrEqual(0);
+
+    const linkedRunsRes = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/milestones/${childId}/runs`,
+      headers
+    });
+    expect(linkedRunsRes.statusCode).toBe(200);
+    const linkedRuns = (linkedRunsRes.json() as { data: Array<{ runId: string; runName: string }> }).data;
+    expect(linkedRuns.some((row) => String(row.runId) === String(runId))).toBe(true);
 
     const forecastRes = await app.inject({
       method: "GET",

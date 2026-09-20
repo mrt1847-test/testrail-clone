@@ -72,7 +72,7 @@ export function buildApp() {
   void registerProjectsRoutes(app, { projectsService, authService, prisma });
   void registerSuitesRoutes(app, { suitesService, casesService, authService, prisma });
   void registerSectionsRoutes(app, { sectionsService, authService, prisma });
-  void registerCasesRoutes(app, { casesService, authService, prisma, compositionSync });
+  void registerCasesRoutes(app, { casesService, authService, prisma, compositionSync, runsService });
   void registerRunsRoutes(app, { runsService, resultsService, repo, authService, prisma });
   void registerResultsRoutes(app, { resultsService, prisma, authService });
   void registerExecutionCommentsRoutes(app, { authService, prisma });
@@ -94,7 +94,7 @@ export function buildApp() {
     repo,
     prisma
   });
-  void registerMilestonesRoutes(app, { prisma, authService });
+  void registerMilestonesRoutes(app, { prisma, authService, repo });
   void registerPlansRoutes(app, { prisma, authService, runsService, catalog: catalogRepo });
   void registerPrintRoutes(app, { prisma, repo, casesService, authService, catalog: catalogRepo });
   void registerSettingsRoutes(app, { authService, prisma });

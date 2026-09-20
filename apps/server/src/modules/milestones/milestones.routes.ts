@@ -7,6 +7,7 @@ import { toJsonSafe } from "../../common/utils/serialize.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { recordActivityEvent } from "../activity/activity.service.js";
 import { projectIdParamSchema } from "../projects/projects.schema.js";
+import type { RunsRepository } from "../runs/runs.repository.js";
 import {
   createMilestoneSchema,
   milestoneIdParamSchema,
@@ -20,7 +21,6 @@ import {
 } from "./milestones.shared.js";
 
 const milestones: MilestoneRecord[] = [];
-const milestoneRuns = new Map<bigint, Array<{ runId: bigint; runName: string; status: string; progress: number }>>();
 
 export function listMemoryMilestones(projectId: bigint) {
   return milestones.filter((item) => item.projectId === projectId);
@@ -37,9 +37,27 @@ async function listProjectMilestoneParents(prisma: PrismaClient, projectId: bigi
   });
 }
 
+async function listMemoryMilestoneRuns(repo: RunsRepository, projectId: bigint, milestoneId: bigint) {
+  const runs = await repo.listRunsByProject(projectId);
+  const linked = runs.filter((run) => run.milestoneId != null && run.milestoneId === milestoneId);
+  const rows = [];
+  for (const run of linked) {
+    const instances = await repo.listInstancesForRun(run.id);
+    const total = instances.length;
+    const completed = instances.filter((instance) => instance.status !== "untested").length;
+    rows.push({
+      runId: run.id,
+      runName: run.name,
+      status: run.status,
+      progress: total === 0 ? 0 : Math.round((completed / total) * 100)
+    });
+  }
+  return rows.sort((a, b) => Number(b.runId - a.runId));
+}
+
 export async function registerMilestonesRoutes(
   app: FastifyInstance,
-  deps: { prisma?: PrismaClient; authService: AuthService }
+  deps: { prisma?: PrismaClient; authService: AuthService; repo?: RunsRepository }
 ) {
   app.get("/api/projects/:projectId/milestones", async (req, reply) => {
     const { projectId } = projectIdParamSchema.parse(req.params);
@@ -325,7 +343,10 @@ export async function registerMilestonesRoutes(
     if (!row) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "milestone not found" });
     }
-    const rows = milestoneRuns.get(milestoneId) ?? [];
+    if (!deps.repo) {
+      return reply.send(toJsonSafe(paged([], 1, 100)));
+    }
+    const rows = await listMemoryMilestoneRuns(deps.repo, projectId, milestoneId);
     return reply.send(toJsonSafe(paged(rows, 1, 100)));
   });
 }

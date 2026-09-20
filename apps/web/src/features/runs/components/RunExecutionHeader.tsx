@@ -29,6 +29,10 @@ type Props = {
   onReopenRun: () => void;
   isReopenRunPending: boolean;
   onPushDefect?: () => void;
+  compositionMode?: "static" | "include_all_live" | "dynamic_filter";
+  compositionSummary?: string | null;
+  isSyncingComposition?: boolean;
+  onSyncComposition?: () => void;
 };
 
 export function RunExecutionHeader({
@@ -52,10 +56,24 @@ export function RunExecutionHeader({
   isCloseRunPending,
   onReopenRun,
   isReopenRunPending,
-  onPushDefect
+  onPushDefect,
+  compositionMode,
+  compositionSummary,
+  isSyncingComposition = false,
+  onSyncComposition
 }: Props) {
   const [exportBusy, setExportBusy] = useState(false);
   const isOpen = run.status === "open";
+  const liveComposition =
+    compositionMode === "include_all_live" || compositionMode === "dynamic_filter";
+  const compositionLabel =
+    compositionMode === "include_all_live"
+      ? "All cases"
+      : compositionMode === "dynamic_filter"
+        ? "Dynamic filter"
+        : compositionMode === "static"
+          ? "Selected cases"
+          : null;
   const defectItems = useDefectDropdownItems({ projectId, runId, onPushDefect });
   const meta = [
     run.environment,
@@ -158,9 +176,27 @@ export function RunExecutionHeader({
             </span>
           </div>
           {meta.length > 0 ? <p className="mt-0.5 truncate text-xs text-slate-500">{meta.join(" · ")}</p> : null}
+          {compositionLabel ? (
+            <p className="mt-0.5 truncate text-xs text-slate-600" title={compositionSummary ?? undefined}>
+              Membership: {compositionLabel}
+              {compositionSummary ? ` · ${compositionSummary}` : ""}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          {isOpen && liveComposition && onSyncComposition ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isSyncingComposition}
+              onClick={onSyncComposition}
+              aria-label="Sync composition"
+            >
+              {isSyncingComposition ? "Syncing…" : "Sync now"}
+            </Button>
+          ) : null}
           <label className="sr-only" htmlFor="run-header-assignee">Run assignee</label>
           <select
             id="run-header-assignee"

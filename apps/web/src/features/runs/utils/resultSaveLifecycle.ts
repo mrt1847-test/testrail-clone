@@ -11,6 +11,11 @@ import {
   type ResultSaveRetryPayload
 } from "./resultSaveFeedback";
 import { shouldAssignAfterResult } from "./resultEntryDialogModel";
+import {
+  parkedRecoveryToFeedback,
+  resultAttachmentReselectMessage,
+  type ParkedPartialRecovery
+} from "./resultPartialRecoveryModel";
 import type { ResultStatus } from "../components/resultEntryTypes";
 
 export type ResultSaveCall = {
@@ -93,6 +98,8 @@ export function resolveResultSaveMode(args: {
   if (resultFieldsChanged(feedback.retryPayload, payload)) return "create-result";
   if (remainingFiles.length === 0) {
     if (feedback.pendingAssignment !== undefined) return "assign-only";
+    // Refresh/reopen without File bytes must not invent a new result or pretend attach succeeded.
+    if (feedback.awaitingFileReselect) return "noop-saved";
     return "noop-saved";
   }
   return "attach-only";
@@ -291,6 +298,21 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
       }
 
       if (mode === "noop-saved") {
+        if (ownerFeedback?.awaitingFileReselect) {
+          const names = ownerFeedback.missingFileNames ?? [];
+          const failed = {
+            ...baseFeedback,
+            status: "failed" as const,
+            message: resultAttachmentReselectMessage(names),
+            canUndo: false,
+            createdResultId: ownerFeedback.createdResultId,
+            awaitingFileReselect: true,
+            missingFileNames: names,
+            kind: "attach-only" as const
+          };
+          setFeedback(testId, failed);
+          throw new Error(failed.message);
+        }
         const assignmentError = await applyAssignment(operationId, testId, payload);
         if (!shouldApplyOperationCompletion(inFlight.get(testId), operationId)) return;
         if (assignmentError) {
@@ -314,6 +336,8 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
           canUndo,
           createdResultId: ownerFeedback?.createdResultId,
           pendingAssignment: undefined,
+          awaitingFileReselect: false,
+          missingFileNames: undefined,
           kind: "attach-only"
         });
         return { mode, createdResultId: ownerFeedback?.createdResultId ?? null, advanced: false };
@@ -332,6 +356,8 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
             canUndo: false,
             createdResultId: existingId,
             pendingAssignment: assignmentError ? payload.assignedTo : undefined,
+            awaitingFileReselect: false,
+            missingFileNames: failures,
             kind: "attach-only" as const
           };
           setFeedback(testId, failed);
@@ -345,6 +371,8 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
           canUndo,
           createdResultId: existingId,
           pendingAssignment: undefined,
+          awaitingFileReselect: false,
+          missingFileNames: undefined,
           kind: "attach-only"
         });
         return { mode, createdResultId: existingId, advanced: false };
@@ -365,6 +393,8 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
           canUndo: false,
           createdResultId: createdId,
           pendingAssignment: assignmentError ? payload.assignedTo : undefined,
+          awaitingFileReselect: false,
+          missingFileNames: failures.length > 0 ? failures : undefined,
           kind: "create-result" as const
         };
         setFeedback(testId, failed);
@@ -508,6 +538,9 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
         message: "Result saved",
         canUndo,
         retryPayload: { ...current.retryPayload, stagedAttachments: [], attachments: [] },
+        awaitingFileReselect: false,
+        missingFileNames: undefined,
+        pendingAssignment: undefined,
         operationId,
         kind: "attach-only"
       });
@@ -522,6 +555,15 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
     return stagedAttachmentsFromPayload(current.retryPayload).filter((item) => !discardedFileIds.has(item.id));
   }
 
+  function restoreParked(parked: ParkedPartialRecovery) {
+    const current = snapshot.feedbackByTestId[parked.testId];
+    // Prefer in-memory recovery that still holds File bytes.
+    if (current?.status === "failed" && stagedAttachmentsFromPayload(current.retryPayload).length > 0) {
+      return;
+    }
+    setFeedback(parked.testId, parkedRecoveryToFeedback(parked));
+  }
+
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => {
@@ -531,6 +573,7 @@ export function createResultSaveLifecycle(deps: ResultSaveLifecycleDeps) {
     isSaving: (testId: string) => snapshot.savingTestIds.includes(testId),
     feedbackFor: (testId: string) => snapshot.feedbackByTestId[testId] ?? null,
     composerRecoveryFiles,
+    restoreParked,
     expireSaved,
     submit,
     retry,

@@ -18,6 +18,7 @@ import { ProjectActivityLineChart } from "./ProjectActivityLineChart";
 import {
   buildOverviewWorkRows,
   formatOverviewExecution,
+  formatOverviewMilestoneRuns,
   openMilestones,
   overviewAttentionItems
 } from "../utils/projectOverviewModel";
@@ -94,7 +95,9 @@ export function ProjectOverviewPage() {
   return (
     <WorkbenchPage>
       <WorkbenchPageHeader title="Overview" />
-      <p className="text-sm text-slate-700">{formatOverviewExecution(data.execution)}</p>
+      <p className="text-sm text-slate-700">
+        {formatOverviewExecution(data.execution, { totalCases: data.stats.totalCases })}
+      </p>
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <Link to={`/projects/${projectId}/cases`} className="text-slate-900 hover:underline">
           Cases
@@ -161,7 +164,7 @@ export function ProjectOverviewPage() {
                   {row.name}
                 </Link>
                 <p className="text-xs text-slate-600">
-                  {row.openRunCount} active runs · {row.progress}% passed
+                  {formatOverviewMilestoneRuns(row.openRunCount)} · {row.progress}% passed
                 </p>
               </li>
             ))}

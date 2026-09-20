@@ -1,0 +1,12 @@
+{
+  "projectId": "1",
+  "milestoneId": "1789846332803",
+  "runA": "1",
+  "runB": "2",
+  "runC": "3",
+  "caseIds": [
+    1,
+    2,
+    3
+  ]
+}

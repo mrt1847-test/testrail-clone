@@ -127,15 +127,17 @@ export async function fetchProjectOverview(projectId: string): Promise<ProjectOv
       createdAt: "-"
     };
   });
-  const execution = runSummaryRes.data.items.reduce(
-    (acc, row) => {
-      acc.total += row.total;
-      acc.passed += row.passed;
-      acc.failed += row.failed;
-      return acc;
-    },
-    { total: 0, passed: 0, failed: 0, remaining: 0 }
-  );
+  const execution = runSummaryRes.data.items
+    .filter((row) => row.status === "open")
+    .reduce(
+      (acc, row) => {
+        acc.total += row.total;
+        acc.passed += row.passed;
+        acc.failed += row.failed;
+        return acc;
+      },
+      { total: 0, passed: 0, failed: 0, remaining: 0 }
+    );
   execution.remaining = Math.max(0, execution.total - execution.passed - execution.failed);
 
   return {
