@@ -1,0 +1,124 @@
+{
+  "results": {
+    "context-before": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&scope=direct&q=Login",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 15 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 1 case loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n1 case\nCommerce / Login · Selected section only · 1 case\nLogin\nSearch cases\nFilter\n1\nView\n•••\nCommerce / Login\n1 case\n⠿\nC2\nLogin with valid shopper\nFunctional\nMedium\n‹\nAdd Case",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "INPUT",
+        "id": "",
+        "text": ""
+      }
+    },
+    "context-after": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 15 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 12 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n12 cases\nCommerce / Login · Include subsections · 12 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\nFunctional\nMedium\n‹\n⠿\nC5\nTitle only outline\nFunctional\nMedium\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nFunctional\nMedium\n‹\n⠿\nC7\nKeyboard quick case\nFunctional\nMedium\n‹\n⠿\nC9\nPartial create 0921\nFunctional\nMedium\n‹\n⠿\nC10\nPartial next 0921\nFunctional\nMedium\n‹\nAdd Case\nCommerce / Login / Recovery\n6 cases\n⠿\nC3\nRecovery security check\nFunctional\nMedium\n‹\n⠿\nC11\nStructured UI 0921\nFunctional\nMedium\n‹\n⠿\nC12\nAdded after All run\nFunctional\nMedium\n‹\n⠿\nC13\nDynamic high smoke\nFunctional\nHigh\n‹\n⠿\nC14\nDynamic high new\nFunctional\nHigh\n‹\n⠿\nC15\nDynamic low excluded\nFunctional\nLow\n‹\nAdd Case",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "context-values": {
+      "scope": "subtree",
+      "search": ""
+    },
+    "next-success": {
+      "url": "http://localhost:5196/projects/1/cases/new?suiteId=1&sectionId=6",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Cases\n/\nNew\n\nTEST CASES\n\nAdd Test Case\n\nSuite: Master\n\nBack to cases\n\nSuccessfully added C16. Add another test case below.\n\nTitle\nRequired\nSection\nRequired\nGeneral\nCommerce\nCommerce / Login\nCommerce / Login / Recovery\nAccount\nAccount / Login\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\nSteps\nExpected result\n\nRequired fields are marked.\n\nCancel\nAdd & Next\nAdd Test Case",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "next-success-values": {
+      "title": "",
+      "steps": "",
+      "section": "6"
+    },
+    "next-query": {
+      "data": [
+        {
+          "id": "16",
+          "sectionId": "6",
+          "title": "Add next success 0921",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 2,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T14:02:54.168Z",
+          "archivedAt": null
+        }
+      ],
+      "page": 1,
+      "pageSize": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  },
+  "network": [
+    {
+      "method": "GET",
+      "path": "/api/projects/1/cases?q=Add%20next%20success",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": [
+          {
+            "id": "16",
+            "sectionId": "6",
+            "title": "Add next success 0921",
+            "priority": "medium",
+            "caseType": "functional",
+            "estimate": null,
+            "preconditions": "",
+            "expectedResult": null,
+            "mission": null,
+            "goals": null,
+            "aiInput": null,
+            "aiExpectedOutput": null,
+            "caseTemplateId": "1",
+            "refs": null,
+            "customValues": {},
+            "projectId": "1",
+            "suiteId": "1",
+            "displayOrder": 2,
+            "labels": [],
+            "lockVersion": 1,
+            "updatedAt": "2026-09-21T14:02:54.168Z",
+            "archivedAt": null
+          }
+        ],
+        "page": 1,
+        "pageSize": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  ]
+}

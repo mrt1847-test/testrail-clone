@@ -1,0 +1,19 @@
+from e2e_0921_common import *
+with sync_playwright() as pw:
+ b=pw.chromium.launch(headless=True);page=b.new_page(viewport={'width':1280,'height':720});page.set_default_timeout(5000);login(page)
+ def task(name,fn):
+  try:fn()
+  except Exception as e:results[name+'-error']=str(e);print(name,traceback.format_exc())
+  save('followup')
+ def template():
+  go(page,f'/projects/{pid}/cases/new?suiteId={sid}&sectionId={child}');page.locator('#case-title').fill('Template safe draft');page.locator('#case-steps-text').fill('Keep text steps');page.locator('#case-template').select_option(next(str(t['id']) for t in fx['templates'] if t['systemKey']=='test_case_steps'));page.get_by_role('button',name='Keep current template',exact=True).click();results['template-keep']={'title':page.locator('#case-title').input_value(),'steps':page.locator('#case-steps-text').input_value()};page.locator('#case-template').select_option(next(str(t['id']) for t in fx['templates'] if t['systemKey']=='test_case_steps'));page.get_by_role('button',name='Change template',exact=True).click();results['template-converted']=page.locator('[id^=case-step-action-]').first.input_value();page.get_by_role('button',name='Cancel',exact=True).click();results['cancel-dialog']=capture(page,'cancel-dialog');page.keyboard.press('Tab');page.keyboard.press('Shift+Tab');page.get_by_role('button',name='Keep editing',exact=True).click();results['cancel-keep']=page.locator('#case-title').input_value()
+ def mobile():
+  page.set_viewport_size({'width':390,'height':844});rid=fx['runs'][0]['run']['id'];go(page,f'/projects/{pid}/runs/{rid}');page.locator('[data-run-test-row]').first.locator('[data-run-col=title]').click();page.wait_for_timeout(300);results['mobile-selected']=capture(page,'mobile-selected');page.get_by_role('button',name='Back to tests',exact=True).click();page.wait_for_timeout(500);results['mobile-return']=capture(page,'mobile-return');results['mobile-row-count']=page.locator('[data-run-test-row]:visible').count()
+  page.set_viewport_size({'width':1280,'height':720});go(page,f'/projects/{pid}/runs/{fx["runs"][1]["run"]["id"]}?testId={fx["runs"][1]["instances"][1]["id"]}');page.get_by_role('button',name='Assign to me',exact=True).click();page.wait_for_timeout(500);go(page,f'/projects/{pid}/my-tests');results['my-tests-assigned']=capture(page,'my-tests-assigned');print('MY TESTS',page.locator('body').inner_text());print('LINKS',page.locator('a').evaluate_all('(es)=>es.map(x=>({text:x.innerText,href:x.getAttribute("href")}))'))
+ def run_create():
+  go(page,f'/projects/{pid}/runs/new?suiteId={sid}');print('CREATE controls',page.locator('input,select').evaluate_all('(es)=>es.map(x=>({id:x.id,placeholder:x.placeholder,type:x.type}))'));page.get_by_label('Name',exact=True).fill('UI All membership 0921');results['run-compose']=capture(page,'run-compose-all');page.get_by_role('button',name='Create run',exact=True).click();page.wait_for_timeout(700);results['run-created']=capture(page,'run-created');runid=page.url.split('/runs/')[1].split('?')[0];results['run-created-api']=api('GET',f'/api/runs/{runid}');new=api('POST',f'/api/sections/{leaf}/cases',{'title':'Added after All run'});page.reload(wait_until='networkidle');page.wait_for_timeout(400);results['all-reopen']=capture(page,'all-reopen')
+ def cases_view():
+  for w,h in [(1440,1000),(1280,720),(390,844)]:
+   page.set_viewport_size({'width':w,'height':h});go(page,f'/projects/{pid}/cases?suiteId={sid}&sectionId={child}&panelCaseId={fx["cases"][5]["id"]}');results[f'case-panel-{w}']=capture(page,f'case-panel-{w}');results[f'case-edit-button-{w}']=page.get_by_role('button',name='Edit',exact=True).bounding_box();page.get_by_role('button',name='Edit',exact=True).click();page.wait_for_timeout(200);results[f'case-edit-{w}']=capture(page,f'case-edit-{w}')
+ for name,fn in [('template',template),('mobile',mobile),('run-create',run_create),('cases-view',cases_view)]:task(name,fn)
+ b.close()

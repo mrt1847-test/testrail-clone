@@ -1,0 +1,8 @@
+from e2e_0921_common import *
+with sync_playwright() as pw:
+ b=pw.chromium.launch(headless=True);page=b.new_page(viewport={'width':1280,'height':720});page.set_default_timeout(5000);login(page)
+ try:
+  go(page,f'/projects/{pid}/cases?suiteId={sid}&sectionId={child}');page.get_by_label('Case query scope').select_option('direct');page.get_by_placeholder('Search cases…',exact=True).fill('Login');page.wait_for_timeout(650);results['context-before']=capture(page,'context-before');page.get_by_role('button',name=re.compile('More actions')).click();page.get_by_role('menuitem',name=re.compile('Add Test Case')).click();page.wait_for_timeout(300);page.get_by_role('button',name='Cancel',exact=True).click();page.wait_for_timeout(400);results['context-after']=capture(page,'context-after');results['context-values']={'scope':page.get_by_label('Case query scope').input_value(),'search':page.get_by_placeholder('Search cases…',exact=True).input_value()}
+  go(page,f'/projects/{pid}/cases/new?suiteId={sid}&sectionId={twin}');page.locator('#case-title').fill('Add next success 0921');page.locator('#case-steps-text').fill('Saved next instructions');page.get_by_role('button',name=re.compile('Add.*Next')).click();page.wait_for_timeout(600);results['next-success']=capture(page,'next-success');results['next-success-values']={'title':page.locator('#case-title').input_value(),'steps':page.locator('#case-steps-text').input_value(),'section':page.locator('#case-section').input_value()};results['next-query']=api('GET',f'/api/projects/{pid}/cases?q=Add%20next%20success')
+ except Exception as e:results['error']=str(e);print(traceback.format_exc())
+ finally:save('context-next');b.close()

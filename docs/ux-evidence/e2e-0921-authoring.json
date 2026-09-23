@@ -1,0 +1,364 @@
+{
+  "results": {
+    "panel-close": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=5&focusCaseId=5&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 8 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 5 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n5 cases\nCommerce / Login · Include subsections · 5 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n4 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n›\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n‹\n⠿\nC7\nKeyboard quick case\n‹\nAdd Case\nCommerce / Login / Recovery\n1 case\n⠿\nC3\nRecovery security check\n‹\nAdd Case\nC5 Title only outline\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\nSteps\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave\nDISCARD UNSAVED CHANGES?\nYour unsaved test case changes will be lost.\nKeep editing\nDiscard changes",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BUTTON",
+        "id": "",
+        "text": "Keep editing"
+      }
+    },
+    "keep-title": "Draft changed title",
+    "panel-save": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=5&focusCaseId=5&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 8 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 5 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n5 cases\nCommerce / Login · Include subsections · 5 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n4 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n›\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n‹\n⠿\nC7\nKeyboard quick case\n‹\nAdd Case\nCommerce / Login / Recovery\n1 case\n⠿\nC3\nRecovery security check\n‹\nAdd Case\nC5 Title only outline\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\nSteps\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "panel-api": {
+      "data": {
+        "id": "5",
+        "sectionId": "3",
+        "title": "Title only outline",
+        "priority": "medium",
+        "caseType": "functional",
+        "estimate": null,
+        "preconditions": "",
+        "expectedResult": null,
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "refs": null,
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 1,
+        "labels": [],
+        "lockVersion": 2,
+        "updatedAt": "2026-09-21T13:49:59.903Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "16",
+            "stepOrder": 1,
+            "content": "Newly written instructions 0921",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    },
+    "panel-input-after": "",
+    "panel-reload": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=5&focusCaseId=5&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 8 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 5 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n5 cases\nCommerce / Login · Include subsections · 5 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n4 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n›\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n‹\n⠿\nC7\nKeyboard quick case\n‹\nAdd Case\nCommerce / Login / Recovery\n1 case\n⠿\nC3\nRecovery security check\n‹\nAdd Case\nC5 Title only outline\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\nSteps\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "partial-normal": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=9&focusCaseId=9",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 9 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 6 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n6 cases\nCommerce / Login · Include subsections · 6 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n5 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n‹\n⠿\nC7\nKeyboard quick case\n‹\n⠿\nC9\nPartial create 0921\n›\nAdd Case\nCommerce / Login / Recovery\n1 case\n⠿\nC3\nRecovery security check\n‹\nAdd Case\nC9 Partial create 0921\nEdit\nCase utilities\n•••\nClose\n\nType: Functional / Priority: Medium / Estimate: -\n\nReferences: - / Automation key: -\n\nLabels: -\n\nPreconditions: Precondition preserved on server\n\nTemplate: Test Case (Text)\n\nVersion history · 1 snapshot\n\nClick to show or hide\n\n▸\n\nSection Commerce / Login\n\nType Functional\nPriority Medium\nTemplate Test Case (Text)\nPRECONDITIONS\n\nPrecondition preserved on server\n\nDuplicate\nMark as deleted",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "partial-cases": {
+      "data": [
+        {
+          "id": "9",
+          "sectionId": "3",
+          "title": "Partial create 0921",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "Precondition preserved on server",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 4,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T13:50:04.422Z",
+          "archivedAt": null
+        }
+      ],
+      "page": 1,
+      "pageSize": 20,
+      "total": 1,
+      "totalPages": 1
+    },
+    "partial-next": {
+      "url": "http://localhost:5196/projects/1/cases/new?suiteId=1&sectionId=3",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Cases\n/\nNew\n\nTEST CASES\n\nAdd Test Case\n\nSuite: Master\n\nBack to cases\n\nAdded C10. Steps could not be saved (review injected steps failure).\n\nTitle\nRequired\nSection\nRequired\nGeneral\nCommerce\nCommerce / Login\nCommerce / Login / Recovery\nAccount\nAccount / Login\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\nSteps\nExpected result\n\nRequired fields are marked.\n\nCancel\nAdd & Next\nAdd Test Case",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "partial-next-values": {
+      "title": "",
+      "steps": ""
+    },
+    "steps-form": {
+      "url": "http://localhost:5196/projects/1/cases/new?suiteId=1&sectionId=3",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Cases\n/\nNew\n\nTEST CASES\n\nAdd Test Case\n\nSuite: Master\n\nBack to cases\nTitle\nRequired\nSection\nRequired\nGeneral\nCommerce\nCommerce / Login\nCommerce / Login / Recovery\nAccount\nAccount / Login\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\n\nSteps\n\nAdd step\n1.\nAction\nExpected\nExpected result\n\nRequired fields are marked.\n\nCancel\nAdd & Next\nAdd Test Case",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "INPUT",
+        "id": "case-title",
+        "text": ""
+      }
+    }
+  },
+  "network": [
+    {
+      "method": "PATCH",
+      "url": "http://localhost:4196/api/cases/5",
+      "body": "{\"title\":\"Title only outline\",\"preconditions\":\"\",\"estimate\":null,\"refs\":null,\"expectedResult\":null,\"mission\":null,\"goals\":null,\"aiInput\":null,\"aiExpectedOutput\":null,\"caseTemplateId\":1,\"caseType\":\"functional\",\"priority\":\"medium\",\"customValues\":{},\"expectedVersion\":1}",
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "5",
+          "sectionId": "3",
+          "title": "Title only outline",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 1,
+          "labels": [],
+          "lockVersion": 2,
+          "updatedAt": "2026-09-21T13:49:59.903Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:4196/api/cases/5/steps",
+      "body": "{\"content\":\"Newly written instructions 0921\",\"expectedResult\":null}",
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "16",
+          "stepOrder": 1,
+          "content": "Newly written instructions 0921",
+          "expectedResult": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cases/5",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "5",
+          "sectionId": "3",
+          "title": "Title only outline",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 1,
+          "labels": [],
+          "lockVersion": 2,
+          "updatedAt": "2026-09-21T13:49:59.903Z",
+          "archivedAt": null,
+          "steps": [
+            {
+              "id": "16",
+              "stepOrder": 1,
+              "content": "Newly written instructions 0921",
+              "expectedResult": null
+            }
+          ],
+          "scenarios": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:4196/api/sections/3/cases",
+      "body": "{\"title\":\"Partial create 0921\",\"preconditions\":\"Precondition preserved on server\",\"estimate\":null,\"expectedResult\":null,\"mission\":null,\"goals\":null,\"aiInput\":null,\"aiExpectedOutput\":null,\"caseTemplateId\":1,\"caseType\":\"functional\",\"priority\":\"medium\",\"refs\":null,\"customValues\":{}}",
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "9",
+          "sectionId": "3",
+          "title": "Partial create 0921",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "Precondition preserved on server",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 4,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T13:50:04.422Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:4196/api/cases/9/steps",
+      "body": "{\"content\":\"Important lost draft\",\"expectedResult\":null}",
+      "status": 500,
+      "response": {
+        "message": "review injected steps failure"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/1/cases?q=Partial%20create",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": [
+          {
+            "id": "9",
+            "sectionId": "3",
+            "title": "Partial create 0921",
+            "priority": "medium",
+            "caseType": "functional",
+            "estimate": null,
+            "preconditions": "Precondition preserved on server",
+            "expectedResult": null,
+            "mission": null,
+            "goals": null,
+            "aiInput": null,
+            "aiExpectedOutput": null,
+            "caseTemplateId": "1",
+            "refs": null,
+            "customValues": {},
+            "projectId": "1",
+            "suiteId": "1",
+            "displayOrder": 4,
+            "labels": [],
+            "lockVersion": 1,
+            "updatedAt": "2026-09-21T13:50:04.422Z",
+            "archivedAt": null
+          }
+        ],
+        "page": 1,
+        "pageSize": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:4196/api/sections/3/cases",
+      "body": "{\"title\":\"Partial next 0921\",\"preconditions\":\"\",\"estimate\":null,\"expectedResult\":null,\"mission\":null,\"goals\":null,\"aiInput\":null,\"aiExpectedOutput\":null,\"caseTemplateId\":1,\"caseType\":\"functional\",\"priority\":\"medium\",\"refs\":null,\"customValues\":{}}",
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "10",
+          "sectionId": "3",
+          "title": "Partial next 0921",
+          "priority": "medium",
+          "caseType": "functional",
+          "estimate": null,
+          "preconditions": "",
+          "expectedResult": null,
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "refs": null,
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 5,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T13:50:07.188Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:4196/api/cases/10/steps",
+      "body": "{\"content\":\"Next draft must survive\",\"expectedResult\":null}",
+      "status": 500,
+      "response": {
+        "message": "review injected steps failure"
+      }
+    }
+  ]
+}

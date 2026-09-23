@@ -1,0 +1,726 @@
+{
+  "results": {
+    "setup": {
+      "plan": {
+        "id": "1789998954953",
+        "projectId": "1",
+        "name": "Review plan Chrome and Firefox",
+        "assignedTo": null,
+        "refs": null,
+        "startDate": null,
+        "dueOn": null,
+        "entries": []
+      },
+      "entry": {
+        "id": "1789998954956",
+        "name": "Critical login only",
+        "suiteId": "1",
+        "assignedTo": null,
+        "refs": null,
+        "startDate": null,
+        "dueOn": null,
+        "includeAll": false,
+        "includeCaseIds": [
+          "2"
+        ],
+        "excludeCaseIds": [],
+        "isIncluded": true
+      },
+      "planned": {
+        "data": {
+          "planId": "1789998954953",
+          "entryId": "1789998954956",
+          "runId": "4"
+        }
+      },
+      "milestone": {
+        "id": "1789998954967",
+        "projectId": "1",
+        "name": "Review release linked only",
+        "isCompleted": false,
+        "startDate": null,
+        "dueDate": null,
+        "parentMilestoneId": null,
+        "lifecycleStatus": "open"
+      },
+      "linked": {
+        "run": {
+          "id": "5",
+          "status": "open",
+          "milestoneId": "1789998954967",
+          "assignedTo": null,
+          "environment": null,
+          "startedAt": null,
+          "dueOn": null,
+          "closedAt": null,
+          "createdAt": "2026-09-21T13:55:54.968Z",
+          "composition": {
+            "compositionMode": "static"
+          },
+          "projectId": "1",
+          "suiteId": "1",
+          "name": "Milestone linked smoke",
+          "includeAll": false
+        },
+        "instances": [
+          {
+            "id": "20",
+            "status": "untested",
+            "runId": "5",
+            "caseId": "2",
+            "assignedTo": null,
+            "titleSnapshot": "Login with valid shopper",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1
+          }
+        ]
+      }
+    },
+    "projects": {
+      "url": "http://localhost:5196/projects",
+      "body": "QA Rail\nSearch all projects\nTheme\nLight\nDark\nSystem\nadmin@example.com\nLogout\nProjects\nUsers & groups\nAdd project\nProjects\n☆\nE2E Review 0921 isolated\n\n11 cases · 4 active runs\n\nCases\nRuns\nAssigned\nOpen Milestone linked smoke · 0 of 1 passed\nCompleted\n\nNo completed projects.",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailSearch all projectsThemeLightDarkSystemadmin@example.comLo"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Projects",
+          "href": "/projects"
+        },
+        {
+          "text": "Users & groups",
+          "href": "/admin/users"
+        },
+        {
+          "text": "E2E Review 0921 isolated",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Runs",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Assigned",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Open Milestone linked smoke · 0 of 1 passed",
+          "href": "/projects/1/runs/5"
+        }
+      ]
+    },
+    "overview": {
+      "url": "http://localhost:5196/projects/1",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nOverview\n\n11 cases · 1 passed · 0 failed · 13 tests remaining across open runs\n\nCases\nRuns\nAssigned\nMilestones\n\nACTIVITY\n\nPassed and failed results. Click a day to open matching runs.\n\n7d\n14d\n30d\n60d\n90d\n0 passed (0%)\n0 failed\nView test runs\n8월 22일\nPassed\nFailed\n9월 20일\nActive work\nView all\n\nRUN\n\nMilestone linked smoke\n\n1 tests · 1 untested\n\nRUN\n\nReview plan Chrome and Firefox — Critical login only\n\n1 tests · 1 untested\n\nRUN\n\nRun B Firefox\n\n6 tests · 5 untested · 17% passed\n\nRUN\n\nRun A Chrome\n\n6 tests · 6 blocked\n\nPLAN\n\nReview plan Chrome and Firefox\n\nOpen plan\n\nMilestones\nView all\nReview release linked only\n\n1 linked active run · 0% passed\n\nNeeds attention\nC1 Root overview\n\nblocked\n\nC2 Login with valid shopper\n\nblocked\n\nC3 Recovery security check\n\nblocked\n\nC4 Login from Account branch\n\nblocked\n\nHistory\nTest Changes\nView all activity\n\nNo recent activity.",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        },
+        {
+          "text": "Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Runs",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Assigned",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "View all",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestone linked smoke",
+          "href": "/projects/1/runs/5"
+        },
+        {
+          "text": "Review plan Chrome and Firefox — Critical login only",
+          "href": "/projects/1/runs/4"
+        },
+        {
+          "text": "Run B Firefox",
+          "href": "/projects/1/runs/2"
+        },
+        {
+          "text": "Run A Chrome",
+          "href": "/projects/1/runs/1"
+        },
+        {
+          "text": "Review plan Chrome and Firefox",
+          "href": "/projects/1/plans/1789998954953"
+        },
+        {
+          "text": "View all",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Review release linked only",
+          "href": "/projects/1/milestones/1789998954967"
+        },
+        {
+          "text": "C1 Root overview",
+          "href": "/projects/1/runs/1"
+        },
+        {
+          "text": "C2 Login with valid shopper",
+          "href": "/projects/1/runs/1"
+        },
+        {
+          "text": "C3 Recovery security check",
+          "href": "/projects/1/runs/1"
+        },
+        {
+          "text": "C4 Login from Account branch",
+          "href": "/projects/1/runs/1"
+        },
+        {
+          "text": "View all activity",
+          "href": "/projects/1/activity"
+        }
+      ]
+    },
+    "runs-list": {
+      "url": "http://localhost:5196/projects/1/runs",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Runs & Results\nMore actions\n•••\nAdd Plan\nAdd Run\nAll\nRuns\nPlans\nAssigned to me\nOrder\nDate\nName\nActive\n\n5 items · 1 completed\n\nPLAN\n\nReview plan Chrome and Firefox\n\nNo tests yet\n\n0%\n\nRUN\n\nMilestone linked smoke\n\n1 test · 1 untested\n\n0%\n\nRUN\n\nReview plan Chrome and Firefox — Critical login only\n\n1 test · 1 untested\n\n0%\n\nRUN\n\nRun B Firefox\n\n6 tests · 5 untested\n\n17%\n\nRUN\n\nRun A Chrome\n\n6 tests\n\n0%\n\nCompleted (1)",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        },
+        {
+          "text": "Review plan Chrome and Firefox",
+          "href": "/projects/1/plans/1789998954953"
+        },
+        {
+          "text": "Milestone linked smoke",
+          "href": "/projects/1/runs/5"
+        },
+        {
+          "text": "Review plan Chrome and Firefox — Critical login only",
+          "href": "/projects/1/runs/4"
+        },
+        {
+          "text": "Run B Firefox",
+          "href": "/projects/1/runs/2"
+        },
+        {
+          "text": "Run A Chrome",
+          "href": "/projects/1/runs/1"
+        }
+      ]
+    },
+    "my-tests": {
+      "url": "http://localhost:5196/projects/1/my-tests",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nAssigned to me\nMore actions\n•••\nSearch assigned tests\nFilter\n\n0 assigned tests\n\nNo assigned tests\n\nTests assigned to you on a run appear here.",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        }
+      ]
+    },
+    "plan": {
+      "url": "http://localhost:5196/projects/1/plans/1789998954953",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nplans\n/\n1789998954953\nReview plan Chrome and Firefox\nMore actions\n•••\nAdd entry\n\n1 generated runs · 1 still need work · 1 entries\n\nRuns to execute\n\nNO CONFIGURATION\n\nCritical login only\n\n1 selected case\n\nOpen run · Review plan Chrome and Firefox — Critical login only\n\n1 test · 1 untested\n\n0%\n\nConfigure",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        },
+        {
+          "text": "Projects",
+          "href": "/projects"
+        },
+        {
+          "text": "E2E Review 0921 isolated",
+          "href": "/projects/1"
+        },
+        {
+          "text": "plans",
+          "href": "/projects/1/plans"
+        },
+        {
+          "text": "Open run · Review plan Chrome and Firefox — Critical login only",
+          "href": "/projects/1/runs/4"
+        }
+      ]
+    },
+    "milestone": {
+      "url": "http://localhost:5196/projects/1/milestones/1789998954967",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nmilestones\n/\n1789998954967\n\nMILESTONE\n\nReview release linked only\nOpen\nID\n⧉\nEdit\nAdd sub-milestone\nComplete\nPrint view\nMilestone summary report\n0%\nFailed work\nUntested work\nAll linked runs\n0%\n0/1 passed\n\nLINKED RUNS\n\n1\n\nOPEN RUNS\n\n1\n\nPROGRESS\n\n0%\n\nPASSED\n\n0\n\nFAILED\n\n0\n\nCopy summary\nFORECAST & BURNDOWN\nNo schedule\n\nAdd start and due dates to enable schedule forecast and burndown hints.\n\nREMAINING\n1\nTEST EXECUTION\n\nResult counts are test instances in linked runs, not unique cases.\n\n0%\n\nEXECUTED\n\nTOTAL TESTS\n\n1\n\nInstances in scope\n\nPASSED\n\n0\n\nFAILED\n\n0\n\nREMAINING TESTS\n\n1\nLINKED RUNS\nRUN\tSTATUS\tPROGRESS\tDRILLDOWN\nMilestone linked smoke\topen\t\n0%\n\t\nFailed\nUntested",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        },
+        {
+          "text": "Projects",
+          "href": "/projects"
+        },
+        {
+          "text": "E2E Review 0921 isolated",
+          "href": "/projects/1"
+        },
+        {
+          "text": "milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Print view",
+          "href": "/projects/1/milestones/1789998954967/print"
+        },
+        {
+          "text": "Milestone summary report",
+          "href": "/projects/1/reports/milestones"
+        },
+        {
+          "text": "Failed work",
+          "href": "/projects/1/runs?milestoneId=1789998954967&resultStatus=failed"
+        },
+        {
+          "text": "Untested work",
+          "href": "/projects/1/runs?milestoneId=1789998954967&resultStatus=untested"
+        },
+        {
+          "text": "All linked runs",
+          "href": "/projects/1/runs?milestoneId=1789998954967"
+        },
+        {
+          "text": "",
+          "href": "/projects/1/runs?milestoneId=1789998954967&resultStatus=untested"
+        },
+        {
+          "text": "0",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "0",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "1",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestone linked smoke",
+          "href": "/projects/1/runs/5"
+        },
+        {
+          "text": "Failed",
+          "href": "/projects/1/runs/5?status=failed"
+        },
+        {
+          "text": "Untested",
+          "href": "/projects/1/runs/5?status=untested"
+        }
+      ]
+    },
+    "run-create": {
+      "url": "http://localhost:5196/projects/1/runs/new",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\nNew\nNew test run\n\nName the run and choose which tests to include.\n\nCancel\nName\nRequired\nSuite\nRequired\nSelect suite\nMaster\nIncluded tests\nAll cases\nAutomatically includes new cases\nSelected cases\nFixed membership\nDynamic filter\nMembership follows criteria\n\n0 cases in this suite. New cases are included automatically.\n\nSchedule and environment\n\nAll cases in this suite · 0 tests. New cases in this suite are included automatically.\n\nSelect a suite first.\n\nCreate run\nCancel",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      },
+      "links": [
+        {
+          "text": "QA Rail",
+          "href": "/projects"
+        },
+        {
+          "text": "Overview",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Cases",
+          "href": "/projects/1/cases"
+        },
+        {
+          "text": "Test Runs & Results",
+          "href": "/projects/1/runs"
+        },
+        {
+          "text": "Milestones",
+          "href": "/projects/1/milestones"
+        },
+        {
+          "text": "Reports",
+          "href": "/projects/1/reports"
+        },
+        {
+          "text": "My Tests",
+          "href": "/projects/1/my-tests"
+        },
+        {
+          "text": "Settings",
+          "href": "/projects/1/settings"
+        },
+        {
+          "text": "Projects",
+          "href": "/projects"
+        },
+        {
+          "text": "E2E Review 0921 isolated",
+          "href": "/projects/1"
+        },
+        {
+          "text": "Test Runs",
+          "href": "/projects/1/runs"
+        }
+      ]
+    }
+  },
+  "network": [
+    {
+      "method": "POST",
+      "path": "/api/projects/1/plans",
+      "body": {
+        "name": "Review plan Chrome and Firefox"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "1789998954953",
+          "projectId": "1",
+          "name": "Review plan Chrome and Firefox",
+          "assignedTo": null,
+          "refs": null,
+          "startDate": null,
+          "dueOn": null,
+          "entries": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/1/plans/1789998954953/entries",
+      "body": {
+        "name": "Critical login only",
+        "suiteId": 1,
+        "includeAll": false,
+        "includeCaseIds": [
+          "2"
+        ]
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "1789998954956",
+          "name": "Critical login only",
+          "suiteId": "1",
+          "assignedTo": null,
+          "refs": null,
+          "startDate": null,
+          "dueOn": null,
+          "includeAll": false,
+          "includeCaseIds": [
+            "2"
+          ],
+          "excludeCaseIds": [],
+          "isIncluded": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/1/plans/1789998954953/runs",
+      "body": {
+        "entryId": "1789998954956"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "planId": "1789998954953",
+          "entryId": "1789998954956",
+          "runId": "4"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/1/milestones",
+      "body": {
+        "name": "Review release linked only"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "1789998954967",
+          "projectId": "1",
+          "name": "Review release linked only",
+          "isCompleted": false,
+          "startDate": null,
+          "dueDate": null,
+          "parentMilestoneId": null,
+          "lifecycleStatus": "open"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/1/runs",
+      "body": {
+        "name": "Milestone linked smoke",
+        "suiteId": 1,
+        "milestoneId": "1789998954967",
+        "includeAll": false,
+        "caseIds": [
+          "2"
+        ]
+      },
+      "status": 200,
+      "response": {
+        "run": {
+          "id": "5",
+          "status": "open",
+          "milestoneId": "1789998954967",
+          "assignedTo": null,
+          "environment": null,
+          "startedAt": null,
+          "dueOn": null,
+          "closedAt": null,
+          "createdAt": "2026-09-21T13:55:54.968Z",
+          "composition": {
+            "compositionMode": "static"
+          },
+          "projectId": "1",
+          "suiteId": "1",
+          "name": "Milestone linked smoke",
+          "includeAll": false
+        },
+        "instances": [
+          {
+            "id": "20",
+            "status": "untested",
+            "runId": "5",
+            "caseId": "2",
+            "assignedTo": null,
+            "titleSnapshot": "Login with valid shopper",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+
+> @testrail-clone/web@0.1.0 lint
+> tsc -p tsconfig.app.json --noEmit
+

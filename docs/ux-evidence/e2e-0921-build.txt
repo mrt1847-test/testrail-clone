@@ -1,0 +1,22 @@
+
+> @testrail-clone/web@0.1.0 build
+> node ./scripts/ensure-shared-built.mjs && tsc -b && vite build
+
+
+> @testrail-clone/shared@0.1.0 build
+> tsc -p tsconfig.json
+
+vite v5.4.21 building for production...
+transforming...
+✓ 487 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.41 kB │ gzip:   0.28 kB
+dist/assets/index-D0QD7wE4.css     66.76 kB │ gzip:  11.37 kB
+dist/assets/index-CjzKt2TO.js   1,200.05 kB │ gzip: 311.12 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 11.79s

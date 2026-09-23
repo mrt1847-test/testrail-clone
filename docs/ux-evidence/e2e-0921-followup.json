@@ -1,0 +1,161 @@
+{
+  "results": {
+    "template-keep": {
+      "title": "Template safe draft",
+      "steps": "Keep text steps"
+    },
+    "template-converted": "Keep text steps",
+    "cancel-dialog": {
+      "url": "http://localhost:5196/projects/1/cases/new?suiteId=1&sectionId=3",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Cases\n/\nNew\n\nTEST CASES\n\nAdd Test Case\n\nSuite: Master\n\nBack to cases\nTitle\nRequired\nSection\nRequired\nGeneral\nCommerce\nCommerce / Login\nCommerce / Login / Recovery\nAccount\nAccount / Login\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\n\nSteps\n\nAdd step\n1.\nAction\nExpected\nExpected result\n\nRequired fields are marked.\n\nCancel\nAdd & Next\nAdd Test Case\nDISCARD UNSAVED CASE?\nYour changes to this new test case will be lost.\nKeep editing\nDiscard changes",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BUTTON",
+        "id": "",
+        "text": "Keep editing"
+      }
+    },
+    "cancel-keep": "Template safe draft",
+    "mobile-selected": {
+      "url": "http://localhost:5196/projects/1/runs/1?testId=1",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nAccount\n•••\nGo to: Test Runs & Results\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\nE2E Review 0921 isolated\nRun A Chrome\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n6\nTESTS\n\n0% passed · 0 / 6 untested\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n6 100%\nRetest\n0 0%\nUntested\n0 0%\nAll statuses\n6\nBack to tests\n\nC1\n\nBlocked\nRoot overview\n← Prev\nNext →\nOpen case\nType Functional\nPriority Medium\nEstimate -\nPRECONDITIONS\n\nStore is available\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Root overview\n\nEXPECTED\n\nCatalog shown\n\nEXPECTED RESULT\n\nCatalog shown\n\nResults & comments\nHistory & context\nDefects\n\nLatest: blocked\n\nAdd result\nPass & Next\nAssign to me\n›\nSchedule\n›\nTest discussion\n›\nComposition\n›\nRun discussion",
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "mobile-return": {
+      "url": "http://localhost:5196/projects/1/runs/1",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nAccount\n•••\nGo to: Test Runs & Results\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\nE2E Review 0921 isolated\nRun A Chrome\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n6\nTESTS\n\n0% passed · 0 / 6 untested\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n6 100%\nRetest\n0 0%\nUntested\n0 0%\nAll statuses\n6\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\n▾\nCommerce(5)\n▾\nLogin(4)\nRecovery(1)\n▾\nAccount(1)\nLogin(1)\nPass & Next\nFailed →\nBlocked →\nUntested →\n← Prev\nNext →\n?\nColumns\nFilter\nGroup: Section▾\nSort: Case ID▾\nCompact\nComfortable\n\tCASE\tTITLE\tSTATUS\nCOMMERCE\n\tC1\tRoot overview\t\nBlocked\n▾\n\nLOGIN\n\tC2\tLogin with valid shopper\t\nBlocked\n▾\n\n\tC5\tTitle only outline\t\nBlocked\n▾\n\n\tC6\tTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\t\nBlocked\n▾\n\nRECOVERY\n\tC3\tRecovery security check\t\nBlocked\n▾\n\nLOGIN\n\tC4\tLogin from Account branch\t\nBlocked\n▾\n6 tests\n›\nSchedule\n›\nComposition\n›\nRun discussion",
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "mobile-row-count": 6,
+    "my-tests-assigned": {
+      "url": "http://localhost:5196/projects/1/my-tests",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nAssigned to me\nMore actions\n•••\nSearch assigned tests\nFilter\n\n1 assigned test\n\nSELECT\n\tTEST\tRUN\tSTATUS\t\nOPEN\n\n\t\nC2 Login with valid shopper\n\tR2 Run B Firefox\tPassed\tOpen test",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "run-create-error": "Locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - waiting for get_by_label(\"Name\", exact=True)\n",
+    "case-panel-1440": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\nFunctional\nMedium\n‹\n⠿\nC5\nTitle only outline\nFunctional\nMedium\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nFunctional\nMedium\n›\n⠿\nC7\nKeyboard quick case\nFunctional\nMedium\n‹\n⠿\nC9\nPartial create 0921\nFunctional\nMedium\n‹\n⠿\nC10\nPartial next 0921\nFunctional\nMedium\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\nFunctional\nMedium\n‹\n⠿\nC11\nStructured UI 0921\nFunctional\nMedium\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nEdit\nCase utilities\n•••\nClose\n\nType: Functional / Priority: Medium / Estimate: -\n\nReferences: - / Automation key: -\n\nLabels: -\n\nPreconditions: Cart has 2 distinct items\n\nExpected result: Order total and receipt match\n\nTemplate: Test Case (Steps)\n\nVersion history · 20 snapshots\n\nClick to show or hide\n\n▸\n\nSection Commerce / Login\n\nType Functional\nPriority Medium\nTemplate Test Case (Steps)\nPRECONDITIONS\n\nCart has 2 distinct items\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n2.\n\nACTION\n\nAction 2: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n3.\n\nACTION\n\nAction 3: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n4.\n\nACTION\n\nAction 4: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n5.\n\nACTION\n\nAction 5: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n6.\n\nACTION\n\nAction 6: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n7.\n\nACTION\n\nAction 7: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n8.\n\nACTION\n\nAction 8: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n9.\n\nACTION\n\nAction 9: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n10.\n\nACTION\n\nAction 10: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\nEXPECTED RESULT\n\nOrder total and receipt match\n\nDuplicate\nMark as deleted",
+      "overflow": {
+        "width": 1440,
+        "scroll": 1440
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "case-edit-button-1440": {
+      "x": 1193.703125,
+      "y": 159,
+      "width": 42.53125,
+      "height": 26
+    },
+    "case-edit-1440": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\nFunctional\nMedium\n‹\n⠿\nC5\nTitle only outline\nFunctional\nMedium\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nFunctional\nMedium\n›\n⠿\nC7\nKeyboard quick case\nFunctional\nMedium\n‹\n⠿\nC9\nPartial create 0921\nFunctional\nMedium\n‹\n⠿\nC10\nPartial next 0921\nFunctional\nMedium\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\nFunctional\nMedium\n‹\n⠿\nC11\nStructured UI 0921\nFunctional\nMedium\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\n\nSteps\n\nAdd step\n1.\nUp\nDown\nRemove\nAction\nExpected\n2.\nUp\nDown\nRemove\nAction\nExpected\n3.\nUp\nDown\nRemove\nAction\nExpected\n4.\nUp\nDown\nRemove\nAction\nExpected\n5.\nUp\nDown\nRemove\nAction\nExpected\n6.\nUp\nDown\nRemove\nAction\nExpected\n7.\nUp\nDown\nRemove\nAction\nExpected\n8.\nUp\nDown\nRemove\nAction\nExpected\n9.\nUp\nDown\nRemove\nAction\nExpected\n10.\nUp\nDown\nRemove\nAction\nExpected\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave",
+      "overflow": {
+        "width": 1440,
+        "scroll": 1440
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "case-panel-1280": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n›\n⠿\nC7\nKeyboard quick case\n‹\n⠿\nC9\nPartial create 0921\n‹\n⠿\nC10\nPartial next 0921\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\n‹\n⠿\nC11\nStructured UI 0921\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nEdit\nCase utilities\n•••\nClose\n\nType: Functional / Priority: Medium / Estimate: -\n\nReferences: - / Automation key: -\n\nLabels: -\n\nPreconditions: Cart has 2 distinct items\n\nExpected result: Order total and receipt match\n\nTemplate: Test Case (Steps)\n\nVersion history · 20 snapshots\n\nClick to show or hide\n\n▸\n\nSection Commerce / Login\n\nType Functional\nPriority Medium\nTemplate Test Case (Steps)\nPRECONDITIONS\n\nCart has 2 distinct items\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n2.\n\nACTION\n\nAction 2: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n3.\n\nACTION\n\nAction 3: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n4.\n\nACTION\n\nAction 4: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n5.\n\nACTION\n\nAction 5: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n6.\n\nACTION\n\nAction 6: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n7.\n\nACTION\n\nAction 7: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n8.\n\nACTION\n\nAction 8: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n9.\n\nACTION\n\nAction 9: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n10.\n\nACTION\n\nAction 10: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\nEXPECTED RESULT\n\nOrder total and receipt match\n\nDuplicate\nMark as deleted",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "case-edit-button-1280": {
+      "x": 1033.703125,
+      "y": 159,
+      "width": 42.53125,
+      "height": 26
+    },
+    "case-edit-1280": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n›\n⠿\nC7\nKeyboard quick case\n‹\n⠿\nC9\nPartial create 0921\n‹\n⠿\nC10\nPartial next 0921\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\n‹\n⠿\nC11\nStructured UI 0921\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\n\nSteps\n\nAdd step\n1.\nUp\nDown\nRemove\nAction\nExpected\n2.\nUp\nDown\nRemove\nAction\nExpected\n3.\nUp\nDown\nRemove\nAction\nExpected\n4.\nUp\nDown\nRemove\nAction\nExpected\n5.\nUp\nDown\nRemove\nAction\nExpected\n6.\nUp\nDown\nRemove\nAction\nExpected\n7.\nUp\nDown\nRemove\nAction\nExpected\n8.\nUp\nDown\nRemove\nAction\nExpected\n9.\nUp\nDown\nRemove\nAction\nExpected\n10.\nUp\nDown\nRemove\nAction\nExpected\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "case-panel-390": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nAccount\n•••\nGo to: Test Cases\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n›\n⠿\nC7\nKeyboard quick case\n‹\n⠿\nC9\nPartial create 0921\n‹\n⠿\nC10\nPartial next 0921\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\n‹\n⠿\nC11\nStructured UI 0921\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nEdit\nCase utilities\n•••\nClose\n\nType: Functional / Priority: Medium / Estimate: -\n\nReferences: - / Automation key: -\n\nLabels: -\n\nPreconditions: Cart has 2 distinct items\n\nExpected result: Order total and receipt match\n\nTemplate: Test Case (Steps)\n\nVersion history · 20 snapshots\n\nClick to show or hide\n\n▸\n\nSection Commerce / Login\n\nType Functional\nPriority Medium\nTemplate Test Case (Steps)\nPRECONDITIONS\n\nCart has 2 distinct items\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n2.\n\nACTION\n\nAction 2: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n3.\n\nACTION\n\nAction 3: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n4.\n\nACTION\n\nAction 4: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n5.\n\nACTION\n\nAction 5: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n6.\n\nACTION\n\nAction 6: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n7.\n\nACTION\n\nAction 7: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n8.\n\nACTION\n\nAction 8: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n9.\n\nACTION\n\nAction 9: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\n10.\n\nACTION\n\nAction 10: Ten-step checkout — long descriptiv\n\nEXPECTED\n\nOrder total and receipt match\n\nEXPECTED RESULT\n\nOrder total and receipt match\n\nDuplicate\nMark as deleted",
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "case-edit-button-390": {
+      "x": 143.703125,
+      "y": 1217.5,
+      "width": 42.53125,
+      "height": 26
+    },
+    "case-edit-390": {
+      "url": "http://localhost:5196/projects/1/cases?suiteId=1&sectionId=3&panelCaseId=6&focusCaseId=6&panelMode=edit",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nAccount\n•••\nGo to: Test Cases\n•••\nTest Cases\nMore actions\n•••\nAdd Case\n\nSECTIONS\n\nMaster\n\n6 sections · 11 cases\n\n•••\nGeneral\n•••\nCommerce\n•••\nLogin\n+\n•••\nRecovery\n•••\nAccount\n•••\nLogin\n•••\n+\nAdd root section\nSelect all 8 cases loaded in this list\nCommerce / Login\n·\nCase query scope\nSelected section only\nInclude subsections\nAll sections\n·\n8 cases\nCommerce / Login · Include subsections · 8 cases\nLogin\nSearch cases\nFilter\nView\n•••\nCommerce / Login\n6 cases\n⠿\nC2\nLogin with valid shopper\n‹\n⠿\nC5\nTitle only outline\n‹\n⠿\nC6\nTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\n›\n⠿\nC7\nKeyboard quick case\n‹\n⠿\nC9\nPartial create 0921\n‹\n⠿\nC10\nPartial next 0921\n‹\nAdd Case\nCommerce / Login / Recovery\n2 cases\n⠿\nC3\nRecovery security check\n‹\n⠿\nC11\nStructured UI 0921\n‹\nAdd Case\nC6 Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\nCase utilities\n•••\nClose\nCASE IMAGES\nUpload\n\nNo images attached.\n\nTitle\nRequired\n\nSECTION Commerce / Login\n\nTemplate\nTest Case (Text) (Default)\nTest Case (Steps)\nExploratory Session\nBehaviour Driven Development\nAI Evaluation\nType\nFunctional\nIntegration\nRegression\nPriority\nHigh\nMedium\nLow\nEstimate\n\nExamples: 5m, 1h 20m, or 01:30\n\nReferences\nComma-separated requirement or story IDs.\nPreconditions\n\nSteps\n\nAdd step\n1.\nUp\nDown\nRemove\nAction\nExpected\n2.\nUp\nDown\nRemove\nAction\nExpected\n3.\nUp\nDown\nRemove\nAction\nExpected\n4.\nUp\nDown\nRemove\nAction\nExpected\n5.\nUp\nDown\nRemove\nAction\nExpected\n6.\nUp\nDown\nRemove\nAction\nExpected\n7.\nUp\nDown\nRemove\nAction\nExpected\n8.\nUp\nDown\nRemove\nAction\nExpected\n9.\nUp\nDown\nRemove\nAction\nExpected\n10.\nUp\nDown\nRemove\nAction\nExpected\nExpected result\n\nRequired fields are marked.\n\nCancel\nSave",
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    }
+  },
+  "network": []
+}

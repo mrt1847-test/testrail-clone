@@ -1,0 +1,546 @@
+[
+  {
+    "method": "PATCH",
+    "path": "/api/sections/3",
+    "body": {
+      "parentSectionId": "2"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "3",
+        "suiteId": "1",
+        "parentSectionId": "2",
+        "name": "Login",
+        "displayOrder": 0
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/sections/4",
+    "body": {
+      "parentSectionId": "3"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "4",
+        "suiteId": "1",
+        "parentSectionId": "3",
+        "name": "Recovery",
+        "displayOrder": 0
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/sections/6",
+    "body": {
+      "parentSectionId": "5"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "6",
+        "suiteId": "1",
+        "parentSectionId": "5",
+        "name": "Login",
+        "displayOrder": 0
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/1",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "1",
+        "sectionId": "2",
+        "title": "Root overview",
+        "preconditions": "Store is available",
+        "expectedResult": "Catalog shown",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 0,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:44:43.915Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "1",
+            "stepOrder": 1,
+            "content": "Action 1: Root overview",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/1",
+    "body": {
+      "expectedResult": "Catalog shown"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "1",
+        "stepOrder": 1,
+        "content": "Action 1: Root overview",
+        "expectedResult": "Catalog shown"
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/2",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "2",
+        "sectionId": "3",
+        "title": "Login with valid shopper",
+        "preconditions": "Use shopper@example.test, empty cart",
+        "expectedResult": "Account dashboard appears",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 0,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:44:47.990Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "2",
+            "stepOrder": 1,
+            "content": "Action 1: Login with valid shopper",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/2",
+    "body": {
+      "expectedResult": "Account dashboard appears"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "2",
+        "stepOrder": 1,
+        "content": "Action 1: Login with valid shopper",
+        "expectedResult": "Account dashboard appears"
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/3",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "3",
+        "sectionId": "4",
+        "title": "Recovery security check",
+        "preconditions": "Use locked account, no session",
+        "expectedResult": "Generic confirmation; no account disclosure",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 0,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:44:52.072Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "3",
+            "stepOrder": 1,
+            "content": "Action 1: Recovery security check",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/3",
+    "body": {
+      "expectedResult": "Generic confirmation; no account disclosure"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "3",
+        "stepOrder": 1,
+        "content": "Action 1: Recovery security check",
+        "expectedResult": "Generic confirmation; no account disclosure"
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/4",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "4",
+        "sectionId": "6",
+        "title": "Login from Account branch",
+        "preconditions": "Use support account, 2FA enabled",
+        "expectedResult": "2FA challenge shown",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 0,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:44:56.135Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "4",
+            "stepOrder": 1,
+            "content": "Action 1: Login from Account branch",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/4",
+    "body": {
+      "expectedResult": "2FA challenge shown"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "4",
+        "stepOrder": 1,
+        "content": "Action 1: Login from Account branch",
+        "expectedResult": "2FA challenge shown"
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/5",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "5",
+        "sectionId": "3",
+        "title": "Title only outline",
+        "preconditions": "",
+        "expectedResult": "",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "1",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 1,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:45:00.224Z",
+        "archivedAt": null,
+        "steps": [],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/api/cases/6",
+    "body": null,
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "6",
+        "sectionId": "3",
+        "title": "Ten-step checkout \u2014 long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title ",
+        "preconditions": "Cart has 2 distinct items",
+        "expectedResult": "Order total and receipt match",
+        "mission": null,
+        "goals": null,
+        "aiInput": null,
+        "aiExpectedOutput": null,
+        "caseTemplateId": "2",
+        "customValues": {},
+        "projectId": "1",
+        "suiteId": "1",
+        "displayOrder": 2,
+        "labels": [],
+        "lockVersion": 1,
+        "updatedAt": "2026-09-21T13:45:02.259Z",
+        "archivedAt": null,
+        "steps": [
+          {
+            "id": "5",
+            "stepOrder": 1,
+            "content": "Action 1: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "6",
+            "stepOrder": 2,
+            "content": "Action 2: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "7",
+            "stepOrder": 3,
+            "content": "Action 3: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "8",
+            "stepOrder": 4,
+            "content": "Action 4: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "9",
+            "stepOrder": 5,
+            "content": "Action 5: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "10",
+            "stepOrder": 6,
+            "content": "Action 6: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "11",
+            "stepOrder": 7,
+            "content": "Action 7: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "12",
+            "stepOrder": 8,
+            "content": "Action 8: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "13",
+            "stepOrder": 9,
+            "content": "Action 9: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          },
+          {
+            "id": "14",
+            "stepOrder": 10,
+            "content": "Action 10: Ten-step checkout \u2014 long descriptiv",
+            "expectedResult": null
+          }
+        ],
+        "scenarios": []
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/5",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "5",
+        "stepOrder": 1,
+        "content": "Action 1: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/6",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "6",
+        "stepOrder": 2,
+        "content": "Action 2: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/7",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "7",
+        "stepOrder": 3,
+        "content": "Action 3: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/8",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "8",
+        "stepOrder": 4,
+        "content": "Action 4: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/9",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "9",
+        "stepOrder": 5,
+        "content": "Action 5: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/10",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "10",
+        "stepOrder": 6,
+        "content": "Action 6: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/11",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "11",
+        "stepOrder": 7,
+        "content": "Action 7: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/12",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "12",
+        "stepOrder": 8,
+        "content": "Action 8: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/13",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "13",
+        "stepOrder": 9,
+        "content": "Action 9: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/case-steps/14",
+    "body": {
+      "expectedResult": "Order total and receipt match"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "id": "14",
+        "stepOrder": 10,
+        "content": "Action 10: Ten-step checkout \u2014 long descriptiv",
+        "expectedResult": "Order total and receipt match"
+      }
+    }
+  }
+]

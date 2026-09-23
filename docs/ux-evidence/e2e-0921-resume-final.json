@@ -1,0 +1,769 @@
+{
+  "results": {
+    "assigned-start": {
+      "url": "http://localhost:5196/projects/1/my-tests",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nAssigned to me\nMore actions\n•••\nSearch assigned tests\nFilter\n\n1 assigned test\n\nSELECT\n\tTEST\tRUN\tSTATUS\t\nOPEN\n\n\t\nC2 Login with valid shopper\n\tR2 Run B Firefox\tPassed\tOpen test",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "resume-error": "Locator.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for get_by_role(\"link\", name=\"Open test\", exact=True)\n",
+    "dynamic-before": {
+      "url": "http://localhost:5196/projects/1/runs/7?testId=34",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\n7\nReview dynamic high\nOPEN\n\nMembership: Dynamic filter\n\nSync now\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n1\nTESTS\n\n0% passed · 1 / 1 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n1 100%\nAll statuses\n1\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\n▾\nCommerce(1)\n▾\nLogin(1)\nRecovery(1)\n▾\nAccount\nLogin\nPass & Next\nFailed →\nBlocked →\nUntested →\n← Prev\nNext →\n?\nColumns\nFilter\nGroup: Section▾\nSort: Case ID▾\nCompact\nComfortable\n\tCASE\tTITLE\tSTATUS\tPRIORITY\tUPDATED\tASSIGNEE\tWATCH\nRECOVERY\n\tC13\t\nSelected:\nDynamic high smoke\t\nUntested\n▾\n\tHigh\t—\t\n\nUnassigned\n\n\tWatch\n1 tests\n\nC13\n\nUntested\nDynamic high smoke\n← Prev\nNext →\nOpen case\nType Functional\nPriority High\nEstimate -\n\nNo instructions written for this case.\n\nResults & comments\nHistory & context\nDefects\nAdd result\nPass & Next\nAssign to me\n›\nSchedule\n›\nTest discussion\n›\nComposition\n›\nRun discussion",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "dynamic-after": {
+      "url": "http://localhost:5196/projects/1/runs/7?testId=34",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\n7\nReview dynamic high\nOPEN\n\nMembership: Dynamic filter · Last sync 2026. 9. 21. 오후 11:00:46 (+0, -0)\n\nSync now\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n2\nTESTS\n\n0% passed · 2 / 2 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n2 100%\nAll statuses\n2\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\n▾\nCommerce(2)\n▾\nLogin(2)\nRecovery(2)\n▾\nAccount\nLogin\nPass & Next\nFailed →\nBlocked →\nUntested →\n← Prev\nNext →\n?\nColumns\nFilter\nGroup: Section▾\nSort: Case ID▾\nCompact\nComfortable\n\tCASE\tTITLE\tSTATUS\tPRIORITY\tUPDATED\tASSIGNEE\tWATCH\nRECOVERY\n\tC13\t\nSelected:\nDynamic high smoke\t\nUntested\n▾\n\tHigh\t—\t\n\nUnassigned\n\n\tWatch\n\tC14\tDynamic high new\t\nUntested\n▾\n\tHigh\t—\t\n\nUnassigned\n\n\tWatch\n2 tests\n\nC13\n\nUntested\nDynamic high smoke\n← Prev\nNext →\nOpen case\nType Functional\nPriority High\nEstimate -\n\nNo instructions written for this case.\n\nResults & comments\nHistory & context\nDefects\nAdd result\nPass & Next\nAssign to me\n›\nSchedule\n›\nTest discussion\n›\nComposition\n›\nRun discussion",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "dynamic-api": {
+      "data": {
+        "run": {
+          "id": "7",
+          "status": "open",
+          "milestoneId": null,
+          "assignedTo": null,
+          "environment": null,
+          "startedAt": null,
+          "dueOn": null,
+          "closedAt": null,
+          "createdAt": "2026-09-21T14:00:44.492Z",
+          "composition": {
+            "compositionMode": "dynamic_filter",
+            "filterDefinition": {
+              "priority": "high",
+              "state": "active"
+            },
+            "lastSyncedAt": "2026-09-21T14:00:46.876Z",
+            "lastSyncAdded": 0,
+            "lastSyncRemoved": 0
+          },
+          "projectId": "1",
+          "suiteId": "1",
+          "name": "Review dynamic high",
+          "includeAll": false
+        },
+        "instances": [
+          {
+            "id": "34",
+            "status": "untested",
+            "runId": "7",
+            "caseId": "13",
+            "assignedTo": null,
+            "titleSnapshot": "Dynamic high smoke",
+            "prioritySnapshot": "high",
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "4",
+            "casePriority": "high",
+            "caseType": null
+          },
+          {
+            "id": "35",
+            "status": "untested",
+            "runId": "7",
+            "caseId": "14",
+            "assignedTo": null,
+            "titleSnapshot": "Dynamic high new",
+            "prioritySnapshot": "high",
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "4",
+            "casePriority": "high",
+            "caseType": null
+          }
+        ]
+      }
+    },
+    "selected-still-six": {
+      "data": {
+        "run": {
+          "id": "1",
+          "status": "open",
+          "milestoneId": null,
+          "assignedTo": null,
+          "environment": null,
+          "startedAt": null,
+          "dueOn": null,
+          "closedAt": null,
+          "createdAt": "2026-09-21T13:45:24.749Z",
+          "composition": {
+            "compositionMode": "static"
+          },
+          "projectId": "1",
+          "suiteId": "1",
+          "name": "Run A Chrome",
+          "includeAll": false
+        },
+        "instances": [
+          {
+            "id": "1",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "1",
+            "assignedTo": null,
+            "titleSnapshot": "Root overview",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "2",
+            "casePriority": null,
+            "caseType": null
+          },
+          {
+            "id": "2",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "2",
+            "assignedTo": null,
+            "titleSnapshot": "Login with valid shopper",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "3",
+            "casePriority": null,
+            "caseType": null
+          },
+          {
+            "id": "3",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "3",
+            "assignedTo": null,
+            "titleSnapshot": "Recovery security check",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "4",
+            "casePriority": null,
+            "caseType": null
+          },
+          {
+            "id": "4",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "4",
+            "assignedTo": null,
+            "titleSnapshot": "Login from Account branch",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "6",
+            "casePriority": null,
+            "caseType": null
+          },
+          {
+            "id": "5",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "5",
+            "assignedTo": null,
+            "titleSnapshot": "Title only outline",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": true,
+            "currentCaseLockVersion": 2,
+            "changedFields": [
+              "priority",
+              "type"
+            ],
+            "sectionId": "3",
+            "casePriority": "medium",
+            "caseType": "functional"
+          },
+          {
+            "id": "6",
+            "status": "blocked",
+            "runId": "1",
+            "caseId": "6",
+            "assignedTo": null,
+            "titleSnapshot": "Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title ",
+            "prioritySnapshot": null,
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1,
+            "caseChanged": false,
+            "currentCaseLockVersion": 1,
+            "changedFields": [],
+            "sectionId": "3",
+            "casePriority": null,
+            "caseType": null
+          }
+        ]
+      }
+    },
+    "attachment-before": {
+      "data": {
+        "items": [
+          {
+            "id": "13",
+            "testInstanceId": "9",
+            "status": "failed",
+            "aiActualOutput": null,
+            "aiQualityRating": null,
+            "aiLatencyMs": null,
+            "aiTraces": null,
+            "defects": [],
+            "customValues": {},
+            "source": "manual",
+            "createdAt": "2026-09-21T14:00:50.713Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    },
+    "attachment-reopened": {
+      "url": "http://localhost:5196/projects/1/runs/2?testId=9",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\n2\nRun B Firefox\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n6\nTESTS\n\n17% passed · 3 / 6 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n1 17%\nFailed\n2 33%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n3 50%\nAll statuses\n6\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\n▾\nCommerce(5)\n▾\nLogin(4)\nRecovery(1)\n▾\nAccount(1)\nLogin(1)\nPass & Next\nFailed →\nBlocked →\nUntested →\n← Prev\nNext →\n?\nColumns\nFilter\nGroup: Section▾\nSort: Case ID▾\nCompact\nComfortable\n\tCASE\tTITLE\tSTATUS\tPRIORITY\tUPDATED\tASSIGNEE\tWATCH\nCOMMERCE\n\tC1\tRoot overview\t\nFailed\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nLOGIN\n\tC2\tLogin with valid shopper\t\nPassed\n▾\n\t—\t—\t\n\nUser 1\n\n\tWatch\n\tC5\tTitle only outline\t\nUntested\n▾\n\tMedium\tChanged\t\n\nUnassigned\n\n\tWatch\n\tC6\tTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\t\nUntested\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nRECOVERY\n\tC3\t\nSelected:\nRecovery security check\t\nFailed\n▾\nResult saved. Couldn't attach retry-retained.txt.\nRetry\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nLOGIN\n\tC4\tLogin from Account branch\t\nUntested\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\n6 tests\n\nC3\n\nFailed\nRecovery security check\n← Prev\nNext →\nOpen case\nType Functional\nPriority Medium\nEstimate -\nPRECONDITIONS\n\nUse locked account, no session\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Recovery security check\n\nEXPECTED\n\nGeneric confirmation; no account disclosure\n\nEXPECTED RESULT\n\nGeneric confirmation; no account disclosure\n\nResults & comments\nHistory & context\nDefects\n\nLatest: failed\n\nResult saved. Couldn't attach retry-retained.txt.\nRetry\nAdd result\nPass & Next\nAssign to me\n›\nSchedule\n›\nTest discussion\n›\nComposition\n›\nRun discussion\nAdd result · C3 Recovery security check\n×\nStatus\nUntested\nPassed\nFailed\nBlocked\nRetest\n\nUntested cannot be selected after a test already has a result. Choose another status to record a new result.\n\nEarlier results in history are read-only. Add a new result to change the latest status or notes.\n\nComment\nActual result\nAttachments\nDrop files or browse\n\nretry-retained.txt\n\nCouldn't store the file. Attachment storage isn't available.\nRetry\nRemove\nAssign To\nUnassigned\nAdmin\nVersion\nElapsed\nStart\nStop\nReset\nDefects\nCase steps\nStep results\nResult saved. Couldn't attach retry-retained.txt.\nRetry\nAdd Result\n▾\nCancel",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "SELECT",
+        "id": "result-status",
+        "text": "UntestedPassedFailedBlockedRetest"
+      }
+    },
+    "attachment-retry": {
+      "url": "http://localhost:5196/projects/1/runs/2?testId=9",
+      "body": "QA Rail\nE2E Review 0921 isolated\n•••\nSuite\n•••\nSearch project\nAccount\n•••\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n•••\nProjects\n/\nE2E Review 0921 isolated\n/\nTest Runs\n/\n2\nRun B Firefox\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n⧉\nRun utilities\n•••\n6\nTESTS\n\n17% passed · 3 / 6 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n1 17%\nFailed\n2 33%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n3 50%\nAll statuses\n6\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\n▾\nCommerce(5)\n▾\nLogin(4)\nRecovery(1)\n▾\nAccount(1)\nLogin(1)\nPass & Next\nFailed →\nBlocked →\nUntested →\n← Prev\nNext →\n?\nColumns\nFilter\nGroup: Section▾\nSort: Case ID▾\nCompact\nComfortable\n\tCASE\tTITLE\tSTATUS\tPRIORITY\tUPDATED\tASSIGNEE\tWATCH\nCOMMERCE\n\tC1\tRoot overview\t\nFailed\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nLOGIN\n\tC2\tLogin with valid shopper\t\nPassed\n▾\n\t—\t—\t\n\nUser 1\n\n\tWatch\n\tC5\tTitle only outline\t\nUntested\n▾\n\tMedium\tChanged\t\n\nUnassigned\n\n\tWatch\n\tC6\tTen-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title\t\nUntested\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nRECOVERY\n\tC3\t\nSelected:\nRecovery security check\t\nFailed\n▾\nResult saved. Couldn't attach retry-retained.txt.\nRetry\n\t—\t—\t\n\nUnassigned\n\n\tWatch\nLOGIN\n\tC4\tLogin from Account branch\t\nUntested\n▾\n\t—\t—\t\n\nUnassigned\n\n\tWatch\n6 tests\n\nC3\n\nFailed\nRecovery security check\n← Prev\nNext →\nOpen case\nType Functional\nPriority Medium\nEstimate -\nPRECONDITIONS\n\nUse locked account, no session\n\nSTEPS\n1.\n\nACTION\n\nAction 1: Recovery security check\n\nEXPECTED\n\nGeneric confirmation; no account disclosure\n\nEXPECTED RESULT\n\nGeneric confirmation; no account disclosure\n\nResults & comments\nHistory & context\nDefects\n\nLatest: failed\n\nResult saved. Couldn't attach retry-retained.txt.\nRetry\nAdd result\nPass & Next\nAssign to me\n›\nSchedule\n›\nTest discussion\n›\nComposition\n›\nRun discussion\nAdd result · C3 Recovery security check\n×\nStatus\nUntested\nPassed\nFailed\nBlocked\nRetest\n\nUntested cannot be selected after a test already has a result. Choose another status to record a new result.\n\nEarlier results in history are read-only. Add a new result to change the latest status or notes.\n\nComment\nActual result\nAttachments\nDrop files or browse\n\nretry-retained.txt\n\nCouldn't store the file. Attachment storage isn't available.\nRetry\nRemove\nAssign To\nUnassigned\nAdmin\nVersion\nElapsed\nStart\nStop\nReset\nDefects\nCase steps\nStep results\nResult saved. Couldn't attach retry-retained.txt.\nRetry\nAdd Result\n▾\nCancel",
+      "overflow": {
+        "width": 1280,
+        "scroll": 1280
+      },
+      "focus": {
+        "tag": "BODY",
+        "id": "",
+        "text": "\n    QA RailE2E Review 0921 isolated•••Suite•••Search projectAccount••"
+      }
+    },
+    "attachment-after": {
+      "data": {
+        "items": [
+          {
+            "id": "13",
+            "testInstanceId": "9",
+            "status": "failed",
+            "aiActualOutput": null,
+            "aiQualityRating": null,
+            "aiLatencyMs": null,
+            "aiTraces": null,
+            "defects": [],
+            "customValues": {},
+            "source": "manual",
+            "createdAt": "2026-09-21T14:00:50.713Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 20,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  },
+  "network": [
+    {
+      "method": "POST",
+      "path": "/api/sections/4/cases",
+      "body": {
+        "title": "Dynamic high smoke",
+        "priority": "high"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "13",
+          "sectionId": "4",
+          "title": "Dynamic high smoke",
+          "priority": "high",
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 3,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T14:00:44.487Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/1/runs",
+      "body": {
+        "name": "Review dynamic high",
+        "suiteId": 1,
+        "includeAll": false,
+        "compositionMode": "dynamic_filter",
+        "filterDefinition": {
+          "priority": "high",
+          "state": "active"
+        }
+      },
+      "status": 200,
+      "response": {
+        "run": {
+          "id": "7",
+          "status": "open",
+          "milestoneId": null,
+          "assignedTo": null,
+          "environment": null,
+          "startedAt": null,
+          "dueOn": null,
+          "closedAt": null,
+          "createdAt": "2026-09-21T14:00:44.492Z",
+          "composition": {
+            "compositionMode": "dynamic_filter",
+            "filterDefinition": {
+              "priority": "high",
+              "state": "active"
+            }
+          },
+          "projectId": "1",
+          "suiteId": "1",
+          "name": "Review dynamic high",
+          "includeAll": false
+        },
+        "instances": [
+          {
+            "id": "34",
+            "status": "untested",
+            "runId": "7",
+            "caseId": "13",
+            "assignedTo": null,
+            "titleSnapshot": "Dynamic high smoke",
+            "prioritySnapshot": "high",
+            "typeSnapshot": null,
+            "estimateSnapshot": null,
+            "automationKeySnapshot": null,
+            "externalIdSnapshot": null,
+            "caseLockVersionAtRun": 1
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/sections/4/cases",
+      "body": {
+        "title": "Dynamic high new",
+        "priority": "high"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "14",
+          "sectionId": "4",
+          "title": "Dynamic high new",
+          "priority": "high",
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 4,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T14:00:46.868Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/sections/4/cases",
+      "body": {
+        "title": "Dynamic low excluded",
+        "priority": "low"
+      },
+      "status": 200,
+      "response": {
+        "data": {
+          "id": "15",
+          "sectionId": "4",
+          "title": "Dynamic low excluded",
+          "priority": "low",
+          "mission": null,
+          "goals": null,
+          "aiInput": null,
+          "aiExpectedOutput": null,
+          "caseTemplateId": "1",
+          "customValues": {},
+          "projectId": "1",
+          "suiteId": "1",
+          "displayOrder": 5,
+          "labels": [],
+          "lockVersion": 1,
+          "updatedAt": "2026-09-21T14:00:46.875Z",
+          "archivedAt": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/7",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": {
+          "run": {
+            "id": "7",
+            "status": "open",
+            "milestoneId": null,
+            "assignedTo": null,
+            "environment": null,
+            "startedAt": null,
+            "dueOn": null,
+            "closedAt": null,
+            "createdAt": "2026-09-21T14:00:44.492Z",
+            "composition": {
+              "compositionMode": "dynamic_filter",
+              "filterDefinition": {
+                "priority": "high",
+                "state": "active"
+              },
+              "lastSyncedAt": "2026-09-21T14:00:46.876Z",
+              "lastSyncAdded": 0,
+              "lastSyncRemoved": 0
+            },
+            "projectId": "1",
+            "suiteId": "1",
+            "name": "Review dynamic high",
+            "includeAll": false
+          },
+          "instances": [
+            {
+              "id": "34",
+              "status": "untested",
+              "runId": "7",
+              "caseId": "13",
+              "assignedTo": null,
+              "titleSnapshot": "Dynamic high smoke",
+              "prioritySnapshot": "high",
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "4",
+              "casePriority": "high",
+              "caseType": null
+            },
+            {
+              "id": "35",
+              "status": "untested",
+              "runId": "7",
+              "caseId": "14",
+              "assignedTo": null,
+              "titleSnapshot": "Dynamic high new",
+              "prioritySnapshot": "high",
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "4",
+              "casePriority": "high",
+              "caseType": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/1",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": {
+          "run": {
+            "id": "1",
+            "status": "open",
+            "milestoneId": null,
+            "assignedTo": null,
+            "environment": null,
+            "startedAt": null,
+            "dueOn": null,
+            "closedAt": null,
+            "createdAt": "2026-09-21T13:45:24.749Z",
+            "composition": {
+              "compositionMode": "static"
+            },
+            "projectId": "1",
+            "suiteId": "1",
+            "name": "Run A Chrome",
+            "includeAll": false
+          },
+          "instances": [
+            {
+              "id": "1",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "1",
+              "assignedTo": null,
+              "titleSnapshot": "Root overview",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "2",
+              "casePriority": null,
+              "caseType": null
+            },
+            {
+              "id": "2",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "2",
+              "assignedTo": null,
+              "titleSnapshot": "Login with valid shopper",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "3",
+              "casePriority": null,
+              "caseType": null
+            },
+            {
+              "id": "3",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "3",
+              "assignedTo": null,
+              "titleSnapshot": "Recovery security check",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "4",
+              "casePriority": null,
+              "caseType": null
+            },
+            {
+              "id": "4",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "4",
+              "assignedTo": null,
+              "titleSnapshot": "Login from Account branch",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "6",
+              "casePriority": null,
+              "caseType": null
+            },
+            {
+              "id": "5",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "5",
+              "assignedTo": null,
+              "titleSnapshot": "Title only outline",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": true,
+              "currentCaseLockVersion": 2,
+              "changedFields": [
+                "priority",
+                "type"
+              ],
+              "sectionId": "3",
+              "casePriority": "medium",
+              "caseType": "functional"
+            },
+            {
+              "id": "6",
+              "status": "blocked",
+              "runId": "1",
+              "caseId": "6",
+              "assignedTo": null,
+              "titleSnapshot": "Ten-step checkout — long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title long descriptive title ",
+              "prioritySnapshot": null,
+              "typeSnapshot": null,
+              "estimateSnapshot": null,
+              "automationKeySnapshot": null,
+              "externalIdSnapshot": null,
+              "caseLockVersionAtRun": 1,
+              "caseChanged": false,
+              "currentCaseLockVersion": 1,
+              "changedFields": [],
+              "sectionId": "3",
+              "casePriority": null,
+              "caseType": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tests/9/results",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": {
+          "items": [
+            {
+              "id": "13",
+              "testInstanceId": "9",
+              "status": "failed",
+              "aiActualOutput": null,
+              "aiQualityRating": null,
+              "aiLatencyMs": null,
+              "aiTraces": null,
+              "defects": [],
+              "customValues": {},
+              "source": "manual",
+              "createdAt": "2026-09-21T14:00:50.713Z"
+            }
+          ],
+          "page": 1,
+          "pageSize": 20,
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tests/9/results",
+      "body": null,
+      "status": 200,
+      "response": {
+        "data": {
+          "items": [
+            {
+              "id": "13",
+              "testInstanceId": "9",
+              "status": "failed",
+              "aiActualOutput": null,
+              "aiQualityRating": null,
+              "aiLatencyMs": null,
+              "aiTraces": null,
+              "defects": [],
+              "customValues": {},
+              "source": "manual",
+              "createdAt": "2026-09-21T14:00:50.713Z"
+            }
+          ],
+          "page": 1,
+          "pageSize": 20,
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    }
+  ]
+}
