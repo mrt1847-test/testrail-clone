@@ -65,40 +65,13 @@ When closing a batch, prefer parentheticals that name **depth** explicitly, e.g.
 
 Official reference hub: [TestRail Support Center](https://support.testrail.com/hc/en-us/).
 
-## Working with [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
+## 작업 큐와 기능 상태의 구분
 
-Use this file as the **progress meter**: each development batch should advance **exactly one** checklist line from `[ ]` to `[x]`.
+실행 순서는 NEXT_ACTIONS, 현재 UI/PX 작업의 체크는 활성 실행 계획이 소유한다. 기능 납품 상태가 실제로 바뀐 경우에만 아래 해당 줄을 갱신한다. 페이지 개선을 수행할 때마다 임의로 기능 체크 하나를 완료하거나 이미 완료된 기능을 다시 구현하지 않는다. 작업 단위와 기능 체크는 일대일 관계가 아니다.
 
-| Rule | Detail |
-|------|--------|
-| One batch → one line | [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) **Current batch** must quote the target line below verbatim (section + full bullet text). |
-| No extra bullets | Do not add new checklist lines to record polish inside an already `[x]` area. Extend that line’s parenthetical when closing a remaining gap, or split a `[ ]` line first, then run a batch against it. |
-| Done means `[x]` | When the batch ships, flip **only** the named line to `[x]` and add a short `(…)` note stating **depth** (baseline / partial) and what shipped (routes, pages, export types). |
-| Pick work from `[ ]` | Batch candidates are unchecked lines here, not free-form themes. |
+## UI/UX status
 
-If a line is too large for 1–2 PRs, **split it into multiple `[ ]` lines** here first, then queue one line per batch.
-
----
-
-## TestRail UI/UX Realignment
-
-These lines track the TestRail workbench realignment from [UX_BACKLOG.md](./UX_BACKLOG.md) and [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md). Closing one of these lines requires more than a feature existing: the screen must preserve context, use dense table/list/pane layouts, avoid generic SaaS card/dashboard drift, and include desktop + narrow screenshot walkthrough notes.
-
-- [x] **TR-Core** P0 UX gate: add a per-PR TestRail parity checklist and current-screen screenshot capture workflow for project overview, cases, run list, run detail, My Tests, milestones, plans, and reports. (baseline: `docs/UX_GATE.md`, `.github/PULL_REQUEST_TEMPLATE.md`, and `npm run ux:screenshots:prepare` define the parity checklist, core-route screenshot matrix, target layout types, and capture manifest workflow.)
-- [x] **TR-Core** P1 Project shell realignment: make Overview, Test Cases, Test Runs & Results, Milestones, Test Plans, Reports, My Tests, and Settings visible as daily workspace navigation, with consistent project context and compact page chrome. (baseline: `ProjectTabs` now exposes the eight daily project work areas as primary tabs, with Team Todo, Result Explorer, Activity, Automation, Import/Export, and Shared Steps retained under More.)
-- [x] **TR-Core** P0 Case repository workbench shell: configurable suite/section tree, center compact case table, right selected-case detail pane, with section/case/filter/page state preserved in the URL. (baseline: TestCaseWorkspace keeps the current persisted left/right section tree position, suite-wide section-grouped case table, QPane detail panel, and `suiteId`/`sectionId`/`panelCaseId`/`display`/`groupBy`/filter/column URL state.)
-- [x] **TR-Core** P0 Case repository authoring flow: edit in full-height drawer or dedicated editor while preserving tree/table/detail context; keep Add Case and bulk actions table/section-native. (`CaseEditDrawer` portal + `panelMode=edit`; QPane stays view; row/title opens panel; single-case Edit → drawer; Add Case inline in table.)
-- [x] **TR-Core** P1 Run list realignment: dense run table with progress bars, status counts, milestone/plan/assignee/dates, and direct drilldown into filtered execution work. (`GET /runs-overview`; Open plan+run rows with `RunPlanProgressBar`; Completed date grid; sidebar Add Run/Plan + `ChooseSuiteForRunDialog`.)
-- [x] **TR-Core** P1 Run creation composition workbench: include-all, selected-cases, dynamic-filter, and set/add/remove semantics shown through a section-tree + case-table picker rather than a generic form-only layout. (`RunCompositionWorkbench`: section tree with include/exclude roots, case table with Set/Add/Remove filter, scheduling strip + scope sidebar.)
-- [x] **TR-Core** P0 Run execution workbench shell: persistent status count sidebar/rail, compact test table, and selected-test detail/result pane visible together without losing context. (baseline: RunDetail workbench now keeps status rail, section tree, compact test table, and QPane together; `testId`/`sectionId`/`groupBy` URL state preserved.)
-- [x] **TR-Core** P0 Run execution speed actions: row status dropdown, Add Result, Pass & Next, next failed/blocked/untested, bulk results, and closed-run read-only behavior all usable from the execution workbench. (baseline: row quick status/Add Result, QPane Add Result with Pass & Next, failed/blocked/untested navigation, bulk result entry, and closed-run read-only guards are available in the RunDetail workbench.)
-- [x] **TR-Core** P1 My Tests queue realignment: assigned work becomes a primary queue with due/status grouping, direct run/test links, and quick execution entry. (baseline: My Tests now groups assignments into overdue/due-soon/attention/untested lanes, exposes queue count shortcuts, and routes rows directly into run execution/result entry.)
-- [x] **TR-Core** P1 Milestone hub realignment: milestone detail shows linked runs/plans, progress, risk, dates, and one/two-click drilldown. (baseline: milestone overview uses lifecycle sections, display density, sidebar add/counts, progress bars, and detail hub drilldowns into linked/failed/untested run work; linked plans remain deferred.)
-- [x] **TR-Core** P1 Test Plan hub realignment: plan detail shows entries/configurations, generated runs, per-entry progress, and run creation under a plan without leaving planning context. (baseline: `/plans` is a plan hub table with entry/run/progress rollups, and plan detail keeps summary KPIs, entry run creation, linked run progress, configuration matrix, and rollup-by-configuration in one workspace.)
-- [x] **TR-Core** P2 Reports UX realignment: reports start from a TestRail-like template catalog and Add Report configuration flow (Name/Description, Report Options, Access/Scheduling), not a generic dashboard-first layout. (baseline: `/reports` now opens a categorized template catalog, Add Report configuration panel, name/description/options/access/scheduling fields, saved-report creation, saved/export management links, and direct Run now links to fixed report outputs.)
-- [x] **TR-Core** P1 Visual density pass: replace card-heavy product sections with compact toolbars, table sections, sidebars, drawers, status badges, and progress bars across core workflows. (baseline: shared `workbenchDensity` tokens now define compact panel/table/toolbar/sidebar spacing, and overview, run list, My Tests, milestone, and plan hub surfaces use tighter table sections and sidebars without changing workflow scope.)
-
----
+페이지 UI/UX는 PRODUCT_SPEC의 현재 계약과 활성 실행 계획으로 판단한다. 아래 체크는 해당 시점의 기능 납품 이력이며 현재 사용성 합격이나 최신 구현 재검증을 뜻하지 않는다.
 
 ## Product Foundation
 
@@ -129,7 +102,7 @@ These lines track the TestRail workbench realignment from [UX_BACKLOG.md](./UX_B
 - [x] **TR-Core** Bulk delete, move, copy, archive/restore, priority/type update, saved views, rich filters, optional list columns, and metadata chips.
 - [x] **TR-Core** Case and section drag/drop move/copy/reorder with persisted ordering and position APIs.
 - [x] **TR-Core** Case/case-step attachment API and basic case detail upload/open/delete UI.
-- [x] **TR-Core** P1 Dedicated case detail route (`/projects/:projectId/cases/:caseId`) with read-only page and edit drawer; legacy `?caseId=` redirects ([UX_BACKLOG.md](./UX_BACKLOG.md) UX-4).
+- [x] **TR-Core** P1 Dedicated case detail route (`/projects/:projectId/cases/:caseId`) with read-only page and edit drawer; legacy `?caseId=` redirects ([ROADMAP.md](./ROADMAP.md) UX-4).
 - [x] **TR-Core** P1 **References** field: comma-separated external IDs, View Reference URLs, autocomplete issue picker when integration active ([Reference integrations](https://support.testrail.com/hc/en-us/articles/7747333895700)). (`refs` validate/normalize, `reference-urls` + `issues/search` APIs, `CaseRefTokens` + `ReferencesInput` UI; full provider matrix out of scope.)
 - [x] **TR-Core** P1 Section move/copy compatibility with saved views, run composition filters, and stale drilldown links.
 - [x] **TR-Core** P1 Deeper field edits, labels/refs/custom field list presentation, and partial-failure polish. (Quick-edit metadata panel; label chips + ref tokens in list; custom-field list rows; bulk partial-failure banner with per-case errors)
@@ -158,7 +131,7 @@ These lines track the TestRail workbench realignment from [UX_BACKLOG.md](./UX_B
 - [x] **TR-Core** P1 Configurable **custom result statuses** (up to seven), colors, `is_final`, `is_untested` ([Statuses](https://support.testrail.com/hc/en-us/articles/7077935129364)). (settings CRUD + `GET /api/projects/{id}/statuses` + run result/quick-entry status chips.)
 - [x] **TR-Core** P1 Bulk result entry uses `/results/bulk` with per-row success/failure summary in run UI.
 - [x] **TR-Core** P1 Activity/notification drilldown for run composition (`run.tests_added`, `run.test_removed`) with run + case links.
-- [x] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation; [UX_BACKLOG.md](./UX_BACKLOG.md) UX-2).
+- [x] **TR-Core** P1 Large-run ergonomics beyond bulk feedback (status filter chips, next-failed navigation; [ROADMAP.md](./ROADMAP.md) UX-2).
 - [x] **TR-Core** P1 Test change indicator when underlying case changed after run was created. (lockVersion at run + snapshot diff; API `caseChanged` / `changedFields`; run test list badge)
 - [x] **TR-Pro** P1 Time tracking beyond elapsed entry (estimates vs actuals in reports). (Shared duration parser, case estimate create/update, run-summary API/CSV estimated vs actual seconds/display/delta fields, report UI columns and overview hints, focused tests.)
 - [x] **TR-Core** P1 Run-level progress and completion metrics in UI and API. (`buildRunProgressMetrics`; metrics on run list/detail + `/runs/:id/summary`; run detail UI uses single API; completion counts all non-untested statuses.)
@@ -336,7 +309,7 @@ Internal quality and UI architecture; prioritize after TR-Core P0/P1 gaps unless
 - [x] P1 Shared `Button`, `IconButton`, `DataTable`, `Panel`, `Drawer`, and `Toast`. (`shared/ui` primitives; migrated Webhooks, Members, Login, ConfirmDialog, ErrorState, AttachmentPreviewDrawer.)
 - [ ] P1 Dense, scannable table-oriented screens for large lists.
 - [ ] P1 Centralized query keys per feature.
-- [x] P1 UI/UX review pass (analysis: [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md); implementation waves: [UX_BACKLOG.md](./UX_BACKLOG.md); execution queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) for TR-Core/API items only).
+- [x] P1 UI/UX review pass (analysis: [PRODUCT_SPEC.md](./PRODUCT_SPEC.md); implementation waves: [ROADMAP.md](./ROADMAP.md); execution queue: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) for TR-Core/API items only).
 
 ---
 
@@ -374,8 +347,8 @@ Secondary UX depth; many items mirror TestRail but are tracked here to keep doma
 - [x] **TR-Core** P1 Print-friendly report pages. (`GET .../reports/print?reportType=`, template report Print view + HTML download; Print view on ReportExportActions for fixed templates)
 - [x] P1 Collapsed section tree state per suite. (`sectionTreeCollapse` localStorage per project+suite; `SectionTreePane` restore on suite switch)
 - [x] P1 Select all in section / select visible filter matches. (case list: Select all in section + matching filter via paged fetch; run table: page checkbox + Select all N matching filters across pages; bulk uses full lookup)
-- [x] P1 Next/previous test, jump to failed/blocked (run detail toolbar + shortcuts; see [UX_BACKLOG.md](./UX_BACKLOG.md) Wave UX-2).
-- [x] P1 Clickable status counts in run summary/sidebar (see [UX_GAP_ANALYSIS.md](./UX_GAP_ANALYSIS.md) §5).
+- [x] P1 Next/previous test, jump to failed/blocked (run detail toolbar + shortcuts; see [ROADMAP.md](./ROADMAP.md) Wave UX-2).
+- [x] P1 Clickable status counts in run summary/sidebar (see [PRODUCT_SPEC.md](./PRODUCT_SPEC.md) §5).
 - [x] P1 Assign to me / clear assignee quick actions. (test table + selected-test sidebar + bulk/run actions panel; `TestAssigneeQuickActions`; PATCH run/test assignee)
 - [x] P1 Duplicate run for regression cycles. (`POST /api/runs/:runId/duplicate`; composition + assignee/schedule/env options; DuplicateRunDialog on run detail)
 - [x] P2 Compare two runs side-by-side (relates to Comparison for Cases report). (`/runs/compare` + run detail/list shortcuts; reuses `results-case-comparison` API; status badges)

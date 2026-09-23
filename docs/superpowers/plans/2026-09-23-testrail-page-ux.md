@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 18, TypeScript, Tailwind, Vite, 기존 서버 테스트 도구.
 
-**Spec (필요할 때만 해당 페이지 확인; 전체 읽기 금지):** [공식 화면과 페이지 전체 비교](../../TESTRAIL_PAGE_COMPOSITION_REVIEW_2026-09-23.md). 세부 근거는 [직관성 기록](../../UI_INTUITIVENESS_REVIEW_2026-09-22.md), [E2E 검토](../../E2E_USABILITY_REVIEW_2026-09-21.md).
+**Spec (현재 작업에 필요한 절만):** [제품 UI/UX 계약](../../PRODUCT_SPEC.md#uiux-contract). 공식 참조는 각 PX 절에 직접 연결되어 있다.
 
 이 문서는 **새 개선 작업의 범위·체크 원장**이다. 실행 순서는 [NEXT_ACTIONS](../../NEXT_ACTIONS.md)만 관리한다. 검토 문서에 새 구현 체크를 덧붙이지 않는다. 등록일 2026-09-23, 구현 완료 항목 없음.
 
@@ -37,6 +37,21 @@ PX-01을 Current ID로 바꾼다. 파일을 읽더라도 도구 출력에는 필
 - 원본 사용자 데이터 초기화·새 저장소 생성·권한 변경·예약 변경은 범위 밖이다. 실제 quota/rate limit 감지 시 즉시 저장소 변경을 중단한다.
 - 제품 변경 단위마다 `npm.cmd run lint -w apps/web`, `npm.cmd run build -w apps/web`를 실행한다. 동작 변경에는 관련 회귀 테스트를 추가하고 프로젝트의 기존 실행 방법으로 실행한다. 순수 간격/색 조정에 구현을 그대로 베낀 단위 테스트를 만들지 않는다.
 - 증거는 `docs/ux-evidence/PX-01.md` 등 각 ID 파일에 기록한다. 각 체크 완료에는 구현 diff, 명령/결과, 전체 화면, 실제 키보드 조작, 미검증 범위가 필요하다. 독립 사용자 수용은 UI-021/E03에서 별도 판단한다.
+
+## 모든 작업에 적용하는 문서 동기화 완료 조건
+
+현재 작업의 diff를 기준으로 아래 영향만 확인한다. 관련 없는 문서를 모두 읽거나 날짜만 갱신하지 않는다. 코드와 문서 변경을 같은 작업에서 완료한다.
+
+| 변경/추가/삭제 내용 | 함께 갱신할 문서 |
+| --- | --- |
+| endpoint·payload·응답·오류·권한·pagination·alias·지원 모드 | API_SPEC의 해당 계약/route 그룹; 사용 예가 달라지면 CI_AND_COMPATIBILITY_EXAMPLES |
+| 모델·필드·타입·null/default·관계·unique/index·onDelete·migration | DATABASE_SCHEMA와 실제 schema/migration. 배포 적용 여부는 별도로 표시 |
+| 모듈/entrypoint/worker·외부 연동·상태/책임 소유권·환경 모드 | ARCHITECTURE |
+| case/run/test/result 경계·membership·상태 의미·불변식 | DOMAIN_MODEL |
+| 페이지 구성·사용자 동작·수용 조건 | PRODUCT_SPEC |
+| 실제 기능 납품 상태·방향/우선순위 | FEATURE_CHECKLIST / ROADMAP 중 바뀐 부분만 |
+
+완료 증거에 `문서 영향: 변경 파일과 절 / 변경 없음과 이유`를 기록한다. 링크·모델/route 이름·실제 schema/service 의미를 대조한다. 동작 변경의 회귀 검증과 문서 정합성 검증은 구별한다. 관련 문서가 누락되면 작업 체크 완료 및 Current 이동을 하지 않는다. 새 감사/동기화 문서는 만들지 않는다.
 
 ## 검토 시 놓치기 쉬운 조건
 
@@ -146,3 +161,59 @@ UI-069/070은 삭제하거나 완료 표시하지 않는다. 새 계획을 적�
 - [ ] 통합 증거를 UI-021에 연결한다. E01 실제 bytes와 E03 독립 수용은 추정으로 완료하지 않는다.
 
 **완료:** 개별 수정이 합쳐진 전체 업무 흐름에서도 페이지 구성과 조작 의미가 일관된다. 독립 사용자 수용을 대신하는 합격 인증은 아니다.
+
+## UI-021 진입 시에만 읽는 통합 수용 조건
+
+- 현재 큐의 선행 작업과 새 PX 작업의 완료 증거를 확인하고 프로젝트 진입→섹션 탐색→Text/Steps 작성→읽기→Run 구성→실행/일괄 결과→첨부 복구→재개 여정을 통합 검증한다. 같은 빌드/fixture에서 유효한 증거는 재사용하고 영향 범위만 재검증한다.
+- E01: 기존 지원 저장소에서 실제 첨부 bytes 업로드/읽기/다운로드 성공. 새 인프라나 권한을 임의 생성하지 않는다.
+- E02: 실제 Tab/Shift+Tab/Enter/Escape와 포커스 복귀. DOM focus만으로 합격하지 않는다.
+- E03: 독립 테스터의 업무 수행 관찰과 필요한 디자인 수용. 참여나 승인을 추정하지 않는다.
+- E04: 빌드/재시작 후 전용 fixture 재현 절차. 사용자 DB 초기화 금지. 환경 우려만으로 빌드를 생략하지 않는다.
+- 외부 대기는 해당 경로만 막는다. 일반 저장은 현재 테스트 유지, 명시적 다음만 이동한다. 고유 case 수와 여러 Run의 test 수를 구별한다.
+- 준비 상태가 같으면 실패 주입/전체 캡처를 반복하지 않는다. 모든 필수 경로의 증거가 있어야 최종 완료한다. 최종 기록은 `docs/ux-evidence/UI-021.md`에 남긴다.
+
+
+## 기존 작업 이관 원칙
+
+아래 5개 단위는 2026-09-23 원본의 미완료 범위를 이관했다. 이전 설계 문서 전체를 읽을 필요가 없다. UI-069/070은 PX-01/02에 통합하며 제목/빠른 추가 구별, Text/3-step/10-step/빈 지침, 긴 제목, 360px 패널·390px 모바일, 기존 패널 크기 조절·목록 문맥을 함께 검증한다. 기존 UI 완료 증거를 정리한 것은 제품을 다시 검증하거나 완료한 것이 아니다. 현재 코드에서 필요한 회귀를 확인한다. 아래 CA/UX/J 번호는 옛 근거 식별자이며 별도 필독 문서가 아니다.
+
+## UI-066 — 기존 미완료 작업
+
+- [ ] **UI-066 P1 — 작성·편집의 모든 이탈 경로에 공통 초안 보호를 연결한다.**
+  - 근거: CA-F02의 패널 제목 수정→Close 즉시 폐기. 다른 이탈 경로도 현재 코드에서 재현한다.
+  - 범위/파일: `components/CaseDetailBody.tsx`, `CaseDetailSidePanel.tsx`, `ExpandableCaseDetail.tsx`, `AddCasePage.tsx`, `TestCaseWorkspace.tsx`, `hooks/useExpandedCase.ts`, `useCaseRepositoryKeyboard.ts`. 기존 dirty 상태와 공통 ConfirmDialog를 사용해 부모의 실제 대상/경로 전환까지 보호한다. 저장 중에는 제출 대상이 바뀌지 않게 한다.
+  - 완료: 패널/전체 폼에서 Close·Cancel·다른 행·섹션/필터로 패널 닫힘·상단 내비게이션·브라우저 뒤로가기를 각각 검증한다. Keep editing은 초안/대상/포커스 유지, Discard는 사용자가 원한 이동을 한 번 수행, 변경 없는 폼과 성공 저장 후에는 불필요한 경고 없음. 새로고침/탭 종료는 브라우저가 지원하는 이탈 경고로 확인하고 자동 저장으로 오인시키지 않는다. IME 입력과 실제 Escape/Tab/Enter를 확인한다.
+  - 제외/연결: 장기 자동 저장·초안 서버 동기화·전역 모든 화면 guard 구축 제외. 부분 성공 때 이미 저장된 항목은 UI-068 계약대로 명시하고 폐기하지 않는다. UX-012/021/042, J02/J06.
+
+## UI-067 — 기존 미완료 작업
+
+- [ ] **UI-067 P1 — 본문과 Steps 저장 완료 후 화면을 한 번에 갱신한다.**
+  - 근거: CA-F03 실제 UI/API 재현. 서버에는 Steps가 있으나 Save 직후 편집칸/미리보기는 빈 지침, refresh 후에만 정상 표시.
+  - 범위/파일: `components/ExpandableCaseDetail.tsx`, `CaseDetailBody.tsx`, `AddCasePage.tsx`, `hooks/useCaseEditorActions.ts`, `utils/updateCaseFromAuthoring.ts`, `syncCaseInstructionSteps.ts`. 전체 폼과 패널이 동일한 완료 경계를 사용하도록 기존 저장 경로를 정리한다. 본문 성공만으로 refetch·초안 초기화·버튼 활성화/완료 안내를 하지 않는다.
+  - 완료: 신규 quick outline→Text 지침 추가, 기존 3-step 수정/순서 변경/삭제 후 Save에서 모든 요청 완료까지 Saving/중복 제출 방지가 유지된다. refresh 없이 편집칸·미리보기·목록·버전이 실제 API와 일치한다. 성공은 해당 케이스 안에서 알 수 있고, 패널은 읽기 상태로 돌아가며 전체 편집 폼은 원래 진입 문맥으로 복귀한다. 뒤늦은 A 응답이 B 초안을 덮지 않는다. 본문과 Steps 응답을 지연시켜도 재현되지 않는다.
+  - 제외/연결: 실패 복구 UI/재시도 소유권은 UI-068에서 같은 저장 경계를 확장한다. 임의 DB 트랜잭션/API 신설 제외. UX-021/034/042, J02/J04.
+
+## UI-068 — 기존 미완료 작업
+
+- [ ] **UI-068 P1 — 생성·수정의 부분 실패를 구분하고 실패한 작업만 재시도한다.**
+  - 근거: CA-F04 코드 확인 위험. 일반 Add의 stepsWarning 누락, Add & Next 실패 초안 초기화, 패널 Steps 예외의 오류 표시 연결을 실패 주입으로 먼저 확인한다.
+  - 범위/파일: `utils/createCaseFromAuthoring.ts`, `updateCaseFromAuthoring.ts`, `syncCaseInstructionSteps.ts`, `components/AddCasePage.tsx`, `CaseAuthoringForm.tsx`, `ExpandableCaseDetail.tsx`, `hooks/useCaseEditorActions.ts`. 생성된 caseId·본문 저장 여부·성공한 step ID·실패 단계·원래 지침 초안을 작업 하나의 상태로 보관한다. 정상 경로 UI는 늘리지 않고 실패 시에만 짧은 요약/Retry를 노출한다.
+  - 완료: 본문 실패/본문 성공 후 첫·중간 Steps 실패/섹션 이동 실패/409 충돌을 구분한다. 부분 실패는 일반 Add도 목록으로 이동하지 않고 Add & Next도 초기화·다음 이동하지 않는다. 두 번 Retry해도 케이스나 성공한 Steps가 중복되지 않고 기존 성공 ID에 남은 작업만 적용된다. 수정 실패로 삭제된/미저장 지침을 복구할 수 있게 원래 초안을 유지한다. A→B 이동 시 A의 저장 사실과 실패 상태가 뒤섞이지 않는다. UI-066의 명시적 이탈은 이미 저장된 사실과 폐기할 초안을 설명한다.
+  - 제외/연결: 기존 API로 안전한 복구가 불가능하면 정확한 계약 공백과 별도 수정을 기록한다. 전체 성공으로 위장하거나 모든 실패에 새 케이스를 생성하지 않는다. UI-067 이후 수행. UX-012/021/042, J02/J06.
+
+## UI-071 — 기존 미완료 작업
+
+- [ ] **UI-071 P2 — 신규 작성에서도 첨부를 준비하고 기존 저장 경로에 연결한다.**
+  - 근거: CA-U03, R1 신규/편집 첨부 경로. 새 케이스를 저장한 뒤 다시 편집해야 하는 우회를 없앤다.
+  - 범위/파일: `components/AddCasePage.tsx`, `CaseAuthoringForm.tsx`, `ExpandableCaseDetail.tsx`의 CaseAttachmentControls 및 기존 `api/catalogApi.ts` case attachment/presign 경로. 기존 파일 검증·업로드 컴포넌트를 재사용/필요한 범위로 추출한다. UI-068의 저장된 caseId/부분 성공 계약에 첨부 단계를 연결한다. 전용 첨부 관리 화면은 만들지 않는다.
+  - 완료: 전체 생성 폼에서 두 파일 staging/개별 제거/취소 가능, 저장 전 서버 첨부 생성 없음. 케이스와 지침 저장 후 그 caseId에만 업로드하고 성공한 파일은 재시도하지 않는다. 파일 하나 실패 시 케이스/지침/성공 파일을 유지하고 Retry하며 Add & Next는 실패를 숨기고 넘어가지 않는다. 크기/형식 제한, 읽기 전용, 중복 제출, 재진입 시 File 재선택 안내를 검증한다. 메모리/제어된 응답 검증은 명시적으로 구분한다.
+  - 완료 경계/의존: UI-068/070 이후. 이 단위는 staging·소유권·기존 API 연결·복구 화면의 전달을 검증한다. 실제 외부 저장소 bytes upload/reopen/download는 UI-021/E01의 별도 필수 통합 증거로 남기며, mock만으로 그 완료를 주장하지 않는다. 기존 case API의 계약 자체가 없으면 그 사실을 보고하고 완료하지 않는다. 외부 인프라 구매/생성은 범위 밖.
+  - 연결: UX-012/021/042, J02/J06. Run 결과 첨부 UI-031/057과 케이스 첨부 대상을 혼동하지 않는다.
+
+## UI-072 — 기존 미완료 작업
+
+- [ ] **UI-072 P2 — 전체 작성·편집 후 목록의 검색·범위·보기 문맥을 복원한다.**
+  - 근거: CA-U04 코드 확인. `goToList`가 기존 목록 query를 새로 구성하면서 사용자가 출발한 문맥을 버림.
+  - 범위/파일: `caseRoute.ts`와 테스트, `components/AddCasePage.tsx`, `TestCaseWorkspace.tsx`, `CaseDetailPage.tsx`, `hooks/useExpandedCase.ts`. 같은 프로젝트의 허용된 목록 상태만 전달/복원한다. 외부 임의 return URL은 사용하지 않는다.
+  - 완료: suite/section, direct/subtree/all, 검색, 필터, 그룹/열/밀도, 행 위치가 저장·취소·뒤로가기 후 보존된다. 새로 생성/이동한 케이스가 기존 필터에서 제외되면 필터를 자동 해제하지 않고 저장 성공과 해당 케이스 열기 링크를 제공한다. 직접 URL 진입처럼 원래 목록 상태가 없으면 유효한 같은 프로젝트/섹션으로 돌아간다. 취소 시 쓰기 없음, 저장 실패는 이동 없음. UI-066 초안 보호와 브라우저 뒤로가기가 충돌하지 않는다.
+  - 제외/연결: 전역 saved-view/개인화 기능 신설 제외. UI-065/066/067 이후. UX-001/012/021/022/042, J01/J02/J08.

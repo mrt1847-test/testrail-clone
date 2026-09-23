@@ -1,40 +1,22 @@
-# Documentation Index
+# Documentation
 
-Last aligned: 2026-05-02
+현재 방향: TestRail 공식 UI/UX 기준의 페이지 전체 조화와 테스터 업무 흐름. 기본 입력은 NEXT_ACTIONS와 활성 계획의 Current 절뿐이다.
 
-This folder keeps the current product, architecture, API, and delivery documents for the TestRail-like test management app.
+| 문서 | 단일 책임 |
+| --- | --- |
+| [PRODUCT_SPEC](./PRODUCT_SPEC.md) | 제품 기능·페이지 UI/UX·동작/수용 계약 |
+| [DOMAIN_MODEL](./DOMAIN_MODEL.md) | case/run/test/result 구분과 도메인 불변식 |
+| [API_SPEC](./API_SPEC.md) | 외부 API 계약 |
+| [DATABASE_SCHEMA](./DATABASE_SCHEMA.md) | 저장 구조와 일관성 정책 |
+| [ARCHITECTURE](./ARCHITECTURE.md) | 서버/프런트 책임과 데이터 흐름 |
+| [FEATURE_CHECKLIST](./FEATURE_CHECKLIST.md) | 기능 납품 상태. 현재 사용성 인증 아님 |
+| [ROADMAP](./ROADMAP.md) | 현재 방향·우선순위·보류 범위 |
+| [NEXT_ACTIONS](./NEXT_ACTIONS.md) | Current와 유일한 실행 순서 |
+| [활성 계획](./superpowers/plans/2026-09-23-testrail-page-ux.md) | 현재 UI/PX 단위별 범위·체크·완료 기준 |
+| [CI 예제](./CI_AND_COMPATIBILITY_EXAMPLES.md) | 기존 지원 API를 사용하는 운영 예제; 연동 작업 때만 읽기 |
 
-## Canonical Documents
+`ux-evidence`에는 현재 제품 스펙이 직접 참조하는 before 화면만 유지한다. 새 작업의 검증 증거는 해당 ID로 기록하되 과거 캡처를 현재 완료 증거로 사용하지 않는다.
 
-- [PRODUCT_SPEC.md](./PRODUCT_SPEC.md): product capability baseline and spec entry point.
-- [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md): implemented, partial, and planned feature checklist.
-- [ROADMAP.md](./ROADMAP.md): current delivery status and phased roadmap.
-- [NEXT_ACTIONS.md](./NEXT_ACTIONS.md): immediate implementation queue.
-- [DOMAIN_MODEL.md](./DOMAIN_MODEL.md): domain terms, relationships, and invariants.
-- [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md): Prisma/PostgreSQL persistence model and schema policy.
-- [API_SPEC.md](./API_SPEC.md): REST contract, compatibility conventions, and endpoint groups.
-- [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md): copy-paste CI upload and `/api/v2` compatibility examples.
-- [WEBWRIGHT_AUTOMATION_PLANS.md](./WEBWRIGHT_AUTOMATION_PLANS.md): Microsoft Webwright integration and no-code automation candidate plans.
-- [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md): screen-level requirements and UX states.
-- [ROUTE_MAP.md](./ROUTE_MAP.md): actual frontend route tree and route ownership.
-- [COMPONENT_MAP.md](./COMPONENT_MAP.md): implemented/planned component boundaries.
-- [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md): frontend structure, data flow, and query policy.
-- [ARCHITECTURE.md](./ARCHITECTURE.md): high-level system architecture.
-- [DOC_ALIGNMENT.md](./DOC_ALIGNMENT.md): documentation ownership rules.
+제품 요구/API/상태가 바뀔 때 해당 소유 문서만 갱신한다. 별도 문서 관리 규칙·감사·검토·완료 wave 문서를 반복 생성하지 않는다. 코드 경로/컴포넌트 목록은 소스에서 확인한다. 완료 작업을 현재 계획에 재편성하거나 문서 정리를 제품 재검증으로 해석하지 않는다.
 
-## Cleanup Decisions
-
-Removed as obsolete or duplicate:
-
-- `IMPLEMENTATION_PLAN.md`: early phase plan with stale completed tasks and corrupted text. Current execution work now lives in [ROADMAP.md](./ROADMAP.md) and [NEXT_ACTIONS.md](./NEXT_ACTIONS.md).
-- `UI_FLOW.md`: duplicated route/screen flow content and had corrupted Korean text. Route facts now live in [ROUTE_MAP.md](./ROUTE_MAP.md); screen behavior lives in [SCREEN_INVENTORY.md](./SCREEN_INVENTORY.md).
-- `CORE_FEATURE_COMPLETION_PLAN.md`: merged into [NEXT_ACTIONS.md](./NEXT_ACTIONS.md).
-- `TESTRail_GAP_ANALYSIS.md`: merged into the parity sections of [ROADMAP.md](./ROADMAP.md).
-
-## Maintenance Rules
-
-- Update specs first when product behavior changes.
-- Update [FEATURE_CHECKLIST.md](./FEATURE_CHECKLIST.md) whenever a feature is implemented, downgraded, or newly discovered as missing.
-- Update [ROADMAP.md](./ROADMAP.md) when delivery status changes.
-- Update [NEXT_ACTIONS.md](./NEXT_ACTIONS.md) before starting the next implementation batch.
-- Keep one canonical source per topic; do not recreate phase plans that duplicate roadmap, route, or screen inventory content.
+API·DB·구조·도메인 계약 변경은 해당 코드 작업 안에서 소유 스펙을 함께 갱신한다. 활성 실행 계획의 문서 동기화 표가 완료 조건이며, 변경 없는 문서의 날짜 갱신이나 별도 감사 문서 생성은 하지 않는다.

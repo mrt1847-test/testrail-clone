@@ -1,13 +1,13 @@
 # CI And Compatibility Examples
 
-Last aligned: 2026-05-17
+Last aligned: 2026-09-23 (authentication terminology corrected; examples not live-executed)
 
 These examples are copy-paste starting points for two supported integration paths:
 
 - automation result upload through the canonical automation API
 - TestRail-style compatibility calls through `/api/v2`
 
-Replace placeholder values before use. Automation upload endpoints use a project API token with `automation:write`. `/api/v2` mutation examples use a normal user JWT with project mutation permission.
+Replace placeholder values before use. Automation upload endpoints use a project API token with `automation:write`. `/api/v2` mutation examples use a normal user Bearer token with project mutation permission.
 
 ## Environment Variables
 
@@ -17,7 +17,7 @@ export QA_RAIL_PROJECT_ID="1"
 export QA_RAIL_SUITE_ID="1"
 export QA_RAIL_RUN_ID="5001"
 export QA_RAIL_AUTOMATION_TOKEN="trc_project_token_with_automation_write"
-export QA_RAIL_USER_TOKEN="user_jwt_for_v2_mutations"
+export QA_RAIL_USER_TOKEN="user_bearer_token_for_v2_mutations"
 ```
 
 ## Automation Upload

@@ -1,7 +1,0 @@
-from e2e_0921_common import *
-plan=api('POST',f'/api/projects/{pid}/plans',{'name':'Review plan Chrome and Firefox'})['data'];plid=plan['id'];entry=api('POST',f'/api/projects/{pid}/plans/{plid}/entries',{'name':'Critical login only','suiteId':int(sid),'includeAll':False,'includeCaseIds':[fx['cases'][1]['id']]})['data'];planned=api('POST',f'/api/projects/{pid}/plans/{plid}/runs',{'entryId':entry['id']});milestone=api('POST',f'/api/projects/{pid}/milestones',{'name':'Review release linked only'})['data'];linked=api('POST',f'/api/projects/{pid}/runs',{'name':'Milestone linked smoke','suiteId':int(sid),'milestoneId':milestone['id'],'includeAll':False,'caseIds':[fx['cases'][1]['id']]});results['setup']={'plan':plan,'entry':entry,'planned':planned,'milestone':milestone,'linked':linked}
-with sync_playwright() as pw:
- b=pw.chromium.launch(headless=True);page=b.new_page(viewport={'width':1280,'height':720});page.set_default_timeout(5000);login(page)
- for name,path in [('projects','/projects'),('overview',f'/projects/{pid}'),('runs-list',f'/projects/{pid}/runs'),('my-tests',f'/projects/{pid}/my-tests'),('plan',f'/projects/{pid}/plans/{plid}'),('milestone',f'/projects/{pid}/milestones/{milestone["id"]}'),('run-create',f'/projects/{pid}/runs/new')]:
-  go(page,path);results[name]=capture(page,'resume-'+name);results[name]['links']=page.locator('a').evaluate_all('(els)=>els.map(x=>({text:x.innerText,href:x.getAttribute("href")}))');print(name,page.locator('body').inner_text()[-1800:])
- save('resume');b.close()
