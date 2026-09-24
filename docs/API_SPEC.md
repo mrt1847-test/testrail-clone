@@ -1,1092 +1,552 @@
-﻿# API Specification (REST-first, TestRail-compatible-ready)
-
-## API Design Principles
-- Primary API style is REST under `/api`.
-- Business logic lives in domain services and is reused by all API surfaces.
-- TestRail-like compatibility is added as a separate adapter namespace (`/api/v2`) that calls the same services.
-- Error response format is consistent across endpoints.
-- Support both user-driven UI operations and machine-driven automation uploads.
-
-## Base Conventions
-- Authentication:
-  - User auth (session/JWT) for UI API.
-  - API token for automation endpoints.
-- Content type: `application/json`
-- Time format: ISO8601 UTC
-- Soft-deleted records are hidden by default.
-- Pagination canonical: `page`, `pageSize` (legacy alias: `page_size`).
-- Large list endpoints must support server-side filtering before client-side filtering.
-- Project-scoped result/run/test lists must never require loading all project history into the browser.
-- Field naming canonical:
-  - request/response canonical: `camelCase` (`caseId`, `testId`, `runId`)
-  - backward-compatible alias accepted: `snake_case` (`case_id`, `test_id`, `run_id`)
-  - alias fields are compatibility-only and planned for deprecation in strict mode.
-- UI-facing endpoint policy:
-  - canonical: project-scoped route (`/api/projects/{projectId}/...`)
-  - global route is allowed only for compatibility or internal shortcut.
-
-## Data Freshness and Load Policy
-- The API is request/response first. Realtime subscriptions are not part of the baseline contract.
-- UI clients may poll only operational execution surfaces:
-  - Run detail: low-frequency refresh while a run is open.
-  - My Tests: low-frequency refresh for assigned work.
-- Reports, case authoring, settings, and audit views should not be polled by default.
-- Result history, result steps, result attachments, and result defects are lazy-loaded by selected test/result.
-- Closed runs are immutable for result entry and do not need active polling.
-- Endpoints that can grow with execution volume must provide pagination and filters.
-
-## Concurrency Policy
-- Test case authoring must use optimistic concurrency control.
-- `GET /api/cases/{caseId}` and case list responses expose a revision field:
-  - preferred: `version` integer
-  - acceptable alternative: `updatedAt` ISO timestamp
-- `PATCH /api/cases/{caseId}` requires one of:
-  - `expectedVersion`
-  - `expectedUpdatedAt`
-- If the current case revision does not match the expected revision, return:
-
-```json
-{
-  "error": {
-    "code": "VERSION_CONFLICT",
-    "message": "The test case was modified by another user.",
-    "details": {
-      "currentVersion": 12,
-      "expectedVersion": 11
-    }
-  }
-}
-```
-
-- HTTP status: `409 Conflict`.
-- Clients should reload the latest case while preserving the user's local unsaved edits for manual re-apply.
-- Result creation remains append-only and does not use optimistic locking.
-- Run close and destructive settings actions may use conflict checks later, but case authoring is the first required target.
-
-## Error Format
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid request payload",
-    "details": [
-      {
-        "field": "status",
-        "reason": "must be one of: untested, passed, failed, blocked, retest"
-      }
-    ],
-    "request_id": "req_01HV..."
-  }
-}
-```
-
-## API Rate Limits
-
-**Status: documentation only — not enforced by this server.** No Fastify middleware, env flag, or per-token quota applies to `/api/*`, `/api/v2/*`, or automation upload routes. Clients will not receive `429 Too Many Requests` or `Retry-After` from built-in rate limiting in the current release.
-
-### Current clone behavior
-
-| Surface | Rate limiting |
-|---------|----------------|
-| Canonical REST (`/api/...`) | None |
-| TestRail adapter (`/api/v2/...`) | None |
-| Automation upload (`/api/automation/...`) | None |
-| Auth (`/api/auth/...`) | None (no login brute-force throttle in baseline) |
-
-Related limits that **are** enforced (not Cloud rate limits):
-
-- **List pagination**: high-traffic `/api/v2` list routes cap `limit` at `250` per request (see TestRail adapter section).
-- **Authorization**: invalid or expired tokens return `401`; missing project permission returns `403`.
-- **Payload validation**: oversize or invalid bodies return `400` via schema validation.
-
-Operators may add reverse-proxy or API-gateway rate limits at deploy time; that is outside the application contract and should be documented in your own runbook.
-
-### TestRail Cloud reference (parity target)
-
-[TestRail’s API introduction](https://support.testrail.com/hc/en-us/articles/7077083596436-Introduction-to-the-TestRail-API) documents Cloud-only limits:
-
-| Subscription | Limit |
-|--------------|-------|
-| TestRail Cloud Professional | **180 requests per instance per minute** |
-| TestRail Cloud Enterprise | **300 requests per instance per minute** |
-| TestRail Server (self-hosted) | **No built-in API rate limit** |
-
-When Cloud limits are exceeded, TestRail returns **HTTP 429** with a body similar to:
-
-```text
-API Rate Limit Exceeded - 180 per minute maximum allowed. Retry after 1 seconds.
-```
-
-Cloud responses include a **`Retry-After`** header (seconds to wait before the next request). Official guidance: prefer bulk endpoints (for example `add_results_for_cases`), add backoff between calls, and avoid tight polling loops.
-
-### Cloud parity gaps (this release)
-
-| Cloud behavior | Clone (current) |
-|----------------|-----------------|
-| Per-instance requests/minute cap | Not implemented |
-| `429` + rate-limit message | Not emitted for throttling |
-| `Retry-After` on throttle | Not emitted |
-| Tiered limits (180 vs 300) | N/A until enforcement ships |
-
-**Self-hosted parity:** A default clone deployment behaves like **TestRail Server** (no application rate limit), not like **TestRail Cloud**. Teams migrating automation from Cloud to this clone should not expect `429` from the app; they may increase request rates unless an operator adds external throttling.
-
-### Client and CI guidance
-
-- **From Cloud:** Remove or relax `429` retry loops if they only existed for Cloud throttling; keep exponential backoff for transient `5xx` and network errors.
-- **To Cloud later:** Re-enable `429` handling with `Retry-After` respect; use bulk writes and paginated reads (`limit`/`offset`) instead of unbounded single-resource fan-out.
-- **High-volume writers:** Use `POST /api/v2/add_results_for_cases/{run_id}` or `POST /api/automation/results/bulk` rather than per-case single-result calls.
-- **High-volume readers:** Page `get_cases`, `get_tests`, and `get_results*` with `limit` ≤ `250`; avoid loading full project history in one client session.
-
-### Future enforcement (out of scope until checklist splits it)
-
-Planned implementation (not in baseline) would likely include: configurable requests-per-minute per instance, `429` with `Retry-After`, optional tier env vars, and contract tests. Until then, treat this section as the authoritative description of rate-limit behavior.
-
-## API Groups
-
-## Projects
-- `GET /api/projects/{projectId}/search` (query: `q`, optional `limit`; cases, runs, milestones, plans, defects)
-- `GET /api/projects`
-- `POST /api/projects` — body: `name`, optional `description`, optional `projectType` (`single_repo` | `single_repo_baselines` | `multi_suite`, default `single_repo`); creates master suite + `General` section.
-- `GET /api/projects/{projectId}` — includes `projectType`; list responses use the same shape.
-- `PATCH /api/projects/{projectId}` — optional `name`, `description`, `projectType`.
-- `DELETE /api/projects/{projectId}`
-
-## Suites
-- `GET /api/projects/{projectId}/suites` — rows include `isMaster`, `isBaseline`, `parentSuiteId`.
-- `POST /api/projects/{projectId}/suites` — enforces project-type suite limits (`409` `PROJECT_SUITE_LIMIT` on single-repo second suite); optional `isBaseline` on baseline projects.
-- `POST /api/projects/{projectId}/suites/baselines` — baseline projects only; creates baseline suite and copies the master section tree plus active cases, steps, scenarios, and an initial copied-case snapshot. Automation and external IDs are cleared on copied cases to keep project-level identifiers unique.
-- `GET /api/suites/{suiteId}`
-- `PATCH /api/suites/{suiteId}`
-- `DELETE /api/suites/{suiteId}`
-
-## Sections
-- `GET /api/suites/{suiteId}/sections`
-- `POST /api/suites/{suiteId}/sections`
-- `PATCH /api/sections/{sectionId}`
-- `DELETE /api/sections/{sectionId}`
-
-## Cases
-- `GET /api/projects/{projectId}/cases`
-- `GET /api/sections/{sectionId}/cases`
-- `POST /api/sections/{sectionId}/cases`
-- `GET /api/cases/{caseId}`
-- `PATCH /api/cases/{caseId}`
-- `DELETE /api/cases/{caseId}`
-- `POST /api/projects/{projectId}/cases/bulk-delete`
-- `POST /api/projects/{projectId}/cases/bulk-move`
-- `POST /api/projects/{projectId}/cases/bulk-update`
-- `POST /api/projects/{projectId}/cases/bulk-archive`
-- `POST /api/cases/{caseId}/steps`
-- `PATCH /api/case-steps/{stepId}`
-- `DELETE /api/case-steps/{stepId}`
-
-Case list query baseline:
-- `GET /api/projects/{projectId}/cases`
-  - `sectionId`
-  - `q` searches case code/title, refs, automation key, external id, labels, and custom field values
-  - `priority`
-  - `caseType`
-  - `automation` (`manual` or `automated`)
-  - `refs` (`with` or `without`)
-  - `labels` (`with` or `without`)
-  - `estimate` (`with` or `without`)
-  - `state` (`active` default, `archived` to view archived cases)
-  - `page`, `pageSize`
-
-Bulk delete baseline:
-- `POST /api/projects/{projectId}/cases/bulk-delete`
-- Body: `{ "caseIds": [1, 2, 3] }`
-- The server only deletes cases that belong to the project and returns per-case result rows:
-
-```json
-{
-  "data": {
-    "requested": 3,
-    "deleted": 2,
-    "failed": 1,
-    "items": [
-      { "caseId": "1", "success": true, "error": null },
-      { "caseId": "2", "success": true, "error": null },
-      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
-    ]
-  }
-}
-```
-
-Bulk move baseline:
-- `POST /api/projects/{projectId}/cases/bulk-move`
-- Body: `{ "caseIds": [1, 2, 3], "targetSectionId": 10 }`
-- The server validates that the target section belongs to the same project, only moves project-scoped cases, and returns per-case result rows:
-
-```json
-{
-  "data": {
-    "requested": 3,
-    "moved": 2,
-    "failed": 1,
-    "targetSectionId": "10",
-    "items": [
-      { "caseId": "1", "success": true, "error": null },
-      { "caseId": "2", "success": true, "error": null },
-      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
-    ]
-  }
-}
-```
-
-Bulk update baseline:
-- `POST /api/projects/{projectId}/cases/bulk-update`
-- Body: `{ "caseIds": [1, 2, 3], "patch": { "priority": "low", "caseType": "integration" } }`
-- Current baseline supports shared updates for `priority` and `caseType` across project-scoped selected cases and returns per-case result rows:
-
-```json
-{
-  "data": {
-    "requested": 3,
-    "updated": 2,
-    "failed": 1,
-    "patch": {
-      "priority": "low",
-      "caseType": "integration"
-    },
-    "items": [
-      { "caseId": "1", "success": true, "error": null },
-      { "caseId": "2", "success": true, "error": null },
-      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
-    ]
-  }
-}
-```
-
-Bulk archive baseline:
-- `POST /api/projects/{projectId}/cases/bulk-archive`
-- Body: `{ "caseIds": [1, 2, 3], "archived": true }`
-- Use `archived: false` to restore archived cases back into the active repository baseline.
-- Archived cases are hidden from default case lists and suite-based run composition, but remain addressable by direct case detail/version APIs.
-
-```json
-{
-  "data": {
-    "requested": 3,
-    "changed": 2,
-    "failed": 1,
-    "archived": true,
-    "items": [
-      { "caseId": "1", "success": true, "error": null },
-      { "caseId": "2", "success": true, "error": null },
-      { "caseId": "999", "success": false, "error": "NOT_FOUND" }
-    ]
-  }
-}
-```
-
-Case optimistic locking (phase 2 baseline):
-- `PATCH /api/cases/{caseId}` accepts either:
-  - request body `expectedVersion` (preferred), or
-  - `If-Match` header with version number (example: `If-Match: "3"`).
-- Server stores and increments `lockVersion` on every successful case update.
-- If expected version does not match current `lockVersion`, server returns `409 CONFLICT`.
-- `GET /api/cases/{caseId}/versions`
-- `GET /api/cases/{caseId}/versions/{versionId}`
-- `POST /api/cases/{caseId}/versions/{versionId}/restore`
-- `GET /api/cases/{caseId}/versions/{versionNo}/attachments/{attachmentId}/download` — returns `{ data: { attachmentId, fileName, contentType, downloadUrl, expiresAt } }` from the version `attachmentSnapshots` entry (uses snapshot `storageKey`, not the live attachment row). Auth required. `404` when the attachment id is absent from that version snapshot.
-- `PATCH /api/cases/{caseId}/assignee`
-
-Semantics (case steps):
-- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept optional `refs` (comma-separated external reference IDs; empty string clears to `null`).
-- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept `customValues` as an object keyed by custom field `systemName`.
-- `POST /api/sections/{sectionId}/cases` and `PATCH /api/cases/{caseId}` accept optional `caseTemplateId` (project template; omitted/null resolves to the project default) and `expectedResult` (text-template field).
-- Case create/update validate `customValues` against the project's active case custom field definitions; create rejects missing required active fields, and create/update reject unknown fields or invalid option/number values.
-- `GET /api/cases/{caseId}` and case list responses include `customValues`; current baseline stores scalar values (`string`, `number`, `boolean`, or `null`).
-- `GET /api/cases/{caseId}` includes an ordered `steps` array. Each step exposes `id`, `stepOrder`, `content`, and `expectedResult` (nullable). Soft-deleted steps are omitted.
-- `POST /api/cases/{caseId}/steps`: body requires `content`; `expectedResult` is optional (nullable). The server assigns the next `stepOrder` within the case (clients do not choose the insert position via this endpoint).
-- `PATCH /api/case-steps/{stepId}`: send only fields to change among `content`, `expectedResult`, and `stepOrder`. Changing `stepOrder` re-sequences all active steps for that case to contiguous `1..n`.
-- `DELETE /api/case-steps/{stepId}`: soft-deletes the step, then renumbers remaining active steps to `1..n`.
-- Case and case-step mutations require the same project membership role as other project-scoped writes (mutate-capable role when authorization is enforced).
-- Case updates create a new case version when any persisted case field or step changes.
-- Case version restore creates a new version; it does not delete or mutate the restored historical version.
-- Case version history is a TestRail-like audit/history feature for authored case changes.
-- Run creation uses the current selected case definitions and stores immutable test instance snapshots.
-
-### Case Version Payload
-```json
-{
-  "id": "501",
-  "caseId": "1001",
-  "version": 7,
-  "title": "Checkout with saved card",
-  "snapshot": {
-    "preconditions": "User has a saved payment method",
-    "priority": "high",
-    "caseType": "regression",
-    "refs": ["REQ-1"],
-    "labels": ["checkout"],
-    "customValues": {
-      "risk": "High",
-      "automation_candidate": true
-    },
-    "steps": [
-      { "stepOrder": 1, "content": "Open checkout", "expectedResult": "Checkout opens" }
-    ]
-  },
-  "createdBy": "12",
-  "createdAt": "2026-04-28T10:00:00.000Z",
-  "comment": "Updated saved card coverage"
-}
-```
-
-Current baseline:
-- `GET /api/cases/{caseId}/versions` returns paged history with `versionNo`, case authored snapshot fields, step snapshot, `changeReason`, and `createdAt`.
-- New versions are created automatically on meaningful authored changes (`PATCH /api/cases/{caseId}`, step create/update/delete).
-- Case version snapshots include `customValuesSnapshot`.
-
-## Runs
-- `GET /api/projects/{projectId}/runs`
-- `POST /api/projects/{projectId}/runs`
-- `GET /api/runs/{runId}`
-- `GET /api/projects/{projectId}/runs/{runId}`
-- `GET /api/projects/{projectId}/runs/{runId}/instances`
-- `PATCH /api/runs/{runId}`
-- `POST /api/runs/{runId}/close`
-- `POST /api/runs/{runId}/reopen`
-- `POST /api/runs/{runId}/rerun`
-- `POST /api/runs/{runId}/tests` (body: `{ "caseIds": ["101","102"] }`, open run only; `409 RUN_CLOSED` when closed)
-- `POST /api/runs/{runId}/remove-test` (body: `{ "testId": "…", "confirmDataLoss"?: true }`; without `confirmDataLoss`, tests with result history return `409 TEST_HAS_RESULTS`)
-
-Run composition baseline:
-- `POST /api/projects/{projectId}/runs` accepts:
-  - `includeAll: true` — all cases in `suiteId`, optional `excludedCaseIds`, optional `excludedSectionIds` (section subtree roots), optional `includedSectionIds` (restrict to subtrees).
-  - `includeAll: false` — required `caseIds`, optional `includedSectionIds` (intersect selection with subtrees).
-  - `compositionMode` (optional): `static` (default), `include_all_live`, or `dynamic_filter`.
-  - `filterDefinition` (optional, `dynamic_filter` only): `{ priority?, state?, includedSectionIds? }`.
-- `GET /api/projects/{projectId}/runs/{runId}` includes `run.composition` parsed from `TestRun.metadata`.
-- Run progress metrics are shared across list, detail, and summary endpoints via `buildRunProgressMetrics` (any non-`untested` status counts as executed):
-  - `GET /api/projects/{projectId}/runs` — each run row includes `progress` (0–100), `failed`, and `metrics` (`total`, `counts`, `executed`, `completionRate`, `progressPercent`).
-  - `GET /api/projects/{projectId}/runs/{runId}` — response includes top-level `metrics` with the same shape; `run.progress` and `run.failed` mirror list rows.
-  - `GET /api/runs/{runId}/summary` — returns `runId`, `total`, `counts`, `executed`, `completionRate`, and `progressPercent` (alias of completion × 100).
-- `POST /api/projects/{projectId}/runs/{runId}/sync-composition` — reconcile open runs in live modes; returns `{ skipped, added, removed, reason? }`; records activity `run.composition_synced`.
-- `PATCH /api/projects/{projectId}/runs/{runId}/composition` — update live-run filter metadata with optional `filterSelectionMode` (`set` | `add` | `remove`); runs `sync` by default for live modes.
-- `PATCH /api/runs/{runId}` — optional `startedAt` / `dueOn` (ISO dates) while run is open. Use `POST /api/runs/{runId}/close` to set completion; `closedAt` on PATCH is rejected for open runs (`400`).
-- `GET /api/runs/{runId}` (and project-scoped run detail) includes `dateWarnings: string[]` when schedule conflicts with milestone/plan or end date has passed (informational only — runs are not auto-closed).
-- `POST /api/projects/{projectId}/runs` accepts optional `startedAt` / `dueOn`; when `milestoneId` is set and dates are omitted, server inherits milestone `startDate` / `dueDate`.
-- Section IDs are suite-scoped roots; the server expands each root to its descendant sections before filtering cases.
-- **Multi-suite projects:** every case in a run must belong to the run’s `suiteId`. Mixing cases from multiple suites returns `409` with code `RUN_SUITE_CASE_MISMATCH` and `details.invalidCaseIds`. Enforced on run create, `POST /api/runs/{runId}/tests`, and `/api/v2/add_run`.
-
-Example run creation body:
-
-```json
-{
-  "suiteId": "1",
-  "name": "Regression",
-  "includeAll": true,
-  "excludedCaseIds": ["199"],
-  "includedSectionIds": ["10", "11"],
-  "excludedSectionIds": ["12"]
-}
-```
-
-Run query parameters:
-- `GET /api/projects/{projectId}/runs`
-  - `status`
-  - `milestoneId`
-  - `planId`
-  - `assignedTo`
-  - `q`
-  - `page`, `pageSize`
-
-Run instance query parameters:
-- `GET /api/projects/{projectId}/runs/{runId}/instances`
-  - `status`
-  - `assignedTo`
-  - `q` searches case code/title snapshot
-  - `page`, `pageSize`
-- Each instance includes test-change metadata: `caseLockVersionAtRun` (snapshot at add/create), `currentCaseLockVersion`, `caseChanged` (boolean), and `changedFields` (e.g. `title`, `priority`) when the underlying case changed after the run was created.
-
-Run close semantics:
-- Closing a run prevents new result writes and returns `409 RUN_CLOSED`.
-- Closed run snapshots are immutable.
-- Closed runs should not be actively polled by UI clients.
-
-## Tests (Instances)
-- `GET /api/runs/{runId}/tests`
-- `GET /api/tests/{testId}`
-- `PATCH /api/tests/{testId}`
-
-## Results
-- `GET /api/tests/{testId}/results`
-  - Query: `page`, `pageSize` (default page 1, pageSize 20). Response: `{ "data": { "items": [...], "page", "pageSize", "total", "totalPages" } }` (`Ok` envelope).
-- `POST /api/tests/{testId}/results`
-- `POST /api/runs/{runId}/results`
-- `POST /api/runs/{runId}/results/by-case`
-- `POST /api/runs/{runId}/results/bulk`
-- `GET /api/runs/{runId}/results`
-- `GET /api/projects/{projectId}/results`
-
-Semantics:
-- `POST /api/tests/{testId}/results`: add result directly to a specific test instance.
-- `POST /api/runs/{runId}/results`: accepts `testId` or `caseId` and writes a single result.
-- `POST /api/runs/{runId}/results/by-case`: resolve test instance by `case_id` within the run, then add result.
-- `POST /api/runs/{runId}/results/bulk`: upload multiple results in one request.
-- Result creation is append-only. Editing historical results is not part of baseline behavior.
-- `GET /api/projects/{projectId}/results` and `GET /api/runs/{runId}/results` must be paginated.
-- Result filters:
-  - `status`
-  - `source`
-  - `runId`
-  - `caseId`
-  - `testId`
-  - `createdBy`
-  - `createdFrom`
-  - `createdTo`
-  - `q`
-
-## Assignment & Personal Work
-- `PATCH /api/runs/{runId}/assignee`
-- `PATCH /api/tests/{testId}/assignee`
-- `GET /api/projects/{projectId}/tests/assigned-to-me`
-
-## Overview / Reports (Dashboard)
-- `GET /api/projects/{projectId}/overview`
-- `GET /api/projects/{projectId}/reports/status-distribution`
-- `GET /api/projects/{projectId}/reports/failure-trend`
-- `GET /api/projects/{projectId}/reports/recent-failures`
-- `GET /api/projects/{projectId}/reports/recent-results`
-- `GET /api/projects/{projectId}/reports/run-summary`
-- `GET /api/projects/{projectId}/reports/requirement-coverage`
-- `GET /api/projects/{projectId}/reports/coverage-gap`
-- `GET /api/projects/{projectId}/reports/traceability`
-- `GET /api/projects/{projectId}/reports/defect-coverage`
-- `GET /api/projects/{projectId}/reports/cases-property-distribution?field=priority|caseType|automation|template|custom:{systemName}`
-- `GET /api/projects/{projectId}/reports/status-tops`
-
-Semantics (overview/reports baseline):
-- `/overview` returns project-level counters used on overview cards: `totalCases`, `activeRuns`, `recentFailures`, `automationCoveragePct`.
-- `recent-failures` and `recent-results` return ordered `items` with `runId`, `runName`, `caseId`, `title`, `status`, `source`, `createdAt`.
-- `run-summary` returns per-run aggregation rows: `runId`, `name`, `status`, `total`, `passed`, `failed`, `progress`, plus time tracking fields `estimatedSeconds`, `actualSeconds`, `actualOverEstimateSeconds`, `estimate`, `actual`, and `actualVsEstimate`.
-- Estimate totals come from each test instance's case estimate snapshot. Actual totals sum recorded result `elapsed` values for the run. Duration strings accept numeric minutes, `mm:ss`/`hh:mm:ss`, and unit forms such as `5m`, `90s`, or `1h 20m`.
-- `cases-property-distribution` returns active-case bucket counts for the selected system/custom case field: `selectedField`, `fields[]`, `totalCases`, `items[]` (`value`, `label`, `count`, `percent`).
-- `status-tops` returns current test-instance status rankings across project runs: `totalTests`, `items[]` (`status`, `count`, `percent`).
-- Empty datasets return `200` with empty collections (no 404 for "no data").
-- Report endpoints must not require loading all raw result history on the client.
-- Expensive reports may use summary tables or materialized views after data volume grows.
-
-Traceability report row:
-
-```json
-{
-  "requirementId": "10",
-  "requirementKey": "REQ-10",
-  "requirementTitle": "Saved card checkout",
-  "caseId": "101",
-  "caseTitle": "Checkout with saved card",
-  "runId": "501",
-  "testId": "9001",
-  "latestStatus": "failed",
-  "latestResultAt": "2026-04-28T10:00:00.000Z",
-  "defects": ["JIRA-777"]
-}
-```
-
-## Rerun
-- `POST /api/runs/{runId}/rerun`
-- `POST /api/plans/{planId}/rerun`
-
-Rerun request keys:
-- `sourceRunId`
-- `statusFilter` (`failed`, `blocked`, `retest`, `all`)
-- `includeClosed` (optional)
-
-## Plans
-- `GET /api/projects/{projectId}/plans`
-- `POST /api/projects/{projectId}/plans`
-- `GET /api/projects/{projectId}/plans/{planId}` (canonical)
-- `GET /api/plans/{planId}` (compatibility)
-- `PATCH /api/plans/{planId}`
-- `DELETE /api/plans/{planId}`
-- `GET /api/projects/{projectId}/configuration-groups`
-- `POST /api/projects/{projectId}/configuration-groups`
-- `PATCH /api/configuration-groups/{groupId}`
-- `DELETE /api/configuration-groups/{groupId}`
-- `POST /api/configuration-groups/{groupId}/configurations`
-- `PATCH /api/configurations/{configurationId}`
-- `DELETE /api/configurations/{configurationId}`
-- `POST /api/projects/{projectId}/plans/{planId}/matrix`
-- `POST /api/projects/{projectId}/plans/{planId}/runs/by-configuration`
-
-Plan/configuration semantics:
-- Free-text `environment` is an MVP compatibility field.
-- Target planning uses reusable configuration groups and values.
-- A plan entry may map to multiple configurations, such as Browser=Chrome and Device=iOS.
-- Generated runs inherit the plan entry configuration snapshot.
-
-Current baseline:
-- Configuration group/value CRUD is available via:
-  - `GET|POST /api/projects/{projectId}/configuration-groups`
-  - `PATCH|DELETE /api/configuration-groups/{groupId}`
-  - `POST /api/configuration-groups/{groupId}/configurations`
-  - `PATCH|DELETE /api/configurations/{configurationId}`
-- Matrix preview and run generation baseline is available via:
-  - `POST /api/projects/{projectId}/plans/{planId}/matrix`
-  - `POST /api/projects/{projectId}/plans/{planId}/runs/by-configuration`
-  - `GET /api/projects/{projectId}/plans/{planId}/entries/{entryId}/configurations`
-  - `GET /api/projects/{projectId}/plans/{planId}/rollup-by-configuration`
-- `runs/by-configuration` enforces one selected configuration per configuration group.
-
-## Milestones
-- `GET /api/projects/{projectId}/milestones`
-- `POST /api/projects/{projectId}/milestones`
-- `GET /api/projects/{projectId}/milestones/{milestoneId}` (canonical)
-- `GET /api/milestones/{milestoneId}` (compatibility)
-- `PATCH /api/milestones/{milestoneId}`
-- `DELETE /api/milestones/{milestoneId}`
-
-## Attachments
-- `POST /api/attachments`
-- `GET /api/attachments/{attachmentId}`
-- `DELETE /api/attachments/{attachmentId}`
-- `POST /api/attachments/{attachmentId}/download-url`
-- `POST /api/results/{resultId}/attachments/presign`
-- `POST /api/results/{resultId}/attachments`
-- `GET /api/results/{resultId}/attachments`
-
-Attachment semantics:
-- File bytes are not stored in Postgres.
-- Files are stored in object storage, preferably Supabase Storage.
-- The database stores metadata: file name, content type, storage path, file size, owner, entity link.
-- Result attachment upload may use either:
-  - direct server upload
-  - presigned/direct-to-storage flow
-- Deleting an attachment soft-deletes DB metadata and removes or tombstones the storage object.
-- Current baseline:
-  - `POST /api/results/{resultId}/attachments/presign` returns upload target (`storagePath`, `uploadUrl`, `method`, `headers`, `expiresAt`).
-  - `POST /api/attachments` registers metadata after upload completion.
-  - `POST /api/attachments/{attachmentId}/download-url` returns short-lived download URL metadata.
-  - `GET /api/attachments/{attachmentId}` and `DELETE /api/attachments/{attachmentId}` are available for detail/read and soft-delete.
-
-## Auth / API Tokens
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-- `GET /api/projects/{projectId}/tokens/scopes` — scope catalog with labels for token creation UI.
-- `GET /api/projects/{projectId}/tokens` (canonical)
-- `POST /api/projects/{projectId}/tokens` (canonical) — body: `name?`, `scopes?` (`automation:read`, `automation:write`, `data:read`, `data:write`), `expiresInDays?` (omit or `null` = no expiration).
-- `DELETE /api/projects/{projectId}/tokens/{tokenId}` (canonical)
-- `GET /api/tokens` (compatibility)
-- `POST /api/tokens` (compatibility)
-- `DELETE /api/tokens/{tokenId}` (compatibility)
-
-API token baseline:
-- Project tokens are returned once on create (`rawToken`); only a SHA-256 hash is stored.
-- Revoked or expired tokens are rejected on automation routes (`401` invalid/expired, `403` missing scope).
-- Automation POST routes require `automation:write`; `data:*` scopes are defined for future `/api/v2` enforcement.
-- Token list responses include `scopes`, `expiresAt`, `lastUsedAt`, and `createdAt`.
-
-## Membership / Permissions
-- `GET /api/projects/{projectId}/members`
-- `POST /api/projects/{projectId}/members`
-- `PATCH /api/projects/{projectId}/members/{memberId}`
-- `DELETE /api/projects/{projectId}/members/{memberId}`
-
-Permission baseline:
-- `owner`: full project administration, including members and destructive settings.
-- `manager`: mutate cases, runs, plans, assignments, reports, and integrations.
-- `tester`: enter results, attach evidence, link defects, update assigned tests.
-- `viewer`: read-only access.
-- Last active project owner cannot be removed or demoted.
-
-Permission matrix (project-scoped):
-- Permissions: `cases.read`, `cases.write`, `runs.read`, `runs.write`, `results.write`, `settings.read`, `settings.write`, `members.manage`.
-- Built-in roles map to a default permission set; project members may optionally reference a `CustomRole` with an explicit permission list.
-- `GET /api/admin/permission-matrix` returns the catalog and built-in role mappings.
-- Mutation routes enforce permissions when Prisma is enabled (e.g. case mutations require `cases.write`, settings CRUD requires `settings.write`, member admin requires `members.manage`).
-
-Users, groups, and global roles:
-- `GET /api/admin/users`, `PATCH /api/admin/users/{userId}` — directory with `globalRole` (`user` | `instance_admin`).
-- `GET /api/admin/groups`, `POST /api/admin/groups`, `PATCH /api/admin/groups/{groupId}`, group member add/remove.
-- `GET /api/projects/{projectId}/settings/custom-roles`, `POST`/`PATCH`/`DELETE` custom role CRUD.
-- Project members accept optional `customRoleId` on invite/update.
-
-Instance access defaults:
-- `GET /api/admin/access-defaults` — read singleton defaults (authenticated).
-- `PATCH /api/admin/access-defaults` — update defaults (requires owner role on at least one project when using Prisma).
-- Fields: `defaultProjectMemberRole` (`manager` | `tester` | `viewer`), `newProjectAccessMode` (`creator_only` | `all_active_users`), plus `scopeNote` describing out-of-scope permission-matrix work.
-- New project creators always receive `owner`. When `newProjectAccessMode` is `all_active_users`, every active user is upserted as a project member with `defaultProjectMemberRole`.
-- Member invite without an explicit `role` uses `defaultProjectMemberRole`.
-
-Defect integration reference helpers (case References field):
-- `GET /api/projects/{projectId}/integrations/defects/reference-urls?keys=REQ-1,REQ-2` — resolves View Reference URLs when integration is enabled and `issueUrlTemplate` contains `{key}`.
-- `GET /api/projects/{projectId}/integrations/defects/issues/search?q=QA&limit=10` — autocomplete suggestions from project case refs plus default project key prefix when integration is active.
-- Case `refs` input is validated (max length/tokens) and normalized to deduped comma-separated IDs on create/update.
-
-## Project Settings
-- `GET /api/projects/{projectId}/settings/custom-fields`
-- `POST /api/projects/{projectId}/settings/custom-fields`
-- `PATCH /api/projects/{projectId}/settings/custom-fields/{fieldId}`
-- `DELETE /api/projects/{projectId}/settings/custom-fields/{fieldId}`
-- `GET /api/projects/{projectId}/settings/statuses`
-- `GET /api/projects/{projectId}/statuses` — active statuses for run execution UI (same shape as settings list items)
-- `POST /api/projects/{projectId}/settings/statuses` (max 7 non-system custom statuses per project; body supports `isFinal`, `isUntested`)
-- `PATCH /api/projects/{projectId}/settings/statuses/{statusId}`
-- `DELETE /api/projects/{projectId}/settings/statuses/{statusId}`
-- `GET /api/projects/{projectId}/settings/templates` — ensures five built-in TestRail templates per project (`systemKey`: `test_case_text`, `test_case_steps`, `exploratory_session`, `behaviour_driven_development`, `ai_evaluation`) when missing
-- `POST /api/projects/{projectId}/settings/templates`
-- `PATCH /api/projects/{projectId}/settings/templates/{templateId}`
-- `DELETE /api/projects/{projectId}/settings/templates/{templateId}`
-- `GET /api/projects/{projectId}/settings/audit-logs`
-- `GET /api/projects/{projectId}/settings/audit-log-filters`
-- `GET /api/projects/{projectId}/settings/audit-logs/export.csv`
-- `POST /api/projects/{projectId}/settings/audit-logs/retention-prune`
-- `GET /api/projects/{projectId}/settings/webhooks`
-- `POST /api/projects/{projectId}/settings/webhooks`
-- `PATCH /api/projects/{projectId}/settings/webhooks/{webhookId}`
-- `DELETE /api/projects/{projectId}/settings/webhooks/{webhookId}`
-- `GET /api/projects/{projectId}/settings/webhook-events`
-- `GET /api/projects/{projectId}/settings/webhook-event-catalog`
-- `GET /api/projects/{projectId}/settings/webhook-delivery-policy`
-- `PATCH /api/projects/{projectId}/settings/webhook-delivery-policy` body `{ disableAfterConsecutiveFailures: number | null }` (DB mode; `null` clears project override)
-- `GET /api/projects/{projectId}/settings/webhook-attempts` (query: `webhookId`, `status`, pagination)
-- `GET /api/projects/{projectId}/settings/webhook-attempts/{attemptId}` (full response body and payload)
-- `POST /api/projects/{projectId}/settings/webhook-attempts/{attemptId}/retry`
-- `POST /api/projects/{projectId}/settings/webhooks/{webhookId}/test-send` (DB mode only; synchronous probe, records `webhook_delivery_attempt`)
-- `GET /api/projects/{projectId}/settings/email-outbox` (query: `status`, `kind`, `recipientEmail`, pagination)
-- `POST /api/projects/{projectId}/settings/email-outbox/{outboxId}/retry`
-- `GET /api/projects/{projectId}/settings/email-outbox/digest-preview` (current user; read-only body for pending digest)
-- `GET /api/runs/{runId}/test-subscriptions` (current user's subscribed test IDs in run)
-- `PUT /api/tests/{testId}/subscription` body `{ subscribed: boolean }`
-
-Webhook delivery (DB-backed server process):
-- Webhook create/update accepts optional `scope: "project" | "global"`; `project` is default. Global webhooks are listed in project settings and receive matching activity from every project, while delivery attempts remain tied to the project where the event occurred.
-- When `USE_IN_MEMORY_REPOSITORY` is not enabled, a background interval processes `webhook_delivery_attempt` rows in `pending` state (respecting `nextRetryAt`), POSTs JSON to `targetUrl` with `X-Webhook-Signature` and `X-Webhook-Event`, and stores HTTP status/body or error with exponential backoff up to a capped attempt count.
-- After a delivery attempt exhausts retries, the parent `WebhookSubscription` increments `consecutiveFailures`; when the threshold is reached (server default from `WEBHOOK_DISABLE_FAILURE_THRESHOLD`, overridable per project via `Project.webhookDisableFailureThreshold`), the webhook is set `isActive=false` with `disabledAt`. Re-enabling via PATCH clears failure counters.
-
-Custom field shape:
-```json
-{
-  "id": "10",
-  "name": "Risk",
-  "systemName": "risk",
-  "fieldType": "select",
-  "options": ["High", "Medium", "Low"],
-  "isRequired": true,
-  "isActive": true,
-  "displayOrder": 0
-}
-```
-
-Rules:
-- `fieldType` supports TestRail-aligned types: `string`, `text`, `url`, `integer`, `number`, `checkbox` (legacy `boolean`), `date`, `dropdown` (legacy `select`), `multi_select`, `user`, `milestone`, `rating`. System template types (`steps`, `step_results`, `scenarios`, `scenario_results`) are recognized for import but are not editable via `customValues` JSON.
-- `systemName` is project-unique and normalized to lowercase snake_case.
-- Deletes are soft deletes in DB-backed mode and create audit log entries.
-
-Custom status shape:
-```json
-{
-  "id": "20",
-  "name": "Needs Investigation",
-  "systemName": "needs_investigation",
-  "canonicalStatus": "retest",
-  "color": "#0f766e",
-  "isSystem": false,
-  "isActive": true,
-  "displayOrder": 50
-}
-```
-
-Rules:
-- `canonicalStatus` maps custom labels onto the internal execution status set: `untested`, `passed`, `failed`, `blocked`, `retest`.
-- If no project rows exist yet, the API returns the five default system definitions.
-- System definitions are protected from deletion.
-
-Case template shape:
-```json
-{
-  "id": "30",
-  "name": "Exploratory",
-  "description": "Lightweight testing",
-  "fields": ["title", "charter", "notes"],
-  "isDefault": true,
-  "isActive": true,
-  "displayOrder": 0
-}
-```
-
-Rules:
-- `fields` is an ordered list of field keys; built-in and custom field keys can both be represented.
-- At most one active project template should be marked default by the settings API.
-- Deletes are soft deletes in DB-backed mode and create audit log entries.
-
-Audit log query parameters:
-- `page`, `pageSize`
-- `scope`: `project` (default) or `all`; `all` requires project mutation permission and returns cross-project audit rows.
-- `action`, `entityType`, `entityId`, `actorUserId`, `actorEmail`, `actionExact`, `entityTypeExact`, `changesContains`
-- `createdFrom`, `createdTo` as ISO datetimes
-- `q` searches action, entity type, and entity id
-
-Audit log response includes `items`, `filters`, `page`, `pageSize`, `total`, and `totalPages`; rows include `projectId`/`projectName` when available.
-Audit CSV export applies the same filters, includes project columns, and caps export output at 5,000 rows.
-Retention prune body: `{ "olderThanDays": 365 }` with allowed range 30-3650; the prune action writes a summary audit row.
-Audited mutation groups include project/settings administration plus run/test assignment, defect link/unlink/push, saved report definition changes, and scheduled report create/update/delete/manual-run requests.
-
-## BDD / Gherkin
-- `GET /api/cases/{caseId}/scenarios` — list structured scenarios for a case.
-- `POST /api/cases/{caseId}/scenarios` — body: `{ "name", "content" }`.
-- `PUT /api/cases/{caseId}/scenarios` — replace all scenarios: `{ "scenarios": [{ "name", "content" }] }`.
-- `PATCH /api/case-scenarios/{scenarioId}` — update name/content/order.
-- `DELETE /api/case-scenarios/{scenarioId}`.
-- `GET /api/results/{resultId}/scenarios` — per-scenario results for a test result.
-- Result create payloads accept optional `scenarioResults: [{ caseScenarioId, status, comment? }]`.
-- `POST /api/projects/{projectId}/bdd/features/import` — body: `{ sectionId, featureText, createOneCasePerFeature? }`.
-- `GET /api/projects/{projectId}/bdd/features/export?sectionId=&caseId=` — returns `.feature` plain text.
-- `GET /api/projects/{projectId}/bdd/summary` — case/scenario counts.
-- `/api/v2/get_scenarios/{case_id}`, `POST add_scenario/{case_id}`, `POST update_scenario/{scenario_id}`, `POST delete_scenario/{scenario_id}`.
-
-## Automation Dashboard (project UI)
-- `GET /api/projects/{projectId}/automation/summary` — `mappedCases`, `totalCases`, `unmappedCases`, `coveragePercent`, `pendingRetryCount`, `uploadedRuns`, `lastUploadAt`.
-- `GET /api/projects/{projectId}/automation/mappings` — query: `coverage` (`mapped` | `unmapped` | `all`), `q`, `page`, `pageSize`.
-- `PATCH /api/projects/{projectId}/automation/mappings/{caseId}` — body: `{ "automationKey": "unique-key" }` (409 when key conflicts within project).
-- `GET /api/projects/{projectId}/automation/retry-queue` — upload batches (`uploadId` = run id) with `failed > 0`.
-- `GET /api/projects/{projectId}/automation/uploads` and `GET .../uploads/{uploadId}` — upload history/detail; failed rows include `errorCode` and `guidance`.
-- `POST /api/projects/{projectId}/automation/uploads/{uploadId}/retry-failed` — queues retest for failed automation rows in the upload batch.
-
-## Automation Upload Endpoints
-- `POST /api/automation/runs`
-- `POST /api/automation/runs/{runId}/results`
-- `POST /api/automation/results/bulk`
-- `POST /api/automation/uploads/{uploadId}/retry`
-
-Copy-paste CI examples for GitHub Actions, GitLab CI, Jenkins, and curl live in [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md).
-
-CI metadata fields (for automation endpoints and optionally run/result metadata):
-- `external_run_id`
-- `ci_provider`
-- `ci_build_id`
-- `job_url`
-- `commit_sha`
-- `branch`
-- `attempt`
-
-### Bulk Upload Request (example)
-```json
-{
-  "results": [
-    {
-      "case_id": 101,
-      "status": "passed",
-      "comment": "Playwright automation passed",
-      "elapsed": "12s",
-      "version": "build-20260427.1"
-    },
-    {
-      "case_id": 102,
-      "status": "failed",
-      "comment": "Cart API returned 500",
-      "elapsed": "8s",
-      "version": "build-20260427.1",
-      "defects": ["JIRA-777"],
-      "step_results": [
-        {
-          "step_order": 1,
-          "status": "passed",
-          "actual": "Entered PDP"
-        },
-        {
-          "step_order": 2,
-          "status": "failed",
-          "actual": "POST /cart returned 500"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Bulk Upload Response (example)
-```json
-{
-  "run_id": 5001,
-  "atomic": false,
-  "total": 3,
-  "saved": 2,
-  "failed": 1,
-  "items": [
-    { "index": 0, "case_id": 101, "status": "saved", "test_id": 7001, "result_id": 9001 },
-    { "index": 1, "case_id": 102, "status": "saved", "test_id": 7002, "result_id": 9002 },
-    { "index": 2, "case_id": 999, "status": "failed", "error_code": "CASE_NOT_FOUND_IN_RUN", "message": "case_id 999 was not found in run 5001" }
-  ]
-}
-```
-
-### Partial Failure Policy
-- `atomic=true`: pre-validate items first; if any item fails validation, rollback all writes and return `400 BULK_VALIDATION_FAILED`.
-- `atomic=false`: save valid items, return failed items with per-item errors.
-
-`BULK_VALIDATION_FAILED` error shape:
-```json
-{
-  "error": {
-    "code": "BULK_VALIDATION_FAILED",
-    "message": "atomic bulk rejected (...issues...)",
-    "details": {
-      "issues": [
-        {
-          "index": 2,
-          "caseId": "999",
-          "code": "CASE_NOT_FOUND_IN_RUN",
-          "message": "case 999 not found in run 5001"
-        }
-      ]
-    }
-  }
-}
-```
-
-### Matching Strategy for Automation
-- Preferred order:
-  1) explicit `test_id` when provided
-  2) `case_id` inside target run
-  3) `automation_key`
-  4) `external_id`
-- If multiple matches are found, return deterministic conflict error.
-
-## Status and Compatibility
-- Internal status set:
-  - `untested`, `passed`, `failed`, `blocked`, `retest`
-- Compatibility mapping:
-  - `1 -> passed`
-  - `2 -> blocked`
-  - `3 -> untested`
-  - `4 -> retest`
-  - `5 -> failed`
-
-## TestInstance Naming Rule
-- Internal domain canonical term: `TestInstance`.
-- API/UI short alias: `Test`.
-- `testId` always maps to `test_instances.id`.
-
-## TestRail-like Adapter
-
-Index (supported vs deferred):
-
-- `GET /api/v2` — returns `supported` and `deferred` endpoint lists for migration clients.
-
-Compatibility flow examples for suite/section/case discovery, run creation, result upload, and run close live in [CI_AND_COMPATIBILITY_EXAMPLES.md](./CI_AND_COMPATIBILITY_EXAMPLES.md).
-
-### Supported read endpoints
-
-- `GET /api/v2/get_projects`
-- `GET /api/v2/get_project/{project_id}`
-- `GET /api/v2/get_suite/{suite_id}`
-- `GET /api/v2/get_section/{section_id}`
-- `GET /api/v2/get_milestone/{milestone_id}` (DB mode)
-- `GET /api/v2/get_plan/{plan_id}` (DB mode)
-- `GET /api/v2/get_case_types` (static catalog)
-- `GET /api/v2/get_priorities` (static catalog)
-- `GET /api/v2/get_case_statuses` (static active/archived case lifecycle catalog)
-- `GET /api/v2/get_case/{case_id}`
-- `GET /api/v2/get_cases/{project_id}` (query: `suite_id`, `section_id`, `limit`, `offset` — TestRail envelope with `cases[]`)
-- `GET /api/v2/get_scenarios/{case_id}`
-- `GET /api/v2/get_bdd_scenarios/{case_id}` (alias for BDD-oriented clients)
-- `GET /api/v2/get_bdd_result_scenarios/{result_id}`
-- `GET /api/v2/get_runs/{project_id}` (query: `limit`, `offset` — envelope with `runs[]`)
-- `GET /api/v2/get_suites/{project_id}`
-- `GET /api/v2/get_sections/{project_id}` (query: **`suite_id` required**)
-- `GET /api/v2/get_milestones/{project_id}` (DB mode; empty array in memory mode)
-- `GET /api/v2/get_plans/{project_id}` (DB mode; empty array in memory mode)
-- `GET /api/v2/get_statuses` (query: optional `project_id` for project custom status labels)
-- `GET /api/v2/get_datasets/{project_id}` (compatibility-only empty array until dataset storage ships)
-- `GET /api/v2/get_variables/{project_id}` (compatibility-only empty array until variable storage ships)
-- `GET /api/v2/get_configs/{project_id}` (DB mode; configuration groups with `configs`)
-- `GET /api/v2/get_case_fields/{project_id}` (DB mode; active case custom fields)
-- `GET /api/v2/get_result_fields/{project_id}` (DB mode; active result custom fields)
-- `GET /api/v2/get_templates/{project_id}` (DB mode; active case templates)
-- `GET /api/v2/get_users` (DB mode; active users)
-- `GET /api/v2/get_users/{project_id}` (DB mode; project members)
-- `GET /api/v2/get_reports` (DB mode; authenticated cross-project saved report definitions for projects the caller can access; optional `project_id` query)
-- `GET /api/v2/get_reports/{project_id}` (DB mode; saved report definitions)
-- `GET /api/v2/get_roles` (static project role catalog)
-- `GET /api/v2/get_labels/{project_id}` (distinct case label titles aggregated from active cases; synthetic stable `id` per title)
-- `GET /api/v2/get_groups` (empty array until user-group administration exists)
-- `GET /api/v2/get_shared_steps/{project_id}` (empty array until SharedStep entity ships)
-- `GET /api/v2/get_attachments_for_case/{case_id}` (DB mode; live case attachments)
-- `GET /api/v2/get_attachments_for_result/{result_id}` (DB mode; result attachments)
-- `GET /api/v2/get_run/{run_id}`
-- `GET /api/v2/get_tests/{run_id}` (query: `limit`, `offset` — envelope with `tests[]`)
-- `GET /api/v2/get_results/{test_id}` (query: `limit`, `offset` — envelope with `results[]`)
-- `GET /api/v2/get_results_for_case/{run_id}/{case_id}` (query: `limit`, `offset` — envelope with `results[]`)
-- `GET /api/v2/get_results_for_run/{run_id}` (query: `limit`, `offset` — envelope with `results[]`)
-
-### Supported write endpoints
-
-- `POST /api/v2/add_case/{section_id}`
-- `POST /api/v2/update_case/{case_id}`
-- `POST /api/v2/add_scenario/{case_id}`
-- `POST /api/v2/add_bdd_scenario/{case_id}` (alias)
-- `POST /api/v2/update_scenario/{scenario_id}`
-- `POST /api/v2/update_bdd_scenario/{scenario_id}` (alias)
-- `POST /api/v2/delete_scenario/{scenario_id}`
-- `POST /api/v2/delete_bdd_scenario/{scenario_id}` (alias)
-- `POST /api/v2/add_run/{project_id}`
-- `POST /api/v2/add_suite/{project_id}` (body: `name`, optional `description`)
-- `POST /api/v2/update_suite/{suite_id}` (body: optional `name`, `description`)
-- `POST /api/v2/add_section/{project_id}` (body: **`suite_id` required**, `name`, optional `parent_id`)
-- `POST /api/v2/update_section/{section_id}` (body: optional `name`, `parent_id`)
-- `POST /api/v2/delete_section/{section_id}` (empty section only; returns `{}`)
-- `POST /api/v2/close_run/{run_id}`
-- `POST /api/v2/update_run/{run_id}` (body: optional `name`, `assignedto_id`)
-- `POST /api/v2/run_report/{report_id}` (DB mode; executes a saved report as CSV export and returns job/download URLs)
-- `POST /api/v2/add_result_for_case/{run_id}/{case_id}`
-- `POST /api/v2/add_results_for_cases/{run_id}`
-
-### Deferred (not implemented)
-
-First-class label/group/shared-step CRUD, persisted datasets/variables, richer role permission parity, and run reopen/date fields remain outside the current compatibility baseline. **Cloud-style API rate-limit enforcement** is also deferred; current behavior is documented in [API Rate Limits](#api-rate-limits) (documentation only, no `429`/`Retry-After` from the app). See `GET /api/v2` for the running server's supported/deferred arrays.
-
-**Paginated list envelope** (cases, runs, tests, results): `{ offset, limit, size, _links: { next, prev }, <collection>: [...] }`. Default `limit=250`, max `250`.
-
-Adapter rules:
-- No duplicated business logic in adapter handlers.
-- Adapter maps payloads/status codes and delegates to internal services.
-- Adapter is a compatibility layer, not the canonical product API.
-
-Current baseline:
-- Implemented under `/api/v2` for cases, runs, tests, results, projects, suites, sections, milestones, plans, statuses, case statuses, BDD scenarios, compatibility dataset/variable reads, configurations, custom fields, templates, users, saved reports including authenticated cross-project report reads, roles, labels/groups/shared-step reads, attachments, and saved-report CSV execution.
-- High-traffic list endpoints (`get_cases`, `get_runs`, `get_tests`, `get_results*`) return TestRail-style limit/offset envelopes; lower-volume catalog list routes return JSON arrays.
-- Accepts TestRail-style `status_id`, `case_id`, `suite_id`, `include_all`, and `case_ids` where applicable.
-- `get_statuses?project_id=` returns project custom statuses when DB-backed; includes `custom_status_id` on each row when mapped from `CustomStatus`.
-- `get_case_statuses` returns the current clone case lifecycle catalog (`active`, `archived`); dataset and variable list endpoints intentionally return empty arrays until first-class Enterprise dataset/variable storage exists.
-- Mutating adapter endpoints reuse project membership authorization and existing domain services.
-- `run_report` executes saved reports as CSV export jobs and returns job/download URLs; HTML/PDF rendering remains outside the current baseline.
-
-## Metadata Field Strategy
-- `test_runs.metadata` and/or `test_results.metadata` can store CI and uploader context in `jsonb`.
-- Keep top-level required fields explicit; use metadata for optional provider-specific fields.
-
-## Result Explorer
-- `GET /api/projects/{projectId}/reports/results-explorer`
-
-Query filters:
-- `runId`, `caseId`, `testId`
-- `status`, `source`
-- `createdFrom`, `createdTo`
-- `q`
-- `custom_{systemName}` for active result custom field exact-match filtering.
-
-## Traceability / Coverage
-- `GET /api/projects/{projectId}/requirements`
-- `POST /api/projects/{projectId}/requirements`
-- `PATCH /api/requirements/{requirementId}`
-- `DELETE /api/requirements/{requirementId}`
-- `POST /api/cases/{caseId}/requirements/{requirementId}`
-- `DELETE /api/cases/{caseId}/requirements/{requirementId}`
-- `GET /api/projects/{projectId}/reports/traceability`
-- `GET /api/projects/{projectId}/reports/coverage-gap`
-
-Current baseline:
-- Requirement CRUD is project-scoped with soft-delete behavior.
-- Requirement status uses `active`, `changed`, `deprecated`.
-- Case-requirement linking validates that both entities belong to the same project.
-- `GET /api/projects/{projectId}/reports/traceability` baseline returns requirement -> case -> latest run/test/result context (including defect keys and `caseRefs`).
-- `GET /api/projects/{projectId}/reports/refs-traceability` expands each case `refs` token into rows with latest run/test/result context for reference-based drilldown.
-- `GET /api/projects/{projectId}/reports/coverage-gap` baseline returns requirement coverage classification (`uncovered`, `untested`, `covered`, `at_risk`).
-- `GET /api/projects/{projectId}/reports/defect-coverage` baseline returns requirement-level defect linkage summary (`atRiskResultCount`, `linkedDefectCount`, `defectCoverage`).
-
-Requirement fields:
-- `key`: project-unique display key such as `REQ-100`.
-- `title`
-- `description`
-- `status`
-- `externalUrl`
-
-Coverage semantics:
-- A requirement is uncovered when it has no linked active test cases.
-- A requirement is untested when linked cases exist but no active/open run has a non-untested latest result.
-- A requirement is at risk when any linked latest result is `failed`, `blocked`, or `retest`.
-
-## Defect Integration
-- `GET /api/projects/{projectId}/integrations/defects`
-- `PATCH /api/projects/{projectId}/integrations/defects`
-- `POST /api/results/{resultId}/defects`
-- `GET /api/results/{resultId}/defects`
-- `DELETE /api/results/{resultId}/defects/{defectLinkId}`
-- `POST /api/results/{resultId}/defects/push`
-
-Defect integration semantics:
-- `defects` string arrays on `test_results` are compatibility metadata only.
-- Canonical defect links live in `result_defect_links`.
-- Provider settings define URL templates and optional push/create behavior.
-- Baseline provider support can start with URL-template-only links.
-- Current baseline:
-  - Project-level defect integration settings persist in `DefectIntegrationSetting` (`provider`, `isEnabled`, `issueUrlTemplate`, `defaultProjectKey`).
-  - `POST /api/results/{resultId}/defects/push` creates or reactivates a canonical defect link and derives URL from `issueUrlTemplate` with `{key}` replacement when configured.
-  - `DELETE /api/results/{resultId}/defects/{defectLinkId}` soft-deletes the canonical link.
-
-## Import / Export
-- `GET /api/projects/{projectId}/cases/import/csv/profile` — canonical case import fields, active custom fields, and export header list.
-- `POST /api/projects/{projectId}/cases/import/csv/suggest-mapping` — body: `{ headers: string[] }` or `{ csv: string }`; returns suggested `columnMapping` and header-level `mappingIssues`.
-- `POST /api/projects/{projectId}/cases/import/csv`
-- `POST /api/projects/{projectId}/cases/import/csv/async` — queues background CSV import/validation; returns `202` with `job` and `pollUrl` (Prisma mode; staged file on server temp storage).
-- `GET /api/projects/{projectId}/import-jobs/{jobId}` — poll import job status; includes `summary`, `issues`, and `resultReady` when terminal.
-- `GET /api/projects/{projectId}/import-jobs`
-- `POST /api/projects/{projectId}/cases/export/async` — body: `{ format: "csv" | "json" | "xml" }`; returns `202` with `job`, `pollUrl`, and `downloadUrl`.
-- `POST /api/projects/{projectId}/runs/results/export/csv/async` — body: `{ runId }`; queues run result CSV export.
-- `GET /api/projects/{projectId}/export-jobs/{jobId}` — poll export job; `downloadUrl` when `status=completed`.
-- `GET /api/projects/{projectId}/cases/export/csv`
-- `GET /api/projects/{projectId}/cases/export/json`
-- `GET /api/projects/{projectId}/cases/export/xml`
-- `GET /api/projects/{projectId}/cases/export/testrail`
-- `GET /api/projects/{projectId}/runs/{runId}/results/export/csv`
-- `GET /api/projects/{projectId}/runs/{runId}/results/export/testrail`
-- `GET /api/projects/{projectId}/export-jobs`
-- `POST /api/projects/{projectId}/reports/export`
-- `GET /api/projects/{projectId}/reports/export`
-- `GET /api/projects/{projectId}/export-jobs/{jobId}/download`
-
-CSV case import baseline:
-- Supports section path, title, preconditions, priority, type, refs, labels, automation key, external id, steps.
-- Current API baseline accepts JSON body with `csv`, `dryRun`, `atomic`, optional `sectionId`, and optional `columnMapping` (CSV header → canonical field key; empty string ignores a column).
-- When `columnMapping` is omitted, the server auto-suggests mappings from CSV headers (same rules as `suggest-mapping`).
-- UI clients should use `POST .../cases/import/csv/async` when CSV payload exceeds ~48 KB so the browser is not blocked on validation/commit.
-- Import jobs use statuses `pending` → `processing` → `completed` | `failed` | `completed_with_errors`. Export jobs use `pending` → `processing` → `completed` | `failed`.
-- `GET /export-jobs/{jobId}/download` serves report exports and case/run export jobs when `status=completed` (rebuilds file on download).
-- Supports dry-run validation before commit.
-- Returns row-level validation errors with `row`, `field`, `code`, and `message` (row `1` for mapping-level issues such as missing Title mapping).
-- Does not partially import invalid rows unless `atomic=false` is explicitly provided.
-- Case export and run result CSV export return `text/csv` and create completed export job records.
-- Case JSON/XML export endpoints use the clone-native `testrail-clone.cases` payload for round-trip import compatibility.
-- `cases/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata (`offset`, `limit`, `size`, `_links`) and `cases[]` rows containing numeric `id`, `section_id`, `title`, `refs`, `custom_preconds`, labels, automation/external identifiers, `custom_steps_separated`, and active `custom_{systemName}` values.
-- `runs/{runId}/results/export/testrail` is a compatibility-only JSON shape with TestRail-style collection metadata and `results[]` rows containing numeric `id`, `test_id`, `case_id`, `status_id`, `created_on`, comment, elapsed, version, defects, refs, source, and active `custom_{systemName}` values.
-- Case and result custom values are exported as `custom_{systemName}` columns where active custom fields exist; result custom columns are included in run result CSV exports and `results_explorer` report CSV exports.
-- Report export supports `run_summary`, `milestone_summary`, `plan_summary`, `results_explorer`, `traceability`, `coverage_gap`, `defect_coverage`, `case_activity_summary`, `cases_property_distribution`, and `status_tops` as CSV.
-- `POST /reports/export` creates an export job and returns a download URL; the baseline generates CSV on download and marks the job completed.
-- `GET /reports/export` is a compatibility shortcut that immediately returns CSV and records a completed export job.
-
-Saved reports:
-- `GET /api/projects/{projectId}/saved-reports`
-- `POST /api/projects/{projectId}/saved-reports`
-- `PATCH /api/projects/{projectId}/saved-reports/{savedReportId}`
-- `DELETE /api/projects/{projectId}/saved-reports/{savedReportId}`
-
-Scheduled reports:
-- `GET /api/projects/{projectId}/scheduled-reports`
-- `POST /api/projects/{projectId}/scheduled-reports` — body: `name`, `intervalMinutes`, `recipientEmails[]`, optional `savedReportId`, optional `reportType`, optional `filters`.
-- `PATCH /api/projects/{projectId}/scheduled-reports/{scheduledReportId}` — `name`, `intervalMinutes`, `recipientEmails`, `enabled`.
-- `DELETE /api/projects/{projectId}/scheduled-reports/{scheduledReportId}`
-- `POST /api/projects/{projectId}/scheduled-reports/{scheduledReportId}/run` — manual run; creates export job, queues email per recipient, activity `report.schedule_run` / `report.schedule_email_sent`.
-
-## Notifications / Activity
-- `GET /api/notifications`
-- `PATCH /api/notifications/preferences`
-- `GET /api/projects/{projectId}/activity` — query: `page`, `pageSize`, optional `entityType`, `entityId`, `eventType`, **`runId`** (matches run entity rows and payload `runId`).
-
-Activity event semantics:
-- Domain events should be written for:
-  - case created/updated/deleted
-  - case version restored
-  - run created/closed
-  - result added
-  - assignment changed
-  - attachment added/deleted
-  - defect linked/unlinked
-- Activity endpoints return a paged feed sorted by newest first.
-- Run detail UI uses `GET /api/projects/{projectId}/activity?runId={runId}` for the sidebar Activity tab.
-- Notifications are derived from selected activity events and user preferences.
+# API Specification
+
+Updated: 2026-09-23. 현재 worktree의 route/schema/service를 대조한 계약과 등록 목록이다. 운영 배포나 모든 endpoint의 live 성공을 인증하지 않는다. 필요한 feature 절만 읽고 전체 목록을 기본 입력으로 로드하지 않는다.
+
+## 공통 계약과 예외
+
+- `/api`가 기본, `/api/v2`는 TestRail adapter다. 실제 path/method는 아래 등록 목록을 따른다. 모든 route를 project-scoped 형태로 임의 재작성하지 않는다.
+- JSON ID는 `toJsonSafe` 사용 시 BigInt가 십진 문자열로 직렬화된다. Date는 JSON ISO 표현이다. 클라이언트에서 큰 ID를 안전한 Number라고 가정하지 않는다.
+- `ok(data)`는 `{data}`, 공통 paged 응답은 `{data,page,pageSize,total,totalPages}`다. 모든 route가 이 envelope를 쓰지는 않는다(auth와 v2 등). 응답 shape는 해당 handler를 확인한다.
+- 공통 pagination은 page=1, pageSize=20, 최대100이며 page_size alias를 허용한다. v2 pagination은 별도 adapter 규칙이다. alias는 실제 schema에 있는 것만 허용되며 모든 camelCase에 snake_case alias가 있다고 가정하지 않는다.
+- 공통 AppError는 `{error:{code,message,details?}}`, Zod는 400 VALIDATION_ERROR와 path/message 목록, 미처리 오류는 500 INTERNAL_ERROR다. auth/me의 직접 401 `{code,message}` 등 예외가 있으므로 전역 단일 shape로 단정하지 않는다.
+
+## 인증과 권한
+
+`POST /api/auth/login`은 email과 선택적 password를 받지만 현재 서비스는 email만 사용해 사용자 조회/생성 후 `{token,user}`를 반환한다. 토큰은 표준 JWT가 아닌 HMAC 서명 `v1.<payload>.<signature>`이며 유효기간은 7일이다. `Authorization: Bearer …`로 보낸다. `/api/auth/me`는 user/memberships, logout은 204이며 서버 측 revoke는 하지 않는다. 이는 현재 구현의 설명이지 강한 운영 인증이 갖춰졌다는 의미가 아니다.
+
+프로젝트 권한은 route의 helper를 확인한다. 메모리 모드는 동일 관리자 사용자와 일부 권한 생략 경로가 있어 실제 viewer 권한 검증을 대신하지 못한다. automation token은 별도 project/scopes/hash/만료·revocation 계약이며 로그인 토큰과 혼용하지 않는다. [CI 예제](./CI_AND_COMPATIBILITY_EXAMPLES.md)의 실제 header/endpoint를 함께 확인한다.
+
+## 케이스 작성·동시 수정
+
+요청 원장: [cases.schema.ts](../apps/server/src/modules/cases/cases.schema.ts), handler: [cases.routes.ts](../apps/server/src/modules/cases/cases.routes.ts).
+
+- 생성은 sectionId와 비어 있지 않은 title이 필수다. priority/caseType/estimate/preconditions/expectedResult, template, refs/labels/customValues와 exploratory/AI 필드는 해당 schema의 optional/nullable을 따른다.
+- 본문 생성/수정과 step 추가/수정/삭제는 별도 endpoint다. 하나의 저장 버튼이 본문+Steps 전체를 서버에서 원자 처리한다고 가정하지 않는다. 부분 성공은 생성 ID와 실패 초안을 유지해 복구한다.
+- PATCH의 expectedVersion은 선택적이며 If-Match 파싱값을 fallback으로 사용한다. 실제 DB 비교는 lockVersion이다. expectedUpdatedAt은 schema에서 받지만 service가 legacy 값으로 제외하므로 실제 revision 검증 대안이 아니다.
+- 충돌 응답은 409 `CONFLICT`다. 기존 문서의 필수 revision/`VERSION_CONFLICT` 계약은 실제 구현과 달라 수정했다. 클라이언트는 stale overwrite 방지를 위해 expectedVersion을 전송해야 한다.
+- sectionScope는 direct/subtree이며 화면의 all은 section 제한 없는 조회로 표현한다. display(tree/subtree/compact)와 조회 scope는 구별한다. 일반 목록과 suite 그룹 목록의 query 필드는 각각 schema를 따른다.
+- bulk caseIds 작업은 해당 schema에서 1~200개를 받는다. Case version 복원/첨부/BDD scenario/shared step은 아래 별도 route를 사용한다.
+
+## Run 구성·결과 기록
+
+요청 원장: [runs.schema.ts](../apps/server/src/modules/runs/runs.schema.ts), [results.schema.ts](../apps/server/src/modules/results/results.schema.ts).
+
+- Run 생성은 projectId(경로형에서는 path), suiteId, name과 includeAll(default true), caseIds/excludedCaseIds, 포함/제외 section root, compositionMode/filterDefinition, 일정/환경을 받는다. 실제 mode/필터 규칙은 runComposition.ts와 서비스가 검증한다.
+- `POST /api/tests/:testId/results`는 test 대상, `/api/runs/:runId/results`는 testId 또는 caseId, `/by-case`는 caseId를 받는다. case_id/test_id alias는 해당 result 정규화 경로에서만 지원한다.
+- 결과는 status와 선택적 comment/elapsed/version/defects(string 배열)/customValues/stepResults/scenarioResults/AI 필드다. 상태 enum은 untested/passed/failed/blocked/retest지만 이미 결과가 있는 test의 untested 기록은 service에서 400 UNTESTED_NOT_ALLOWED로 거절한다.
+- 닫힌 Run은 409 RUN_CLOSED. 기존 result의 PATCH/PUT/DELETE는 등록되어 있어도 405 RESULT_IMMUTABLE로 거절하는 경로다. 정정은 새 결과 추가이며 첨부/defect link는 별도 후속 동작이다.
+- bulk는 `{atomic?,results:[{caseId,status,...}]}`; atomic 기본 false. 응답은 runId/atomic/total/saved/failed/items를 포함한다. atomic=true는 transaction 및 검증 실패 시 전체 거절, false는 항목별 성공/실패다.
+- 결과 쓰기와 첨부 bytes 업로드는 별도 과정이다. presign/metadata 등록만으로 실제 bytes 저장을 성공 처리하지 않는다. 실패 파일 재시도는 기존 resultId를 재사용한다.
+
+## 모델과 서비스의 제한
+
+메모리/Prisma 분기, 501 미지원 경로, 권한 및 외부 공급자 설정은 개별 handler가 결정한다. 등록 목록이 기능의 완전 지원을 뜻하지 않는다. 첨부·보고·email·webhook 전달은 외부 환경이 필요하다. 결과 입력 후 다음 테스트로 이동하는 것은 UI 의도이며 API의 자동 이동 계약이 아니다.
+
+## 등록 endpoint 목록
+
+다음은 app.ts 및 *.routes.ts의 literal `app.get/post/put/patch/delete/options/head` 선언을 코드에서 추출한 목록이다. 동적 등록·플러그인 자동 OPTIONS 등을 포괄하는 runtime/OpenAPI 목록은 아니다. 각 그룹의 source 링크에서 검증 schema·권한·응답·지원 모드를 확인한다. 기존 route를 지우거나 바꿀 때 이 목록과 해당 계약을 같은 작업에서 갱신한다.
+
+### activity
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/activity` | [source](../apps/server/src/modules/activity/activity.routes.ts#L60) |
+| GET | `/api/projects/:projectId/notifications` | [source](../apps/server/src/modules/activity/activity.routes.ts#L123) |
+| PATCH | `/api/projects/:projectId/notifications/:notificationId/read` | [source](../apps/server/src/modules/activity/activity.routes.ts#L195) |
+| PATCH | `/api/projects/:projectId/notifications/:notificationId/snooze` | [source](../apps/server/src/modules/activity/activity.routes.ts#L207) |
+| POST | `/api/projects/:projectId/notifications/read-all` | [source](../apps/server/src/modules/activity/activity.routes.ts#L224) |
+| GET | `/api/projects/:projectId/notification-preferences` | [source](../apps/server/src/modules/activity/activity.routes.ts#L235) |
+| PATCH | `/api/projects/:projectId/notification-preferences` | [source](../apps/server/src/modules/activity/activity.routes.ts#L245) |
+
+### admin
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/admin/access-defaults` | [source](../apps/server/src/modules/admin/accessDefaults.routes.ts#L16) |
+| PATCH | `/api/admin/access-defaults` | [source](../apps/server/src/modules/admin/accessDefaults.routes.ts#L22) |
+| GET | `/api/admin/permission-matrix` | [source](../apps/server/src/modules/admin/users.routes.ts#L65) |
+| GET | `/api/admin/users` | [source](../apps/server/src/modules/admin/users.routes.ts#L70) |
+| PATCH | `/api/admin/users/:userId` | [source](../apps/server/src/modules/admin/users.routes.ts#L111) |
+| GET | `/api/admin/groups` | [source](../apps/server/src/modules/admin/users.routes.ts#L138) |
+| POST | `/api/admin/groups` | [source](../apps/server/src/modules/admin/users.routes.ts#L170) |
+| PATCH | `/api/admin/groups/:groupId` | [source](../apps/server/src/modules/admin/users.routes.ts#L193) |
+| POST | `/api/admin/groups/:groupId/members` | [source](../apps/server/src/modules/admin/users.routes.ts#L214) |
+| DELETE | `/api/admin/groups/:groupId/members/:userId` | [source](../apps/server/src/modules/admin/users.routes.ts#L232) |
+
+### auth
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| POST | `/api/auth/login` | [source](../apps/server/src/modules/auth/auth.routes.ts#L20) |
+| GET | `/api/auth/me` | [source](../apps/server/src/modules/auth/auth.routes.ts#L26) |
+| POST | `/api/auth/logout` | [source](../apps/server/src/modules/auth/auth.routes.ts#L34) |
+
+### automation
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/automation/summary` | [source](../apps/server/src/modules/automation/automation.routes.ts#L334) |
+| GET | `/api/projects/:projectId/automation/mappings` | [source](../apps/server/src/modules/automation/automation.routes.ts#L346) |
+| PATCH | `/api/projects/:projectId/automation/mappings/:caseId` | [source](../apps/server/src/modules/automation/automation.routes.ts#L398) |
+| GET | `/api/projects/:projectId/automation/retry-queue` | [source](../apps/server/src/modules/automation/automation.routes.ts#L472) |
+| GET | `/api/projects/:projectId/automation/uploads` | [source](../apps/server/src/modules/automation/automation.routes.ts#L519) |
+| GET | `/api/projects/:projectId/automation/uploads/:uploadId` | [source](../apps/server/src/modules/automation/automation.routes.ts#L555) |
+| POST | `/api/projects/:projectId/automation/uploads/:uploadId/retry-failed` | [source](../apps/server/src/modules/automation/automation.routes.ts#L619) |
+| POST | `/api/automation/runs` | [source](../apps/server/src/modules/automation/automation.routes.ts#L627) |
+| POST | `/api/automation/runs/:runId/results` | [source](../apps/server/src/modules/automation/automation.routes.ts#L643) |
+| POST | `/api/automation/results/bulk` | [source](../apps/server/src/modules/automation/automation.routes.ts#L662) |
+| POST | `/api/automation/uploads/:uploadId/retry` | [source](../apps/server/src/modules/automation/automation.routes.ts#L696) |
+
+### bdd
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| POST | `/api/projects/:projectId/bdd/features/import` | [source](../apps/server/src/modules/bdd/bdd.routes.ts#L59) |
+| GET | `/api/projects/:projectId/bdd/features/export` | [source](../apps/server/src/modules/bdd/bdd.routes.ts#L131) |
+| GET | `/api/projects/:projectId/bdd/summary` | [source](../apps/server/src/modules/bdd/bdd.routes.ts#L163) |
+
+### cases
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/cases` | [source](../apps/server/src/modules/cases/cases.routes.ts#L342) |
+| GET | `/api/sections/:sectionId/cases` | [source](../apps/server/src/modules/cases/cases.routes.ts#L371) |
+| POST | `/api/sections/:sectionId/cases` | [source](../apps/server/src/modules/cases/cases.routes.ts#L399) |
+| GET | `/api/cases/:caseId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L467) |
+| POST | `/api/cases/:caseId/duplicate` | [source](../apps/server/src/modules/cases/cases.routes.ts#L476) |
+| GET | `/api/cases/:caseId/attachments` | [source](../apps/server/src/modules/cases/cases.routes.ts#L528) |
+| POST | `/api/cases/:caseId/attachments` | [source](../apps/server/src/modules/cases/cases.routes.ts#L534) |
+| POST | `/api/cases/:caseId/attachments/presign` | [source](../apps/server/src/modules/cases/cases.routes.ts#L551) |
+| POST | `/api/projects/:projectId/cases/bulk-delete` | [source](../apps/server/src/modules/cases/cases.routes.ts#L571) |
+| POST | `/api/projects/:projectId/cases/bulk-move` | [source](../apps/server/src/modules/cases/cases.routes.ts#L601) |
+| POST | `/api/projects/:projectId/cases/bulk-copy` | [source](../apps/server/src/modules/cases/cases.routes.ts#L642) |
+| POST | `/api/projects/:projectId/cases/bulk-update` | [source](../apps/server/src/modules/cases/cases.routes.ts#L686) |
+| POST | `/api/projects/:projectId/cases/bulk-archive` | [source](../apps/server/src/modules/cases/cases.routes.ts#L719) |
+| POST | `/api/projects/:projectId/cases/reorder` | [source](../apps/server/src/modules/cases/cases.routes.ts#L754) |
+| POST | `/api/projects/:projectId/cases/position` | [source](../apps/server/src/modules/cases/cases.routes.ts#L776) |
+| GET | `/api/cases/:caseId/versions` | [source](../apps/server/src/modules/cases/cases.routes.ts#L801) |
+| GET | `/api/cases/:caseId/versions/:versionId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L808) |
+| GET | `/api/cases/:caseId/versions/:versionNo/attachments/:attachmentId/download` | [source](../apps/server/src/modules/cases/cases.routes.ts#L814) |
+| POST | `/api/cases/:caseId/versions/:versionId/restore` | [source](../apps/server/src/modules/cases/cases.routes.ts#L821) |
+| PATCH | `/api/cases/:caseId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L843) |
+| DELETE | `/api/cases/:caseId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L916) |
+| POST | `/api/cases/:caseId/steps` | [source](../apps/server/src/modules/cases/cases.routes.ts#L938) |
+| GET | `/api/case-steps/:stepId/attachments` | [source](../apps/server/src/modules/cases/cases.routes.ts#L964) |
+| POST | `/api/case-steps/:stepId/attachments` | [source](../apps/server/src/modules/cases/cases.routes.ts#L970) |
+| POST | `/api/case-steps/:stepId/attachments/presign` | [source](../apps/server/src/modules/cases/cases.routes.ts#L987) |
+| PATCH | `/api/case-steps/:stepId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1007) |
+| DELETE | `/api/case-steps/:stepId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1036) |
+| GET | `/api/cases/:caseId/scenarios` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1064) |
+| POST | `/api/cases/:caseId/scenarios` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1070) |
+| PUT | `/api/cases/:caseId/scenarios` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1078) |
+| PATCH | `/api/case-scenarios/:scenarioId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1086) |
+| DELETE | `/api/case-scenarios/:scenarioId` | [source](../apps/server/src/modules/cases/cases.routes.ts#L1094) |
+
+### executionComments
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/tests/:testId/execution-comments` | [source](../apps/server/src/modules/executionComments/executionComments.routes.ts#L37) |
+| POST | `/api/tests/:testId/execution-comments` | [source](../apps/server/src/modules/executionComments/executionComments.routes.ts#L51) |
+| GET | `/api/runs/:runId/execution-comments` | [source](../apps/server/src/modules/executionComments/executionComments.routes.ts#L81) |
+| POST | `/api/runs/:runId/execution-comments` | [source](../apps/server/src/modules/executionComments/executionComments.routes.ts#L95) |
+
+### health
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/health` | [source](../apps/server/src/app.ts#L69) |
+
+### importExport
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/cases/import/csv/profile` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2541) |
+| POST | `/api/projects/:projectId/cases/import/csv/suggest-mapping` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2555) |
+| POST | `/api/projects/:projectId/cases/import/csv` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2587) |
+| POST | `/api/projects/:projectId/cases/import/csv/async` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2600) |
+| POST | `/api/projects/:projectId/cases/import/json` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2637) |
+| POST | `/api/projects/:projectId/cases/import/xml` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2656) |
+| GET | `/api/projects/:projectId/import-jobs` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2675) |
+| GET | `/api/projects/:projectId/import-jobs/:jobId` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2683) |
+| GET | `/api/projects/:projectId/export-jobs` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2705) |
+| GET | `/api/projects/:projectId/export-jobs/:jobId` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2717) |
+| POST | `/api/projects/:projectId/cases/export/async` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2740) |
+| GET | `/api/projects/:projectId/attachments/export` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2787) |
+| POST | `/api/projects/:projectId/attachments/export/async` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2806) |
+| POST | `/api/projects/:projectId/attachments/import` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2843) |
+| POST | `/api/projects/:projectId/runs/results/export/csv/async` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2872) |
+| GET | `/api/projects/:projectId/reports/export-jobs` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2899) |
+| POST | `/api/projects/:projectId/reports/export` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2907) |
+| GET | `/api/projects/:projectId/reports/export` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2937) |
+| GET | `/api/projects/:projectId/export-jobs/:jobId/download` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2965) |
+| GET | `/api/projects/:projectId/cases/export/csv` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2989) |
+| GET | `/api/projects/:projectId/cases/export/json` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L2999) |
+| GET | `/api/projects/:projectId/cases/export/testrail` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L3009) |
+| GET | `/api/projects/:projectId/cases/export/xml` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L3019) |
+| GET | `/api/projects/:projectId/runs/:runId/results/export/csv` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L3029) |
+| GET | `/api/projects/:projectId/runs/:runId/results/export/testrail` | [source](../apps/server/src/modules/importExport/importExport.routes.ts#L3040) |
+
+### integrations
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/integrations/defects` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L126) |
+| PATCH | `/api/projects/:projectId/integrations/defects` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L133) |
+| GET | `/api/projects/:projectId/integrations/defects/template-preview` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L185) |
+| GET | `/api/projects/:projectId/integrations/defects/reference-urls` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L206) |
+| GET | `/api/projects/:projectId/integrations/defects/push-fields` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L216) |
+| POST | `/api/projects/:projectId/integrations/defects/test-connection` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L242) |
+| GET | `/api/projects/:projectId/integrations/defects/issues/search` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L254) |
+| GET | `/api/projects/:projectId/integrations/defects/recent` | [source](../apps/server/src/modules/integrations/integrations.routes.ts#L263) |
+
+### milestones
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/milestones` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L62) |
+| POST | `/api/projects/:projectId/milestones` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L75) |
+| PATCH | `/api/projects/:projectId/milestones/:milestoneId` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L128) |
+| DELETE | `/api/projects/:projectId/milestones/:milestoneId` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L217) |
+| GET | `/api/projects/:projectId/milestones/:milestoneId` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L265) |
+| GET | `/api/projects/:projectId/milestones/:milestoneId/runs` | [source](../apps/server/src/modules/milestones/milestones.routes.ts#L305) |
+
+### plans
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/plans` | [source](../apps/server/src/modules/plans/plans.routes.ts#L115) |
+| POST | `/api/projects/:projectId/plans` | [source](../apps/server/src/modules/plans/plans.routes.ts#L136) |
+| PATCH | `/api/projects/:projectId/plans/:planId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L171) |
+| DELETE | `/api/projects/:projectId/plans/:planId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L227) |
+| GET | `/api/projects/:projectId/plans/:planId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L265) |
+| GET | `/api/projects/:projectId/plans/:planId/entries` | [source](../apps/server/src/modules/plans/plans.routes.ts#L285) |
+| POST | `/api/projects/:projectId/plans/:planId/entries` | [source](../apps/server/src/modules/plans/plans.routes.ts#L319) |
+| PATCH | `/api/projects/:projectId/plans/:planId/entries/:entryId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L391) |
+| PUT | `/api/projects/:projectId/plans/:planId/entries/:entryId/configurations` | [source](../apps/server/src/modules/plans/plans.routes.ts#L487) |
+| DELETE | `/api/projects/:projectId/plans/:planId/entries/:entryId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L535) |
+| POST | `/api/projects/:projectId/plans/:planId/runs` | [source](../apps/server/src/modules/plans/plans.routes.ts#L585) |
+| POST | `/api/projects/:projectId/plans/:planId/matrix` | [source](../apps/server/src/modules/plans/plans.routes.ts#L703) |
+| POST | `/api/projects/:projectId/plans/:planId/runs/by-configuration` | [source](../apps/server/src/modules/plans/plans.routes.ts#L787) |
+| GET | `/api/projects/:projectId/plans/:planId/entries/:entryId/configurations` | [source](../apps/server/src/modules/plans/plans.routes.ts#L916) |
+| GET | `/api/projects/:projectId/plans/:planId/rollup-by-configuration` | [source](../apps/server/src/modules/plans/plans.routes.ts#L976) |
+| GET | `/api/projects/:projectId/configuration-groups` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1140) |
+| POST | `/api/projects/:projectId/configuration-groups` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1187) |
+| PATCH | `/api/configuration-groups/:groupId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1226) |
+| DELETE | `/api/configuration-groups/:groupId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1268) |
+| POST | `/api/configuration-groups/:groupId/configurations` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1310) |
+| PATCH | `/api/configurations/:configurationId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1359) |
+| DELETE | `/api/configurations/:configurationId` | [source](../apps/server/src/modules/plans/plans.routes.ts#L1414) |
+
+### print
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/reports/print` | [source](../apps/server/src/modules/print/print.routes.ts#L106) |
+| GET | `/api/cases/:caseId/print` | [source](../apps/server/src/modules/print/print.routes.ts#L124) |
+| GET | `/api/projects/:projectId/cases/print` | [source](../apps/server/src/modules/print/print.routes.ts#L137) |
+| POST | `/api/projects/:projectId/cases/print` | [source](../apps/server/src/modules/print/print.routes.ts#L154) |
+| GET | `/api/projects/:projectId/runs/:runId/print` | [source](../apps/server/src/modules/print/print.routes.ts#L168) |
+| GET | `/api/projects/:projectId/plans/:planId/print` | [source](../apps/server/src/modules/print/print.routes.ts#L182) |
+| GET | `/api/projects/:projectId/milestones/:milestoneId/print` | [source](../apps/server/src/modules/print/print.routes.ts#L195) |
+
+### projects
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/search` | [source](../apps/server/src/modules/projects/projects.routes.ts#L30) |
+| GET | `/api/projects` | [source](../apps/server/src/modules/projects/projects.routes.ts#L41) |
+| POST | `/api/projects` | [source](../apps/server/src/modules/projects/projects.routes.ts#L66) |
+| GET | `/api/projects/:projectId/search` | [source](../apps/server/src/modules/projects/projects.routes.ts#L104) |
+| GET | `/api/projects/:projectId` | [source](../apps/server/src/modules/projects/projects.routes.ts#L125) |
+| POST | `/api/projects/:projectId/archive` | [source](../apps/server/src/modules/projects/projects.routes.ts#L140) |
+| POST | `/api/projects/:projectId/restore` | [source](../apps/server/src/modules/projects/projects.routes.ts#L157) |
+| PATCH | `/api/projects/:projectId` | [source](../apps/server/src/modules/projects/projects.routes.ts#L174) |
+| DELETE | `/api/projects/:projectId` | [source](../apps/server/src/modules/projects/projects.routes.ts#L192) |
+
+### reports
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/overview` | [source](../apps/server/src/modules/reports/reports.routes.ts#L653) |
+| GET | `/api/projects/:projectId/activity-series` | [source](../apps/server/src/modules/reports/reports.routes.ts#L684) |
+| GET | `/api/projects/:projectId/reports/status-distribution` | [source](../apps/server/src/modules/reports/reports.routes.ts#L727) |
+| GET | `/api/projects/:projectId/reports/failure-trend` | [source](../apps/server/src/modules/reports/reports.routes.ts#L743) |
+| GET | `/api/projects/:projectId/reports/automation-coverage` | [source](../apps/server/src/modules/reports/reports.routes.ts#L763) |
+| GET | `/api/projects/:projectId/reports/recent-failures` | [source](../apps/server/src/modules/reports/reports.routes.ts#L768) |
+| GET | `/api/projects/:projectId/reports/recent-results` | [source](../apps/server/src/modules/reports/reports.routes.ts#L795) |
+| GET | `/api/projects/:projectId/reports/results-explorer` | [source](../apps/server/src/modules/reports/reports.routes.ts#L820) |
+| GET | `/api/projects/:projectId/reports/run-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L940) |
+| GET | `/api/projects/:projectId/reports/traceability` | [source](../apps/server/src/modules/reports/reports.routes.ts#L966) |
+| GET | `/api/projects/:projectId/reports/refs-traceability` | [source](../apps/server/src/modules/reports/reports.routes.ts#L972) |
+| GET | `/api/projects/:projectId/reports/coverage-gap` | [source](../apps/server/src/modules/reports/reports.routes.ts#L985) |
+| GET | `/api/projects/:projectId/reports/defect-coverage` | [source](../apps/server/src/modules/reports/reports.routes.ts#L991) |
+| GET | `/api/projects/:projectId/reports/milestone-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L997) |
+| GET | `/api/projects/:projectId/milestones/:milestoneId/forecast` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1003) |
+| GET | `/api/projects/:projectId/reports/plan-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1017) |
+| GET | `/api/projects/:projectId/reports/case-activity-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1023) |
+| GET | `/api/projects/:projectId/reports/cases-property-distribution` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1030) |
+| GET | `/api/projects/:projectId/reports/status-tops` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1037) |
+| GET | `/api/projects/:projectId/reports/defect-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1043) |
+| GET | `/api/projects/:projectId/reports/results-case-comparison` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1050) |
+| GET | `/api/projects/:projectId/reports/results-property-distribution` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1057) |
+| GET | `/api/projects/:projectId/reports/refs-coverage` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1064) |
+| GET | `/api/projects/:projectId/reports/refs-comparison` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1070) |
+| GET | `/api/projects/:projectId/reports/refs-defect-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1077) |
+| GET | `/api/projects/:projectId/reports/project-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1083) |
+| GET | `/api/projects/:projectId/reports/users-workload-summary` | [source](../apps/server/src/modules/reports/reports.routes.ts#L1089) |
+| GET | `/api/projects/:projectId/saved-reports` | [source](../apps/server/src/modules/reports/savedReports.routes.ts#L92) |
+| POST | `/api/projects/:projectId/saved-reports` | [source](../apps/server/src/modules/reports/savedReports.routes.ts#L120) |
+| PATCH | `/api/projects/:projectId/saved-reports/:savedReportId` | [source](../apps/server/src/modules/reports/savedReports.routes.ts#L182) |
+| DELETE | `/api/projects/:projectId/saved-reports/:savedReportId` | [source](../apps/server/src/modules/reports/savedReports.routes.ts#L242) |
+| GET | `/api/projects/:projectId/scheduled-reports` | [source](../apps/server/src/modules/reports/scheduledReports.routes.ts#L46) |
+| POST | `/api/projects/:projectId/scheduled-reports` | [source](../apps/server/src/modules/reports/scheduledReports.routes.ts#L73) |
+| PATCH | `/api/projects/:projectId/scheduled-reports/:scheduledReportId` | [source](../apps/server/src/modules/reports/scheduledReports.routes.ts#L130) |
+| DELETE | `/api/projects/:projectId/scheduled-reports/:scheduledReportId` | [source](../apps/server/src/modules/reports/scheduledReports.routes.ts#L184) |
+| POST | `/api/projects/:projectId/scheduled-reports/:scheduledReportId/run` | [source](../apps/server/src/modules/reports/scheduledReports.routes.ts#L227) |
+
+### requirements
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/requirements` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L47) |
+| POST | `/api/projects/:projectId/requirements` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L87) |
+| PATCH | `/api/requirements/:requirementId` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L121) |
+| DELETE | `/api/requirements/:requirementId` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L159) |
+| POST | `/api/cases/:caseId/requirements/:requirementId` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L189) |
+| DELETE | `/api/cases/:caseId/requirements/:requirementId` | [source](../apps/server/src/modules/requirements/requirements.routes.ts#L234) |
+
+### results
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/result-correction-policy` | [source](../apps/server/src/modules/results/results.routes.ts#L178) |
+| PATCH | `/api/results/:resultId` (405 immutable) | [source](../apps/server/src/modules/results/results.routes.ts#L187) |
+| PUT | `/api/results/:resultId` (405 immutable) | [source](../apps/server/src/modules/results/results.routes.ts#L188) |
+| DELETE | `/api/results/:resultId` (405 immutable) | [source](../apps/server/src/modules/results/results.routes.ts#L189) |
+| POST | `/api/attachments` | [source](../apps/server/src/modules/results/results.routes.ts#L191) |
+| POST | `/api/tests/:testId/results` | [source](../apps/server/src/modules/results/results.routes.ts#L272) |
+| GET | `/api/tests/:testId/results` | [source](../apps/server/src/modules/results/results.routes.ts#L302) |
+| GET | `/api/results/:resultId/steps` | [source](../apps/server/src/modules/results/results.routes.ts#L337) |
+| GET | `/api/results/:resultId/scenarios` | [source](../apps/server/src/modules/results/results.routes.ts#L343) |
+| GET | `/api/results/:resultId/attachments` | [source](../apps/server/src/modules/results/results.routes.ts#L349) |
+| POST | `/api/results/:resultId/attachments` | [source](../apps/server/src/modules/results/results.routes.ts#L389) |
+| POST | `/api/results/:resultId/attachments/presign` | [source](../apps/server/src/modules/results/results.routes.ts#L466) |
+| GET | `/api/attachments/:attachmentId` | [source](../apps/server/src/modules/results/results.routes.ts#L500) |
+| DELETE | `/api/attachments/:attachmentId` | [source](../apps/server/src/modules/results/results.routes.ts#L537) |
+| POST | `/api/attachments/:attachmentId/download-url` | [source](../apps/server/src/modules/results/results.routes.ts#L557) |
+| GET | `/api/results/:resultId/defects` | [source](../apps/server/src/modules/results/results.routes.ts#L591) |
+| POST | `/api/results/:resultId/defects` | [source](../apps/server/src/modules/results/results.routes.ts#L611) |
+| DELETE | `/api/results/:resultId/defects/:defectLinkId` | [source](../apps/server/src/modules/results/results.routes.ts#L703) |
+| POST | `/api/results/:resultId/defects/push` | [source](../apps/server/src/modules/results/results.routes.ts#L773) |
+| POST | `/api/results/:resultId/defects/:defectLinkId/sync` | [source](../apps/server/src/modules/results/results.routes.ts#L956) |
+
+### runs
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/runs-overview` | [source](../apps/server/src/modules/runs/runs.routes.ts#L108) |
+| GET | `/api/projects/:projectId/runs` | [source](../apps/server/src/modules/runs/runs.routes.ts#L123) |
+| GET | `/api/runs/:runId` | [source](../apps/server/src/modules/runs/runs.routes.ts#L142) |
+| GET | `/api/projects/:projectId/runs/:runId` | [source](../apps/server/src/modules/runs/runs.routes.ts#L152) |
+| GET | `/api/projects/:projectId/runs/:runId/instances` | [source](../apps/server/src/modules/runs/runs.routes.ts#L176) |
+| GET | `/api/projects/:projectId/runs/:runId/instances/grouped` | [source](../apps/server/src/modules/runs/runs.routes.ts#L210) |
+| GET | `/api/projects/:projectId/cases/:caseId/execution-history` | [source](../apps/server/src/modules/runs/runs.routes.ts#L253) |
+| GET | `/api/projects/:projectId/runs/:runId/instances/export/csv` | [source](../apps/server/src/modules/runs/runs.routes.ts#L274) |
+| POST | `/api/projects/:projectId/runs` | [source](../apps/server/src/modules/runs/runs.routes.ts#L289) |
+| PATCH | `/api/runs/:runId` | [source](../apps/server/src/modules/runs/runs.routes.ts#L338) |
+| PATCH | `/api/runs/:runId/assignee` | [source](../apps/server/src/modules/runs/runs.routes.ts#L396) |
+| POST | `/api/runs/:runId/results/by-case` | [source](../apps/server/src/modules/runs/runs.routes.ts#L420) |
+| POST | `/api/runs/:runId/results/bulk` | [source](../apps/server/src/modules/runs/runs.routes.ts#L438) |
+| POST | `/api/runs/:runId/results` | [source](../apps/server/src/modules/runs/runs.routes.ts#L477) |
+| POST | `/api/runs/:runId/close` | [source](../apps/server/src/modules/runs/runs.routes.ts#L512) |
+| POST | `/api/projects/:projectId/runs/:runId/sync-composition` | [source](../apps/server/src/modules/runs/runs.routes.ts#L529) |
+| PATCH | `/api/projects/:projectId/runs/:runId/composition` | [source](../apps/server/src/modules/runs/runs.routes.ts#L558) |
+| POST | `/api/runs/:runId/reopen` | [source](../apps/server/src/modules/runs/runs.routes.ts#L587) |
+| POST | `/api/runs/:runId/tests` | [source](../apps/server/src/modules/runs/runs.routes.ts#L604) |
+| POST | `/api/runs/:runId/remove-test` | [source](../apps/server/src/modules/runs/runs.routes.ts#L641) |
+| GET | `/api/runs/:runId/summary` | [source](../apps/server/src/modules/runs/runs.routes.ts#L669) |
+| POST | `/api/runs/:runId/rerun` | [source](../apps/server/src/modules/runs/runs.routes.ts#L675) |
+| POST | `/api/runs/:runId/duplicate` | [source](../apps/server/src/modules/runs/runs.routes.ts#L694) |
+| PATCH | `/api/tests/:testId/assignee` | [source](../apps/server/src/modules/runs/runs.routes.ts#L718) |
+| GET | `/api/projects/:projectId/tests/assigned-to-me` | [source](../apps/server/src/modules/runs/runs.routes.ts#L757) |
+| GET | `/api/projects/:projectId/tests/team-todo` | [source](../apps/server/src/modules/runs/runs.routes.ts#L766) |
+| GET | `/api/runs/:runId/test-subscriptions` | [source](../apps/server/src/modules/runs/runs.routes.ts#L789) |
+| PUT | `/api/tests/:testId/subscription` | [source](../apps/server/src/modules/runs/runs.routes.ts#L799) |
+
+### sections
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/suites/:suiteId/sections` | [source](../apps/server/src/modules/sections/sections.routes.ts#L23) |
+| POST | `/api/suites/:suiteId/sections` | [source](../apps/server/src/modules/sections/sections.routes.ts#L30) |
+| POST | `/api/suites/:suiteId/sections/reorder` | [source](../apps/server/src/modules/sections/sections.routes.ts#L67) |
+| PATCH | `/api/sections/:sectionId` | [source](../apps/server/src/modules/sections/sections.routes.ts#L98) |
+| POST | `/api/sections/:sectionId/copy` | [source](../apps/server/src/modules/sections/sections.routes.ts#L148) |
+| DELETE | `/api/sections/:sectionId` | [source](../apps/server/src/modules/sections/sections.routes.ts#L189) |
+
+### settings
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/settings/attachments/retention-policy` | [source](../apps/server/src/modules/settings/attachmentRetention.routes.ts#L17) |
+| POST | `/api/projects/:projectId/settings/attachments/retention-prune` | [source](../apps/server/src/modules/settings/attachmentRetention.routes.ts#L23) |
+| GET | `/api/projects/:projectId/settings/audit-logs` | [source](../apps/server/src/modules/settings/audit.routes.ts#L70) |
+| GET | `/api/projects/:projectId/settings/audit-logs/export.csv` | [source](../apps/server/src/modules/settings/audit.routes.ts#L163) |
+| POST | `/api/projects/:projectId/settings/audit-logs/retention-prune` | [source](../apps/server/src/modules/settings/audit.routes.ts#L205) |
+| GET | `/api/projects/:projectId/settings/audit-log-filters` | [source](../apps/server/src/modules/settings/audit.routes.ts#L237) |
+| GET | `/api/projects/:projectId/settings/custom-fields` | [source](../apps/server/src/modules/settings/customFields.routes.ts#L45) |
+| POST | `/api/projects/:projectId/settings/custom-fields` | [source](../apps/server/src/modules/settings/customFields.routes.ts#L102) |
+| PATCH | `/api/projects/:projectId/settings/custom-fields/:fieldId` | [source](../apps/server/src/modules/settings/customFields.routes.ts#L180) |
+| DELETE | `/api/projects/:projectId/settings/custom-fields/:fieldId` | [source](../apps/server/src/modules/settings/customFields.routes.ts#L285) |
+| GET | `/api/projects/:projectId/settings/custom-roles` | [source](../apps/server/src/modules/settings/customRoles.routes.ts#L50) |
+| POST | `/api/projects/:projectId/settings/custom-roles` | [source](../apps/server/src/modules/settings/customRoles.routes.ts#L72) |
+| PATCH | `/api/projects/:projectId/settings/custom-roles/:roleId` | [source](../apps/server/src/modules/settings/customRoles.routes.ts#L110) |
+| DELETE | `/api/projects/:projectId/settings/custom-roles/:roleId` | [source](../apps/server/src/modules/settings/customRoles.routes.ts#L138) |
+| GET | `/api/projects/:projectId/settings/email-outbox` | [source](../apps/server/src/modules/settings/emailOutbox.routes.ts#L68) |
+| POST | `/api/projects/:projectId/settings/email-outbox/:outboxId/retry` | [source](../apps/server/src/modules/settings/emailOutbox.routes.ts#L118) |
+| GET | `/api/projects/:projectId/settings/email-outbox/digest-preview` | [source](../apps/server/src/modules/settings/emailOutbox.routes.ts#L147) |
+| GET | `/api/projects/:projectId/settings/members` | [source](../apps/server/src/modules/settings/members.routes.ts#L19) |
+| POST | `/api/projects/:projectId/settings/members` | [source](../apps/server/src/modules/settings/members.routes.ts#L55) |
+| PATCH | `/api/projects/:projectId/settings/members/:memberId` | [source](../apps/server/src/modules/settings/members.routes.ts#L125) |
+| DELETE | `/api/projects/:projectId/settings/members/:memberId` | [source](../apps/server/src/modules/settings/members.routes.ts#L214) |
+| GET | `/api/projects/:projectId/settings` | [source](../apps/server/src/modules/settings/settings.routes.ts#L18) |
+| GET | `/api/projects/:projectId/statuses` | [source](../apps/server/src/modules/settings/statuses.routes.ts#L25) |
+| GET | `/api/projects/:projectId/settings/statuses` | [source](../apps/server/src/modules/settings/statuses.routes.ts#L40) |
+| POST | `/api/projects/:projectId/settings/statuses` | [source](../apps/server/src/modules/settings/statuses.routes.ts#L54) |
+| PATCH | `/api/projects/:projectId/settings/statuses/:statusId` | [source](../apps/server/src/modules/settings/statuses.routes.ts#L152) |
+| DELETE | `/api/projects/:projectId/settings/statuses/:statusId` | [source](../apps/server/src/modules/settings/statuses.routes.ts#L257) |
+| GET | `/api/projects/:projectId/settings/templates` | [source](../apps/server/src/modules/settings/templates.routes.ts#L25) |
+| POST | `/api/projects/:projectId/settings/templates` | [source](../apps/server/src/modules/settings/templates.routes.ts#L39) |
+| PATCH | `/api/projects/:projectId/settings/templates/:templateId` | [source](../apps/server/src/modules/settings/templates.routes.ts#L119) |
+| DELETE | `/api/projects/:projectId/settings/templates/:templateId` | [source](../apps/server/src/modules/settings/templates.routes.ts#L206) |
+| GET | `/api/projects/:projectId/settings/webhooks` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L49) |
+| GET | `/api/projects/:projectId/settings/webhook-events` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L88) |
+| GET | `/api/projects/:projectId/settings/webhook-event-catalog` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L93) |
+| GET | `/api/projects/:projectId/settings/webhook-delivery-policy` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L98) |
+| PATCH | `/api/projects/:projectId/settings/webhook-delivery-policy` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L111) |
+| GET | `/api/projects/:projectId/settings/webhook-attempts` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L150) |
+| GET | `/api/projects/:projectId/settings/webhook-attempts/:attemptId` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L204) |
+| POST | `/api/projects/:projectId/settings/webhooks` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L236) |
+| PATCH | `/api/projects/:projectId/settings/webhooks/:webhookId` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L287) |
+| DELETE | `/api/projects/:projectId/settings/webhooks/:webhookId` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L337) |
+| POST | `/api/projects/:projectId/settings/webhook-attempts/:attemptId/retry` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L368) |
+| POST | `/api/projects/:projectId/settings/webhooks/:webhookId/test-send` | [source](../apps/server/src/modules/settings/webhooks.routes.ts#L397) |
+| GET | `/api/projects/:projectId/workspace-preferences` | [source](../apps/server/src/modules/settings/workspacePreferences.routes.ts#L16) |
+| PATCH | `/api/projects/:projectId/workspace-preferences` | [source](../apps/server/src/modules/settings/workspacePreferences.routes.ts#L23) |
+
+### sharedSteps
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/shared-steps` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L49) |
+| GET | `/api/projects/:projectId/shared-steps/:sharedStepId` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L57) |
+| POST | `/api/projects/:projectId/shared-steps` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L67) |
+| PATCH | `/api/projects/:projectId/shared-steps/:sharedStepId` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L92) |
+| DELETE | `/api/projects/:projectId/shared-steps/:sharedStepId` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L120) |
+| POST | `/api/cases/:caseId/shared-steps/:sharedStepId` | [source](../apps/server/src/modules/sharedSteps/sharedSteps.routes.ts#L140) |
+
+### suites
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/suites` | [source](../apps/server/src/modules/suites/suites.routes.ts#L30) |
+| POST | `/api/projects/:projectId/suites` | [source](../apps/server/src/modules/suites/suites.routes.ts#L37) |
+| POST | `/api/projects/:projectId/suites/baselines` | [source](../apps/server/src/modules/suites/suites.routes.ts#L74) |
+| GET | `/api/projects/:projectId/suites/:suiteId/summary` | [source](../apps/server/src/modules/suites/suites.routes.ts#L104) |
+| GET | `/api/projects/:projectId/suites/:suiteId/cases` | [source](../apps/server/src/modules/suites/suites.routes.ts#L113) |
+| GET | `/api/suites/:suiteId` | [source](../apps/server/src/modules/suites/suites.routes.ts#L138) |
+| PATCH | `/api/suites/:suiteId` | [source](../apps/server/src/modules/suites/suites.routes.ts#L143) |
+| DELETE | `/api/suites/:suiteId` | [source](../apps/server/src/modules/suites/suites.routes.ts#L169) |
+
+### testrail
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/v2` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L404) |
+| GET | `/api/v2/openapi.json` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L419) |
+| GET | `/api/v2/postman-collection.json` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L427) |
+| GET | `/api/v2/get_projects` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L435) |
+| GET | `/api/v2/get_project/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L440) |
+| GET | `/api/v2/get_suite/:suiteId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L447) |
+| GET | `/api/v2/get_section/:sectionId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L454) |
+| GET | `/api/v2/get_milestone/:milestoneId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L462) |
+| GET | `/api/v2/get_plan/:planId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L472) |
+| GET | `/api/v2/get_case_types` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L482) |
+| GET | `/api/v2/get_priorities` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L486) |
+| GET | `/api/v2/get_case/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L490) |
+| GET | `/api/v2/get_scenarios/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L496) |
+| GET | `/api/v2/get_bdd_scenarios/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L502) |
+| POST | `/api/v2/add_scenario/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L508) |
+| POST | `/api/v2/add_bdd_scenario/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L520) |
+| POST | `/api/v2/update_scenario/:scenarioId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L532) |
+| POST | `/api/v2/update_bdd_scenario/:scenarioId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L544) |
+| POST | `/api/v2/delete_scenario/:scenarioId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L556) |
+| POST | `/api/v2/delete_bdd_scenario/:scenarioId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L562) |
+| GET | `/api/v2/get_bdd_result_scenarios/:resultId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L568) |
+| GET | `/api/v2/get_suites/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L574) |
+| GET | `/api/v2/get_sections/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L580) |
+| GET | `/api/v2/get_milestones/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L595) |
+| GET | `/api/v2/get_plans/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L608) |
+| GET | `/api/v2/get_statuses` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L621) |
+| GET | `/api/v2/get_case_statuses` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L637) |
+| GET | `/api/v2/get_datasets/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L641) |
+| GET | `/api/v2/get_variables/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L646) |
+| GET | `/api/v2/get_configs/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L651) |
+| POST | `/api/v2/add_milestone/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L667) |
+| POST | `/api/v2/update_milestone/:milestoneId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L691) |
+| POST | `/api/v2/add_plan/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L728) |
+| POST | `/api/v2/update_plan/:planId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L749) |
+| POST | `/api/v2/add_config_group/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L779) |
+| POST | `/api/v2/update_config_group/:configGroupId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L790) |
+| POST | `/api/v2/add_config/:configGroupId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L806) |
+| POST | `/api/v2/update_config/:configurationId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L821) |
+| GET | `/api/v2/get_case_fields/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L837) |
+| GET | `/api/v2/get_result_fields/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L847) |
+| GET | `/api/v2/get_templates/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L857) |
+| GET | `/api/v2/get_users` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L867) |
+| GET | `/api/v2/get_users/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L877) |
+| GET | `/api/v2/get_reports/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L889) |
+| GET | `/api/v2/get_reports` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L900) |
+| GET | `/api/v2/get_roles` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L925) |
+| GET | `/api/v2/get_labels/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L929) |
+| GET | `/api/v2/get_groups` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L935) |
+| GET | `/api/v2/get_shared_steps/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L939) |
+| GET | `/api/v2/get_attachments_for_case/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L947) |
+| GET | `/api/v2/get_attachments_for_result/:resultId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L958) |
+| POST | `/api/v2/run_report/:reportId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L969) |
+| GET | `/api/v2/get_cases/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1004) |
+| GET | `/api/v2/get_runs/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1022) |
+| POST | `/api/v2/add_case/:sectionId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1033) |
+| POST | `/api/v2/update_case/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1048) |
+| GET | `/api/v2/get_run/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1061) |
+| POST | `/api/v2/add_suite/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1068) |
+| POST | `/api/v2/update_suite/:suiteId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1080) |
+| POST | `/api/v2/add_section/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1091) |
+| POST | `/api/v2/update_section/:sectionId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1113) |
+| POST | `/api/v2/delete_section/:sectionId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1127) |
+| POST | `/api/v2/add_run/:projectId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1134) |
+| GET | `/api/v2/get_tests/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1155) |
+| GET | `/api/v2/get_results/:testId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1166) |
+| GET | `/api/v2/get_results_for_case/:runId/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1177) |
+| GET | `/api/v2/get_results_for_run/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1195) |
+| POST | `/api/v2/close_run/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1214) |
+| POST | `/api/v2/update_run/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1221) |
+| POST | `/api/v2/add_result_for_case/:runId/:caseId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1251) |
+| POST | `/api/v2/add_results_for_cases/:runId` | [source](../apps/server/src/modules/testrail/testrail.routes.ts#L1271) |
+
+### tokens
+
+| Method | Path | Handler |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/tokens/scopes` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L179) |
+| GET | `/api/projects/:projectId/tokens` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L190) |
+| POST | `/api/projects/:projectId/tokens` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L197) |
+| DELETE | `/api/projects/:projectId/tokens/:tokenId` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L206) |
+| GET | `/api/tokens` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L214) |
+| POST | `/api/tokens` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L221) |
+| DELETE | `/api/tokens/:tokenId` | [source](../apps/server/src/modules/tokens/tokens.routes.ts#L241) |
+
+## 변경 시 갱신
+
+path/method, request/response, required/nullable/default, auth/permission, status/error, pagination/alias, bulk/transaction, 지원 모드가 바뀌면 해당 계약과 등록 목록을 함께 수정한다. 관련 handler/schema 테스트에서 응답을 확인하며 문서 변경만으로 전체 API가 검증됐다고 주장하지 않는다.

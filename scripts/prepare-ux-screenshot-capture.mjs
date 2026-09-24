@@ -42,7 +42,7 @@ const lines = [
   `Project ID: ${projectId}`,
   `Run ID: ${runId}`,
   "",
-  "Follow `docs/UX_GATE.md` while capturing these routes.",
+  "Follow `docs/PRODUCT_SPEC.md` while capturing these routes.",
   "",
   "| Route | Layout | Viewport | URL | File |",
   "|-------|--------|----------|-----|------|"
@@ -60,7 +60,7 @@ lines.push(
   "PR checklist:",
   "",
   "- [ ] Desktop and narrow screenshots are captured for touched routes.",
-  "- [ ] Section tree placement is unchanged for case repository captures.",
+  "- [ ] Section hierarchy and query scope remain clear across tree and case list.",
   "- [ ] URL state and selected panes survive navigation and viewport changes.",
   "- [ ] Screenshot folder is linked in the PR."
 );

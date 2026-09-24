@@ -1,212 +1,46 @@
-# Domain Model (TestRail-like)
+# Domain Model
 
-## Core Modeling Principles
-- `TestCase` is the source specification, not execution state.
-- `TestRun` is a time-bound execution container.
-- `TestInstance` is the executable unit cloned into a run from a case.
-- `TestResult` is append-only execution history on a test instance.
-- Never mix mutable case definition with historical execution records.
+Updated: 2026-09-23. 현재 구현의 모델 이름과 데이터 경계를 기준으로 정리했다. 필드/관계 원장은 [DATABASE_SCHEMA](./DATABASE_SCHEMA.md), 동작과 오류는 [API_SPEC](./API_SPEC.md)다.
 
-If this separation is violated, past execution evidence becomes corrupted when test case definitions are edited later.
+## 핵심 경계
 
-## Entity Definitions
+| 개념 | 책임·관계 |
+| --- | --- |
+| Project / TestSuite / Section | 프로젝트 범위, 저장소, parentSectionId 기반 섹션 계층 |
+| TestCase | 작성 원본. lockVersion으로 동시 수정 비교, archivedAt/deletedAt 구별. 실행 상태를 case에 저장하지 않음 |
+| TestCaseStep / TestCaseScenario | 순서 있는 절차와 BDD 시나리오. step/scenario 결과와는 별개 |
+| TestCaseVersion | versionNo와 지침·커스텀 값·첨부 snapshot을 가진 작성 이력 |
+| SharedStep / SharedStepEntry | 재사용 절차. 미래 미구현 개념이 아니라 현재 schema/route에 존재 |
+| TestRun | 실행 묶음. suite, 선택 정책, 일정/환경, 선택적 milestone/plan 관계 |
+| TestInstance | Run 소속 case 실행 대상. 일부 snapshot 필드와 caseLockVersionAtRun, 현재 status/latestResultId 보유. API의 test와 같은 개념 |
+| TestResult / TestResultStep / TestResultScenario | 실행 결과 이력과 단계/시나리오별 결과. 정정은 기존 행 수정이 아니라 새 결과 |
+| ExecutionComment | 실행 문맥의 논의. TestResult의 상태 변경 이력과 혼동하지 않음 |
+| Milestone | 상하위 milestone 및 연결 Run/Plan의 릴리스 문맥 |
+| TestPlan / TestPlanEntry | 여러 실행 묶음과 구성 선택. entry와 생성된 Run의 소속을 함께 유지 |
+| ConfigurationGroup / Configuration / TestPlanEntryConfiguration | 브라우저·환경 등 구성 차원/값/entry 연결 |
+| Requirement / CaseRequirement | 요구사항과 케이스 추적성. 자유 문자열 refs와 구별 |
+| Attachment | 다형 대상·명시적 result 연결을 가진 metadata. bytes 저장은 외부 경로 |
+| ResultDefectLink / DefectIntegrationSetting | 결과에 연결된 결함과 공급자 설정 |
+| User / ProjectMember / UserGroup / CustomRole | 사용자·프로젝트 역할·그룹·사용자 정의 권한. 실제 권한은 helper와 project access 정책을 확인 |
+| ApiToken | 자동화 접근 scope/expiry/revocation 및 hash 보존 |
+| ActivityEvent / AuditLog / Notification | 사용자 활동·감사·알림의 서로 다른 용도 |
+| WebhookSubscription / WebhookDeliveryAttempt / EmailOutbox | 외부 전달 설정·시도·대기열; DB 기록과 전달 성공은 다름 |
+| SavedReport / ScheduledReport / ImportJob / ExportJob | 저장된 정의·일정·실행 작업/산출물. endpoint 존재와 외부 전달 성공을 구별 |
+| CustomField / CustomStatus / CaseTemplate | 프로젝트 확장 정의. 실제 결과 상태의 DB enum을 자동 확장하는 것과는 다름 |
+| NotificationPreference / UserProjectPreference / TestSubscription / InstanceAccessDefaults | 알림·workspace·구독·기본 접근 정책 |
 
-## 1) Project
-- Top-level boundary for all test assets and executions.
-- Owns suites, runs, plans, milestones, settings, and membership.
+## 불변식과 구현 범위
 
-## 2) Test Suite
-- Logical storage area for cases in a project.
-- Example: `MWEB Regression`, `API Regression`, `App E2E`.
+- case 작성과 Run 실행/결과는 별개다. 과거 결과 행의 내용은 유지한다. TestInstance가 지침 전체를 독립 snapshot으로 보관하거나 caseVersionId FK를 갖는다고 가정하지 않는다. 실제 snapshot 범위는 schema에서 확인한다.
+- authored 수정의 낙관적 잠금은 lockVersion/expectedVersion이다. 현재 API에서 비교 값이 선택적이므로 클라이언트는 이를 보내야 안전한 동시 수정 계약이 성립한다.
+- 결과 쓰기는 최신 상태와 이력의 일치를 유지한다. 기존 결과 PUT/PATCH/DELETE는 정책상 거절한다. 이미 결과가 있는 test에 untested를 재기록하지 않는다. 닫힌 Run에는 결과를 쓰지 않는다.
+- All/Dynamic/Selected 구성은 membership 정책이다. 케이스 정의 수정, 열린 Run의 구성 동기화, 과거 결과 보존을 같은 동작으로 취급하지 않는다.
+- 고유 case 수와 여러 Run의 test 수를 구별한다. Run 통계는 전체 instance 기준이며 현재 목록 페이지나 선택 수로 계산하지 않는다.
+- 첨부 실패로 이미 저장된 결과가 미저장 상태가 되지는 않는다. 실패 파일만 같은 대상에 재시도한다.
+- 페이지/상세 지연 조회와 좁은 범위 갱신을 사용한다. 모든 데이터를 클라이언트에 모아 집계하는 것을 계약으로 삼지 않는다.
 
-## 3) Section
-- Hierarchical folder tree inside a suite.
-- Supports nesting via `parent_section_id`.
+## 상태와 호환 매핑
 
-## 4) Test Case
-- Canonical test specification authored by QA.
-- Typical fields:
-  - `title`, `preconditions`, `expected_result`
-  - `priority`, `type`, `estimate`
-  - `refs`, `labels`
-  - `automation_key`, `external_id`
-- Change-safety fields:
-  - `version`, `lock_version`
-- Must not contain execution status.
-- Current case rows represent the latest editable version. Historical case definitions are stored separately in `TestCaseVersion`.
+TestStatus는 untested/passed/failed/blocked/retest. TestRail 기본 ID는 1 passed, 2 blocked, 3 untested, 4 retest, 5 failed다. CustomStatus catalog와 실제 쓰기 가능 상태는 adapter/service 검증을 함께 확인한다.
 
-## 5) Test Case Step
-- Ordered procedural steps attached to a test case.
-- Fields:
-  - `step_order`, `content`, `expected_result`
-
-## 6) Test Case Version
-- Immutable snapshot of a case whenever meaningful authored content changes.
-- Captures title, preconditions, expected result, priority, type, estimate, refs, labels, automation key, external id, and ordered steps.
-- Supports TestRail-style change history and run reproducibility.
-- A run should record which case version was selected for each test instance when versioned execution is enabled.
-
-## 7) Test Run
-- Execution batch at a specific point in time.
-- Fields:
-  - `project_id`, `suite_id`, `milestone_id`
-  - `name`, `description`, `include_all`
-  - `status`, `assigned_to`, `environment`
-- On creation, selected cases are materialized into test instances.
-- Closing a run freezes further result entry except by explicit manager/admin reopen policy.
-
-## 8) Test Instance (or Test)
-- Run-scoped executable test unit.
-- References original `case_id` but stores key snapshots:
-  - `title_snapshot`, `priority_snapshot`, `type_snapshot`
-  - optional `estimate_snapshot`, `automation_key_snapshot`
-- Stores optional `case_version_id` when versioned execution is enabled.
-- Holds current/latest status for UI and progress metrics.
-- Terminology policy:
-  - Domain canonical: `TestInstance`
-  - API compatibility alias: `test` (`/api/tests/*`)
-  - Both refer to the same run-scoped execution entity.
-
-## 9) Test Result
-- Append-only history entries for a test instance.
-- Fields:
-  - `status`, `comment`, `elapsed`, `version`, `defects`, `created_by`, `created_at`
-- New result updates latest status on `test_instances`, but old results remain immutable.
-- Result creation is the high-frequency write path. It must be batched when possible and must not reload unrelated runs/cases.
-
-## 10) Test Result Step
-- Step-level execution outcome under a test result.
-- Fields:
-  - `step_order`, `status`, `actual_result`, `comment`
-
-## 11) Milestone
-- Release/sprint/version container to group runs and plans.
-
-## 12) Test Plan
-- Parent unit that groups multiple runs, often by environment matrix.
-- Example: `Release 1.5 Regression`.
-
-## 13) Test Plan Entry
-- One named execution slice inside a plan.
-- Can generate one or more runs from selected cases and selected configurations.
-- Should not rely on a free-form environment string when matrix reporting is required.
-
-## 14) Attachment
-- Evidence files linked to cases/results/runs:
-  - screenshots, logs, traces, Appium logs
-- Metadata lives in the app database; binary content lives in object storage.
-- Download/upload access should use short-lived signed URLs.
-
-## 15) User
-- Human actor account for project operations.
-
-## 16) Project Member
-- Relationship between user and project with role/permission scope.
-- Roles:
-  - `owner`: full project administration.
-  - `manager`: cases/runs/plans/reports plus member-light operations.
-  - `tester`: result entry and assigned execution workflows.
-  - `viewer`: read-only access.
-
-## 17) Configuration Group
-- Logical set of configuration dimensions for plan entries.
-- Example: `Browser`, `Device`, `OS`.
-
-## 18) Configuration
-- Concrete value inside a configuration group.
-- Example: `Chrome`, `iOS 17`, `Galaxy S24`.
-
-## 19) Requirement (Reference Target)
-- External/internal requirement item linked to cases for coverage tracking.
-- Fields:
-  - `key`, `title`, `url`, `source`, `status`
-- Coverage is computed from requirement -> case -> test instance -> latest result, filtered by milestone/run/plan/configuration when present.
-
-## 20) DefectIntegration
-- Project-level defect provider settings.
-- Supports URL templates first, then provider APIs such as Jira/GitHub/Azure DevOps later.
-
-## 21) ResultDefectLink
-- Link between result and defect tracker entity (Jira/GitHub/Azure DevOps).
-- Canonical relation is result-to-defect. Denormalized `test_results.defects` text may exist only for compatibility/display.
-
-## 22) CaseTemplate
-- Reusable structure for case creation fields and step defaults.
-
-## 23) CustomField
-- Dynamic project-level field extension for case and result entities.
-- Current implementation uses `scope=case|result`; result values are stored on `TestResult.customValues`.
-
-## 24) CustomStatus
-- Project-scoped result status extension/mapping layer.
-
-## 25) ActivityEvent
-- User-visible timeline event across case/run/result actions.
-
-## 26) Notification
-- User-visible unread/read event generated from activity rules.
-- Examples: assignment changed, run closed, failed result added.
-
-## 27) ImportJob / ExportJob
-- Tracks CSV/XML/JSON import and export operations.
-- Imports support dry-run validation, row-level errors, and atomic apply mode.
-- Exports should be generated asynchronously for large projects.
-
-## Domain Relationship Overview
-
-```mermaid
-flowchart TD
-  project[Project] --> suite[TestSuite]
-  suite --> section[SectionTree]
-  section --> testCase[TestCase]
-  testCase --> caseStep[TestCaseStep]
-
-  project --> run[TestRun]
-  run --> testInstance[TestInstance]
-  testCase --> testInstance
-  testCase --> caseVersion[TestCaseVersion]
-
-  testInstance --> testResult[TestResultHistory]
-  testResult --> resultStep[TestResultStep]
-  testResult --> defect[ResultDefectLink]
-
-  project --> milestone[Milestone]
-  project --> plan[TestPlan]
-  plan --> planEntry[TestPlanEntry]
-  planEntry --> run
-  project --> requirement[Requirement]
-  requirement --> testCase
-  project --> activity[ActivityEvent]
-```
-
-## Status Model
-- Canonical statuses:
-  - `untested`
-  - `passed`
-  - `failed`
-  - `blocked`
-  - `retest`
-- Compatibility mapping for TestRail-like integration:
-  - `1 = passed`
-  - `2 = blocked`
-  - `3 = untested`
-  - `4 = retest`
-  - `5 = failed`
-
-## Invariants to Preserve
-- Editing a test case does not rewrite old run instances or results.
-- Editing a test case increments the case version when authored content changes.
-- Result insertion is append-only and timestamped.
-- Current status is derived from latest result and cached on instance.
-- Case-level entities are design-time assets; run/result entities are execution-time assets.
-- Concurrent edits use optimistic locking. A stale client must receive a conflict instead of silently overwriting another user's change.
-- Large list screens use pagination, filtering, and narrow projections. They must not hydrate all cases, runs, results, and attachments at once.
-- Real-time updates are scoped to the current project/run/case context and are used for lightweight invalidation, not full project reloads.
-
-## Future Extensions (Not in Initial Scope)
-- `SharedStep`
-  - Reusable step blocks referenced by multiple test cases.
-
-`Configuration`, `Requirement`, `ResultDefectLink`, `CaseTemplate`, `CustomField`,
-`CustomStatus`, `ActivityEvent`, `Notification`, `ImportJob`, and `ExportJob`
-are first-class planning entities for a TestRail-like product.
+도메인 경계·상태 의미·결과 정정·membership·삭제/소속 정책이 바뀌면 해당 작업에서 이 문서와 관련 API/DB 스펙을 함께 갱신한다.
