@@ -25,6 +25,7 @@ describe("caseListSelection", () => {
   it("builds section-only filters from the current archive state", () => {
     expect(buildSectionOnlyFilters({ ...baseFilters, q: "x", priority: "low", state: "archived" })).toEqual({
       ...baseFilters,
+      sectionScope: "direct",
       state: "archived"
     });
   });

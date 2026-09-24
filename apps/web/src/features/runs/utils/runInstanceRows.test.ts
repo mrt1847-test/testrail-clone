@@ -23,7 +23,10 @@ describe("runInstanceRows", () => {
         status: "passed",
         assignedTo: "2",
         caseChanged: undefined,
-        changedFields: undefined
+        changedFields: undefined,
+        sectionId: null,
+        casePriority: null,
+        caseType: null
       }
     ]);
   });

@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { matchesAssignmentListFiltersInMemory } from "./assignmentListFilters.js";
 
 describe("assignmentListFilters", () => {
+  afterEach(() => vi.useRealTimers());
   const run = {
     milestoneId: 5n,
     dueOn: new Date("2026-06-01T00:00:00Z")
@@ -21,6 +22,8 @@ describe("assignmentListFilters", () => {
   });
 
   it("filters overdue runs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T00:00:00Z"));
     const past = { milestoneId: null, dueOn: new Date("2020-01-01T00:00:00Z") };
     expect(matchesAssignmentListFiltersInMemory(past, { overdue: true })).toBe(true);
     expect(matchesAssignmentListFiltersInMemory(run, { overdue: true })).toBe(false);

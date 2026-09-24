@@ -9,7 +9,7 @@ describe("entityShare", () => {
   });
 
   it("builds share paths", () => {
-    expect(buildEntitySharePath("p1", "case", 12, { sectionId: 3 })).toBe("/projects/p1/cases/12?sectionId=3");
+    expect(buildEntitySharePath("p1", "case", 12, { sectionId: 3 })).toBe("/projects/p1/cases?panelCaseId=12&sectionId=3");
     expect(buildEntitySharePath("p1", "milestone", "9")).toBe("/projects/p1/milestones/9");
   });
 

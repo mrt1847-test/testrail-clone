@@ -1,3 +1,4 @@
+import { useBrowserStorage } from "../../../test/browserStorage";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import {
@@ -8,6 +9,7 @@ import {
 } from "./recentlyViewed";
 
 describe("recentlyViewed", () => {
+  useBrowserStorage();
   beforeEach(() => {
     localStorage.clear();
   });

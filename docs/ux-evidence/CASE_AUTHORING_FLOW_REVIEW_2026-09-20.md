@@ -4,7 +4,7 @@
 
 테스터가 제목을 빠르게 수집하고, 수행 가능한 지침을 작성하며, 저장된 내용을 믿고 다시 읽거나 수정할 수 있는 흐름을 만든다. 목록 quick outline과 옆 패널 편집은 유지한다. 전체 작성 폼과 동일한 저장·초안 보호 계약을 적용하며 새 편집기·카드·메뉴를 추가하는 방식으로 해결하지 않는다.
 
-검토 기준: `cea2fd6`(title-only list add, side QPane, in-panel edit) 및 직전 커밋 비교. 2026-09-20 검토에서 사용자 DB와 분리한 API `localhost:4100` in-memory / web `localhost:5175`를 사용했다. 아래는 **검토 당시 관찰이며 수정 완료 증거가 아니다**. 현재 재현 후 구현한다. 원본 작업 체크는 [USABILITY_REALIGNMENT](./USABILITY_REALIGNMENT_2026-09-18.md), 실행 순서는 [NEXT_ACTIONS](./NEXT_ACTIONS.md)만 관리한다.
+검토 기준: `cea2fd6`(title-only list add, side QPane, in-panel edit) 및 직전 커밋 비교. 2026-09-20 검토에서 사용자 DB와 분리한 API `localhost:4100` in-memory / web `localhost:5175`를 사용했다. 아래는 **검토 당시 관찰이며 수정 완료 증거가 아니다**. UI-065~072는 이후 로컬에서 완료됐다. 이 문서는 과거 원인 근거로만 보존한다. 현재 계약은 [활성 계획](../superpowers/plans/2026-09-23-testrail-page-ux.md), 실행 순서는 [NEXT_ACTIONS](../NEXT_ACTIONS.md)에서 확인한다.
 
 ## 확인한 사실과 수정 소유자
 

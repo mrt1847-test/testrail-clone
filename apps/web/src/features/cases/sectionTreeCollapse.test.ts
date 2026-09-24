@@ -1,3 +1,4 @@
+import { useBrowserStorage } from "../../test/browserStorage";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import {
@@ -7,6 +8,7 @@ import {
 } from "./sectionTreeCollapse";
 
 describe("sectionTreeCollapse", () => {
+  useBrowserStorage();
   beforeEach(() => {
     window.localStorage.clear();
   });

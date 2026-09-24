@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { getEntityShareUrl } from "./openEntityInNewTab";
 
 describe("getEntityShareUrl", () => {
-  it("builds absolute case detail urls", () => {
+  it("builds case workbench urls", () => {
     const url = getEntityShareUrl({
       projectId: "p1",
       kind: "case",
       entityId: 12,
       sectionId: 3
     });
-    expect(url).toContain("/projects/p1/cases/12");
+    expect(url).toContain("/projects/p1/cases?panelCaseId=12");
     expect(url).toContain("sectionId=3");
   });
 

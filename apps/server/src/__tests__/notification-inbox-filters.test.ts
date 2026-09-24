@@ -36,12 +36,29 @@ describe("notification inbox filters and snooze", () => {
     const projectId = (projectRes.json() as { data: { id: string } }).data.id;
     const suiteId = await getMasterSuiteId(app, projectId, headers);
 
+    const sectionRes = await app.inject({
+      method: "POST",
+      url: `/api/suites/${suiteId}/sections`,
+      headers,
+      payload: { name: "Inbox section" }
+    });
+    expect(sectionRes.statusCode).toBe(200);
+    const sectionId = (sectionRes.json() as { data: { id: string } }).data.id;
+    const caseRes = await app.inject({
+      method: "POST",
+      url: `/api/sections/${sectionId}/cases`,
+      headers,
+      payload: { title: "Inbox case" }
+    });
+    expect(caseRes.statusCode).toBe(200);
+
     const runRes = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/runs`,
       headers,
       payload: { suiteId, name: "Inbox run", includeAll: true }
     });
+    expect(runRes.statusCode, runRes.body).toBe(200);
     const runId = (runRes.json() as { run: { id: string } }).run.id;
 
     await app.inject({

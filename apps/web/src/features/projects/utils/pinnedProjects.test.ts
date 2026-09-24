@@ -1,3 +1,4 @@
+import { useBrowserStorage } from "../../../test/browserStorage";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { suiteStorageKey } from "../workspacePreferences";
@@ -11,6 +12,7 @@ import {
 } from "./pinnedProjects";
 
 describe("pinnedProjects", () => {
+  useBrowserStorage();
   beforeEach(() => {
     localStorage.clear();
   });
