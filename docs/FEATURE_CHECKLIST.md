@@ -92,7 +92,7 @@ Official reference hub: [TestRail Support Center](https://support.testrail.com/h
 
 ## Test Case Management
 
-- [x] **TR-Core** Case CRUD, case steps, section tree, and suite organization baseline.
+- [x] **TR-Core** Case CRUD, case steps, section tree, and suite organization baseline. (2026-09-25: Cases 상대 계층·조회 범위·추가 대상의 페이지 검증 완료: [PX-01](./ux-evidence/PX-01.md). 다른 페이지/독립 사용자 통합 수용과 구별한다.)
 - [x] **TR-Core** Case custom values, required-field validation, **field layout templates** (admin), and CSV import/export columns.
 - [x] **TR-Core** P1 Default **case templates**: Test Case (Text), Test Case (Steps), Exploratory Session, Behaviour Driven Development, AI Evaluation ([Test case templates](https://support.testrail.com/hc/en-us/articles/14927678348052)). (Five built-in templates per project, template-driven authoring UX, `caseTemplateId` + `expectedResult` on cases; BDD `.feature` import and AI execution pipeline out of scope.)
 - [x] **TR-Core** P1 Exploratory template fields (Mission, Goals). (`mission`/`goals` columns; template authoring + read view; CSV import/export; legacy customValues lift)
