@@ -25,7 +25,7 @@ export function formatCaseQueryCountAnnouncement(
   caseCount: number | null
 ): string {
   if (caseCount == null) return "Updating case count";
-  return `${sectionPath} · ${caseQueryScopeLabel(scope)} · ${formatCaseQueryCountLabel(caseCount)}`;
+  return `${scope === "all" ? "All sections" : `${sectionPath} · ${caseQueryScopeLabel(scope)}`} · ${formatCaseQueryCountLabel(caseCount)}`;
 }
 
 export function CaseQueryScopeControl({
@@ -53,10 +53,12 @@ export function CaseQueryScopeControl({
           />
         </label>
       ) : null}
-      <span className="min-w-0 truncate font-medium text-slate-800">{sectionPath}</span>
-      <span aria-hidden="true" className="text-slate-400">
-        ·
-      </span>
+      {scope !== "all" ? (
+        <>
+          <span className="min-w-0 break-words font-medium text-slate-800">{sectionPath}</span>
+          <span aria-hidden="true" className="text-slate-400">·</span>
+        </>
+      ) : null}
       <label className="inline-flex min-w-0 items-center gap-1">
         <span className="sr-only">Case query scope</span>
         <select

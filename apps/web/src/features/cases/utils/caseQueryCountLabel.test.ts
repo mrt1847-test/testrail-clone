@@ -23,7 +23,7 @@ describe("case query count labels", () => {
       "Authentication · Include subsections · 1 case"
     );
     expect(formatCaseQueryCountAnnouncement("Authentication", "all", 3)).toBe(
-      "Authentication · All sections · 3 cases"
+      "All sections · 3 cases"
     );
   });
 });

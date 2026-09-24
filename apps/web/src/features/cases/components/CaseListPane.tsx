@@ -58,9 +58,8 @@ import { CaseRow } from "./CaseRow";
 import { CaseSelectionActionBar } from "./CaseSelectionActionBar";
 import { MoveCopyChooserDialog } from "./MoveCopyChooserDialog";
 import { caseDeleteCopy } from "../caseDeleteCopy";
-import { mapFetchedSuiteGroups, regroupRepositoryCases } from "../utils/caseRepositoryGrouping";
+import { buildSectionHierarchy, mapFetchedSuiteGroups, regroupRepositoryCases } from "../utils/caseRepositoryGrouping";
 import {
-  applySectionPathLabels,
   collapsedHiddenSelectedCount,
   collapseAllGroupKeys,
   expandAllGroupKeys,
@@ -295,10 +294,6 @@ export function CaseListPane({
 
   const hasBulkUpdatePatch = bulkUpdatePriority !== "" || bulkUpdateCaseType !== "";
   const bulkArchiveMode = caseFilters.state === "archived" ? "restore" : "archive";
-  const selectedSection = useMemo(
-    () => sections.find((section) => section.id === selectedSectionId) ?? null,
-    [sections, selectedSectionId]
-  );
   const sectionById = useMemo(() => new Map(sections.map((section) => [section.id, section])), [sections]);
   const sectionDepthById = useMemo(() => {
     const depths = new Map<number, number>();
@@ -362,8 +357,10 @@ export function CaseListPane({
             groupBy: caseGroupBy,
             sectionDepthById
           });
-    return caseGroupBy === "section_id" ? applySectionPathLabels(groups, sections) : groups;
-  }, [caseGroupBy, sectionDepthById, sectionGroupedCases, sections, suiteCaseData?.groupBy, suiteCaseData?.groups]);
+    return caseGroupBy === "section_id"
+      ? buildSectionHierarchy(groups, sections, caseQueryScope === "all" ? null : selectedSectionId)
+      : groups;
+  }, [caseGroupBy, caseQueryScope, selectedSectionId, sectionDepthById, sectionGroupedCases, sections, suiteCaseData?.groupBy, suiteCaseData?.groups]);
   const flatCases = useMemo(() => repositoryGroups.flatMap((group) => group.cases), [repositoryGroups]);
   const visibleCaseIds = useMemo(() => flatCases.map((item) => item.id), [flatCases]);
   const selectedVisibleCaseIds = useMemo(
@@ -974,7 +971,7 @@ export function CaseListPane({
       setSaveViewOpen(false);
       setSaveViewName("");
     },
-    selectedSectionLabel: selectedSection?.name,
+    selectedSectionLabel: undefined,
     onColumnsChange: (columns) => {
       const next = persistColumns(columns);
       setCaseColumns(next);
@@ -1231,7 +1228,7 @@ export function CaseListPane({
             <div id="groupContainer">
               {repositoryGroups.map((group) => {
                 const isSectionGroup = group.sectionId != null && caseGroupBy === "section_id";
-                const collapsed = collapsedGroupKeys.has(group.key);
+                const collapsed = group.cases.length > 0 && collapsedGroupKeys.has(group.key);
                 const blockId = `case-section-block-${group.key}`;
                 const hiddenSelected = collapsedHiddenSelectedCount(
                   collapsed,
@@ -1239,10 +1236,15 @@ export function CaseListPane({
                   group.cases.map((item) => item.id)
                 );
                 return (
-                  <div key={group.key} className="border-b border-slate-200 last:border-b-0">
+                  <div
+                    key={group.key}
+                    className="border-b border-slate-200 last:border-b-0"
+                    data-section-depth={isSectionGroup ? group.depth ?? 0 : undefined}
+                    style={isSectionGroup ? { marginInlineStart: `min(${(group.depth ?? 0) * 16}px, 6vw, 80px)` } : undefined}
+                  >
                     {group.label ? (
                       <div
-                        className="px-3 py-1.5 text-xs font-semibold text-slate-800"
+                        className="border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800"
                         {...(isSectionGroup && group.sectionId != null
                           ? { "data-section-group-id": group.sectionId }
                           : {})}
@@ -1250,10 +1252,11 @@ export function CaseListPane({
                         <div className="flex items-start gap-2">
                           <button
                             type="button"
-                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                            className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${group.cases.length === 0 ? "invisible" : ""}`}
+                            disabled={group.cases.length === 0}
                             aria-expanded={!collapsed}
                             aria-controls={blockId}
-                            aria-label={sectionBlockToggleLabel(group.label, collapsed)}
+                            aria-label={sectionBlockToggleLabel(isSectionGroup ? `direct cases in ${group.label}` : group.label, collapsed)}
                             onClick={() => setCollapsedGroupKeys((current) => toggleCollapsedGroupKey(current, group.key))}
                           >
                             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden>
@@ -1271,19 +1274,21 @@ export function CaseListPane({
                             <button
                               type="button"
                               className="min-w-0 flex-1 whitespace-normal break-words text-left text-blue-800 hover:underline"
+                              aria-label={group.label}
+                              title={group.label}
                               onClick={() => {
                                 if (caseQueryScope === "all") setTreeFocusSection(group.sectionId!);
                                 else setSelectedSection(group.sectionId!);
                               }}
                             >
-                              {group.label}
+                              {group.displayLabel ?? group.label}
                             </button>
                           ) : (
                             <span className="min-w-0 flex-1 whitespace-normal break-words">{group.label}</span>
                           )}
                           <span className="shrink-0 pt-0.5 text-right font-normal text-slate-600">
                             {hiddenSelected > 0 ? `${hiddenSelected} selected · ` : null}
-                            {group.cases.length} case{group.cases.length === 1 ? "" : "s"}
+                            {group.cases.length}{isSectionGroup ? " direct" : ""} case{group.cases.length === 1 ? "" : "s"}
                           </span>
                         </div>
                       </div>

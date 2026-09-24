@@ -313,6 +313,7 @@ function TestCaseWorkspaceInner() {
       suiteId={selectedSectionSuiteId}
       sections={sections}
       selectedSectionId={selectedSectionId}
+      selectionIsQueryScope={caseQueryScope !== "all"}
       onSelectSection={caseQueryScope === "all" ? setTreeFocusSection : setSelectedSection}
       onClearExpand={() => setPanelCase(null)}
       onAddCaseToSection={(sectionId) => openCaseOutline(sectionId)}

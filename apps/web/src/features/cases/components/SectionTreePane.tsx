@@ -70,6 +70,7 @@ type SectionTreePaneProps = {
   suiteId: string;
   sections: SectionNode[];
   selectedSectionId: number | null;
+  selectionIsQueryScope?: boolean;
   onSelectSection: (id: number) => void;
   onClearExpand: () => void;
   onAddCaseToSection?: (sectionId: number) => void;
@@ -111,6 +112,7 @@ export function SectionTreePane({
   suiteId,
   sections,
   selectedSectionId,
+  selectionIsQueryScope = true,
   onSelectSection,
   onClearExpand,
   onAddCaseToSection,
@@ -708,6 +710,9 @@ export function SectionTreePane({
         </div>
       ) : null}
 
+      {!selectionIsQueryScope ? (
+        <p className="px-1 py-1 text-xs text-slate-600">All sections shown · select an add location</p>
+      ) : null}
       <ul role="tree" aria-label="Sections" className="mt-1">
         {(() => {
           const roots = sectionByParent.get(null) ?? [];
@@ -730,7 +735,8 @@ export function SectionTreePane({
                 tabIndex={section.id === treeTabId ? 0 : -1}
                 aria-label={pathLabel}
                 aria-level={depth + 1}
-                aria-selected={selected}
+                aria-selected={selected && selectionIsQueryScope}
+                aria-current={selected && !selectionIsQueryScope ? "location" : undefined}
                 aria-expanded={children.length > 0 ? !collapsed : undefined}
                 onKeyDown={(event) => handleTreeKeyDown(event, section)}
                 onClick={(event) => {
@@ -780,7 +786,9 @@ export function SectionTreePane({
                   <div
                     className={`group relative flex h-9 items-center rounded px-1 ${
                       selected
-                        ? "bg-blue-50 text-blue-950 shadow-[inset_2px_0_0_#2563eb]"
+                        ? selectionIsQueryScope
+                          ? "bg-blue-50 text-blue-950 shadow-[inset_2px_0_0_#2563eb]"
+                          : "bg-slate-100 text-slate-800 outline outline-1 outline-dashed outline-slate-400"
                         : "text-slate-700 hover:bg-slate-50"
                     }`}
                     data-section-tree-menu

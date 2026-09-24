@@ -1,3 +1,5 @@
+import { sectionPathLabel } from "./sectionTreeModel";
+import { sortSectionIdsDepthFirst } from "./sectionTreeOrder";
 import type { TestCase } from "../types";
 
 export type CaseGroupBy = "section_id" | "priority" | "type" | "none";
@@ -17,6 +19,7 @@ export function parseCaseGroupBy(value: string | null): CaseGroupBy {
 export type CaseRepositoryGroup = {
   key: string;
   label: string;
+  displayLabel?: string;
   sectionId?: number;
   depth?: number;
   cases: TestCase[];
@@ -95,4 +98,47 @@ export function regroupRepositoryCases(input: {
       label,
       cases
     }));
+}
+
+/** Add only ancestors of loaded groups; context rows never change query membership. */
+export function buildSectionHierarchy(
+  groups: CaseRepositoryGroup[],
+  sections: Array<{ id: number; name: string; parentSectionId: number | null; displayOrder: number }>,
+  scopeRootId: number | null
+): CaseRepositoryGroup[] {
+  const sectionsById = new Map(sections.map(section => [section.id, section]));
+  const groupsById = new Map(groups.filter(group => group.sectionId != null).map(group => [group.sectionId!, group]));
+  const included = new Set(groupsById.keys());
+  for (const id of groupsById.keys()) {
+    let current = sectionsById.get(id);
+    const visited = new Set<number>();
+    while (current && current.id !== scopeRootId && !visited.has(current.id)) {
+      visited.add(current.id);
+      const parent = current.parentSectionId == null ? undefined : sectionsById.get(current.parentSectionId);
+      if (!parent) break;
+      included.add(parent.id);
+      current = parent;
+    }
+  }
+  const result = sortSectionIdsDepthFirst(sections).filter(id => included.has(id)).map(id => {
+    const section = sectionsById.get(id)!;
+    let depth = 0;
+    let parentId = section.parentSectionId;
+    const visited = new Set([id]);
+    while (id !== scopeRootId && parentId != null && included.has(parentId) && !visited.has(parentId)) {
+      visited.add(parentId);
+      depth++;
+      if (parentId === scopeRootId) break;
+      parentId = sectionsById.get(parentId)?.parentSectionId ?? null;
+    }
+    return {
+      ...(groupsById.get(id) ?? { key: 'section-' + id, sectionId: id, cases: [] }),
+      label: sectionPathLabel(sections, id),
+      displayLabel: section.name,
+      depth
+    };
+  });
+  // Preserve every loaded group even when stale metadata leaves a section unreachable.
+  const renderedIds = new Set(result.map(group => group.sectionId));
+  return [...result, ...groups.filter(group => group.sectionId == null || !renderedIds.has(group.sectionId))];
 }
