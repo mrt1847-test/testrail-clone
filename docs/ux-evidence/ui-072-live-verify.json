@@ -1,0 +1,59 @@
+{
+  "fixture": {
+    "projectId": "2",
+    "suiteId": "2",
+    "sectionId": 4,
+    "listUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4&q=login&priority=high&scope=subtree&groupBy=priority&display=compact"
+  },
+  "checks": {
+    "listBefore": {
+      "suiteId": "2",
+      "sectionId": "4",
+      "q": "login",
+      "priority": "high",
+      "scope": "subtree",
+      "groupBy": "priority",
+      "display": "compact"
+    },
+    "addHasReturn": true,
+    "returnPayload": "suiteId=2&sectionId=4&scope=subtree&display=compact&q=login&priority=high&groupBy=priority",
+    "cancelRestored": {
+      "q": true,
+      "priority": true,
+      "scope": true,
+      "groupBy": true,
+      "display": true,
+      "suiteId": true,
+      "sectionId": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4&scope=subtree&display=compact&q=login&priority=high&groupBy=priority"
+    },
+    "saveRestored": {
+      "q": true,
+      "priority": true,
+      "panelCaseId": true,
+      "focusCaseId": true,
+      "noSavedNotice": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4&scope=subtree&display=compact&q=login&priority=high&groupBy=priority&panelCaseId=5&focusCaseId=5"
+    },
+    "outsideFilter": {
+      "qKept": true,
+      "priorityKept": true,
+      "savedNotice": true,
+      "savedCaseId": true,
+      "bannerVisible": true,
+      "openLink": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4&scope=subtree&display=compact&q=login&priority=high&groupBy=priority&savedNotice=1&savedCaseId=6"
+    },
+    "browserBack": {
+      "q": true,
+      "priority": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4&q=login&priority=high&scope=subtree&groupBy=priority&display=compact"
+    },
+    "mobile390": {
+      "q": true,
+      "priority": true,
+      "overflowX": false
+    }
+  },
+  "allOk": true
+}

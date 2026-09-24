@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createScheduledReportSchema } from "../modules/reports/scheduledReports.schema.js";
+import { startScheduledReportWorker } from "../modules/reports/scheduledReport.worker.js";
 import { initialNextRunAt } from "../modules/reports/scheduledReports.service.js";
 
 describe("scheduled reports schema", () => {
@@ -30,5 +31,34 @@ describe("initialNextRunAt", () => {
     const now = Date.now();
     const next = initialNextRunAt(60);
     expect(next.getTime()).toBeGreaterThan(now);
+  });
+});
+
+describe("startScheduledReportWorker", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("logs a dropped database connection instead of rejecting the tick", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const prisma = {
+      scheduledReport: {
+        findMany: vi.fn().mockRejectedValue(
+          new Error("terminating connection due to administrator command")
+        )
+      }
+    };
+
+    const timer = startScheduledReportWorker({
+      prisma: prisma as never,
+      intervalMs: 60_000
+    });
+
+    await vi.waitFor(() => {
+      expect(errorSpy).toHaveBeenCalled();
+    });
+    clearInterval(timer);
+
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain("Scheduled report worker failed");
   });
 });

@@ -1,0 +1,113 @@
+{
+  "fixture": {
+    "projectId": "6",
+    "suiteId": "6",
+    "sectionId": 14,
+    "runId": "6",
+    "cases": [
+      {
+        "id": "20",
+        "title": "Exec A open catalog"
+      },
+      {
+        "id": "21",
+        "title": "Exec B filter brand"
+      },
+      {
+        "id": "22",
+        "title": "Exec C add to cart"
+      },
+      {
+        "id": "23",
+        "title": "Exec D checkout email"
+      },
+      {
+        "id": "24",
+        "title": "Exec E confirm total"
+      }
+    ],
+    "runUrl": "http://localhost:5173/projects/6/runs/6",
+    "hubUrl": "http://localhost:5173/projects/6/runs",
+    "overviewUrl": "http://localhost:5173/projects/6",
+    "myTestsUrl": "http://localhost:5173/projects/6/my-tests"
+  },
+  "testIds": [
+    "16",
+    "17",
+    "18",
+    "19",
+    "20"
+  ],
+  "checks": {
+    "noJumpCheckbox": {
+      "ok": true
+    },
+    "addResultOpensDialog": {
+      "ok": true
+    },
+    "addResultStays": {
+      "ok": true,
+      "before": "16",
+      "after": "16"
+    },
+    "passNextNamed": {
+      "ok": true
+    },
+    "passNextAdvances": {
+      "ok": true,
+      "before": "17",
+      "after": "18",
+      "expected": "18"
+    },
+    "passNextShowsNextInstructions": {
+      "ok": true,
+      "sample": "QA Rail\nUI-021 Exec 1790164082\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nProjects\n/\nUI-021 Exec 1790164082\n/\nTest Runs\n/\nUI-021 Exec 1790164082\nUI-021 exec reverify\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n\u29c9\nRun utilities\n\u2022\u2022\u2022\n5\nTESTS\n\n40%"
+    },
+    "passNextNoWrap": {
+      "ok": true,
+      "before": "20",
+      "after": "20"
+    },
+    "bulkApplyVisible": {
+      "ok": true
+    },
+    "bulkListStatusSynced": {
+      "ok": true,
+      "d": "\tC23\tExec D checkout email\t\nBlocked\n\u25be\n\tHigh\t\u2014\t\n\nUnassigned\n\n\tWatch",
+      "e": "\tC24\tExec E confirm total\t\nBlocked\n\u25be\n\tHigh\t\u2014\t\n\nUnassigned\n\n\tWatch"
+    },
+    "hubShowsRun": {
+      "ok": true
+    },
+    "overviewPopulated": {
+      "ok": true,
+      "sample": "QA Rail\nUI-021 Exec 1790164082\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nOverview\n\n5 cases \u00b7 2 passed \u00b7 0 failed \u00b7 3 tests remaining across open runs\n\nCases\nRuns\nAss"
+    },
+    "myTestsReachable": {
+      "ok": true,
+      "sample": "QA Rail\nUI-021 Exec 1790164082\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nAssigned to me\nMore actions\n\u2022\u2022\u2022\nSearch ass"
+    },
+    "backToTestsNamed390": {
+      "ok": true
+    },
+    "backToTestsSticks390": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/6/runs/6",
+      "overflowX": false
+    },
+    "mobileNoAutoSeed": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/6/runs/6"
+    }
+  },
+  "defects": [],
+  "externalWaits": {
+    "E01": "blocked",
+    "E03": "blocked"
+  },
+  "timestamp": 1790164100,
+  "execPathOk": true,
+  "newContractDefects": [],
+  "canCompleteUi021": false,
+  "allOkForThisPass": true
+}

@@ -55,14 +55,14 @@ export function CaseInstructionReadView({
   const automationKey = data.automationKey.trim();
 
   return (
-    <div className="mt-3 space-y-4">
+    <div className="mt-3 space-y-4" data-case-instruction-read>
       {sectionPath ? (
         <p className="text-xs text-slate-500">
           <span className="font-medium text-slate-600">Section</span> {sectionPath}
         </p>
       ) : null}
 
-      <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+      <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600" data-case-meta-summary>
         <div>
           <dt className="inline text-slate-500">Type </dt>
           <dd className="inline font-medium text-slate-800">{data.type}</dd>
@@ -111,7 +111,9 @@ export function CaseInstructionReadView({
         </p>
       ) : null}
 
-      <RunCaseInstructionBody model={model} />
+      <div data-case-instructions>
+        <RunCaseInstructionBody model={model} />
+      </div>
 
       {populatedCustom.length > 0 ? (
         <dl className="grid gap-1 text-sm text-slate-700">

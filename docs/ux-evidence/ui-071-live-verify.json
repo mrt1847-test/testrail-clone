@@ -1,0 +1,29 @@
+{
+  "fixture": {
+    "projectId": "2",
+    "suiteId": "2",
+    "sectionId": 4,
+    "addUrl": "http://localhost:5173/projects/2/cases/new?suiteId=2&sectionId=4",
+    "listUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=4"
+  },
+  "checks": {
+    "stagingVisible": true,
+    "stagingEmptyHint": true,
+    "stagedTwo": true,
+    "removeOne": true,
+    "restagedTwo": true,
+    "caseCreatedAfterUpload": true,
+    "presignAfterCaseId": true,
+    "mockPutUsed": true,
+    "addNextBlockedOnAttachFail": true,
+    "attachFailMessage": true,
+    "caseKeptOnAttachFail": true,
+    "leaveWarnsPendingAttach": true,
+    "retryUploadThenNext": true,
+    "retryPresignSecondAttempt": true,
+    "stagingVisible390": true,
+    "staged390": true,
+    "noOverflowX390": true
+  },
+  "allOk": true
+}

@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+import { isImeCompositionEvent } from "../../../shared/ui/modalFocus";
+
 type Input = {
   enabled: boolean;
   caseIds: number[];
@@ -55,6 +57,7 @@ export function useCaseListKeyboardNav({
       }
 
       if (event.key === "Escape") {
+        if (isImeCompositionEvent(event)) return;
         onClosePanel();
       }
     };

@@ -1,0 +1,138 @@
+{
+  "fixture": {
+    "projectId": "3",
+    "suiteId": "3",
+    "loginId": 8,
+    "checkoutId": 9,
+    "addUrl": "http://localhost:5173/projects/3/cases/new?suiteId=3&sectionId=8"
+  },
+  "checks": {
+    "textSectionPreserve": {
+      "ok": true,
+      "cycle": {
+        "atB": {
+          "title": "UI-065 text title",
+          "preconditions": "Signed-in shopper",
+          "steps": "Open cart\nPay",
+          "expected": "Order confirms",
+          "referencesPresent": true,
+          "section": "9",
+          "template": "11"
+        },
+        "backA": {
+          "title": "UI-065 text title",
+          "preconditions": "Signed-in shopper",
+          "steps": "Open cart\nPay",
+          "expected": "Order confirms",
+          "referencesPresent": true,
+          "section": "8",
+          "template": "11"
+        },
+        "finalB": {
+          "title": "UI-065 text title",
+          "preconditions": "Signed-in shopper",
+          "steps": "Open cart\nPay",
+          "expected": "Order confirms",
+          "referencesPresent": true,
+          "section": "9",
+          "template": "11"
+        }
+      }
+    },
+    "overflow390": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "overflowX": false
+    },
+    "requiredKeepsDraft": {
+      "ok": true,
+      "still": {
+        "title": "",
+        "preconditions": "Signed-in shopper",
+        "steps": "Open cart\nPay",
+        "expected": "Order confirms",
+        "referencesPresent": true,
+        "section": "9",
+        "template": "11"
+      }
+    },
+    "saveFailKeepsDraft": {
+      "ok": true,
+      "draft": {
+        "title": "UI-065 text title",
+        "preconditions": "Signed-in shopper",
+        "steps": "Open cart\nPay",
+        "expected": "Order confirms",
+        "referencesPresent": true,
+        "section": "9",
+        "template": "11"
+      }
+    },
+    "savedOnlyInB": {
+      "ok": true,
+      "checkout": [
+        "UI-065 text title"
+      ],
+      "login": []
+    },
+    "editSectionDirty": {
+      "ok": true
+    },
+    "reopenInstructions": {
+      "ok": true,
+      "caseId": "1"
+    },
+    "stepsSectionPreserve": {
+      "ok": true,
+      "draft": {
+        "title": "UI-065 steps title",
+        "preconditions": "Ready browser",
+        "actions": [
+          "Open login",
+          "Enter credentials",
+          "Submit"
+        ],
+        "template": "12",
+        "section": "9",
+        "expected": "Home opens"
+      }
+    },
+    "stepsSavedInB": {
+      "ok": true,
+      "id": "2"
+    },
+    "addNextNoLeak": {
+      "ok": true,
+      "draft": {
+        "title": "",
+        "preconditions": "",
+        "steps": "",
+        "expected": "",
+        "referencesPresent": false,
+        "section": "8",
+        "template": "11"
+      }
+    },
+    "keyboardSectionPreserve": {
+      "ok": true,
+      "draft": {
+        "title": "UI-065 keyboard",
+        "preconditions": "Keep me",
+        "steps": "",
+        "expected": "",
+        "referencesPresent": false,
+        "section": "9",
+        "template": "11"
+      }
+    },
+    "overflow390Ok": {
+      "ok": true
+    },
+    "runInstructions": {
+      "ok": true,
+      "runId": "1",
+      "testId": "1"
+    }
+  },
+  "allOk": true
+}

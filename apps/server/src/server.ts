@@ -6,6 +6,11 @@ import { startScheduledReportWorker } from "./modules/reports/scheduledReport.wo
 import { startAttachmentStorageWorker } from "./modules/attachments/attachmentStorage.worker.js";
 import { startWebhookDeliveryWorker } from "./modules/settings/webhookDelivery.worker.js";
 
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line no-console
+  console.error("Unhandled promise rejection", reason);
+});
+
 const app = buildApp();
 
 if (!env.useInMemoryRepository) {
@@ -20,6 +25,8 @@ if (!env.useInMemoryRepository) {
 console.log(`Starting server on port ${env.port}`);
 // eslint-disable-next-line no-console
 console.log(`Database connection: ${describeDatabaseUrl(env.databaseUrl)}`);
+// eslint-disable-next-line no-console
+console.log(`CORS origins: ${env.webOrigins.join(", ")}`);
 
 app.listen({ port: env.port, host: "0.0.0.0" }).then(() => {
   // eslint-disable-next-line no-console

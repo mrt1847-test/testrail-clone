@@ -2,11 +2,16 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { Button, OverflowMenu, WorkbenchPageHeader, type OverflowMenuGroup } from "../../../shared/ui";
+import { buttonClassName } from "../../../shared/ui/buttonStyles";
 import { useProjectArchived } from "../context/ProjectArchiveContext";
 import { reportMenuItems, type ContentHeaderReportContext } from "./contentHeaderReportMenus";
 import { contentHeaderActionClass } from "./contentHeaderStyles";
 import { DefectsDropdown, useDefectDropdownItems } from "./DefectsDropdown";
 import { ReportsDropdown } from "./ReportsDropdown";
+import {
+  FULL_AUTHORING_PRIMARY_LABEL,
+  shouldOmitFullAuthoringFromOverflow
+} from "../../cases/utils/caseAuthoringEntryPoints";
 
 export type ProjectContentHeaderVariant = ContentHeaderReportContext;
 
@@ -63,36 +68,37 @@ export function ProjectContentHeader({
 type CaseRepositoryHeaderProps = {
   projectId: string;
   suiteId: string;
-  onAddCase: () => void;
-  addTestCaseHref?: string;
+  addTestCaseHref: string;
   onCopyMoveCases?: () => void;
 };
 
 export function CaseRepositoryContentHeader({
   projectId,
   suiteId,
-  onAddCase,
   addTestCaseHref,
   onCopyMoveCases
 }: CaseRepositoryHeaderProps) {
   const isProjectArchived = useProjectArchived();
   const defectItems = useDefectDropdownItems({ projectId });
   const reportItems = reportMenuItems(projectId, "cases", { suiteId });
+  const omitFullAuthoringFromOverflow = shouldOmitFullAuthoringFromOverflow({
+    headerPrimaryIsFullForm: true
+  });
   const groups: OverflowMenuGroup[] = [
     {
       id: "workflow",
       label: "Workflow",
       items: [
-        ...(addTestCaseHref
-          ? [
+        ...(omitFullAuthoringFromOverflow
+          ? []
+          : [
               {
                 id: "add-test-case",
-                label: "Add Test Case",
+                label: FULL_AUTHORING_PRIMARY_LABEL,
                 description: "Open the full test case form",
                 to: addTestCaseHref
               }
-            ]
-          : []),
+            ]),
         {
           id: "run-test",
           label: "Run this suite",
@@ -171,20 +177,29 @@ export function CaseRepositoryContentHeader({
     }
   ];
 
+  const primaryAction = isProjectArchived ? (
+    <Button
+      size="md"
+      disabled
+      title="Archived projects are read-only"
+    >
+      {FULL_AUTHORING_PRIMARY_LABEL}
+    </Button>
+  ) : (
+    <Link
+      to={addTestCaseHref}
+      className={buttonClassName({ variant: "primary", size: "md" })}
+      title="Open the full test case form for the current suite and section"
+    >
+      {FULL_AUTHORING_PRIMARY_LABEL}
+    </Link>
+  );
+
   return (
     <WorkbenchPageHeader
       title="Test Cases"
       compact
-      primaryAction={
-        <Button
-          size="md"
-          disabled={isProjectArchived}
-          title={isProjectArchived ? "Archived projects are read-only" : "Add a title-only case to the selected section"}
-          onClick={onAddCase}
-        >
-          Add Case
-        </Button>
-      }
+      primaryAction={primaryAction}
       utilityAction={<OverflowMenu groups={groups} />}
     />
   );

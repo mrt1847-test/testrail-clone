@@ -1,3 +1,5 @@
+import { withCaseListReturnParam } from "./utils/caseListReturnContext";
+
 export type CaseListPathOptions = {
   sectionId?: number | null;
   /** @deprecated use panelCaseId */
@@ -31,36 +33,44 @@ export function buildCaseListPath(projectId: string, options?: CaseListPathOptio
 export function buildCaseDetailPath(
   projectId: string,
   caseId: number,
-  options?: { sectionId?: number | null; mode?: "view" | "edit" }
+  options?: { sectionId?: number | null; mode?: "view" | "edit"; listParams?: URLSearchParams | null }
 ) {
   const params = new URLSearchParams();
   if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
   if (options?.mode === "edit") params.set("mode", "edit");
-  const query = params.toString();
+  const withReturn = options?.listParams ? withCaseListReturnParam(params, options.listParams) : params;
+  const query = withReturn.toString();
   return `/projects/${projectId}/cases/${caseId}${query ? `?${query}` : ""}`;
 }
 
 export function buildAddCasePath(
   projectId: string,
-  options?: { suiteId?: string | null; sectionId?: number | null }
+  options?: { suiteId?: string | null; sectionId?: number | null; listParams?: URLSearchParams | null }
 ) {
   const params = new URLSearchParams();
   if (options?.suiteId) params.set("suiteId", options.suiteId);
   if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
-  const query = params.toString();
+  const withReturn = options?.listParams ? withCaseListReturnParam(params, options.listParams) : params;
+  const query = withReturn.toString();
   return `/projects/${projectId}/cases/new${query ? `?${query}` : ""}`;
 }
 
 export function buildEditCasePath(
   projectId: string,
   caseId: number,
-  options?: { suiteId?: string | null; sectionId?: number | null; from?: "page" | "list" }
+  options?: {
+    suiteId?: string | null;
+    sectionId?: number | null;
+    from?: "page" | "list";
+    listParams?: URLSearchParams | null;
+  }
 ) {
   const params = new URLSearchParams();
   if (options?.suiteId) params.set("suiteId", options.suiteId);
   if (options?.sectionId != null) params.set("sectionId", String(options.sectionId));
   if (options?.from === "page") params.set("from", "page");
-  const query = params.toString();
+  const withReturn = options?.listParams ? withCaseListReturnParam(params, options.listParams) : params;
+  const query = withReturn.toString();
   return `/projects/${projectId}/cases/${caseId}/edit${query ? `?${query}` : ""}`;
 }
 

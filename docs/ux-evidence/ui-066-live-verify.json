@@ -1,0 +1,63 @@
+{
+  "fixture": {
+    "projectId": "2",
+    "suiteId": "2",
+    "loginId": 5,
+    "checkoutId": 6,
+    "c1": 3,
+    "c2": 4,
+    "listUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=5",
+    "addUrl": "http://localhost:5173/projects/2/cases/new?suiteId=2&sectionId=5"
+  },
+  "checks": {
+    "panelCloseDialog": {
+      "ok": true,
+      "dialog": true,
+      "kept": true,
+      "a11yLabelled": true
+    },
+    "escapeKeep": {
+      "ok": true
+    },
+    "tabAndEnterDiscard": {
+      "ok": true,
+      "focused1": "Discard changes",
+      "focused2": "Keep editing",
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=5"
+    },
+    "cleanCloseNoDialog": {
+      "ok": true
+    },
+    "otherRowDialog": {
+      "ok": true
+    },
+    "sectionChangeDialog": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=6"
+    },
+    "addCancelAndNav": {
+      "ok": true,
+      "addDialog": true,
+      "navDialog": true
+    },
+    "browserBack": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/2/cases/new?suiteId=2&sectionId=5"
+    },
+    "imeEscapeKeepsDraft": {
+      "ok": true
+    },
+    "beforeUnload": {
+      "ok": true
+    },
+    "saveThenNoDialog": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=5&panelCaseId=5&focusCaseId=5"
+    },
+    "mobileDialog": {
+      "ok": true,
+      "overflow": false
+    }
+  },
+  "allOk": true
+}

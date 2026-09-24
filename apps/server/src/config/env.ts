@@ -1,5 +1,9 @@
 import "dotenv/config";
 
+import { parseWebOrigins } from "./webOrigins.js";
+
+const webOrigins = parseWebOrigins(process.env.WEB_ORIGIN);
+
 export function describeDatabaseUrl(rawUrl: string) {
   if (!rawUrl) return "unset";
 
@@ -17,7 +21,8 @@ export function describeDatabaseUrl(rawUrl: string) {
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4000),
-  webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
+  webOrigin: webOrigins[0] ?? "http://localhost:5173",
+  webOrigins,
   databaseUrl: process.env.DATABASE_URL ?? "",
   authSecret: process.env.AUTH_SECRET ?? "dev-auth-secret",
   useInMemoryRepository: process.env.USE_IN_MEMORY_REPOSITORY !== "false",

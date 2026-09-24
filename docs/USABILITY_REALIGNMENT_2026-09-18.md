@@ -1,6 +1,6 @@
 # UI/UX Usability Realignment
 
-Last updated: 2026-09-20
+Last updated: 2026-09-23
 
 ## Reading contract — current policy, history, and execution
 
@@ -467,7 +467,7 @@ Two uncovered deliverables are added below: **UI-049 case instruction authoring*
   - 작업: 섹션 내 quick outline은 Enter로 연속 제목 입력을 지원한다. 전체 Add/Edit는 Title과 Section/Template 문맥 다음에 실제 지침을 둔다. Text는 Preconditions → Steps → Expected, Steps는 순서 있는 Action/Expected 쌍을 작성한다.
   - 작업: 적용되는 BDD/탐색형/필수 custom 입력은 보존하고 불필요한 메타데이터는 보조 영역으로 정리한다. 템플릿 변경·취소·저장 실패에서 지침을 몰래 버리지 않는다. 원본 편집과 Run 결과 기록은 별개다.
   - 검증/완료: 제목 5개를 연속 추가한 뒤 하나는 Text, 하나는 3단계 Steps로 완성한다. 순서 변경/편집/저장/재열기를 거쳐 케이스 읽기와 Run 읽기에 같은 실제 지침이 나타난다. 제목만 있는 케이스는 지침 미작성으로 구분한다.
-  - 불합격: 제목 5개 생성만으로 합격, Steps 입력이 저장되지 않음, 작성자가 별도로 설명해야 실행 가능. 관련: UI-005/006/044/049/039, J02/J03/J04.
+  - 불합격: 제목 5개 생성만으로 합격, Steps 입력이 저장되지 않음, 작성자가 별도로 설명해야 실행 가능. 관련: UI-005/006/044/049/039 및 작성 재검토 후속 UI-065–072, J02/J03/J04. 저장 API 성공 후 현재 읽기 화면에 지침이 반영되지 않는 것도 불합격이다.
 
 - [ ] **UX-022 P0 — 목록의 포함 범위와 보기 설정을 혼동하지 않게 한다.**
   - 테스터 목적: “선택 섹션만 보는지 하위 섹션도 보는지 예측하고 케이스를 찾는다.”
@@ -923,6 +923,7 @@ Design, evidence limits, remove/merge/retain decisions and mandatory shared veri
   - Out of scope: new analytics, personalization or new project permissions. Dependency: UI-041/UI-042. This explicitly schedules the earlier UX-040 project-list duplicate observation.
 
 - [x] **UI-049 P0 — Author executable case instructions in a template-specific form.** ([evidence](./ux-evidence/UI-049.md): Text C1 Preconditions/Steps/Expected roundtrip into Run; Steps C2 3 Action/Expected + reorder; dirty template dialog; empty title; 1280/390/1440.)
+  - Revalidation qualification (2026-09-20): this historical check predates the `cea2fd6` authoring flow. Section-change draft reset, panel discard protection and post-save Steps refresh are now owned by UI-065/066/067; partial persistence recovery by UI-068. The old check does not certify these new paths. Entry/layout/attachments/return-context follow-ups are UI-069–072; see the linked case-authoring review.
   - Why this is missing: UI-006 defined form controls/feedback, while UI-044 only covers reading. The old UI-006 Text-template capture shows Preconditions/Expected but no Steps field, and CaseAuthoringForm conditionally injects structured steps. This is evidence of an authoring coverage gap, not a claim that every current template loses steps; reproduce with current template definitions and persistence first.
   - Reference/target (R1/R3): title first; one compact context row naming the destination Section and Template, with existing Type/Priority where supported. Then the instructional body. Text: Preconditions → prose Steps → Expected result. Steps: Preconditions → ordered editable Action/Expected pairs with Add step and quiet reorder/remove controls → applicable common Expected. Keep existing BDD/exploratory/custom template fields and requirements rather than putting all template fields on one giant form. Optional references/estimate/metadata use a compact secondary area.
   - Interaction: section-native quick outline remains the fast title-only path; full Add/Edit is for writing the procedure. Save/Create and Cancel stay stable. Changing Template with entered instructions cannot silently erase data; retain compatible draft values and explain any conversion/discard before proceeding. Existing template-required fields remain visible. Do not add AI authoring, new template types or an unrelated rich-text system merely because they appear in current TestRail releases.
@@ -1056,13 +1057,71 @@ Design, evidence limits, remove/merge/retain decisions and mandatory shared veri
 
 #### UI-021 실행 재개 후 확인한 수정 단위
 
-- [ ] **UI-064 P1 — 좁은 Run 화면의 상태 범례를 생략 없이 읽을 수 있게 복구한다.**
+- [x] **UI-064 P1 — 좁은 Run 화면의 상태 범례를 생략 없이 읽을 수 있게 복구한다.** ([evidence](./ux-evidence/UI-064.md): 2-col legend + no truncate; 3건/59건; 390/1280/1440; 실키 필터; 집계 갱신; firstRow top≈788.)
   - 근거/재현: [UI-021 재개 검증](./ux-evidence/UI-021-RESUME-2026-09-20.md)의 `UI-021-F01`. 390×844, 배율 100%, Run 3건(Passed/Failed/Untested 각 1), 상세 닫힘에서 Passed/Blocked/Untested/All statuses 등의 이름이 말줄임된다. 접근성 이름은 존재하지만 보이는 상태명만으로 의미를 파악하기 어렵다. UI-040의 좁은 화면 범례 계약 회귀이며 기존 체크 이력은 보존한다.
   - 원인/범위: `apps/web/src/features/runs/components/RunStatusOverview.tsx`의 고정 80px 차트 옆 `grid-cols-3`와 상태명 `truncate` 조합. 모바일 버튼 폭 73px, Passed 텍스트 폭 16px/필요 37px, Untested 16px/필요 49px. 기존 통계 컴포넌트의 반응형 배치만 수정한다.
   - 작업: 기존 [상단 통계 설계 §5](./RUN_STATUS_OVERVIEW_DESIGN_2026-09-19.md)의 좁은 화면 줄바꿈/두 열 등 지원 배치를 적용해 상태명·건수·비율을 읽게 한다. 필요 시 범례에 차트 아래 가로 폭을 활용하되 통계를 큰 카드나 세로 상태 목록으로 늘리지 않는다. 상태를 숨기거나 글자를 과도하게 줄이거나 tooltip/aria-label만 추가해 해결한 것으로 처리하지 않는다.
   - 완료: 같은 3건 fixture 및 UI-040의 59건 fixture에서 390×844/1280×720/1440×1000 상태명 전체·건수·비율이 잘리지 않는다. 모바일 상세 닫힘의 최초 viewport에서 첫 테스트 행이 유지된다. 페이지 가로 넘침 없음. 실제 Tab/Enter/Space 필터·All statuses 복귀 및 결과 저장 뒤 전체 Run 집계를 확인한다. 범례 조작은 결과를 생성하지 않는다.
   - 검증: 실패하는 실제 화면 폭 회귀를 먼저 기록하고 수정 전후를 동일 데이터·배율·스크롤로 캡처한다. 통계 helper 테스트만으로 텍스트 잘림 통과를 주장하지 않는다. 관련 회귀·web lint/build·실제 화면/키보드 결과를 [UI-064](./ux-evidence/UI-064.md)에 연결한다.
   - 제외/연결: 새 통계/API/차트 라이브러리, 결과창·지침 패널·전역 내비게이션 재설계 제외. E01 첨부/E03 사람 관찰은 이 수정의 선행 조건이 아니다. UX-010/013/034/042, J08. 수정 완료 후 UI-021-F01을 재검증한다.
+
+#### 테스트케이스 생성·편집 흐름 재검토 — UI-065–072
+
+근거: [CASE_AUTHORING_FLOW_REVIEW_2026-09-20.md](./CASE_AUTHORING_FLOW_REVIEW_2026-09-20.md). `cea2fd6` 이후 관찰을 기준으로 한 **미구현 후속 작업**이다. UI-005/006/043/044/049의 기존 완료 이력은 보존하지만 이번 변경의 초안·저장·편집 안전성을 보증하지 않는다. 새 UI 전용 체크를 한 개씩 실행한다. UI-057의 Run 결과 복구와는 저장 대상이 다른 Case authoring 작업이며 그 완료로 대체할 수 없다.
+
+공통 규칙: 보고서의 CA ID를 먼저 재현하고 요청/응답·화면·재조회로 원인을 확인 → 실패 회귀 → 최소 수정 → 관련 테스트·web lint/build → 실제 화면/키보드와 같은 상태의 전후 캡처. `docs/ux-evidence/UI-XXX.md`에 작성/수정/취소/실패/재시도 결과, source revision, fixture, 역할, mock/실제 저장 구분과 제한을 남긴다. 모든 작업은 기존 사용자 변경·템플릿·권한을 보존하며 새 편집기/전면 리팩터링을 범위로 삼지 않는다.
+
+- [x] **UI-065 P1 — 생성 중 Section 변경에서 초안을 보존한다.** ([evidence](./ux-evidence/UI-065.md): valueKey에서 section 분리; Text/Steps A→B 유지; B만 저장; Run 지침; Add&Next 비유출; dirty.)
+  - 근거: CA-F01 실제 재현. `AddCasePage.tsx`의 valueKey에 sectionId가 포함되어 Section 변경이 `CaseAuthoringForm.tsx` 초기화로 이어짐.
+  - 범위/파일: `apps/web/src/features/cases/components/AddCasePage.tsx`, `CaseAuthoringForm.tsx`, `utils/caseAuthoringDraft.ts` 및 관련 회귀. 생성 폼의 identity/reset 경계를 분리하고 Section은 초안의 목적지 값으로 관리한다. 다른 케이스를 편집하거나 성공한 Add & Next로 새 초안을 시작할 때의 정상 초기화는 유지한다.
+  - 완료: Text와 3-step Steps 각각 Title/Preconditions/Expected/References/필수 custom 입력 후 Section A→B→A에서 값·순서·Template이 유지된다. 최종 B 저장은 B에만 1개 생성되고 재열기/Run에서 같은 지침이 보인다. Section만 바꾼 편집도 변경으로 감지한다. 필수값 오류 및 저장 실패 후에도 값이 남는다. Add & Next 성공 후에는 이전 지침이 새 케이스에 유출되지 않는다.
+  - 제외/연결: 이탈 확인은 UI-066, 부분 저장 복구는 UI-068, 목록 복귀 상태는 UI-072. UX-021/012/042, J02.
+
+- [x] **UI-066 P1 — 작성·편집의 모든 이탈 경로에 공통 초안 보호를 연결한다.** ([evidence](./ux-evidence/UI-066.md): 패널 Close 확인; Keep/Discard; 행·섹션·내비·뒤로가기; 깨끗한 Close/저장 후 무경고; IME Escape; 1280/390.)
+  - 근거: CA-F02의 패널 제목 수정→Close 즉시 폐기. 다른 이탈 경로도 현재 코드에서 재현한다.
+  - 범위/파일: `components/CaseDetailBody.tsx`, `CaseDetailSidePanel.tsx`, `ExpandableCaseDetail.tsx`, `AddCasePage.tsx`, `TestCaseWorkspace.tsx`, `hooks/useExpandedCase.ts`, `useCaseRepositoryKeyboard.ts`. 기존 dirty 상태와 공통 ConfirmDialog를 사용해 부모의 실제 대상/경로 전환까지 보호한다. 저장 중에는 제출 대상이 바뀌지 않게 한다.
+  - 완료: 패널/전체 폼에서 Close·Cancel·다른 행·섹션/필터로 패널 닫힘·상단 내비게이션·브라우저 뒤로가기를 각각 검증한다. Keep editing은 초안/대상/포커스 유지, Discard는 사용자가 원한 이동을 한 번 수행, 변경 없는 폼과 성공 저장 후에는 불필요한 경고 없음. 새로고침/탭 종료는 브라우저가 지원하는 이탈 경고로 확인하고 자동 저장으로 오인시키지 않는다. IME 입력과 실제 Escape/Tab/Enter를 확인한다.
+  - 제외/연결: 장기 자동 저장·초안 서버 동기화·전역 모든 화면 guard 구축 제외. 부분 성공 때 이미 저장된 항목은 UI-068 계약대로 명시하고 폐기하지 않는다. UX-012/021/042, J02/J06.
+
+- [x] **UI-067 P1 — 본문과 Steps 저장 완료 후 화면을 한 번에 갱신한다.** ([evidence](./ux-evidence/UI-067.md): 본문+Steps 후 한 번 갱신; 패널 읽기 복귀; Text/3-step/전체 폼; 390; skipGuard.)
+  - 근거: CA-F03 실제 UI/API 재현. 서버에는 Steps가 있으나 Save 직후 편집칸/미리보기는 빈 지침, refresh 후에만 정상 표시.
+  - 범위/파일: `components/ExpandableCaseDetail.tsx`, `CaseDetailBody.tsx`, `AddCasePage.tsx`, `hooks/useCaseEditorActions.ts`, `utils/updateCaseFromAuthoring.ts`, `syncCaseInstructionSteps.ts`. 전체 폼과 패널이 동일한 완료 경계를 사용하도록 기존 저장 경로를 정리한다. 본문 성공만으로 refetch·초안 초기화·버튼 활성화/완료 안내를 하지 않는다.
+  - 완료: 신규 quick outline→Text 지침 추가, 기존 3-step 수정/순서 변경/삭제 후 Save에서 모든 요청 완료까지 Saving/중복 제출 방지가 유지된다. refresh 없이 편집칸·미리보기·목록·버전이 실제 API와 일치한다. 성공은 해당 케이스 안에서 알 수 있고, 패널은 읽기 상태로 돌아가며 전체 편집 폼은 원래 진입 문맥으로 복귀한다. 뒤늦은 A 응답이 B 초안을 덮지 않는다. 본문과 Steps 응답을 지연시켜도 재현되지 않는다.
+  - 제외/연결: 실패 복구 UI/재시도 소유권은 UI-068에서 같은 저장 경계를 확장한다. 임의 DB 트랜잭션/API 신설 제외. UX-021/034/042, J02/J04.
+
+- [x] **UI-068 P1 — 생성·수정의 부분 실패를 구분하고 실패한 작업만 재시도한다.** ([evidence](./ux-evidence/UI-068.md): body/steps/move/409 구분; Retry; Add·Add&Next 초안 유지; 중복 없음; 1280/390.)
+  - 근거: CA-F04 코드 확인 위험. 일반 Add의 stepsWarning 누락, Add & Next 실패 초안 초기화, 패널 Steps 예외의 오류 표시 연결을 실패 주입으로 먼저 확인한다.
+  - 범위/파일: `utils/createCaseFromAuthoring.ts`, `updateCaseFromAuthoring.ts`, `syncCaseInstructionSteps.ts`, `components/AddCasePage.tsx`, `CaseAuthoringForm.tsx`, `ExpandableCaseDetail.tsx`, `hooks/useCaseEditorActions.ts`. 생성된 caseId·본문 저장 여부·성공한 step ID·실패 단계·원래 지침 초안을 작업 하나의 상태로 보관한다. 정상 경로 UI는 늘리지 않고 실패 시에만 짧은 요약/Retry를 노출한다.
+  - 완료: 본문 실패/본문 성공 후 첫·중간 Steps 실패/섹션 이동 실패/409 충돌을 구분한다. 부분 실패는 일반 Add도 목록으로 이동하지 않고 Add & Next도 초기화·다음 이동하지 않는다. 두 번 Retry해도 케이스나 성공한 Steps가 중복되지 않고 기존 성공 ID에 남은 작업만 적용된다. 수정 실패로 삭제된/미저장 지침을 복구할 수 있게 원래 초안을 유지한다. A→B 이동 시 A의 저장 사실과 실패 상태가 뒤섞이지 않는다. UI-066의 명시적 이탈은 이미 저장된 사실과 폐기할 초안을 설명한다.
+  - 제외/연결: 기존 API로 안전한 복구가 불가능하면 정확한 계약 공백과 별도 수정을 기록한다. 전체 성공으로 위장하거나 모든 실패에 새 케이스를 생성하지 않는다. UI-067 이후 수행. UX-012/021/042, J02/J06.
+
+- [x] **UI-069 P2 — 전체 작성과 섹션별 빠른 추가의 진입점을 구분한다.** ([evidence](./ux-evidence/UI-069.md): 상단 Add Test Case=전체 폼; 섹션/트리 Add Case=outline; overflow 중복 제거; 1440/1280/390.)
+  - 근거: CA-U01. R1의 전체 작성/quick outline 두 경로를 사용자에게 분명히 보여준다. UI-043의 header full-authoring 계약을 복구하며 상단 이름은 **Add Test Case**로 구체화한다.
+  - 범위/파일: `apps/web/src/features/projects/content-header/ProjectContentHeader.tsx`, `features/cases/components/CaseListPane.tsx`, `CaseListOutlineAdd.tsx`, `SectionTreePane.tsx`, `caseRoute.ts`. 상단 주요 버튼은 현재 suite/section을 전달한 전체 폼, 섹션 끝의 조용한 Add Case 및 트리 보조 추가는 제목 전용이다. More actions에 동일 전체 작성 항목을 중복 유지하지 않는다.
+  - 완료: 처음 진입한 목록에서 메뉴 탐색 없이 전체 폼에 갈 수 있다. 제목 5개 연속 추가는 현재 섹션에서 Enter/포커스를 유지하고 본문 작성 경로와 혼동되지 않는다. 빈 섹션·전체 범위·동명 다른 부모 섹션·읽기 전용 권한을 확인한다. 1440/1280/390에서 한 주요 행동만 강조하고 추가 CTA/설명 카드로 복잡도를 높이지 않는다.
+  - 제외/연결: quick outline 제거·행 클릭/QPane 전면 재설계 제외. UI-065/066/068 계약 보존. UX-001/003/021/042, J01/J02.
+
+- [x] **UI-070 P2 — 케이스 읽기·편집 패널의 중복 정보와 행동 계층을 정리한다.**
+  - 근거: CA-U02. Type/Priority/Template/Preconditions 중복, 편집 상단의 첨부가 실제 지침보다 먼저 나오는 구성.
+  - 범위/파일: `components/ExpandableCaseDetail.tsx`, `CaseInstructionReadView.tsx`, `CaseDetailSidePanel.tsx`, `CaseAuthoringForm.tsx`, `TestCaseWorkspace.tsx`. 읽기는 ID/제목→한 번의 조용한 메타 요약→Preconditions/Steps/Expected. 편집은 제목/목적지·템플릿→지침→선택적 메타·첨부, 안정된 Save/Cancel. Version history·삭제·복제는 보조 행동으로 보존한다.
+  - 완료: 같은 사실이 두 번 표시되지 않고 Text/3-step/10-step/지침 없음/긴 제목에서 실행 내용과 편집 진입을 이해할 수 있다. 360px 패널에서도 두 열 폼을 강제하지 않아 label/입력/버튼이 잘리지 않는다. 390px에서는 케이스 열기/편집 시 활성 영역으로 초점·스크롤을 안내하고 닫으면 원래 행으로 복귀한다. 데스크톱 목록 문맥과 기존 패널 크기 조절을 보존한다. 구조화된 단계는 Expected와 Action을 혼동시키지 않는다.
+  - 제외/연결: 새 폼/정보 탭 추가·Run 패널 재설계·기능 삭제 제외. UI-044/049 읽기·작성 계약의 후속 교정, UI-066/067 이후. UX-010/013/021/034/042, J02/J04.
+  - 증거: [UI-070](./ux-evidence/UI-070.md) (2026-09-23).
+
+- [x] **UI-071 P2 — 신규 작성에서도 첨부를 준비하고 기존 저장 경로에 연결한다.**
+  - 근거: CA-U03, R1 신규/편집 첨부 경로. 새 케이스를 저장한 뒤 다시 편집해야 하는 우회를 없앤다.
+  - 범위/파일: `components/AddCasePage.tsx`, `CaseAuthoringForm.tsx`, `ExpandableCaseDetail.tsx`의 CaseAttachmentControls 및 기존 `api/catalogApi.ts` case attachment/presign 경로. 기존 파일 검증·업로드 컴포넌트를 재사용/필요한 범위로 추출한다. UI-068의 저장된 caseId/부분 성공 계약에 첨부 단계를 연결한다. 전용 첨부 관리 화면은 만들지 않는다.
+  - 완료: 전체 생성 폼에서 두 파일 staging/개별 제거/취소 가능, 저장 전 서버 첨부 생성 없음. 케이스와 지침 저장 후 그 caseId에만 업로드하고 성공한 파일은 재시도하지 않는다. 파일 하나 실패 시 케이스/지침/성공 파일을 유지하고 Retry하며 Add & Next는 실패를 숨기고 넘어가지 않는다. 크기/형식 제한, 읽기 전용, 중복 제출, 재진입 시 File 재선택 안내를 검증한다. 메모리/제어된 응답 검증은 명시적으로 구분한다.
+  - 완료 경계/의존: UI-068/070 이후. 이 단위는 staging·소유권·기존 API 연결·복구 화면의 전달을 검증한다. 실제 외부 저장소 bytes upload/reopen/download는 UI-021/E01의 별도 필수 통합 증거로 남기며, mock만으로 그 완료를 주장하지 않는다. 기존 case API의 계약 자체가 없으면 그 사실을 보고하고 완료하지 않는다. 외부 인프라 구매/생성은 범위 밖.
+  - 연결: UX-012/021/042, J02/J06. Run 결과 첨부 UI-031/057과 케이스 첨부 대상을 혼동하지 않는다.
+  - 증거: [UI-071](./ux-evidence/UI-071.md) (2026-09-23).
+
+- [x] **UI-072 P2 — 전체 작성·편집 후 목록의 검색·범위·보기 문맥을 복원한다.**
+  - 근거: CA-U04 코드 확인. `goToList`가 기존 목록 query를 새로 구성하면서 사용자가 출발한 문맥을 버림.
+  - 범위/파일: `caseRoute.ts`와 테스트, `components/AddCasePage.tsx`, `TestCaseWorkspace.tsx`, `CaseDetailPage.tsx`, `hooks/useExpandedCase.ts`. 같은 프로젝트의 허용된 목록 상태만 전달/복원한다. 외부 임의 return URL은 사용하지 않는다.
+  - 완료: suite/section, direct/subtree/all, 검색, 필터, 그룹/열/밀도, 행 위치가 저장·취소·뒤로가기 후 보존된다. 새로 생성/이동한 케이스가 기존 필터에서 제외되면 필터를 자동 해제하지 않고 저장 성공과 해당 케이스 열기 링크를 제공한다. 직접 URL 진입처럼 원래 목록 상태가 없으면 유효한 같은 프로젝트/섹션으로 돌아간다. 취소 시 쓰기 없음, 저장 실패는 이동 없음. UI-066 초안 보호와 브라우저 뒤로가기가 충돌하지 않는다.
+  - 제외/연결: 전역 saved-view/개인화 기능 신설 제외. UI-065/066/067 이후. UX-001/012/021/022/042, J01/J02/J08.
+  - 증거: [UI-072](./ux-evidence/UI-072.md) (2026-09-23).
 
 ## 8. Definition of done
 

@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Button } from "../../../shared/ui/Button";
 import { OverflowMenu } from "../../../shared/ui/OverflowMenu";
@@ -7,6 +7,7 @@ import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { useToast } from "../../../shared/ui/toast/ToastProvider";
 import { copyTextToClipboard } from "../../../shared/utils/clipboard";
 import { buildAbsoluteShareUrl, buildEntitySharePath, formatEntityDisplayId } from "../../projects/utils/entityShare";
+import { useOptionalCaseDraftGuard } from "../context/CaseDraftGuardContext";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { buildCaseListPath } from "../caseRoute";
 import { caseDetailPanelTitle, caseDetailUtilityMenuGroups } from "../utils/caseDetailPanelHeader";
@@ -20,6 +21,7 @@ type Props = {
   onClose: () => void;
   onEdit: () => void;
   onCancelEdit: () => void;
+  onEditSaved?: () => void;
   onDuplicated: (copiedCaseId: number) => void;
 };
 
@@ -31,16 +33,49 @@ export function CaseDetailSidePanel({
   onClose,
   onEdit,
   onCancelEdit,
+  onEditSaved,
   onDuplicated
 }: Props) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data: casePreview } = useCaseDetail(caseId);
   const { openEntityContextMenu } = useEntityContextMenu();
   const { showToast } = useToast();
+  const draftGuard = useOptionalCaseDraftGuard();
+  const setDirty = draftGuard?.setDirty;
+  const setSaving = draftGuard?.setSaving;
+  const setDirtyRef = useRef(setDirty);
+  setDirtyRef.current = setDirty;
+  const panelRef = useRef<HTMLElement | null>(null);
   const heading = caseDetailPanelTitle(casePreview?.caseCode, casePreview?.title);
 
+  useEffect(() => {
+    if (mode !== "edit") setDirty?.(false);
+  }, [mode, setDirty]);
+
+  useEffect(() => {
+    // Clear only when the panel instance unmounts. Do not depend on draftGuard object
+    // identity — that changes when confirmOpen/isDirty updates and would clear the draft.
+    return () => setDirtyRef.current?.(false);
+  }, []);
+
+  useEffect(() => {
+    const node = panelRef.current;
+    if (!node) return;
+    node.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!node.contains(document.activeElement)) {
+      node.focus({ preventScroll: true });
+    }
+  }, [caseId, mode]);
+
   const utilityGroups = useMemo(() => {
-    const groups = caseDetailUtilityMenuGroups({ projectId, caseId, sectionId, isEditing: mode === "edit" });
+    const groups = caseDetailUtilityMenuGroups({
+      projectId,
+      caseId,
+      sectionId,
+      isEditing: mode === "edit",
+      listParams: searchParams
+    });
     const idText = formatEntityDisplayId("case", caseId, { caseCode: casePreview?.caseCode });
     const shareUrl = buildAbsoluteShareUrl(
       buildEntitySharePath(projectId, "case", caseId, { sectionId })
@@ -71,7 +106,7 @@ export function CaseDetailSidePanel({
         return item;
       })
     }));
-  }, [caseId, casePreview?.caseCode, mode, projectId, sectionId, showToast]);
+  }, [caseId, casePreview?.caseCode, mode, projectId, searchParams, sectionId, showToast]);
 
   const primaryActions = (
     <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
@@ -94,6 +129,12 @@ export function CaseDetailSidePanel({
       onClose={onClose}
       onEdit={onEdit}
       onCancelEdit={onCancelEdit}
+      onDirtyChange={(dirty) => setDirty?.(mode === "edit" && dirty)}
+      onSavingChange={(saving) => setSaving?.(saving)}
+      onSaved={() => {
+        setDirty?.(false);
+        (onEditSaved ?? onCancelEdit)();
+      }}
       onDeleted={() => navigate(buildCaseListPath(projectId, { sectionId }))}
       onDuplicated={onDuplicated}
     />
@@ -101,7 +142,9 @@ export function CaseDetailSidePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:max-h-[calc(100vh-8rem)]"
+      ref={panelRef}
+      tabIndex={-1}
+      className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm outline-none lg:max-h-[calc(100vh-8rem)]"
       aria-label={mode === "edit" ? "Edit test case" : "Test case preview"}
       onContextMenu={(event) =>
         openEntityContextMenu(event, {

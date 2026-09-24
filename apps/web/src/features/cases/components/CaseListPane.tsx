@@ -46,6 +46,7 @@ import { useCaseSavedViews } from "../hooks/useCaseSavedViews";
 import { useWorkspacePreferences } from "../../projects/hooks/useWorkspacePreferences";
 import { caseKeys } from "../hooks/useCases";
 import { useSuiteCases } from "../hooks/useSuiteCases";
+import { useOptionalCaseDraftGuard } from "../context/CaseDraftGuardContext";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { sectionKeys } from "../hooks/useSections";
 import type { SectionNode, TestCase } from "../types";
@@ -98,6 +99,7 @@ export function CaseListPane({
 
   const qc = useQueryClient();
   const { user } = useAuth();
+  const draftGuard = useOptionalCaseDraftGuard();
   const isProjectArchived = useProjectArchived();
   const [uiDensity, setUiDensity] = useUiDensity(projectId, "case-repository", user?.id);
   const {
@@ -431,11 +433,12 @@ export function CaseListPane({
   });
 
   useEffect(() => {
+    if (draftGuard?.isDirty) return;
     const normalized = deferredSearch.trim();
     if (normalized !== caseFilters.q) {
       setCaseFilters({ q: normalized });
     }
-  }, [caseFilters.q, deferredSearch, setCaseFilters]);
+  }, [caseFilters.q, deferredSearch, draftGuard?.isDirty, setCaseFilters]);
 
   useEffect(() => {
     setFocusCaseId(null);

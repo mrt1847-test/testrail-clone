@@ -1,0 +1,19 @@
+{
+  "fixture": {
+    "projectId": "3",
+    "suiteId": "3",
+    "sectionId": 10,
+    "caseId": 13,
+    "listUrl": "http://localhost:5173/projects/3/cases?suiteId=3&sectionId=10"
+  },
+  "checks": {
+    "viewDuplicateLabels": {
+      "Type": 2,
+      "Priority": 2,
+      "Template": 2,
+      "Preconditions": 2
+    },
+    "viewHasDuplicates": true,
+    "editImagesBeforeInstructions": true
+  }
+}

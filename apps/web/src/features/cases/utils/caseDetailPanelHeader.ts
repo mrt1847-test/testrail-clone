@@ -15,10 +15,12 @@ export function caseDetailUtilityMenuGroups(input: {
   caseId: number;
   sectionId: number | null;
   isEditing: boolean;
+  listParams?: URLSearchParams | null;
 }): OverflowMenuGroup[] {
   const openPath = buildCaseDetailPath(input.projectId, input.caseId, {
     sectionId: input.sectionId,
-    mode: input.isEditing ? "edit" : "view"
+    mode: input.isEditing ? "edit" : "view",
+    listParams: input.listParams
   });
   return [
     {

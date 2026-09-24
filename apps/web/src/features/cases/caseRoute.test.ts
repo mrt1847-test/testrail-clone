@@ -7,6 +7,7 @@ import {
   buildCaseRepositoryPath,
   buildEditCasePath
 } from "./caseRoute";
+import { CASE_LIST_RETURN_PARAM, captureCaseListReturnQuery } from "./utils/caseListReturnContext";
 
 describe("buildCaseListPath", () => {
   it("builds list path with section and case", () => {
@@ -32,6 +33,24 @@ describe("buildAddCasePath", () => {
     expect(buildAddCasePath("p1", { suiteId: "9", sectionId: 4 })).toBe(
       "/projects/p1/cases/new?suiteId=9&sectionId=4"
     );
+  });
+
+  it("carries allowlisted list context so save/cancel can restore filters", () => {
+    const href = buildAddCasePath("p1", {
+      suiteId: "9",
+      sectionId: 4,
+      listParams: new URLSearchParams("suiteId=9&sectionId=4&q=login&priority=high&scope=subtree")
+    });
+    expect(href.startsWith("/projects/p1/cases/new?")).toBe(true);
+    const params = new URLSearchParams(href.split("?")[1]);
+    expect(params.get("suiteId")).toBe("9");
+    expect(params.get("sectionId")).toBe("4");
+    const returned = captureCaseListReturnQuery(
+      new URLSearchParams(params.get(CASE_LIST_RETURN_PARAM) ?? "")
+    );
+    expect(returned).toContain("q=login");
+    expect(returned).toContain("priority=high");
+    expect(returned).toContain("scope=subtree");
   });
 });
 

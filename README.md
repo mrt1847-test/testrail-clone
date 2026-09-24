@@ -137,7 +137,7 @@ npm run dev:web
 | --- | --- | --- |
 | `NODE_ENV` | `development` | Server runtime mode |
 | `PORT` | `4000` | Fastify server port |
-| `WEB_ORIGIN` | `http://localhost:5173` | Allowed web origin for the API |
+| `WEB_ORIGIN` | `http://localhost:5173` | Allowed web origin(s) for CORS. No trailing slash. Comma-separated list is supported. |
 | `DATABASE_URL` | empty unless set | Required for Prisma/PostgreSQL mode |
 | `DIRECT_URL` | empty unless set | Direct/session database URL used by Prisma migrations when `DATABASE_URL` uses a pooler |
 | `AUTH_SECRET` | `dev-auth-secret` | Signs development auth tokens; set a long random value in deployed environments |
@@ -177,7 +177,7 @@ Required Render environment variables:
 DATABASE_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
 DIRECT_URL="postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
 USE_IN_MEMORY_REPOSITORY=false
-WEB_ORIGIN="https://your-vercel-app.vercel.app"
+WEB_ORIGIN=https://testrail-clone-web.vercel.app
 AUTH_SECRET="replace-me-with-a-long-random-secret"
 ```
 

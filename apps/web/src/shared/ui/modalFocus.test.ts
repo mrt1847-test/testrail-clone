@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { cycleModalFocus, resolveMenuTrigger } from "./modalFocus";
+import { cycleModalFocus, isImeCompositionEvent, resolveMenuTrigger } from "./modalFocus";
 
 function button(id: string) {
   return { id, focus: vi.fn() } as unknown as HTMLElement;
@@ -33,6 +33,14 @@ describe("cycleModalFocus", () => {
     const preventDefault = vi.fn();
     expect(cycleModalFocus([first], { key: "Escape", shiftKey: false, preventDefault }, first)).toBe(false);
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("isImeCompositionEvent", () => {
+  it("ignores Escape while an IME composition is active", () => {
+    expect(isImeCompositionEvent({ isComposing: true, keyCode: 27 })).toBe(true);
+    expect(isImeCompositionEvent({ isComposing: false, keyCode: 229 })).toBe(true);
+    expect(isImeCompositionEvent({ isComposing: false, keyCode: 27 })).toBe(false);
   });
 });
 

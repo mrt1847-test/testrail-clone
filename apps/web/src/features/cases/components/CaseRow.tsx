@@ -7,6 +7,7 @@ import type { CaseListColumn, CaseVersion, TestCase } from "../types";
 
 import type {
   CaseAuthoringCustomFieldDefinition,
+  CaseAuthoringSubmitInput,
   CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
 import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
@@ -51,14 +52,7 @@ type CaseRowProps = {
   onTogglePanel: () => void;
   onEdit: () => void;
   onCloseDetail: () => void;
-  onSave: (patch: {
-    title: string;
-    preconditions: string;
-    references: string;
-    expectedResult: string;
-    templateId: string | null;
-    customValues: Record<string, string | number | boolean | string[] | null>;
-  }) => Promise<void>;
+  onSave: (input: CaseAuthoringSubmitInput) => Promise<void>;
   onDelete: () => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;

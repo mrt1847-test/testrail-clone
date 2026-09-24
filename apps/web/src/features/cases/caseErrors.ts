@@ -10,7 +10,7 @@ export function extractApiErrorMessage(error: unknown, fallback: string) {
   }
 }
 
-function extractApiErrorCode(error: unknown): string | null {
+export function extractApiErrorCode(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
   try {
     const parsed = JSON.parse(error.message) as

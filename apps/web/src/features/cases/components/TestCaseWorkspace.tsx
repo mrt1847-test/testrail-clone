@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ErrorState } from "../../../shared/ui/ErrorState";
 import { LoadingState } from "../../../shared/ui/LoadingState";
@@ -7,9 +7,11 @@ import { useCaseListDnD, type PendingMoveCopy } from "../hooks/useCaseListDnD";
 import { useCaseRepositoryKeyboard } from "../hooks/useCaseRepositoryKeyboard";
 import { useCaseRepositoryTreeSide } from "../hooks/useCaseRepositoryTreeSide";
 import { useDefectAddUrl } from "../hooks/useDefectAddUrl";
+import { CaseDraftGuardProvider, useCaseDraftGuard } from "../context/CaseDraftGuardContext";
 import { useExpandedCase } from "../hooks/useExpandedCase";
 import { useSections } from "../hooks/useSections";
-import { buildAddCasePath } from "../caseRoute";
+import { buildAddCasePath, buildCaseDetailPath } from "../caseRoute";
+import { CASE_LIST_SAVED_CASE_PARAM, CASE_LIST_SAVED_NOTICE_PARAM } from "../utils/caseListReturnContext";
 import { CaseDetailSidePanel } from "./CaseDetailSidePanel";
 import { CaseListPane } from "./CaseListPane";
 import { SectionTreePane } from "./SectionTreePane";
@@ -56,8 +58,17 @@ function useSideSplitLayout() {
 }
 
 export function TestCaseWorkspace() {
+  return (
+    <CaseDraftGuardProvider>
+      <TestCaseWorkspaceInner />
+    </CaseDraftGuardProvider>
+  );
+}
+
+function TestCaseWorkspaceInner() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
+  const draftGuard = useCaseDraftGuard();
   const { user } = useAuth();
   const workspacePrefsQuery = useWorkspacePreferences(projectId);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -292,6 +303,7 @@ export function TestCaseWorkspace() {
       onClose={closeDetail}
       onEdit={() => setPanelCase(panelCaseId, "edit")}
       onCancelEdit={() => setPanelCase(panelCaseId, "view")}
+      onEditSaved={() => setPanelCase(panelCaseId, "view", { skipGuard: true })}
       onDuplicated={(copiedCaseId) => setPanelCase(copiedCaseId, "view")}
     />
   ) : null;
@@ -324,32 +336,73 @@ export function TestCaseWorkspace() {
     />
   );
 
+  const savedNoticeCaseId = (() => {
+    const raw = searchParams.get(CASE_LIST_SAVED_CASE_PARAM) ?? searchParams.get("panelCaseId");
+    if (raw == null || raw === "") return null;
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) ? parsed : null;
+  })();
+
   return (
     <WorkbenchPage>
       <CaseRepositoryContentHeader
         projectId={projectId}
         suiteId={activeSuiteId}
-        onAddCase={() => openCaseOutline()}
         addTestCaseHref={buildAddCasePath(projectId, {
           suiteId: activeSuiteId || undefined,
-          sectionId: selectedSectionId ?? sections[0]?.id ?? undefined
+          sectionId: selectedSectionId ?? sections[0]?.id ?? undefined,
+          listParams: searchParams
         })}
         onCopyMoveCases={() => setCopyMoveRequest((value) => value + 1)}
       />
+      {searchParams.get(CASE_LIST_SAVED_NOTICE_PARAM) === "1" && savedNoticeCaseId != null ? (
+        <div
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+          role="status"
+          data-case-saved-outside-filter
+        >
+          <p>
+            Test case saved. It may be outside the current search or filters.{" "}
+            <Link
+              className="font-medium text-emerald-900 underline"
+              to={buildCaseDetailPath(projectId, savedNoticeCaseId, {
+                sectionId: selectedSectionId,
+                listParams: searchParams
+              })}
+            >
+              Open saved case
+            </Link>
+          </p>
+          <button
+            type="button"
+            className="rounded border border-emerald-300 bg-white px-2 py-1 text-xs font-medium text-emerald-900"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete(CASE_LIST_SAVED_NOTICE_PARAM);
+              next.delete(CASE_LIST_SAVED_CASE_PARAM);
+              setSearchParams(next, { replace: true });
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       <SuiteSwitcherBar
         projectId={projectId}
         selectedSuiteId={activeSuiteId}
         onSelectSuite={(suiteId) => {
-          setSelectedSuiteId(suiteId);
-          window.localStorage.setItem(suiteStorageKey(projectId), suiteId);
-          const next = new URLSearchParams(searchParams);
-          next.set("suiteId", suiteId);
-          next.delete("sectionId");
-          next.delete("caseId");
-          next.delete("mode");
-          next.delete("panelCaseId");
-          next.delete("panelMode");
-          setSearchParams(next);
+          draftGuard.requestLeave(() => {
+            setSelectedSuiteId(suiteId);
+            window.localStorage.setItem(suiteStorageKey(projectId), suiteId);
+            const next = new URLSearchParams(searchParams);
+            next.set("suiteId", suiteId);
+            next.delete("sectionId");
+            next.delete("caseId");
+            next.delete("mode");
+            next.delete("panelCaseId");
+            next.delete("panelMode");
+            setSearchParams(next);
+          });
         }}
       />
       <div className={["grid items-start gap-3", gridCols].join(" ")} style={sideGridStyle}>

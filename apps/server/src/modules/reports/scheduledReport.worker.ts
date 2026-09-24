@@ -27,6 +27,10 @@ export function startScheduledReportWorker(opts: { prisma: PrismaClient; interva
           console.error(`scheduled report ${row.id.toString()} failed`, error);
         }
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // eslint-disable-next-line no-console
+      console.error(`Scheduled report worker failed: ${message}`);
     } finally {
       running = false;
     }

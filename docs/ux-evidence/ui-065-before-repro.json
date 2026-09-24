@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "projectId": "1",
+    "suiteId": "1",
+    "loginId": "2",
+    "checkoutId": "3",
+    "addUrl": "http://localhost:5173/projects/1/cases/new?suiteId=1&sectionId=2"
+  },
+  "afterSectionChange": {
+    "title": "",
+    "preconditions": "",
+    "expected": "",
+    "references": "",
+    "steps": "",
+    "section": "3"
+  },
+  "cleared": true,
+  "beforeFill": {
+    "title": "UI-065 draft title",
+    "preconditions": "Signed-in shopper",
+    "expected": "Order confirms",
+    "references": "",
+    "steps": "1. Open cart\n2. Checkout",
+    "section": "2"
+  }
+}

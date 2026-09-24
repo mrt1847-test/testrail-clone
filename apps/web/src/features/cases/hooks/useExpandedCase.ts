@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { useOptionalCaseDraftGuard } from "../context/CaseDraftGuardContext";
 import { applyCasePreviewSearchParams } from "../caseRoute";
+import { shouldGuardPanelNavigation } from "../utils/unsavedDraftGuard";
 import {
   parseCaseDisplayMode,
   parseCaseQueryScope,
@@ -130,6 +132,15 @@ function writeRepositoryView(next: URLSearchParams, view: CaseRepositoryViewStat
 
 export function useExpandedCase() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const draftGuard = useOptionalCaseDraftGuard();
+
+  const runGuarded = useCallback(
+    (action: () => void) => {
+      if (draftGuard) draftGuard.requestLeave(action);
+      else action();
+    },
+    [draftGuard]
+  );
 
   const panelCaseId = useMemo(() => {
     const raw = searchParams.get("panelCaseId") ?? searchParams.get("caseId");
@@ -209,30 +220,55 @@ export function useExpandedCase() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const setPanelCase = useCallback((nextCaseId: number | null, nextMode: "view" | "edit" = "view") => {
-    const next = new URLSearchParams(searchParams);
-    next.delete("caseId");
-    next.delete("mode");
+  const setPanelCase = useCallback(
+    (nextCaseId: number | null, nextMode: "view" | "edit" = "view", options?: { skipGuard?: boolean }) => {
+      const apply = () => {
+        setSearchParams((current) => {
+          const next = new URLSearchParams(current);
+          next.delete("caseId");
+          next.delete("mode");
 
-    if (nextCaseId === null) {
-      next.delete("panelCaseId");
-      next.delete("panelMode");
-    } else {
-      next.set("panelCaseId", String(nextCaseId));
-      next.set("focusCaseId", String(nextCaseId));
-      if (nextMode === "edit") next.set("panelMode", "edit");
-      else next.delete("panelMode");
-    }
+          if (nextCaseId === null) {
+            next.delete("panelCaseId");
+            next.delete("panelMode");
+          } else {
+            next.set("panelCaseId", String(nextCaseId));
+            next.set("focusCaseId", String(nextCaseId));
+            if (nextMode === "edit") next.set("panelMode", "edit");
+            else next.delete("panelMode");
+          }
 
-    setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+          return next;
+        });
+      };
+
+      if (
+        shouldGuardPanelNavigation({
+          panelMode,
+          currentCaseId: panelCaseId,
+          nextCaseId,
+          nextMode,
+          skipGuard: options?.skipGuard
+        })
+      ) {
+        runGuarded(apply);
+      } else {
+        apply();
+      }
+    },
+    [panelCaseId, panelMode, runGuarded, setSearchParams]
+  );
 
   const revealCasePreview = useCallback(
     (caseId: number, options?: { sectionId?: number | null }) => {
-      const next = applyCasePreviewSearchParams(new URLSearchParams(searchParams), caseId, options);
-      setSearchParams(next);
+      const apply = () => {
+        const next = applyCasePreviewSearchParams(new URLSearchParams(searchParams), caseId, options);
+        setSearchParams(next);
+      };
+      if (panelMode === "edit" && panelCaseId !== caseId) runGuarded(apply);
+      else apply();
     },
-    [searchParams, setSearchParams]
+    [panelCaseId, panelMode, runGuarded, searchParams, setSearchParams]
   );
 
   const togglePanelCase = useCallback(
@@ -243,15 +279,20 @@ export function useExpandedCase() {
     [panelCaseId, setPanelCase]
   );
 
-  const setSelectedSection = useCallback((nextSectionId: number) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("sectionId", String(nextSectionId));
-    next.delete("caseId");
-    next.delete("mode");
-    next.delete("panelCaseId");
-    next.delete("panelMode");
-    setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+  const setSelectedSection = useCallback(
+    (nextSectionId: number) => {
+      runGuarded(() => {
+        const next = new URLSearchParams(searchParams);
+        next.set("sectionId", String(nextSectionId));
+        next.delete("caseId");
+        next.delete("mode");
+        next.delete("panelCaseId");
+        next.delete("panelMode");
+        setSearchParams(next);
+      });
+    },
+    [runGuarded, searchParams, setSearchParams]
+  );
 
   /** Tree focus for suite-wide view: updates section anchor without closing the case panel. */
   const setTreeFocusSection = useCallback((nextSectionId: number) => {
@@ -266,64 +307,71 @@ export function useExpandedCase() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const setCaseFilters = useCallback((patch: Partial<CaseListFilters>) => {
-    const next = new URLSearchParams(searchParams);
-    const q = patch.q ?? caseFilters.q;
-    const priority = patch.priority ?? caseFilters.priority;
-    const caseType = patch.caseType ?? caseFilters.caseType;
-    const automation = patch.automation ?? caseFilters.automation;
-    const refs = patch.refs ?? caseFilters.refs;
-    const labels = patch.labels ?? caseFilters.labels;
-    const estimate = patch.estimate ?? caseFilters.estimate;
-    const state = patch.state ?? caseFilters.state;
+  const setCaseFilters = useCallback(
+    (patch: Partial<CaseListFilters>) => {
+      runGuarded(() => {
+        const next = new URLSearchParams(searchParams);
+        const q = patch.q ?? caseFilters.q;
+        const priority = patch.priority ?? caseFilters.priority;
+        const caseType = patch.caseType ?? caseFilters.caseType;
+        const automation = patch.automation ?? caseFilters.automation;
+        const refs = patch.refs ?? caseFilters.refs;
+        const labels = patch.labels ?? caseFilters.labels;
+        const estimate = patch.estimate ?? caseFilters.estimate;
+        const state = patch.state ?? caseFilters.state;
 
-    if (q.trim().length > 0) next.set("q", q.trim());
-    else next.delete("q");
+        if (q.trim().length > 0) next.set("q", q.trim());
+        else next.delete("q");
 
-    if (priority) next.set("priority", priority);
-    else next.delete("priority");
+        if (priority) next.set("priority", priority);
+        else next.delete("priority");
 
-    if (caseType) next.set("caseType", caseType);
-    else next.delete("caseType");
+        if (caseType) next.set("caseType", caseType);
+        else next.delete("caseType");
 
-    if (automation) next.set("automation", automation);
-    else next.delete("automation");
+        if (automation) next.set("automation", automation);
+        else next.delete("automation");
 
-    if (refs) next.set("refs", refs);
-    else next.delete("refs");
+        if (refs) next.set("refs", refs);
+        else next.delete("refs");
 
-    if (labels) next.set("labels", labels);
-    else next.delete("labels");
+        if (labels) next.set("labels", labels);
+        else next.delete("labels");
 
-    if (estimate) next.set("estimate", estimate);
-    else next.delete("estimate");
+        if (estimate) next.set("estimate", estimate);
+        else next.delete("estimate");
 
-    if (state === "archived") next.set("state", state);
-    else next.delete("state");
+        if (state === "archived") next.set("state", state);
+        else next.delete("state");
 
-    next.delete("caseId");
-    next.delete("mode");
-    next.delete("panelCaseId");
-    next.delete("panelMode");
-    setSearchParams(next);
-  }, [caseFilters, searchParams, setSearchParams]);
+        next.delete("caseId");
+        next.delete("mode");
+        next.delete("panelCaseId");
+        next.delete("panelMode");
+        setSearchParams(next);
+      });
+    },
+    [caseFilters, runGuarded, searchParams, setSearchParams]
+  );
 
   const clearCaseFilters = useCallback(() => {
-    const next = new URLSearchParams(searchParams);
-    next.delete("q");
-    next.delete("priority");
-    next.delete("caseType");
-    next.delete("automation");
-    next.delete("refs");
-    next.delete("labels");
-    next.delete("estimate");
-    next.delete("state");
-    next.delete("caseId");
-    next.delete("mode");
-    next.delete("panelCaseId");
-    next.delete("panelMode");
-    setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+    runGuarded(() => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("q");
+      next.delete("priority");
+      next.delete("caseType");
+      next.delete("automation");
+      next.delete("refs");
+      next.delete("labels");
+      next.delete("estimate");
+      next.delete("state");
+      next.delete("caseId");
+      next.delete("mode");
+      next.delete("panelCaseId");
+      next.delete("panelMode");
+      setSearchParams(next);
+    });
+  }, [runGuarded, searchParams, setSearchParams]);
 
   const setCaseColumns = useCallback((columns: CaseListColumn[]) => {
     const next = new URLSearchParams(searchParams);
@@ -355,11 +403,15 @@ export function useExpandedCase() {
   }, [searchParams, setSearchParams]);
 
   const applyRepositoryView = useCallback((view: CaseRepositoryViewState, options?: { replace?: boolean }) => {
-    const next = new URLSearchParams(searchParams);
-    writeRepositoryView(next, view);
-    if (options?.replace) setSearchParams(next, { replace: true });
-    else setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+    const apply = () => {
+      const next = new URLSearchParams(searchParams);
+      writeRepositoryView(next, view);
+      if (options?.replace) setSearchParams(next, { replace: true });
+      else setSearchParams(next);
+    };
+    if (panelMode === "edit") runGuarded(apply);
+    else apply();
+  }, [panelMode, runGuarded, searchParams, setSearchParams]);
 
   const applySavedView = useCallback(
     (view: { sectionId: number | null; filters: CaseListFilters; columns?: CaseListColumn[]; scope?: CaseQueryScope }) => {

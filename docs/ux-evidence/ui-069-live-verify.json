@@ -1,0 +1,58 @@
+{
+  "fixture": {
+    "projectId": "2",
+    "suiteId": "2",
+    "loginId": 6,
+    "emptyId": 7,
+    "nestedLoginId": 8,
+    "listUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=6",
+    "emptyUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=7",
+    "nestedUrl": "http://localhost:5173/projects/2/cases?suiteId=2&sectionId=8"
+  },
+  "checks": {
+    "headerFullAuthoring": {
+      "ok": true,
+      "headerLink": true,
+      "fullForm": true,
+      "url": "http://localhost:5173/projects/2/cases/new?suiteId=2&sectionId=6"
+    },
+    "noDuplicateOverflow": {
+      "ok": true,
+      "menuOpen": true,
+      "hasAddTestCase": false
+    },
+    "sectionOutlineFive": {
+      "ok": true,
+      "stayedList": true,
+      "focus": true,
+      "listed": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "emptySectionOutline": {
+      "ok": true
+    },
+    "nestedSameName": {
+      "ok": true
+    },
+    "treePlusOutline": {
+      "ok": true
+    },
+    "desktop1440": {
+      "ok": true,
+      "primaryCount": 1,
+      "overflow": false
+    },
+    "mobile390": {
+      "ok": true,
+      "fullForm": true,
+      "outline": true,
+      "overflow": false
+    }
+  },
+  "allOk": true
+}

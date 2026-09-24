@@ -22,6 +22,7 @@ export function RunStatusOverview({ counts, activeStatus, onStatusSelect, visibl
 
   return (
     <section className="border-b border-slate-300 px-3 py-1.5 sm:px-4" aria-label="Run-wide status">
+      {/* Narrow widths use two legend columns and wrapping labels so status names stay readable without growing a tall stack. */}
       <div className="flex flex-row items-center gap-3 lg:gap-6">
         <RunProgressChart
           counts={counts}
@@ -40,7 +41,7 @@ export function RunStatusOverview({ counts, activeStatus, onStatusSelect, visibl
           <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
             Counts for this entire run, not the current page or section.
           </p>
-          <ul className="mt-1.5 grid grid-cols-3 gap-1 lg:grid-cols-6">
+          <ul className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 sm:grid-cols-3 lg:grid-cols-6">
             {items.map((item) => {
               const selected = activeStatus === item.key;
               const percentLabel = item.key === "all" ? "" : ` ${item.percent}%`;
@@ -69,8 +70,8 @@ export function RunStatusOverview({ counts, activeStatus, onStatusSelect, visibl
                     ) : (
                       <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm bg-slate-300" aria-hidden />
                     )}
-                    <span className="min-w-0 truncate">{item.label}</span>
-                    <span className="ml-auto tabular-nums text-slate-500">
+                    <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+                    <span className="shrink-0 tabular-nums text-slate-500">
                       {item.count}
                       {percentLabel}
                     </span>

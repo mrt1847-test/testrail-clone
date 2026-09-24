@@ -1,5 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
+export function isImeCompositionEvent(event: { isComposing?: boolean; keyCode?: number }): boolean {
+  return Boolean(event.isComposing) || event.keyCode === 229;
+}
+
 export const MODAL_FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -183,6 +187,7 @@ export function useModalFocus({
     });
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !closeOnEscapeRef.current) return;
+      if (isImeCompositionEvent(event)) return;
       event.preventDefault();
       onCloseRef.current();
     };

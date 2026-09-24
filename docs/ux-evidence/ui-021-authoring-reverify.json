@@ -1,0 +1,135 @@
+{
+  "fixture": {
+    "projectId": "4",
+    "suiteId": "4",
+    "sectionId": 9,
+    "checkoutId": 10,
+    "textTemplateId": "16",
+    "stepsTemplateId": "17",
+    "runId": "3",
+    "listUrl": "http://localhost:5173/projects/4/cases?suiteId=4&sectionId=9",
+    "listFiltered": "http://localhost:5173/projects/4/cases?suiteId=4&sectionId=9&q=login&priority=high&scope=subtree&groupBy=priority&display=compact",
+    "addUrl": "http://localhost:5173/projects/4/cases/new?suiteId=4&sectionId=9",
+    "runUrl": "http://localhost:5173/projects/4/runs/3"
+  },
+  "checks": {
+    "ui064F01Legend390": {
+      "ok": true,
+      "metrics": [
+        {
+          "label": "Passed",
+          "visibleText": "Passed",
+          "overflow": false,
+          "truncStyle": false
+        },
+        {
+          "label": "Failed",
+          "visibleText": "Failed",
+          "overflow": false,
+          "truncStyle": false
+        },
+        {
+          "label": "Blocked",
+          "visibleText": "Blocked",
+          "overflow": false,
+          "truncStyle": false
+        },
+        {
+          "label": "Retest",
+          "visibleText": "Retest",
+          "overflow": false,
+          "truncStyle": false
+        },
+        {
+          "label": "Untested",
+          "visibleText": "Untested",
+          "overflow": false,
+          "truncStyle": false
+        },
+        {
+          "label": "All statuses",
+          "visibleText": "All statuses",
+          "overflow": false,
+          "truncStyle": false
+        }
+      ],
+      "overflowX": false
+    },
+    "ui072ReturnOnAdd": {
+      "ok": true,
+      "return": "suiteId=4&sectionId=9&scope=subtree&display=compact&q=login&priority=high&groupBy=priority"
+    },
+    "ui071StagingOnAdd": {
+      "ok": true
+    },
+    "ui066DirtyLeave": {
+      "ok": true
+    },
+    "ui072ReturnAfterSave": {
+      "ok": true,
+      "before": {
+        "suiteId": "4",
+        "sectionId": "9",
+        "q": "login",
+        "priority": "high",
+        "scope": "subtree",
+        "groupBy": "priority",
+        "display": "compact"
+      },
+      "after": {
+        "suiteId": "4",
+        "sectionId": "9",
+        "scope": "subtree",
+        "display": "compact",
+        "q": "login",
+        "priority": "high",
+        "groupBy": "priority",
+        "savedNotice": "1",
+        "savedCaseId": "13"
+      }
+    },
+    "textCaseCreated": {
+      "ok": true,
+      "id": "13"
+    },
+    "textInstructionsPersist": {
+      "ok": true,
+      "preconditions": "Browser ready for receipt print",
+      "expected": "Billed total matches 12.00",
+      "refs": "JIRA-UI021",
+      "stepsSample": "Open order\nPrint receipt PDF"
+    },
+    "ui070ReadShowsInstructions": {
+      "ok": true,
+      "sample": "C13 UI021 text receipt 1790163766\nEdit\nCase utilities\n\u2022\u2022\u2022\nClose\n\nSection Login\n\nType Functional\nPriority Medium\nReferences \nJIRA-UI021\nTemplate Test Case (Text)\nPRECONDITIONS\n\nBrowser ready for receipt print\n\nSTEPS\n\nOpen order\nPrint receipt PDF\n\nEXPECTED RESULT\n\nBilled total matches 12.00\n\nVersion h"
+    },
+    "stepsAddAndNext": {
+      "ok": true,
+      "notice": true
+    },
+    "stepsCaseCreated": {
+      "ok": true,
+      "id": "14"
+    },
+    "runPanelShowsTextInstructions": {
+      "ok": true,
+      "titlePresent": true,
+      "sample": "QA Rail\nUI-021 Reverify 1790163735\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nProjects\n/\nUI-021 Reverify 1790163735\n/\nTest Runs\n/\nUI-021 Reverify 1790163735\nUI-021 authoring instructions\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n\u29c9\nRun utilities\n\u2022\u2022\u2022\n2\nTESTS\n\n0% passed \u00b7 2 / 2 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n2 100%\nAll statuses\n2\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\nL"
+    },
+    "runPanelShowsStepsInstructions": {
+      "ok": true,
+      "titlePresent": true,
+      "sample": "QA Rail\nUI-021 Reverify 1790163735\n\u2022\u2022\u2022\nSuite\n\u2022\u2022\u2022\nSearch project\nAccount\n\u2022\u2022\u2022\nOverview\nTest Cases\nTest Runs & Results\nMilestones\nReports\nMy Tests\nSettings\nMore\n\u2022\u2022\u2022\nProjects\n/\nUI-021 Reverify 1790163735\n/\nTest Runs\n/\nUI-021 Reverify 1790163735\nUI-021 authoring instructions\nOPEN\n\nMembership: Selected cases\n\nRun assignee\nUnassigned\nAssign\nID\n\u29c9\nRun utilities\n\u2022\u2022\u2022\n2\nTESTS\n\n0% passed \u00b7 2 / 2 untested\n\nCounts for this entire run, not the current page or section.\n\nPassed\n0 0%\nFailed\n0 0%\nBlocked\n0 0%\nRetest\n0 0%\nUntested\n2 100%\nAll statuses\n2\n\nSECTIONS\n\nAll sections\nDisplay\nSubtree\nTree\nCompact\nGeneral\nL"
+    }
+  },
+  "defects": [],
+  "externalWaits": {
+    "E01": "blocked",
+    "E03": "blocked"
+  },
+  "timestamp": 1790163757,
+  "authoringRunPathOk": true,
+  "newContractDefects": [],
+  "canCompleteUi021": false,
+  "allOkForThisPass": true
+}

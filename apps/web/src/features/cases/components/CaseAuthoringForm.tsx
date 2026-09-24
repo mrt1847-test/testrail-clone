@@ -84,9 +84,14 @@ type CaseAuthoringFormProps = {
   cancelLabel?: string;
   isSubmitting?: boolean;
   submitError?: string | null;
+  showRetry?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onSubmit: (input: CaseAuthoringSubmitInput) => Promise<void> | void;
   onCancel: () => void;
+  /** Optional content rendered above the sticky action bar (e.g. add-case attachment staging). */
+  beforeActions?: ReactNode;
+  /** Panel/narrow layouts: stack fields and put instructions before optional meta. */
+  stackFields?: boolean;
 };
 
 function normalizeTemplateFieldKey(value: string) {
@@ -182,9 +187,12 @@ export function CaseAuthoringForm({
   cancelLabel = "Cancel",
   isSubmitting = false,
   submitError = null,
+  showRetry = false,
   onDirtyChange,
   onSubmit,
-  onCancel
+  onCancel,
+  beforeActions = null,
+  stackFields = false
 }: CaseAuthoringFormProps) {
   const activeCustomFields = useMemo(
     () =>
@@ -260,6 +268,7 @@ export function CaseAuthoringForm({
     ]
   );
   const [baselineSnapshot, setBaselineSnapshot] = useState(initialDraftSnapshot);
+  const [baselineSectionId, setBaselineSectionId] = useState(selectedSectionId);
 
   useEffect(() => {
     const initialDraft = JSON.parse(initialDraftSnapshot) as CaseAuthoringDraft;
@@ -282,7 +291,11 @@ export function CaseAuthoringForm({
     setPendingTemplateId(null);
     setTemplateChangeWarning(null);
     setBaselineSnapshot(initialDraftSnapshot);
+    // Destination section is not part of valueKey; capture the current destination only when the draft identity resets.
+    setBaselineSectionId(selectedSectionId);
     setFieldErrors({});
+    // selectedSectionId intentionally omitted: section changes must not wipe the draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on authoring identity / initial snapshot
   }, [valueKey, initialDraftSnapshot]);
 
   useEffect(() => {
@@ -377,7 +390,10 @@ export function CaseAuthoringForm({
       title
     ]
   );
-  const isDirty = currentDraftSnapshot !== baselineSnapshot || Boolean(referencesDraft.trim());
+  const isDirty =
+    currentDraftSnapshot !== baselineSnapshot ||
+    Boolean(referencesDraft.trim()) ||
+    selectedSectionId !== baselineSectionId;
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -784,11 +800,108 @@ export function CaseAuthoringForm({
   const bodyBlocks = orderedBlocks.filter(
     (block) => block.key !== "title" && block.key !== "estimate" && block.key !== "references"
   );
+  const metaGridClass = stackFields ? "grid gap-3" : "grid gap-3 sm:grid-cols-2";
+
+  const destinationFields = (
+    <>
+      {sectionOptions && sectionOptions.length > 0 ? (
+        <FormField label="Section" controlId="case-section" required>
+          {(controlProps) => (
+            <select
+              {...controlProps}
+              value={selectedSectionId ?? ""}
+              onChange={(event) => onSectionIdChange?.(Number(event.target.value))}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {sectionOptions.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+      ) : sectionPath ? (
+        <p className={stackFields ? "text-sm text-slate-600" : "sm:col-span-2 text-sm text-slate-600"}>
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Section</span>{" "}
+          {sectionPath}
+        </p>
+      ) : null}
+      {activeTemplates.length > 0 ? (
+        <FormField label="Template" controlId="case-template">
+          {(controlProps) => (
+            <select
+              {...controlProps}
+              value={selectedTemplateId}
+              onChange={(event) => requestTemplateChange(event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {activeTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                  {template.isDefault ? " (Default)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+      ) : null}
+    </>
+  );
+
+  const optionalMetaFields = (
+    <>
+      <FormField label="Type" controlId="case-type">
+        {(controlProps) => (
+          <select
+            {...controlProps}
+            value={caseType}
+            onChange={(event) => setCaseType(event.target.value as CaseType)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            {CASE_TYPE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
+      </FormField>
+      <FormField label="Priority" controlId="case-priority">
+        {(controlProps) => (
+          <select
+            {...controlProps}
+            value={priority}
+            onChange={(event) => setPriority(event.target.value as CasePriority)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            {CASE_PRIORITY_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
+      </FormField>
+      {estimateBlock ? <div>{estimateBlock.node}</div> : null}
+      {referencesBlock ? <div>{referencesBlock.node}</div> : null}
+    </>
+  );
+
+  const instructionFields = (
+    <div className="grid gap-3" data-case-authoring-instructions>
+      {bodyBlocks.map((block) => (
+        <div key={block.key}>{block.node}</div>
+      ))}
+    </div>
+  );
 
   return (
     <form
       ref={formRef}
       className="grid gap-4"
+      data-case-authoring-form
+      data-stack-fields={stackFields ? "true" : "false"}
       onSubmit={(event) => {
         event.preventDefault();
         void handleSubmit();
@@ -796,96 +909,40 @@ export function CaseAuthoringForm({
     >
       {titleBlock ? <div>{titleBlock.node}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {sectionOptions && sectionOptions.length > 0 ? (
-          <FormField label="Section" controlId="case-section" required>
-            {(controlProps) => (
-              <select
-                {...controlProps}
-                value={selectedSectionId ?? ""}
-                onChange={(event) => onSectionIdChange?.(Number(event.target.value))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-              >
-                {sectionOptions.map((section) => (
-                  <option key={section.id} value={section.id}>
-                    {section.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-        ) : sectionPath ? (
-          <p className="sm:col-span-2 text-sm text-slate-600">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Section</span>{" "}
-            {sectionPath}
-          </p>
-        ) : null}
-        {activeTemplates.length > 0 ? (
-          <FormField label="Template" controlId="case-template">
-            {(controlProps) => (
-              <select
-                {...controlProps}
-                value={selectedTemplateId}
-                onChange={(event) => requestTemplateChange(event.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-              >
-                {activeTemplates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                    {template.isDefault ? " (Default)" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-        ) : null}
-        <FormField label="Type" controlId="case-type">
-          {(controlProps) => (
-            <select
-              {...controlProps}
-              value={caseType}
-              onChange={(event) => setCaseType(event.target.value as CaseType)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {CASE_TYPE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          )}
-        </FormField>
-        <FormField label="Priority" controlId="case-priority">
-          {(controlProps) => (
-            <select
-              {...controlProps}
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as CasePriority)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {CASE_PRIORITY_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          )}
-        </FormField>
-        {estimateBlock ? <div>{estimateBlock.node}</div> : null}
-        {referencesBlock ? <div>{referencesBlock.node}</div> : null}
-      </div>
-
-      <div className="grid gap-3">
-        {bodyBlocks.map((block) => (
-          <div key={block.key}>{block.node}</div>
-        ))}
-      </div>
+      {stackFields ? (
+        <>
+          <div className={metaGridClass} data-case-authoring-destination>
+            {destinationFields}
+          </div>
+          {instructionFields}
+          <div className={metaGridClass} data-case-authoring-optional-meta>
+            {optionalMetaFields}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className={metaGridClass}>
+            {destinationFields}
+            {optionalMetaFields}
+          </div>
+          {instructionFields}
+        </>
+      )}
 
       {submitError ? (
-        <p className="text-sm font-medium text-red-700" role="alert">
-          {submitError}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-red-700" role="alert">
+            {submitError}
+          </p>
+          {showRetry ? (
+            <Button type="button" size="sm" variant="secondary" disabled={isSubmitting} onClick={() => void handleSubmit()}>
+              Retry
+            </Button>
+          ) : null}
+        </div>
       ) : null}
+
+      {beforeActions}
 
       <div
         className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_18px_-14px_rgba(15,23,42,0.45)] backdrop-blur"

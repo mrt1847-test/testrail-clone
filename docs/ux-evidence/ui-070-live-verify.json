@@ -1,0 +1,55 @@
+{
+  "fixture": {
+    "projectId": "4",
+    "suiteId": "4",
+    "sectionId": 8,
+    "stepsCaseId": 7,
+    "textCaseId": 8,
+    "emptyCaseId": 9,
+    "listUrl": "http://localhost:5173/projects/4/cases?suiteId=4&sectionId=8"
+  },
+  "checks": {
+    "viewLabels": {
+      "Type": 1,
+      "Priority": 1,
+      "Template": 1,
+      "Preconditions": 1
+    },
+    "viewNoDuplicates": true,
+    "viewOrder": {
+      "metaBeforeInstructions": true,
+      "instructionsBeforeAttachments": true,
+      "attachmentsBeforeVersions": true,
+      "hasActionExpected": true
+    },
+    "edit": {
+      "stacked": true,
+      "formBeforeAttachments": true,
+      "destinationBeforeInstructions": true,
+      "instructionsBeforeOptionalMeta": true,
+      "optionalMetaColumns": "326px",
+      "optionalMetaSingleColumn": true,
+      "imagesAfterInstructions": true
+    },
+    "panel360": {
+      "paneWidth": 360,
+      "optionalMetaColumns": "326px",
+      "singleColumn": true,
+      "controlsFitPane": true,
+      "overflowX": false
+    },
+    "emptyInstructions": true,
+    "desktop1440": {
+      "noDuplicates": true,
+      "overflowX": false
+    },
+    "mobile390": {
+      "panelInView": true,
+      "focusInPanel": true,
+      "editInView": true,
+      "focusRestoredToRow": true,
+      "overflowX": false
+    }
+  },
+  "allOk": true
+}

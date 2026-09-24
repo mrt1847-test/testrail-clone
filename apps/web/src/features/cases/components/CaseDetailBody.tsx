@@ -1,11 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchCaseTemplates, fetchCustomFieldsForUse } from "../../projects/api/settingsApi";
 import { fetchCaseVersions } from "../api/catalogApi";
+import { extractApiErrorMessage } from "../caseErrors";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { useCaseEditorActions } from "../hooks/useCaseEditorActions";
+import { useOptionalCaseDraftGuard } from "../context/CaseDraftGuardContext";
+import type { CaseAuthoringSubmitInput } from "./CaseAuthoringForm";
+import {
+  AuthoringPersistError,
+  authoringLeaveDescription,
+  resumeFromOutcome,
+  type AuthoringPersistResume
+} from "../utils/authoringPersistOutcome";
+import { persistAndRefreshCaseAuthoring } from "../utils/persistCaseAuthoring";
 import { ExpandableCaseDetail } from "./ExpandableCaseDetail";
 
 type Props = {
@@ -18,6 +28,9 @@ type Props = {
   onDuplicated: (copiedCaseId: number) => void;
   onEdit?: () => void;
   onCancelEdit?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
+  onSaved?: () => void;
   showHeading?: boolean;
 };
 
@@ -31,9 +44,21 @@ export function CaseDetailBody({
   onDuplicated,
   onEdit,
   onCancelEdit,
+  onDirtyChange,
+  onSavingChange,
+  onSaved,
   showHeading
 }: Props) {
   const { data, isLoading, isError, refetch } = useCaseDetail(caseId);
+  const qc = useQueryClient();
+  const saveGenerationRef = useRef(0);
+  const persistResumeRef = useRef<AuthoringPersistResume | null>(null);
+  const [persistResume, setPersistResume] = useState<AuthoringPersistResume | null>(null);
+  const [authoringBusy, setAuthoringBusy] = useState(false);
+  const [authoringError, setAuthoringError] = useState<string | null>(null);
+  const draftGuard = useOptionalCaseDraftGuard();
+  const setLeaveHintRef = useRef(draftGuard?.setLeaveHint);
+  setLeaveHintRef.current = draftGuard?.setLeaveHint;
   useRecordRecentlyViewed(
     projectId,
     data ? { kind: "case", id: String(data.id), title: `${data.caseCode} ${data.title}` } : null
@@ -63,10 +88,19 @@ export function CaseDetailBody({
   });
 
   const { clearEditErrors } = editor;
+  const isSaving = authoringBusy || editor.updateCaseMutation.isPending || editor.stepsBusy;
 
   useEffect(() => {
     clearEditErrors();
+    setAuthoringError(null);
+    persistResumeRef.current = null;
+    setPersistResume(null);
+    setLeaveHintRef.current?.(null);
   }, [caseId, clearEditErrors]);
+
+  useEffect(() => {
+    onSavingChange?.(isSaving);
+  }, [isSaving, onSavingChange]);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-slate-500">Loading test case…</p>;
@@ -96,15 +130,65 @@ export function CaseDetailBody({
       hideShareActions
       onEdit={onEdit ?? (() => undefined)}
       onClose={mode === "edit" ? (onCancelEdit ?? onClose) : onClose}
-      onSave={async (patch) => {
-        await editor.updateCaseMutation.mutateAsync({
-          caseId: data.id,
-          ...patch,
-          expectedVersion: Number.isInteger(data.lockVersion) ? data.lockVersion : undefined
-        });
+      onDirtyChange={onDirtyChange}
+      onSave={async (input: CaseAuthoringSubmitInput) => {
+        saveGenerationRef.current += 1;
+        const generation = saveGenerationRef.current;
+        setAuthoringBusy(true);
+        setAuthoringError(null);
+        try {
+          let existing = data;
+          let resume = persistResumeRef.current;
+          if (resume?.failureKind === "conflict") {
+            const fresh = await refetch();
+            if (fresh.data) existing = fresh.data;
+            resume = null;
+            persistResumeRef.current = null;
+            setPersistResume(null);
+          }
+          const result = await persistAndRefreshCaseAuthoring(qc, {
+            projectId,
+            existing,
+            sectionId: existing.sectionId,
+            submit: input,
+            saveGeneration: generation,
+            isCurrent: () => generation === saveGenerationRef.current,
+            resume
+          });
+          if (generation !== saveGenerationRef.current) return;
+          if (!result.ok) {
+            const nextResume = resumeFromOutcome(result);
+            persistResumeRef.current = nextResume;
+            setPersistResume(nextResume);
+            setAuthoringError(result.message);
+            setLeaveHintRef.current?.(
+              authoringLeaveDescription({
+                mode: "edit",
+                bodySaved: result.bodySaved,
+                stepsComplete: result.stepsComplete,
+                caseCode: result.caseCode
+              })
+            );
+            onDirtyChange?.(true);
+            throw new AuthoringPersistError(result);
+          }
+          persistResumeRef.current = null;
+          setPersistResume(null);
+          setLeaveHintRef.current?.(null);
+          onSaved?.();
+        } catch (error) {
+          if (generation !== saveGenerationRef.current) return;
+          if (error instanceof AuthoringPersistError) throw error;
+          const message = extractApiErrorMessage(error, "Could not save case changes.");
+          setAuthoringError(message);
+          throw new Error(message);
+        } finally {
+          if (generation === saveGenerationRef.current) setAuthoringBusy(false);
+        }
       }}
-      isSaving={editor.updateCaseMutation.isPending}
-      submitError={editor.editFormError}
+      isSaving={isSaving}
+      submitError={authoringError ?? editor.editFormError}
+      showRetry={Boolean(persistResume && authoringError)}
       onCreateStep={async (input) => {
         await editor.createStepMutation.mutateAsync({ caseId: data.id, ...input });
       }}

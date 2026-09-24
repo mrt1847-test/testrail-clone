@@ -1,0 +1,50 @@
+{
+  "fixture": {
+    "projectId": "1",
+    "suiteId": "1",
+    "sectionId": 2,
+    "c1": 1,
+    "c2": 2,
+    "stepsTemplateId": "2",
+    "listUrl": "http://localhost:5173/projects/1/cases?suiteId=1&sectionId=2",
+    "addUrl": "http://localhost:5173/projects/1/cases/new?suiteId=1&sectionId=2"
+  },
+  "checks": {
+    "outlineTextSave": {
+      "ok": true,
+      "stillEdit": false,
+      "preview": true,
+      "emptyEditor": false,
+      "apiSteps": "1. Open login\n2. Enter credentials\n3. Submit",
+      "listHas": true,
+      "savingShown": true,
+      "saveDisabledWhileBusy": false,
+      "dialogOpen": false,
+      "versionCount": 3
+    },
+    "reopenMatchesApi": {
+      "ok": true,
+      "steps": "1. Open login\n2. Enter credentials\n3. Submit"
+    },
+    "structuredStepsSave": {
+      "ok": true,
+      "previewHas": true,
+      "apiSteps": [
+        "Change language",
+        "Open settings first"
+      ],
+      "stillEdit": false
+    },
+    "fullFormSave": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/1/cases?suiteId=1&sectionId=2&panelCaseId=3&focusCaseId=3",
+      "preview": true
+    },
+    "mobileSave": {
+      "ok": true,
+      "overflow": false,
+      "view": true
+    }
+  },
+  "allOk": true
+}

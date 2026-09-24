@@ -1,0 +1,24 @@
+{
+  "beforeClose": {
+    "url": "http://localhost:5173/projects/5/cases?suiteId=5&sectionId=11&panelCaseId=6&panelMode=edit&focusCaseId=6",
+    "title": "Edited title for dirty",
+    "dialogs": [],
+    "closeButtons": [
+      "<button type=\"button\" class=\"inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors fo"
+    ],
+    "hasProviderHint": false
+  },
+  "afterClose": {
+    "url": "http://localhost:5173/projects/5/cases?suiteId=5&sectionId=11&panelCaseId=6&panelMode=edit&focusCaseId=6",
+    "dialogs": [
+      "DISCARD UNSAVED CHANGES?\nYour unsaved test case changes will be lost.\nKeep editing\nDiscard changes"
+    ],
+    "bodyHasDiscard": true,
+    "fixedOverlay": true,
+    "ui066Dirty": true,
+    "ui066Leave": {
+      "dirty": true,
+      "saving": false
+    }
+  }
+}

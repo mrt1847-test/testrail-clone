@@ -1,0 +1,57 @@
+{
+  "fixture": {
+    "projectId": "5",
+    "suiteId": "5",
+    "sectionId": 14,
+    "checkoutId": 15,
+    "panelId": 17,
+    "otherId": 18,
+    "listUrl": "http://localhost:5173/projects/5/cases?suiteId=5&sectionId=14",
+    "addUrl": "http://localhost:5173/projects/5/cases/new?suiteId=5&sectionId=14"
+  },
+  "checks": {
+    "addStepFailRetry": {
+      "ok": true,
+      "stillAdd": true,
+      "retry": true,
+      "casesAfterFail": 1,
+      "casesAfterSecondSave": 1,
+      "casesAfterRetry": 1,
+      "apiSteps": [
+        "Open login\nSubmit form"
+      ],
+      "injectedLeft": 0
+    },
+    "addNextKeepsDraft": {
+      "ok": true,
+      "url": "http://localhost:5173/projects/5/cases/new?suiteId=5&sectionId=14",
+      "retry": true
+    },
+    "panelStepFailRetry": {
+      "ok": true,
+      "edit": true,
+      "retry": true,
+      "leaveMentionsSaved": true,
+      "view": true
+    },
+    "conflict": {
+      "ok": true,
+      "text": "This case changed after you opened it. Refresh, then save again."
+    },
+    "moveFail": {
+      "ok": true,
+      "text": "C18 was saved, but it could not be moved to the new section. Retry the move.",
+      "url": "http://localhost:5173/projects/5/cases/18/edit?suiteId=5&sectionId=15"
+    },
+    "switchCaseClearsFailure": {
+      "ok": true,
+      "alerts": 0
+    },
+    "mobileRetry": {
+      "ok": true,
+      "overflow": false,
+      "cases": 1
+    }
+  },
+  "allOk": true
+}

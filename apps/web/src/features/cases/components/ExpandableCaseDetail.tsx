@@ -23,25 +23,19 @@ import type { CaseAttachmentItem, CaseStep, CaseVersion, TestCase } from "../typ
 import {
   CaseAuthoringForm,
   type CaseAuthoringCustomFieldDefinition,
+  type CaseAuthoringSubmitInput,
   type CaseAuthoringTemplateDefinition
 } from "./CaseAuthoringForm";
-import { CaseRefTokens } from "./CaseRefTokens";
 import { BddScenarioEditor } from "./BddScenarioEditor";
 import { CaseInstructionReadView } from "./CaseInstructionReadView";
-import { formatCustomFieldDisplayValue } from "../utils/formatCustomFieldValue";
 import { caseKeys } from "../hooks/useCases";
 import { caseDetailKeys } from "../hooks/useCaseDetail";
 import { SharedStepAttachSelect } from "./SharedStepAttachSelect";
 import { fetchCaseScenarios } from "../api/bddApi";
 import { sectionKeys, useSections } from "../hooks/useSections";
 import { sectionPathLabel } from "../utils/sectionTreeModel";
-import {
-  apiCasePriorityValue,
-  apiCaseTypeValue,
-  draftStepsForTextPersist,
-  instructionKindFromTemplateFields
-} from "../utils/caseAuthoringInstructions";
-import { syncCaseInstructionSteps } from "../utils/syncCaseInstructionSteps";
+import { instructionKindFromTemplateFields } from "../utils/caseAuthoringInstructions";
+import { shouldStackAuthoringFields } from "../utils/caseDetailPresentation";
 
 type ExpandableCaseDetailProps = {
   data: TestCase;
@@ -51,26 +45,13 @@ type ExpandableCaseDetailProps = {
   mode: "view" | "edit";
   onEdit: () => void;
   onClose: () => void;
-  onSave: (patch: {
-    title: string;
-    preconditions: string;
-    estimate: string | null;
-    references: string;
-    expectedResult: string;
-    mission: string;
-    goals: string;
-    aiInput: string;
-    aiExpectedOutput: string;
-    templateId: string | null;
-    customValues: Record<string, string | number | boolean | string[] | null>;
-    caseType?: string;
-    priority?: string;
-  }) => Promise<void>;
+  onSave: (input: CaseAuthoringSubmitInput) => Promise<void>;
   onDelete: () => Promise<void>;
   onSetArchived?: (archived: boolean) => Promise<void>;
   onRestoreVersion?: (versionId: number) => Promise<void>;
   isSaving?: boolean;
   submitError?: string | null;
+  showRetry?: boolean;
   restoreError?: string | null;
   isDeleting?: boolean;
   isArchiving?: boolean;
@@ -663,6 +644,7 @@ export function ExpandableCaseDetail({
   onRestoreVersion,
   isSaving = false,
   submitError = null,
+  showRetry = false,
   restoreError = null,
   isDeleting = false,
   isArchiving = false,
@@ -745,11 +727,11 @@ export function ExpandableCaseDetail({
   }, [data.id, data.title, data.preconditions, data.customValues]);
 
   useEffect(() => {
-    if (mode === "edit") {
+    if (mode === "edit" && !isSaving && !submitError) {
       setLocalSteps(toLocalSteps(data.steps));
       setFormDirty(false);
     }
-  }, [mode, data.id, data.steps]);
+  }, [data.id, data.steps, isSaving, mode, submitError]);
 
   const stepsDirty =
     mode === "edit" &&
@@ -805,11 +787,11 @@ export function ExpandableCaseDetail({
       ) : null}
 
       {mode === "edit" ? (
-        <div className="mt-3 grid gap-3">
-          <CaseAttachmentControls entityType="case" entityId={data.id} label="Case images" />
+        <div className="mt-3 grid gap-3" data-case-edit-root>
           <CaseAuthoringForm
             projectId={projectId}
             valueKey={`${data.id}:${data.lockVersion}:${mode}`}
+            stackFields={shouldStackAuthoringFields(layout)}
             initialTitle={title}
             initialPreconditions={preconditions}
             initialEstimate={data.estimate === "-" ? "" : data.estimate}
@@ -832,102 +814,38 @@ export function ExpandableCaseDetail({
             submitLabel={isSaving ? "Saving..." : "Save"}
             isSubmitting={isSaving}
             submitError={submitError}
+            showRetry={showRetry}
             onDirtyChange={setFormDirty}
             onSubmit={async (input) => {
-              await onSave({
-                title: input.title,
-                preconditions: input.preconditions,
-                estimate: input.estimate.trim().length > 0 ? input.estimate.trim() : null,
-                references: input.references,
-                expectedResult: input.expectedResult,
-                mission: input.mission,
-                goals: input.goals,
-                aiInput: input.aiInput,
-                aiExpectedOutput: input.aiExpectedOutput,
-                templateId: input.templateId,
-                customValues: input.customValues,
-                caseType: apiCaseTypeValue(input.caseType),
-                priority: apiCasePriorityValue(input.priority)
-              });
-              const drafts =
-                input.instructionKind === "text"
-                  ? draftStepsForTextPersist(input.stepsText)
-                  : input.instructionKind === "steps"
-                    ? input.draftSteps
-                    : [];
-              await syncCaseInstructionSteps(data.id, data.steps, drafts);
+              await onSave(input);
             }}
             onCancel={onClose}
           />
+          <div data-case-attachments>
+            <CaseAttachmentControls entityType="case" entityId={data.id} label="Case images" />
+          </div>
           {editShowsBdd ? <BddScenarioEditor caseId={String(data.id)} disabled={isSaving} /> : null}
         </div>
       ) : (
-        <>
-          <p className="mt-2 text-sm text-slate-700">
-            <span className="font-medium">Type:</span> {data.type} / <span className="font-medium">Priority:</span>{" "}
-            {data.priority} / <span className="font-medium">Estimate:</span> {data.estimate}
-          </p>
-          <p className="text-sm text-slate-700">
-            <span className="font-medium">References:</span>{" "}
-            {data.references.trim().length > 0 ? (
-              <CaseRefTokens refsValue={data.references} />
-            ) : (
-              "-"
-            )}{" "}
-            / <span className="font-medium">Automation key:</span> {data.automationKey || "-"}
-          </p>
-          <div className="text-sm text-slate-700">
-            <span className="font-medium">Labels:</span>{" "}
-            {data.labels.length > 0 ? (
-              <span className="mt-1 inline-flex flex-wrap gap-1">
-                {data.labels.map((label) => (
-                  <span key={label} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
-                    {label}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              "-"
-            )}
-          </div>
-          <p className="text-sm text-slate-700">
-            <span className="font-medium">Preconditions:</span> {data.preconditions || "-"}
-          </p>
-          {data.expectedResult.trim().length > 0 ? (
-            <p className="text-sm text-slate-700">
-              <span className="font-medium">Expected result:</span> {data.expectedResult}
-            </p>
-          ) : null}
-          {data.mission.trim().length > 0 ? (
-            <p className="whitespace-pre-wrap text-sm text-slate-700">
-              <span className="font-medium">Mission:</span> {data.mission}
-            </p>
-          ) : null}
-          {data.goals.trim().length > 0 ? (
-            <p className="whitespace-pre-wrap text-sm text-slate-700">
-              <span className="font-medium">Goals:</span> {data.goals}
-            </p>
-          ) : null}
-          {data.aiInput.trim().length > 0 ? (
-            <p className="whitespace-pre-wrap text-sm text-slate-700">
-              <span className="font-medium">Input:</span> {data.aiInput}
-            </p>
-          ) : null}
-          {data.aiExpectedOutput.trim().length > 0 ? (
-            <p className="whitespace-pre-wrap text-sm text-slate-700">
-              <span className="font-medium">Expected output:</span> {data.aiExpectedOutput}
-            </p>
-          ) : null}
-          {activeCaseTemplate ? (
-            <p className="text-sm text-slate-700">
-              <span className="font-medium">Template:</span> {activeCaseTemplate.name}
-            </p>
-          ) : null}
-          <div className="mt-2">
+        <div data-case-read-root>
+          <CaseInstructionReadView
+            data={data}
+            projectId={projectId}
+            sectionPath={sectionPath}
+            templateName={activeCaseTemplate?.name ?? null}
+            templates={caseTemplates}
+            customFields={customFields}
+            scenarios={scenarios}
+          />
+
+          <div className="mt-3" data-case-attachments>
             <CaseAttachmentControls entityType="case" entityId={data.id} label="Case images" readOnly />
           </div>
 
-          <details className="group mt-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+          <details
+            className="group mt-2 overflow-hidden rounded-md border border-slate-200 bg-white"
+            data-case-versions
+          >
             <summary className="cursor-pointer list-none px-2.5 py-2 text-xs text-slate-500 marker:hidden [&::-webkit-details-marker]:hidden">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -1093,39 +1011,7 @@ export function ExpandableCaseDetail({
             </div>
           ) : null}
 
-          {customFields.filter((field) => field.isActive).length > 0 ? (
-            <div className="mt-2 rounded border border-slate-200 bg-white p-2">
-              <p className="text-xs font-medium text-slate-700">Custom fields</p>
-              <ul className="mt-2 space-y-2 text-xs text-slate-700">
-                {customFields
-                  .filter((field) => field.isActive)
-                  .map((field) => {
-                    const display = formatCustomFieldDisplayValue(data.customValues[field.systemName]);
-                    return (
-                      <li
-                        key={field.systemName}
-                        className="flex flex-col gap-0.5 rounded border border-slate-100 bg-slate-50 px-2 py-1.5 sm:flex-row sm:items-start sm:gap-2"
-                      >
-                        <span className="shrink-0 font-medium text-slate-600 sm:w-36">{field.name}</span>
-                        <span className="min-w-0 whitespace-pre-wrap break-words">{display || "—"}</span>
-                      </li>
-                    );
-                  })}
-              </ul>
-            </div>
-          ) : null}
-
-          <CaseInstructionReadView
-            data={data}
-            projectId={projectId}
-            sectionPath={sectionPath}
-            templateName={activeCaseTemplate?.name ?? null}
-            templates={caseTemplates}
-            customFields={customFields}
-            scenarios={scenarios}
-          />
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2" data-case-actions>
             {hideShareActions ? null : (
               <EntityCopyActions
                 projectId={projectId}
@@ -1183,7 +1069,7 @@ export function ExpandableCaseDetail({
               </button>
             )}
           </div>
-        </>
+        </div>
       )}
 
       <DuplicateCaseDialog

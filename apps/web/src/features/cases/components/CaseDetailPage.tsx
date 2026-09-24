@@ -8,6 +8,10 @@ import { useEntityContextMenu } from "../../../shared/ui/EntityContextMenu";
 import { PageHeader } from "../../../shared/ui/PageHeader";
 import { PrintLinkButton } from "../../print/components/PrintLinkButton";
 import { buildCaseDetailPath, buildCaseListPath, buildEditCasePath } from "../caseRoute";
+import {
+  CASE_LIST_RETURN_PARAM,
+  buildCaseListPathFromReturn
+} from "../utils/caseListReturnContext";
 import { useRecordRecentlyViewed } from "../../projects/hooks/useRecordRecentlyViewed";
 import { useCaseDetail } from "../hooks/useCaseDetail";
 import { CaseDetailBody } from "./CaseDetailBody";
@@ -25,7 +29,14 @@ export function CaseDetailPage() {
   const caseId = Number(caseIdParam);
   const sectionId = parseSectionId(searchParams.get("sectionId"));
   const suiteId = searchParams.get("suiteId");
-  const listPath = buildCaseListPath(projectId, { sectionId });
+  const returnQuery = searchParams.get(CASE_LIST_RETURN_PARAM);
+  const listPath = returnQuery
+    ? buildCaseListPathFromReturn({
+        projectId,
+        returnQuery,
+        fallback: { suiteId, sectionId }
+      })
+    : buildCaseListPath(projectId, { sectionId });
   const { data, isLoading, isError, refetch } = useCaseDetail(Number.isNaN(caseId) ? null : caseId);
 
   useRecordRecentlyViewed(
@@ -43,7 +54,8 @@ export function CaseDetailPage() {
         to={buildEditCasePath(projectId, caseId, {
           suiteId,
           sectionId,
-          from: "page"
+          from: "page",
+          listParams: searchParams
         })}
         replace
       />
@@ -89,7 +101,8 @@ export function CaseDetailPage() {
                     buildEditCasePath(projectId, caseId, {
                       suiteId,
                       sectionId,
-                      from: "page"
+                      from: "page",
+                      listParams: searchParams
                     })
                   )
                 }
@@ -123,7 +136,7 @@ export function CaseDetailPage() {
           onClose={() => navigate(listPath)}
           onDeleted={() => navigate(listPath)}
           onDuplicated={(copiedCaseId) => {
-            navigate(buildCaseDetailPath(projectId, copiedCaseId, { sectionId }));
+            navigate(buildCaseDetailPath(projectId, copiedCaseId, { sectionId, listParams: searchParams }));
           }}
         />
       </section>

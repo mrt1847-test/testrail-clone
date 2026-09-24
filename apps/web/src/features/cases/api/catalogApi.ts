@@ -628,14 +628,15 @@ export async function positionCases(
 export async function createCaseStep(
   caseId: number,
   input: { content: string; expectedResult?: string | null }
-): Promise<void> {
-  await apiFetch<Ok<{ id: string; stepOrder: number; content: string; expectedResult?: string | null }>>(
+): Promise<number> {
+  const res = await apiFetch<Ok<{ id: string; stepOrder: number; content: string; expectedResult?: string | null }>>(
     `/api/cases/${caseId}/steps`,
     {
       method: "POST",
       body: input
     }
   );
+  return Number(res.data.id);
 }
 
 export async function updateCaseStep(
